@@ -29,6 +29,9 @@
 | 🗂️ 本地优先存储 | 已支持 | SQLite、Chroma、上传文件和标准化结果都落本地目录 |
 | 🪶 依赖克制 | 已支持 | V1 不引入 Redis、Celery、对象存储等非必需基础设施 |
 
+## 演示DEMO
+[bilibli: v1](https://www.bilibili.com/video/BV1RCQQBvEKb/?vd_source=c217126ec335b1b5117485606ac9594f)
+
 ## 快速开始
 
 ### 1. 初始化环境
