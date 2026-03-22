@@ -1,0 +1,14 @@
+# 前端依赖与构建产物
+node_modules
+dist
+coverage
+
+# 本地环境与日志
+*.log
+*.local
+.env
+.env.*
+
+# 版本控制与系统文件
+.git
+.DS_Store

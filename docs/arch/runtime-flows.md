@@ -1,0 +1,118 @@
+# 运行时流程
+
+## 1. 启动补偿
+
+```mermaid
+flowchart TD
+  Boot["App Startup"] --> Admin["ensure_default_admin()"]
+  Admin --> Space["ensure_personal_space(admin)"]
+  Space --> Settings["get_or_create_settings_record()"]
+  Settings --> Docs["compensate_processing_documents()"]
+  Docs --> Runs["compensate_active_chat_runs()"]
+  Runs --> Rebuild["compensate_index_rebuild_status()"]
+```
+
+当前默认运行方式：
+
+- 每个用户只有一个 personal `space`
+- 不再存在 `workspace -> knowledge_base` 挂载层
+
+关键入口：
+
+- `apps/api/src/knowledge_chatbox_api/main.py`
+- `apps/api/src/knowledge_chatbox_api/repositories/space_repository.py`
+- `apps/api/src/knowledge_chatbox_api/tasks/document_jobs.py`
+
+## 2. 文档上传
+
+1. 基于当前用户 personal `space` 创建或复用 `documents`
+2. 追加 `document_revisions`
+3. 标记修订 `uploaded -> processing -> indexed / failed`
+4. 标准化阶段读取当前 `vision` route
+5. 索引阶段读取当前 `embedding` route
+6. 若存在 pending embedding route，同时写入 building generation
+
+关键观察点：
+
+- `document_revisions.ingest_status`
+- `document_revisions.error_message`
+- Chroma generation 中的 `space_id / document_id / document_revision_id`
+- Web 侧上传 helper 会优先携带当前 access token；若第一次上传返回 `401`，前端会先走 `/api/auth/refresh`，刷新成功后自动重试一次
+
+## 3. 认证启动与刷新
+
+1. 登录成功后，后端返回短期 bearer `access token`
+2. 后端同时通过 HttpOnly cookie 写入可轮换 `refresh session`
+3. 前端启动期若内存里没有 access token，会先请求 `/api/auth/refresh`
+4. 受保护请求默认带 `Authorization: Bearer <access token>`
+5. 若业务请求返回 `401`，前端按单飞策略重试 `/api/auth/refresh`
+6. refresh 成功则回放原请求；失败则清空内存 access token，并把会话状态标记为 `expired`
+
+关键约束：
+
+- access token 当前只保存在前端内存，不落 `localStorage`
+- refresh session 继续以服务端 `auth_sessions` 为真相源
+- refresh cookie 默认按请求 scheme 自动决定是否带 `Secure`；如果 HTTPS 终止在反向代理而应用层拿不到 `https`，要显式设置 `SESSION_COOKIE_SECURE=true`
+- 资源上传、普通 JSON 请求和 SSE 流式聊天共享同一套 `401 -> refresh -> retry once` 语义
+- `/api/auth/me` 在鉴权阶段保持纯读，不为 session 心跳同步写库
+- 鉴权探测失败时，受保护页面会进入认证降级页；`/login` 保持可访问
+
+## 4. 聊天入口恢复
+
+1. 用户打开 `/chat`
+2. 如果会话列表还没准备好，页面先保持加载态
+3. 会话列表就绪后，前端先读取最近访问的聊天会话 ID
+4. 若该 ID 仍存在于当前会话列表，直接恢复到该会话
+5. 若该 ID 已失效，则回退到当前列表第一项
+6. 如果当前没有任何会话，保持空入口态并清理失效记录
+
+关键约束：
+
+- 恢复过程尽量在页面内容落地前完成，避免先短暂暴露空会话态
+- 最近访问的会话 ID 仍保存在 `localStorage`
+- 这条流程不引入额外后端接口，只是前端入口选择逻辑
+
+## 5. 聊天流式执行
+
+1. 创建或复用 user message projection
+2. 创建 `chat_run`
+3. 若携带文档附件，先读取每个附件的标准化文本片段并拼进当前轮 prompt
+4. 若携带图片附件，再按 `document_revision_id` 重读原图并统一转成稳定 JPEG payload
+5. 写入 `chat_run_events`
+6. assistant 投影随事件流更新
+7. 成功时持久化 `sources_json / usage_json`
+8. 若命中相同 `client_request_id`，直接复用既有 run 并重放事件
+
+关键约束：
+
+- 检索范围默认按当前会话 `space_id` 过滤
+- 若本轮消息带文档附件，检索会进一步限域到当前附件对应的 `document_revision_id`
+- 多文档附件检索会按附件逐个召回后再合并，减少单个文档吃满全局 `top_k`
+- 当两类条件同时存在时，后端会先归一化成 Chroma 兼容的复合过滤表达式；避免 `InMemoryChromaStore` 与持久化 Chroma 在真实流式链路上出现语义漂移
+- 纯图片泛化看图请求默认跳过 retrieval
+- 无附件时，问答仍会继续查询当前用户 personal `space` 里已入库的历史知识
+- 受保护读取接口在鉴权阶段保持纯读，不再为 session 心跳同步写 `auth_sessions.last_seen_at`；避免流式回答持有 SQLite 写事务时，把 `/api/auth/me`、`/api/settings` 这类并发页面读取锁成 `database is locked`
+- 图片不可解码或 provider 仍拒绝处理时，后端先收敛成稳定语义，不把 provider 原始格式报错直接暴露为长期契约
+
+关键入口：
+
+- `apps/api/src/knowledge_chatbox_api/services/chat/chat_run_service.py`
+- `apps/api/src/knowledge_chatbox_api/services/chat/chat_persistence_service.py`
+- `apps/api/src/knowledge_chatbox_api/services/chat/chat_service.py`
+- `apps/api/src/knowledge_chatbox_api/utils/chroma.py`
+
+## 6. 检索 Route 切换与重建
+
+1. `PUT /api/settings` 写入 `app_settings.pending_embedding_route_json`
+2. `app_settings` 更新 `building_index_generation + index_rebuild_status`
+3. 后台任务重建目标 generation
+4. 成功后把 `pending_embedding_route_json` promote 为 `embedding_route_json`
+5. 失败则保持 active route 不变，并把状态标为 `failed`
+
+关键观察点：
+
+- `app_settings.embedding_route_json`
+- `app_settings.pending_embedding_route_json`
+- `app_settings.active_index_generation`
+- `app_settings.building_index_generation`
+- `app_settings.index_rebuild_status`

@@ -1,0 +1,131 @@
+import { i18n } from "@/i18n";
+import type { ChatAttachmentItem as ChatMessageAttachmentItem } from "../api/chat";
+import type { ChatAttachmentItem as ChatComposerAttachmentItem } from "../store/chat-ui-store";
+import {
+  buildChatAttachmentListItems,
+  buildComposerAttachmentListItems,
+  describeAttachmentListName,
+} from "./attachment-list-items";
+
+describe("attachment-list-items", () => {
+  it("collapses opaque image names into session attachment labels", () => {
+    expect(
+      describeAttachmentListName(
+        {
+          kind: "image",
+          name: "e31c779fc7a14e68b23cf94c999b0a61.jpeg~tplv-a9rns2rl98-image_raw_b.png",
+        },
+        0,
+      ),
+    ).toMatchObject({
+      displayName: "会话图片附件 1",
+      rawName: "e31c779fc7a14e68b23cf94c999b0a61.jpeg~tplv-a9rns2rl98-image_raw_b.png",
+    });
+  });
+
+  it("does not collapse uppercase extensions", () => {
+    expect(
+      describeAttachmentListName(
+        {
+          kind: "image",
+          name: "f2280f620f9045129491d54f4de3997d.PNG",
+        },
+        1,
+      ),
+    ).toMatchObject({
+      displayName: "f2280f620f9045129491d54f4de3997d.PNG",
+      rawName: undefined,
+    });
+  });
+
+  it("uses the current locale for collapsed opaque image labels", async () => {
+    await i18n.changeLanguage("en");
+
+    try {
+      expect(
+        describeAttachmentListName(
+          {
+            kind: "image",
+            name: "e31c779fc7a14e68b23cf94c999b0a61.jpeg~tplv-a9rns2rl98-image_raw_b.png",
+          },
+          0,
+        ),
+      ).toMatchObject({
+        displayName: "Session image attachment 1",
+        rawName: "e31c779fc7a14e68b23cf94c999b0a61.jpeg~tplv-a9rns2rl98-image_raw_b.png",
+      });
+    } finally {
+      await i18n.changeLanguage("zh-CN");
+    }
+  });
+
+  it("builds previewable composer and chat attachment items", () => {
+    const composerAttachments: ChatComposerAttachmentItem[] = [
+      {
+        id: "local-image",
+        file: new File(["hello"], "image.png", { type: "image/png" }),
+        kind: "image",
+        mimeType: "image/png",
+        name: "image.png",
+        status: "queued",
+      },
+      {
+        id: "local-document",
+        file: new File(["hello"], "guide.pdf", { type: "application/pdf" }),
+        kind: "document",
+        mimeType: "application/pdf",
+        name: "guide.pdf",
+        status: "queued",
+      },
+    ];
+    const messageAttachments: ChatMessageAttachmentItem[] = [
+      {
+        attachment_id: "remote-image",
+        type: "image",
+        name: "e31c779fc7a14e68b23cf94c999b0a61.jpeg~tplv-a9rns2rl98-image_raw_b.png",
+        mime_type: "image/png",
+        resource_document_version_id: 11,
+        size_bytes: 1,
+      },
+      {
+        attachment_id: "remote-document",
+        type: "document",
+        name: "夜航记录.pdf",
+        mime_type: "application/pdf",
+        resource_document_version_id: 21,
+        size_bytes: 1,
+      },
+    ];
+
+    const composerItems = buildComposerAttachmentListItems({
+      attachments: composerAttachments,
+      getStatusLabel: () => "待发送",
+      onPreview: vi.fn(),
+      onRemove: vi.fn(),
+    });
+    const chatItems = buildChatAttachmentListItems({
+      attachments: messageAttachments,
+      onPreview: vi.fn(),
+    });
+
+    expect(composerItems).toHaveLength(2);
+    expect(composerItems[0]).toMatchObject({
+      displayName: "image.png",
+      previewable: true,
+      statusLabel: "待发送",
+    });
+    expect(composerItems[1]).toMatchObject({
+      displayName: "guide.pdf",
+      previewable: false,
+    });
+    expect(chatItems).toHaveLength(2);
+    expect(chatItems[0]).toMatchObject({
+      displayName: "会话图片附件 1",
+      previewable: true,
+    });
+    expect(chatItems[1]).toMatchObject({
+      displayName: "夜航记录.pdf",
+      previewable: false,
+    });
+  });
+});

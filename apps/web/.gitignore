@@ -1,0 +1,8 @@
+# Local frontend outputs should never affect `vp check`.
+dist/
+node_modules/
+.vite/
+.vite-temp/
+coverage/
+openapi/schema.json
+src/lib/api/generated/schema.d.ts

@@ -1,0 +1,498 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource-variable/geist";
+
+@source "../../../node_modules/streamdown/dist/*.js";
+@source "../../../node_modules/@streamdown/code/dist/*.js";
+@source "../../../node_modules/@streamdown/cjk/dist/*.js";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-sans:
+    "Geist Variable", "Instrument Sans", "Noto Sans SC", "PingFang SC", "Microsoft YaHei",
+    sans-serif;
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+  --color-sidebar: hsl(var(--sidebar));
+  --color-sidebar-foreground: hsl(var(--sidebar-foreground));
+  --color-sidebar-primary: hsl(var(--sidebar-primary));
+  --color-sidebar-primary-foreground: hsl(var(--sidebar-primary-foreground));
+  --color-sidebar-accent: hsl(var(--sidebar-accent));
+  --color-sidebar-accent-foreground: hsl(var(--sidebar-accent-foreground));
+  --color-sidebar-border: hsl(var(--sidebar-border));
+  --color-sidebar-ring: hsl(var(--sidebar-ring));
+  --color-chart-1: hsl(var(--chart-1));
+  --color-chart-2: hsl(var(--chart-2));
+  --color-chart-3: hsl(var(--chart-3));
+  --color-chart-4: hsl(var(--chart-4));
+  --color-chart-5: hsl(var(--chart-5));
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  --background: 210 23% 97%;
+  --foreground: 222 26% 14%;
+  --card: 210 28% 99%;
+  --card-foreground: 222 26% 14%;
+  --popover: 210 30% 99%;
+  --popover-foreground: 222 26% 14%;
+  --primary: 216 32% 23%;
+  --primary-foreground: 210 25% 98%;
+  --secondary: 210 18% 92%;
+  --secondary-foreground: 222 22% 19%;
+  --muted: 210 14% 92%;
+  --muted-foreground: 220 11% 43%;
+  --accent: 213 20% 90%;
+  --accent-foreground: 222 22% 18%;
+  --destructive: 6 72% 48%;
+  --border: 214 16% 84%;
+  --input: 214 18% 86%;
+  --ring: 216 34% 40%;
+  --chart-1: 216 34% 40%;
+  --chart-2: 189 24% 40%;
+  --chart-3: 203 22% 46%;
+  --chart-4: 221 48% 54%;
+  --chart-5: 8 72% 56%;
+  --sidebar: 210 20% 95%;
+  --sidebar-foreground: 222 25% 16%;
+  --sidebar-primary: 216 32% 23%;
+  --sidebar-primary-foreground: 210 25% 98%;
+  --sidebar-accent: 212 18% 91%;
+  --sidebar-accent-foreground: 222 18% 20%;
+  --sidebar-border: 214 16% 84%;
+  --sidebar-ring: 216 34% 40%;
+  --scrollbar-track: 214 16% 91%;
+  --scrollbar-thumb: 214 12% 70%;
+  --scrollbar-thumb-hover: 216 24% 56%;
+  --surface-base: 210 24% 97%;
+  --surface-top: 210 22% 99%;
+  --surface-border: 214 16% 82%;
+  --surface-highlight: 0 0% 100%;
+  --shadow-color: 220 28% 18%;
+  --scrollbar-size: 0.72rem;
+  --radius: 1rem;
+  color-scheme: light;
+}
+
+.dark,
+.dark {
+  --background: 220 24% 6%;
+  --foreground: 210 18% 92%;
+  --card: 222 16% 10.5%;
+  --card-foreground: 210 18% 92%;
+  --popover: 222 15% 13%;
+  --popover-foreground: 210 18% 92%;
+  --primary: 214 48% 63%;
+  --primary-foreground: 222 38% 10%;
+  --secondary: 220 13% 13%;
+  --secondary-foreground: 210 16% 92%;
+  --muted: 220 12% 11%;
+  --muted-foreground: 214 10% 66%;
+  --accent: 220 12% 15%;
+  --accent-foreground: 210 18% 92%;
+  --destructive: 6 68% 56%;
+  --border: 220 10% 18%;
+  --input: 220 12% 16%;
+  --ring: 214 52% 66%;
+  --chart-1: 214 52% 66%;
+  --chart-2: 189 30% 52%;
+  --chart-3: 203 28% 58%;
+  --chart-4: 220 42% 70%;
+  --chart-5: 8 72% 62%;
+  --sidebar: 222 18% 8.5%;
+  --sidebar-foreground: 210 18% 92%;
+  --sidebar-primary: 214 48% 63%;
+  --sidebar-primary-foreground: 222 38% 10%;
+  --sidebar-accent: 220 12% 13.5%;
+  --sidebar-accent-foreground: 210 18% 92%;
+  --sidebar-border: 220 10% 18.5%;
+  --sidebar-ring: 214 52% 66%;
+  --scrollbar-track: 220 10% 14%;
+  --scrollbar-thumb: 220 10% 28%;
+  --scrollbar-thumb-hover: 214 24% 42%;
+  --surface-base: 222 15% 11%;
+  --surface-top: 222 14% 13.5%;
+  --surface-border: 220 10% 20%;
+  --surface-highlight: 212 16% 92%;
+  --shadow-color: 222 58% 3%;
+  color-scheme: dark;
+}
+
+@layer base {
+  html,
+  body,
+  * {
+    @apply border-border outline-ring/50;
+    box-sizing: border-box;
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--scrollbar-thumb) / 0.95) hsl(var(--scrollbar-track) / 0.24);
+  }
+
+  html::-webkit-scrollbar,
+  body::-webkit-scrollbar,
+  *::-webkit-scrollbar {
+    width: var(--scrollbar-size);
+    height: var(--scrollbar-size);
+  }
+
+  html::-webkit-scrollbar-track,
+  body::-webkit-scrollbar-track,
+  *::-webkit-scrollbar-track {
+    border-radius: 999px;
+    background: linear-gradient(
+      180deg,
+      transparent 0%,
+      hsl(var(--scrollbar-track) / 0.28) 50%,
+      transparent 100%
+    );
+  }
+
+  html::-webkit-scrollbar-thumb,
+  body::-webkit-scrollbar-thumb,
+  *::-webkit-scrollbar-thumb {
+    border: 0.16rem solid transparent;
+    border-radius: 999px;
+    background: linear-gradient(
+      180deg,
+      hsl(var(--scrollbar-thumb) / 0.9) 0%,
+      hsl(var(--scrollbar-thumb) / 0.98) 100%
+    );
+    background-clip: padding-box;
+    box-shadow: inset 0 0 0 1px hsl(var(--background) / 0.16);
+  }
+
+  html::-webkit-scrollbar-thumb:hover,
+  body::-webkit-scrollbar-thumb:hover,
+  *::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(
+      180deg,
+      hsl(var(--scrollbar-thumb-hover) / 0.92) 0%,
+      hsl(var(--scrollbar-thumb-hover) / 0.98) 100%
+    );
+    background-clip: padding-box;
+  }
+
+  html::-webkit-scrollbar-corner,
+  body::-webkit-scrollbar-corner,
+  *::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  html {
+    @apply font-sans antialiased;
+    line-height: 1.5;
+    font-kerning: normal;
+    scrollbar-gutter: stable both-edges;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    margin: 0;
+    min-width: 320px;
+    min-height: 100dvh;
+    background-image:
+      radial-gradient(circle at 14% 10%, hsl(var(--primary) / 0.12), transparent 22%),
+      radial-gradient(circle at 88% 8%, hsl(var(--chart-2) / 0.1), transparent 18%),
+      linear-gradient(180deg, hsl(var(--background)) 0%, hsl(var(--sidebar) / 0.88) 100%);
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    letter-spacing: 0.001em;
+  }
+
+  .dark body {
+    background-image:
+      radial-gradient(circle at 14% 10%, hsl(var(--primary) / 0.08), transparent 20%),
+      radial-gradient(circle at 86% 8%, hsl(var(--chart-2) / 0.06), transparent 16%),
+      linear-gradient(180deg, hsl(var(--background)) 0%, hsl(var(--sidebar) / 0.9) 100%);
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+}
+
+@layer utilities {
+  @keyframes chat-streaming-dot-bounce {
+    0%,
+    80%,
+    100% {
+      transform: translateY(0);
+      opacity: 0.4;
+    }
+
+    40% {
+      transform: translateY(-2px);
+      opacity: 1;
+    }
+  }
+
+  @keyframes assistant-loading-shimmer {
+    0% {
+      transform: translateX(-120%);
+      opacity: 0;
+    }
+
+    20% {
+      opacity: 1;
+    }
+
+    65% {
+      opacity: 1;
+    }
+
+    100% {
+      transform: translateX(120%);
+      opacity: 0;
+    }
+  }
+
+  .text-ui-display {
+    font-size: 1.875rem;
+    font-weight: 600;
+    line-height: 1.15;
+    letter-spacing: -0.028em;
+  }
+
+  .text-ui-heading {
+    font-size: 1.375rem;
+    font-weight: 600;
+    line-height: 1.24;
+    letter-spacing: -0.02em;
+  }
+
+  .text-ui-title {
+    font-size: 1rem;
+    font-weight: 600;
+    line-height: 1.45;
+    letter-spacing: -0.012em;
+  }
+
+  .text-ui-body {
+    font-size: 1rem;
+    line-height: 1.7;
+    letter-spacing: 0.001em;
+  }
+
+  .text-ui-subtle {
+    font-size: 0.875rem;
+    line-height: 1.6;
+    letter-spacing: 0.002em;
+  }
+
+  .text-ui-caption {
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1.5;
+    letter-spacing: 0.01em;
+  }
+
+  .text-ui-kicker {
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1.4;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .measure-readable {
+    max-width: 65ch;
+  }
+
+  .page-content-rail {
+    width: 100%;
+    max-width: 56rem;
+  }
+
+  .surface-panel,
+  .workspace-surface {
+    border: 1px solid hsl(var(--surface-border) / 0.78);
+    background:
+      linear-gradient(
+        180deg,
+        hsl(var(--surface-highlight) / 0.1) 0%,
+        hsl(var(--surface-highlight) / 0.028) 14%,
+        transparent 44%
+      ),
+      linear-gradient(160deg, hsl(var(--surface-top) / 0.74), hsl(var(--surface-base) / 0.96));
+    box-shadow:
+      0 18px 42px -34px hsl(var(--shadow-color) / 0.5),
+      0 4px 12px -10px hsl(var(--shadow-color) / 0.24),
+      inset 0 1px 0 hsl(var(--surface-highlight) / 0.06);
+    backdrop-filter: blur(16px) saturate(126%);
+    -webkit-backdrop-filter: blur(16px) saturate(126%);
+  }
+
+  .surface-panel-subtle,
+  .workspace-surface-subtle {
+    border: 1px solid hsl(var(--surface-border) / 0.56);
+    background:
+      linear-gradient(
+        180deg,
+        hsl(var(--surface-highlight) / 0.06) 0%,
+        hsl(var(--surface-highlight) / 0.02) 14%,
+        transparent 46%
+      ),
+      linear-gradient(160deg, hsl(var(--surface-top) / 0.44), hsl(var(--surface-base) / 0.78));
+    box-shadow:
+      0 12px 28px -24px hsl(var(--shadow-color) / 0.34),
+      inset 0 1px 0 hsl(var(--surface-highlight) / 0.04);
+    backdrop-filter: blur(12px) saturate(122%);
+    -webkit-backdrop-filter: blur(12px) saturate(122%);
+  }
+
+  .surface-floating {
+    border: 1px solid hsl(var(--surface-border) / 0.92);
+    background:
+      linear-gradient(
+        180deg,
+        hsl(var(--surface-highlight) / 0.12) 0%,
+        hsl(var(--surface-highlight) / 0.028) 15%,
+        transparent 42%
+      ),
+      linear-gradient(160deg, hsl(var(--popover) / 0.96), hsl(var(--surface-top) / 0.82));
+    box-shadow:
+      0 28px 64px -38px hsl(var(--shadow-color) / 0.68),
+      0 10px 24px -18px hsl(var(--shadow-color) / 0.36),
+      inset 0 1px 0 hsl(var(--surface-highlight) / 0.08);
+    backdrop-filter: blur(22px) saturate(128%);
+    -webkit-backdrop-filter: blur(22px) saturate(128%);
+  }
+
+  .surface-liquid {
+    border: 1px solid hsl(var(--surface-border) / 0.7);
+    background:
+      linear-gradient(
+        180deg,
+        hsl(var(--surface-highlight) / 0.09) 0%,
+        hsl(var(--surface-highlight) / 0.025) 16%,
+        transparent 48%
+      ),
+      linear-gradient(160deg, hsl(var(--surface-top) / 0.54), hsl(var(--surface-base) / 0.86));
+    box-shadow:
+      0 14px 30px -24px hsl(var(--shadow-color) / 0.42),
+      0 2px 10px -8px hsl(var(--shadow-color) / 0.2),
+      inset 0 1px 0 hsl(var(--surface-highlight) / 0.05);
+    backdrop-filter: blur(18px) saturate(124%);
+    -webkit-backdrop-filter: blur(18px) saturate(124%);
+  }
+
+  .surface-outline {
+    border: 1px solid hsl(var(--surface-border) / 0.5);
+    background:
+      linear-gradient(180deg, hsl(var(--surface-highlight) / 0.035), transparent 42%),
+      hsl(var(--surface-base) / 0.44);
+    box-shadow:
+      inset 0 1px 0 hsl(var(--surface-highlight) / 0.03),
+      inset 0 0 0 1px hsl(var(--background) / 0.12);
+    backdrop-filter: blur(8px) saturate(114%);
+    -webkit-backdrop-filter: blur(8px) saturate(114%);
+  }
+
+  .surface-icon {
+    border: 1px solid hsl(var(--surface-border) / 0.64);
+    background:
+      linear-gradient(180deg, hsl(var(--surface-highlight) / 0.08), transparent 48%),
+      linear-gradient(145deg, hsl(var(--surface-top) / 0.54), hsl(var(--surface-base) / 0.48));
+    box-shadow:
+      0 10px 20px -18px hsl(var(--shadow-color) / 0.24),
+      inset 0 1px 0 hsl(var(--surface-highlight) / 0.06);
+    backdrop-filter: blur(10px) saturate(122%);
+    -webkit-backdrop-filter: blur(10px) saturate(122%);
+  }
+
+  /*
+   * Streamdown code highlighting tokens are emitted as inline CSS variables.
+   * We intentionally consume those variables with scoped selectors here instead
+   * of redefining same-name theme tokens, which avoids collisions with app
+   * tokens while keeping Streamdown's built-in Shiki themes intact.
+   */
+  [data-streamdown="code-block-body"] pre {
+    background-color: var(--sdm-bg, transparent);
+    color: var(--sdm-fg, inherit);
+  }
+
+  .dark [data-streamdown="code-block-body"] pre {
+    background-color: var(--shiki-dark-bg, var(--sdm-bg, transparent));
+  }
+
+  [data-streamdown="code-block-body"] pre span[style*="--sdm-c"] {
+    color: var(--sdm-c);
+  }
+
+  .dark [data-streamdown="code-block-body"] pre span[style*="--sdm-c"] {
+    color: var(--shiki-dark, var(--sdm-c));
+  }
+
+  [data-streamdown="code-block-body"] pre span[style*="--sdm-tbg"] {
+    background-color: var(--sdm-tbg);
+  }
+
+  .dark [data-streamdown="code-block-body"] pre span[style*="--sdm-tbg"] {
+    background-color: var(--shiki-dark-bg, var(--sdm-tbg));
+  }
+
+  .chat-streaming-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.625rem;
+    color: hsl(var(--muted-foreground));
+    font-size: 0.78rem;
+    font-weight: 500;
+    line-height: 1.4;
+    letter-spacing: 0.014em;
+  }
+
+  .chat-streaming-dots {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.22rem;
+  }
+
+  .chat-streaming-dot {
+    width: 0.36rem;
+    height: 0.36rem;
+    border-radius: 9999px;
+    background-color: hsl(var(--primary) / 0.55);
+    animation: chat-streaming-dot-bounce 1s cubic-bezier(0.25, 1, 0.5, 1) infinite;
+  }
+
+  .chat-streaming-dot:nth-child(2) {
+    animation-delay: 120ms;
+  }
+
+  .chat-streaming-dot:nth-child(3) {
+    animation-delay: 240ms;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-streaming-dot {
+    animation: none;
+    opacity: 0.7;
+  }
+}

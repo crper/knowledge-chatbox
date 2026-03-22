@@ -1,0 +1,49 @@
+/**
+ * @file 前端模块。
+ */
+
+import type { LucideIcon } from "lucide-react";
+import { FolderKanbanIcon, MessageSquareTextIcon } from "lucide-react";
+
+type WorkspaceLabelKey = "navChat" | "navKnowledge" | "navSettings" | "navUsers";
+
+/**
+ * 描述工作区Link的数据结构。
+ */
+export type WorkspaceLink = {
+  icon: LucideIcon;
+  labelKey: WorkspaceLabelKey;
+  to: string;
+};
+
+/**
+ * 定义工作台主导航链接。
+ */
+export const WORKSPACE_LINKS: WorkspaceLink[] = [
+  {
+    icon: MessageSquareTextIcon,
+    labelKey: "navChat",
+    to: "/chat",
+  },
+  {
+    icon: FolderKanbanIcon,
+    labelKey: "navKnowledge",
+    to: "/knowledge",
+  },
+];
+
+/**
+ * 获取工作区标签键。
+ */
+export function getWorkspaceLabelKey(pathname: string): WorkspaceLabelKey {
+  if (pathname.startsWith("/knowledge")) {
+    return "navKnowledge";
+  }
+  if (pathname.startsWith("/settings")) {
+    return "navSettings";
+  }
+  if (pathname.startsWith("/users")) {
+    return "navUsers";
+  }
+  return "navChat";
+}

@@ -1,0 +1,68 @@
+x-json-file-logging: &json-file-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    env_file:
+      - ${ENV_FILE:-.env}
+    init: true
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      # 这些目录都落在宿主机，容器重建后仍保留 SQLite、Chroma 和文件数据。
+      - type: bind
+        source: ${UPLOAD_DIR:-./data/uploads}
+        target: /workspace/data/uploads
+      - type: bind
+        source: ${NORMALIZED_DIR:-./data/normalized}
+        target: /workspace/data/normalized
+      - type: bind
+        source: ${SQLITE_PATH:-./data/sqlite/ai_qa.db}
+        target: /workspace/data/sqlite/ai_qa.db
+      - type: bind
+        source: ${CHROMA_PATH:-./data/chroma}
+        target: /workspace/data/chroma
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    logging: *json-file-logging
+
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+      args:
+        # Docker 单机模式固定走同源 /api，由前端相对路径 + nginx 反代共同完成。
+        VITE_API_BASE_URL: ""
+    init: true
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    logging: *json-file-logging

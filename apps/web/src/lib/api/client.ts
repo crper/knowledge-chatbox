@@ -1,0 +1,181 @@
+/**
+ * @file 全局 API 能力模块。
+ */
+
+import {
+  extractErrorDetail,
+  getUserFacingErrorMessage,
+  translateCommonErrorMessage,
+} from "./error-response";
+import { useSessionStore } from "@/lib/auth/session-store";
+
+/**
+ * 描述统一 API 响应包裹结构。
+ */
+export type ApiEnvelope<T> = {
+  success: boolean;
+  data: T | null;
+  error: { code?: string; message?: string } | null;
+};
+
+/**
+ * 描述当前登录用户的数据结构。
+ */
+export type AppUser = {
+  id: number;
+  username: string;
+  role: "admin" | "user";
+  status: "active" | "disabled";
+  theme_preference: "light" | "dark" | "system";
+};
+
+/**
+ * 表示 API 请求失败异常。
+ */
+export class ApiRequestError extends Error {
+  code?: string;
+  kind: "forbidden" | "network" | "server" | "timeout" | "unauthorized" | "unknown" | "validation";
+  retryable: boolean;
+  status: number;
+
+  constructor(
+    message: string,
+    options: {
+      code?: string;
+      kind?: ApiRequestError["kind"];
+      retryable?: boolean;
+      status: number;
+    },
+  ) {
+    super(message);
+    this.name = "ApiRequestError";
+    this.code = options.code;
+    this.kind = options.kind ?? "unknown";
+    this.retryable = options.retryable ?? false;
+    this.status = options.status;
+  }
+}
+
+function classifyApiError(status: number): Pick<ApiRequestError, "kind" | "retryable"> {
+  if (status === 401) {
+    return { kind: "unauthorized", retryable: false };
+  }
+
+  if (status === 403) {
+    return { kind: "forbidden", retryable: false };
+  }
+
+  if (status === 422) {
+    return { kind: "validation", retryable: false };
+  }
+
+  if (status === 408 || status === 504) {
+    return { kind: "timeout", retryable: true };
+  }
+
+  if (status === 429 || status >= 500) {
+    return { kind: "server", retryable: true };
+  }
+
+  return { kind: "unknown", retryable: false };
+}
+
+export function getApiErrorMessage(error: unknown) {
+  if (error instanceof ApiRequestError) {
+    const detail =
+      error.code !== undefined
+        ? {
+            code: error.code,
+            message: error.message,
+            source: "status" as const,
+          }
+        : null;
+    if (detail) {
+      return getUserFacingErrorMessage(
+        detail,
+        new Response(null, {
+          status: error.status,
+        }),
+      );
+    }
+
+    if (error.message.trim()) {
+      return error.message.trim();
+    }
+  }
+
+  if (error instanceof Error && error.message.trim()) {
+    return error.message.trim();
+  }
+
+  return translateCommonErrorMessage("apiErrorGeneric");
+}
+
+function isAbortError(error: unknown): error is Error {
+  return (
+    typeof error === "object" && error !== null && "name" in error && error.name === "AbortError"
+  );
+}
+
+function isNetworkError(error: unknown): error is TypeError {
+  return error instanceof TypeError;
+}
+
+type OpenApiEnvelopeResult = Promise<{
+  data?: unknown;
+  error?: unknown;
+  response: Response;
+}>;
+
+export async function openapiRequestRequired<T>(request: OpenApiEnvelopeResult): Promise<T> {
+  let result: Awaited<OpenApiEnvelopeResult>;
+
+  try {
+    result = await request;
+  } catch (error) {
+    if (error instanceof ApiRequestError) {
+      throw error;
+    }
+
+    if (isAbortError(error)) {
+      throw new ApiRequestError(translateCommonErrorMessage("apiErrorGatewayTimeout"), {
+        kind: "timeout",
+        retryable: true,
+        status: 504,
+      });
+    }
+
+    if (isNetworkError(error)) {
+      throw new ApiRequestError(translateCommonErrorMessage("apiErrorServiceUnavailable"), {
+        kind: "network",
+        retryable: true,
+        status: 503,
+      });
+    }
+
+    throw error;
+  }
+
+  const { data, error, response } = result;
+  const payload = data as ApiEnvelope<T> | undefined;
+  if (payload?.success) {
+    if (payload.data === null) {
+      throw new Error("API request returned empty data");
+    }
+    return payload.data;
+  }
+
+  const detail = extractErrorDetail("", error ?? payload ?? null, response);
+  const classification = classifyApiError(response.status);
+
+  if (response.status === 401 && detail.code === "unauthorized") {
+    useSessionStore.getState().setStatus("expired");
+  }
+
+  throw new ApiRequestError(getUserFacingErrorMessage(detail, response), {
+    code: detail.code,
+    kind: classification.kind,
+    retryable: classification.retryable,
+    status: response.status,
+  });
+}

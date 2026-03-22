@@ -1,0 +1,369 @@
+"""Document ingestion workflow with one commit per user-facing use case."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+from knowledge_chatbox_api.models.document import Document, DocumentRevision
+from knowledge_chatbox_api.providers.factory import (
+    build_embedding_adapter,
+    build_vision_adapter_from_settings,
+)
+from knowledge_chatbox_api.repositories.document_repository import DocumentRepository
+from knowledge_chatbox_api.repositories.space_repository import SpaceRepository
+from knowledge_chatbox_api.schemas.settings import (
+    ProviderRuntimeSettings,
+    build_provider_runtime_settings,
+)
+from knowledge_chatbox_api.services.documents.chunking_service import ChunkingService
+from knowledge_chatbox_api.services.documents.constants import (
+    CONTENT_TYPE_TO_FILE_TYPE,
+    SUPPORTED_DOCUMENT_FILE_TYPES,
+)
+from knowledge_chatbox_api.services.documents.errors import (
+    DocumentNotFoundError,
+    DocumentNotNormalizedError,
+    UnsupportedFileTypeError,
+)
+from knowledge_chatbox_api.services.documents.indexing_service import IndexingService
+from knowledge_chatbox_api.services.documents.normalization_service import NormalizationService
+from knowledge_chatbox_api.services.documents.versioning_service import VersioningService
+from knowledge_chatbox_api.services.settings.settings_service import (
+    INDEX_REBUILD_STATUS_RUNNING,
+    SettingsService,
+)
+from knowledge_chatbox_api.utils.chroma import get_chroma_store
+
+
+@dataclass
+class UploadDocumentResult:
+    """Describe one upload outcome for the API layer."""
+
+    deduplicated: bool
+    document: Document
+    revision: DocumentRevision
+
+
+@dataclass(frozen=True)
+class IndexingTarget:
+    """描述一次索引写入的目标 generation。"""
+
+    generation: int
+    settings: ProviderRuntimeSettings
+
+
+class IngestionService:
+    """Coordinate file save, normalization, indexing, and cleanup for documents."""
+
+    def __init__(self, session, app_settings) -> None:
+        self.session = session
+        self.app_settings = app_settings
+        self.document_repository = DocumentRepository(session)
+        self.space_repository = SpaceRepository(session)
+        self.settings_service = SettingsService(session, app_settings)
+        self.versioning_service = VersioningService(session, app_settings)
+        settings_record = self.settings_service.get_or_create_settings_record()
+        self.indexing_service = IndexingService(
+            session=session,
+            chunking_service=ChunkingService(),
+            chroma_store=get_chroma_store(),
+            embedding_provider=build_embedding_adapter(settings_record.embedding_route),
+            settings=settings_record,
+        )
+
+    def upload_document(
+        self,
+        actor,
+        filename: str,
+        content: bytes,
+        content_type: str,
+    ) -> UploadDocumentResult:
+        file_type = self._detect_file_type(filename, content_type)
+        document_entity: Document | None = None
+        document_version: DocumentRevision | None = None
+        normalized_path: str | None = None
+        indexing_targets: list[IndexingTarget] = []
+
+        try:
+            versioning_result = self.versioning_service.create_document_version(
+                actor=actor,
+                filename=filename,
+                content=content,
+                file_type=file_type,
+            )
+            document_entity = versioning_result.document
+            document_version = versioning_result.version
+            if versioning_result.duplicate_content:
+                self.session.refresh(document_version)
+                return UploadDocumentResult(
+                    deduplicated=True,
+                    document=document_entity,
+                    revision=document_version,
+                )
+            document_version.file_size = len(content)
+            document_version.lifecycle_status = "processing"
+
+            normalized = self._normalize_document(document_version.origin_path, file_type)
+            normalized_path = normalized.normalized_path
+            document_version.normalized_path = normalized.normalized_path
+            settings_record = self.settings_service.get_or_create_settings_record()
+            indexing_targets = self._build_indexing_targets(settings_record)
+            for target in indexing_targets:
+                self._refresh_indexing_service(target.settings)
+                self.indexing_service.index_document(
+                    document_version,
+                    normalized.content,
+                    generation=target.generation,
+                    section_title=self._derive_section_title(normalized.content),
+                )
+            document_version.lifecycle_status = "indexed"
+            document_version.error_message = None
+            self.session.commit()
+            self.session.refresh(document_version)
+            return UploadDocumentResult(
+                deduplicated=False,
+                document=document_entity,
+                revision=document_version,
+            )
+        except Exception:  # noqa: BLE001
+            self.session.rollback()
+            if document_version is not None:
+                self._delete_document_chunks_for_targets(document_version, indexing_targets)
+                self._remove_file(document_version.origin_path)
+            if normalized_path:
+                self._remove_file(normalized_path)
+            raise
+
+    def list_documents(self, actor) -> list[tuple[Document, DocumentRevision]]:
+        return self.document_repository.list_latest(space_ids=self._visible_space_ids(actor.id))
+
+    def get_document(self, actor, document_id: int) -> Document | None:
+        document = self.document_repository.get_document_entity(document_id)
+        if document is None:
+            return None
+        if not self._can_access_document(actor.id, document):
+            return None
+        return document
+
+    def get_document_revision(self, actor, revision_id: int) -> DocumentRevision | None:
+        document_revision = self.document_repository.get_by_id(revision_id)
+        if document_revision is None:
+            return None
+        document = self.document_repository.get_document_entity(document_revision.document_id)
+        if document is None or not self._can_access_document(actor.id, document):
+            return None
+        return document_revision
+
+    def list_versions(self, actor, document_id: int) -> list[DocumentRevision]:
+        document = self._require_document(actor, document_id)
+        return self.document_repository.list_versions(document.id)
+
+    def reindex_document(self, actor, document_id: int) -> DocumentRevision:
+        document = self._require_document(actor, document_id)
+        document_version = self.document_repository.get_latest_revision(document)
+        if document_version is None:
+            raise DocumentNotFoundError()
+        if document_version.normalized_path is None:
+            raise DocumentNotNormalizedError()
+        content = Path(document_version.normalized_path).read_text(encoding="utf-8")
+        settings_record = self.settings_service.get_or_create_settings_record()
+        indexing_targets = self._build_indexing_targets(settings_record)
+        snapshots = self._snapshot_document_chunks(document_version, indexing_targets)
+        try:
+            for target in indexing_targets:
+                self._refresh_indexing_service(target.settings)
+                self.indexing_service.index_document(
+                    document_version,
+                    content,
+                    generation=target.generation,
+                    section_title=self._derive_section_title(content),
+                )
+            document_version.lifecycle_status = "indexed"
+            document_version.error_message = None
+            self.session.commit()
+            self.session.refresh(document_version)
+            return document_version
+        except Exception:  # noqa: BLE001
+            self.session.rollback()
+            self._restore_document_chunks(document_version, indexing_targets, snapshots)
+            raise
+
+    def delete_document(self, actor, document_id: int) -> None:
+        document = self._require_document(actor, document_id)
+        versions = self.document_repository.list_versions(document.id)
+        settings_record = self.settings_service.get_or_create_settings_record()
+        indexing_targets = self._build_indexing_targets(settings_record)
+        snapshots = self._snapshot_versions_chunks(versions, indexing_targets)
+        file_paths = [(version.normalized_path, version.origin_path) for version in versions]
+        try:
+            for version in versions:
+                self._delete_document_chunks_for_targets(version, indexing_targets)
+            self.document_repository.delete(document)
+            self.session.commit()
+        except Exception:  # noqa: BLE001
+            self.session.rollback()
+            self._restore_versions_chunks(versions, indexing_targets, snapshots)
+            raise
+
+        for normalized_path, origin_path in file_paths:
+            if normalized_path:
+                self._remove_file(normalized_path)
+            self._remove_file(origin_path)
+
+    def _normalize_document(self, origin_path: str, file_type: str):
+        settings_record = self.settings_service.get_or_create_settings_record()
+        service = NormalizationService(
+            normalized_dir=self.app_settings.normalized_dir,
+            provider=build_vision_adapter_from_settings(settings_record),
+            provider_settings=settings_record,
+        )
+        return service.normalize(Path(origin_path), file_type)
+
+    def _refresh_indexing_service(self, settings_record) -> None:
+        self.indexing_service.embedding_provider = build_embedding_adapter(
+            settings_record.embedding_route
+        )
+        self.indexing_service.settings = settings_record
+
+    def _build_indexing_targets(self, settings_record) -> list[IndexingTarget]:
+        targets = [
+            IndexingTarget(
+                generation=settings_record.active_index_generation,
+                settings=self._build_embedding_settings(settings_record, use_pending=False),
+            )
+        ]
+        building_generation = getattr(settings_record, "building_index_generation", None)
+        if (
+            getattr(settings_record, "index_rebuild_status", None) == INDEX_REBUILD_STATUS_RUNNING
+            and building_generation is not None
+            and getattr(settings_record, "pending_embedding_route", None) is not None
+        ):
+            targets.append(
+                IndexingTarget(
+                    generation=building_generation,
+                    settings=self._build_embedding_settings(settings_record, use_pending=True),
+                )
+            )
+        return targets
+
+    def _build_embedding_settings(
+        self,
+        settings_record,
+        *,
+        use_pending: bool,
+    ) -> ProviderRuntimeSettings:
+        return build_provider_runtime_settings(
+            settings_record,
+            embedding_route=(
+                settings_record.pending_embedding_route
+                if use_pending
+                else settings_record.embedding_route
+            ),
+        )
+
+    def _delete_document_chunks_for_targets(
+        self,
+        document_version: DocumentRevision,
+        targets: list[IndexingTarget],
+    ) -> None:
+        if not targets:
+            self.indexing_service.delete_document_chunks(document_version)
+            return
+        for target in targets:
+            self.indexing_service.delete_document_chunks(
+                document_version,
+                generation=target.generation,
+            )
+
+    def _snapshot_document_chunks(
+        self,
+        document_version: DocumentRevision,
+        targets: list[IndexingTarget],
+    ) -> dict[int, list[dict[str, Any]]]:
+        snapshots: dict[int, list[dict[str, Any]]] = {}
+        for target in targets:
+            generation = target.generation
+            snapshots[generation] = self.indexing_service.chroma_store.list_by_document_id(
+                document_version.id,
+                generation=generation,
+            )
+        return snapshots
+
+    def _snapshot_versions_chunks(
+        self,
+        versions: list[DocumentRevision],
+        targets: list[IndexingTarget],
+    ) -> dict[int, dict[int, list[dict[str, Any]]]]:
+        return {
+            version.id: self._snapshot_document_chunks(version, targets) for version in versions
+        }
+
+    def _restore_document_chunks(
+        self,
+        document_version: DocumentRevision,
+        targets: list[IndexingTarget],
+        snapshots: dict[int, list[dict[str, Any]]],
+    ) -> None:
+        for target in targets:
+            generation = target.generation
+            records = snapshots.get(generation, [])
+            self.indexing_service.chroma_store.delete_by_document_id(
+                document_version.id,
+                generation=generation,
+            )
+            if not records:
+                continue
+            self.indexing_service.chroma_store.upsert(
+                records,
+                embeddings=[record["embedding"] for record in records],
+                generation=generation,
+            )
+
+    def _restore_versions_chunks(
+        self,
+        versions: list[DocumentRevision],
+        targets: list[IndexingTarget],
+        snapshots: dict[int, dict[int, list[dict[str, Any]]]],
+    ) -> None:
+        for version in versions:
+            self._restore_document_chunks(version, targets, snapshots.get(version.id, {}))
+
+    def _detect_file_type(self, filename: str, content_type: str) -> str:
+        suffix = Path(filename).suffix.lower().lstrip(".")
+        if suffix in SUPPORTED_DOCUMENT_FILE_TYPES:
+            return suffix
+        detected = CONTENT_TYPE_TO_FILE_TYPE.get(content_type)
+        if detected is not None:
+            return detected
+        raise UnsupportedFileTypeError(f"Unsupported file type for upload: {filename}")
+
+    def _visible_space_ids(self, user_id: int) -> set[int]:
+        return set(self.space_repository.get_visible_space_ids_for_user(user_id))
+
+    def _can_access_document(self, user_id: int, document: Document) -> bool:
+        return document.space_id in self._visible_space_ids(user_id)
+
+    def _require_document(self, actor, document_id: int) -> Document:
+        document = self.get_document(actor, document_id)
+        if document is None:
+            raise DocumentNotFoundError()
+        return document
+
+    def _remove_file(self, path: str | None) -> None:
+        if not path:
+            return
+        file_path = Path(path)
+        if file_path.exists():
+            file_path.unlink()
+
+    def _derive_section_title(self, content: str) -> str | None:
+        for line in content.splitlines():
+            stripped = line.strip()
+            if not stripped:
+                continue
+            if stripped.startswith("#"):
+                return stripped.lstrip("#").strip() or None
+            return stripped[:120]
+        return None

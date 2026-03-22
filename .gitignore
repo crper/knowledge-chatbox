@@ -1,0 +1,72 @@
+# macOS
+.DS_Store
+
+# Node / frontend
+node_modules/
+dist/
+dist-ssr/
+coverage/
+.vite/
+logs/
+*.local
+
+# Python / backend
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+
+# Environment
+.env
+.env.local
+.env.*
+!.env.example
+
+# Runtime data
+data/uploads/*
+data/normalized/*
+data/chroma/*
+data/sqlite/*
+!data/uploads/.gitkeep
+!data/normalized/.gitkeep
+!data/chroma/.gitkeep
+!data/sqlite/.gitkeep
+
+# Logs / coverage
+*.log
+.coverage
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+
+# playwright cli
+**/.playwright-cli/
+.superpowers/
+.worktrees/
+
+# Playwright artifacts
+playwright-report/
+test-results/
+blob-report/
+trace.zip
+*.trace.zip
+apps/web/*-desktop.png
+apps/web/*-desktop.yml
+apps/web/*-mobile.png
+apps/web/*-mobile.yml
+
+# claude
+.claude/
+
+# superpowers
+docs/superpowers/
