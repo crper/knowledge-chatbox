@@ -339,11 +339,10 @@ class ChatRunService:
             seq=next_seq,
             event_type=event_name,
             payload_json=data,
+            flush=commit,
         )
         if commit:
             self.session.commit()
-        else:
-            self.session.flush()
         return next_seq, self.presenter.event(event_name, data)
 
     def _replay_existing_run(self, run):

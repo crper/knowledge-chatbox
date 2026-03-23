@@ -41,6 +41,20 @@ class BlockingStreamingResponseAdapter:
         yield {"type": "completed", "usage": {"output_tokens": 1}}
 
 
+class HoldingWriteLockStreamingResponseAdapter:
+    def __init__(self, started: Event, release: Event) -> None:
+        self.started = started
+        self.release = release
+
+    def stream_response(self, messages: list[dict[str, str]], settings):
+        del messages, settings
+        for index in range(8):
+            yield {"type": "text_delta", "delta": f"chunk-{index}"}
+        self.started.set()
+        assert self.release.wait(timeout=10), "stream release timed out"
+        yield {"type": "completed", "usage": {"output_tokens": 8}}
+
+
 def create_png_bytes() -> bytes:
     buffer = BytesIO()
     Image.new("RGB", (8, 8), color="white").save(buffer, format="PNG")
@@ -275,4 +289,113 @@ def test_settings_api_stays_available_while_chat_stream_is_open(
     stream_thread.join(timeout=5)
 
     assert settings_response.status_code == 200
+    assert stream_status_code["value"] == 200
+
+
+def test_chat_session_rename_stays_available_while_chat_stream_is_open(
+    api_client: TestClient,
+    monkeypatch,
+) -> None:
+    started = Event()
+    release = Event()
+    monkeypatch.setattr(
+        "knowledge_chatbox_api.services.chat.chat_application_service.build_response_adapter_from_settings",
+        lambda settings_record: HoldingWriteLockStreamingResponseAdapter(started, release),
+    )
+    monkeypatch.setattr(
+        "knowledge_chatbox_api.services.chat.chat_application_service.build_embedding_adapter_from_settings",
+        lambda settings_record: EmbeddingAdapterStub(),
+    )
+
+    api_client.post("/api/auth/login", json={"username": "admin", "password": "admin123456"})
+    session_response = api_client.post("/api/chat/sessions", json={"title": "Rename Session"})
+    session_id = session_response.json()["data"]["id"]
+    stream_status_code: dict[str, int] = {}
+    rename_status_code: dict[str, int] = {}
+    rename_finished = Event()
+
+    def consume_stream() -> None:
+        with api_client.stream(
+            "POST",
+            f"/api/chat/sessions/{session_id}/messages/stream",
+            json={"content": "question", "client_request_id": "req-stream-session-rename-1"},
+        ) as response:
+            stream_status_code["value"] = response.status_code
+            response.read()
+
+    def rename_session() -> None:
+        response = api_client.patch(
+            f"/api/chat/sessions/{session_id}",
+            json={"title": "Renamed during stream"},
+        )
+        rename_status_code["value"] = response.status_code
+        rename_finished.set()
+
+    stream_thread = Thread(target=consume_stream)
+    rename_thread = Thread(target=rename_session)
+    stream_thread.start()
+    assert started.wait(timeout=3), "stream never reached the holding state"
+
+    try:
+        rename_thread.start()
+        assert rename_finished.wait(timeout=1), "session rename stayed blocked while stream open"
+    finally:
+        release.set()
+        rename_thread.join(timeout=5)
+        stream_thread.join(timeout=5)
+
+    assert rename_status_code["value"] == 200
+    assert stream_status_code["value"] == 200
+
+
+def test_chat_session_creation_stays_available_while_chat_stream_is_open(
+    api_client: TestClient,
+    monkeypatch,
+) -> None:
+    started = Event()
+    release = Event()
+    monkeypatch.setattr(
+        "knowledge_chatbox_api.services.chat.chat_application_service.build_response_adapter_from_settings",
+        lambda settings_record: HoldingWriteLockStreamingResponseAdapter(started, release),
+    )
+    monkeypatch.setattr(
+        "knowledge_chatbox_api.services.chat.chat_application_service.build_embedding_adapter_from_settings",
+        lambda settings_record: EmbeddingAdapterStub(),
+    )
+
+    api_client.post("/api/auth/login", json={"username": "admin", "password": "admin123456"})
+    session_response = api_client.post("/api/chat/sessions", json={"title": "Origin Session"})
+    session_id = session_response.json()["data"]["id"]
+    stream_status_code: dict[str, int] = {}
+    create_status_code: dict[str, int] = {}
+    create_finished = Event()
+
+    def consume_stream() -> None:
+        with api_client.stream(
+            "POST",
+            f"/api/chat/sessions/{session_id}/messages/stream",
+            json={"content": "question", "client_request_id": "req-stream-session-create-1"},
+        ) as response:
+            stream_status_code["value"] = response.status_code
+            response.read()
+
+    def create_session() -> None:
+        response = api_client.post("/api/chat/sessions", json={"title": "Created during stream"})
+        create_status_code["value"] = response.status_code
+        create_finished.set()
+
+    stream_thread = Thread(target=consume_stream)
+    create_thread = Thread(target=create_session)
+    stream_thread.start()
+    assert started.wait(timeout=3), "stream never reached the holding state"
+
+    try:
+        create_thread.start()
+        assert create_finished.wait(timeout=1), "session creation stayed blocked while stream open"
+    finally:
+        release.set()
+        create_thread.join(timeout=5)
+        stream_thread.join(timeout=5)
+
+    assert create_status_code["value"] == 201
     assert stream_status_code["value"] == 200

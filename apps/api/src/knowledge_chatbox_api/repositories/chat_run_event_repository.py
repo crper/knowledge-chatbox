@@ -21,6 +21,7 @@ class ChatRunEventRepository:
         seq: int,
         event_type: str,
         payload_json: dict,
+        flush: bool = True,
     ) -> ChatRunEvent:
         event = ChatRunEvent(
             run_id=run_id,
@@ -29,7 +30,8 @@ class ChatRunEventRepository:
             payload_json=payload_json,
         )
         self.session.add(event)
-        self.session.flush()
+        if flush:
+            self.session.flush()
         return event
 
     def list_for_run(self, run_id: int) -> list[ChatRunEvent]:

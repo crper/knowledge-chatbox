@@ -20,7 +20,7 @@ class ChatPersistenceService:
     def flush_text_buffer(self) -> None:
         if self._pending_text_deltas == 0:
             return
-        self.session.flush()
+        self.session.commit()
         self._pending_text_deltas = 0
 
     def mark_run_running(self, run, assistant_message) -> None:
