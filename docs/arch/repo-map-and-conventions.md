@@ -7,6 +7,8 @@
 - 提交前至少跑哪些命令
 - 文档什么时候必须同步更新
 
+仓库级首次启动主线以根 `README.md` 为准：`just init-env -> just setup -> just dev`。这份文档只记录长期约定和导航，不再平行维护第二套 onboarding。
+
 配套阅读：
 
 - [system-overview.md](./system-overview.md)
@@ -179,6 +181,7 @@ just init-env
 just setup
 just --list
 just dev
+just repo-check
 just test
 just api-dev
 just web-dev
@@ -192,7 +195,7 @@ just docker-logs api
 just docker-health
 ```
 
-首次 clone、前端 `pnpm-lock.yaml` 变更，或后端 `uv.lock` 变更后，先执行 `just setup`；`just dev` 不负责补装依赖。
+首次 clone、前端 `pnpm-lock.yaml` 变更，或后端 `uv.lock` 变更后，先按根 `README.md` 执行 `just init-env -> just setup -> just dev`；其中 `just dev` 不负责补装依赖。`just repo-check` 负责校验 README / 包级 README 与 `justfile` 的关键入口约束。
 
 只有当你明确需要子项目独立运行时，再进入 `apps/web` 或 `apps/api` 执行细分命令。
 
@@ -291,8 +294,9 @@ just reset-dev
 ### 第一次接手仓库
 
 1. `README.md`
-2. `docs/arch/system-overview.md`
-3. `docs/arch/repo-map-and-conventions.md`
+2. `CONTRIBUTING.md`
+3. `docs/arch/system-overview.md`
+4. `docs/arch/repo-map-and-conventions.md`
 
 ### 先改前端
 

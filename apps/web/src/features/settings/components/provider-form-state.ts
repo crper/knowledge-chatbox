@@ -21,7 +21,7 @@ export type ProviderSettingsView = {
   visionModel: string;
 };
 
-export type ProviderSettingsValidationKey =
+type ProviderSettingsValidationKey =
   | "chatModelRequiredError"
   | "embeddingModelRequiredError"
   | "retrievalEmbeddingModelRequiredError"

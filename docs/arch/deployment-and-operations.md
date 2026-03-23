@@ -5,6 +5,8 @@
 - [system-overview.md](./system-overview.md)
 - [repo-map-and-conventions.md](./repo-map-and-conventions.md)
 
+仓库级首次启动主线以根 `README.md` 为准：`just init-env -> just setup -> just dev`。这份文档只解释这些入口背后的副作用和运行边界，不重复维护第二套 onboarding。
+
 ## 1. 本地运行拓扑
 
 先把运行模式分清楚：
@@ -22,6 +24,7 @@
 - 首次 clone 或依赖刚更新时，先执行：`just init-env` -> `just setup`
 - 依赖已安装后的推荐入口：仓库根目录 `just dev`
 - 后端本地静态检查入口：仓库根目录 `just api-check`，内部会执行 `ruff check`、`ruff format --check` 和 `basedpyright`
+- 仓库表面入口检查：仓库根目录 `just repo-check`，用于校验 README / 包级 README 和 `justfile` 的关键入口约束
 - Web 子命令：`apps/web` 下用 `vp dev`
 - API 子命令：`apps/api` 下用 `uv run -m uvicorn ...`
 - `just setup` 是非破坏性的依赖同步入口；它会执行 `apps/api` 下的 `uv sync --all-groups` 和 `apps/web` 下的 `vp install`

@@ -357,6 +357,38 @@ describe("SettingsPage", () => {
     expect(screen.getAllByText("运行中").length).toBeGreaterThan(0);
   });
 
+  it("keeps the latest saved settings visible and shows a non-blocking alert when the follow-up refresh fails", async () => {
+    const savedSettings = buildSettingsPayload({
+      provider_profiles: {
+        openai: {
+          chat_model: "gpt-5.4-mini",
+        },
+      } as AppSettings["provider_profiles"],
+      response_route: { provider: "openai", model: "gpt-5.4-mini" },
+    });
+    vi.mocked(settingsApi.getSettings)
+      .mockResolvedValueOnce(buildSettingsPayload())
+      .mockRejectedValueOnce(new Error("设置刷新失败"));
+    vi.mocked(settingsApi.updateSettings).mockResolvedValue(savedSettings);
+
+    renderSettingsPage();
+
+    fireEvent.change(await screen.findByLabelText("Chat Model"), {
+      target: { value: "gpt-5.4-mini" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存设置" }));
+
+    await waitFor(() => {
+      expect(settingsApi.updateSettings).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(settingsApi.getSettings).toHaveBeenCalledTimes(2);
+    });
+
+    expect(await screen.findByDisplayValue("gpt-5.4-mini")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("设置刷新失败");
+  });
+
   it("tests the current primary draft and keeps the action pending until the request resolves", async () => {
     let resolveTest:
       | ((value: ProviderConnectionResult | PromiseLike<ProviderConnectionResult>) => void)

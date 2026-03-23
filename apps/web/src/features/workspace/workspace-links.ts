@@ -10,7 +10,7 @@ type WorkspaceLabelKey = "navChat" | "navKnowledge" | "navSettings" | "navUsers"
 /**
  * 描述工作区Link的数据结构。
  */
-export type WorkspaceLink = {
+type WorkspaceLink = {
   icon: LucideIcon;
   labelKey: WorkspaceLabelKey;
   to: string;

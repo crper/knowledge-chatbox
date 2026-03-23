@@ -10,7 +10,6 @@ import {
   getDocumentVersions,
   getDocuments,
   reindexDocument,
-  uploadDocument,
   type KnowledgeDocument,
 } from "./documents";
 
@@ -37,18 +36,6 @@ export function documentVersionsQueryOptions(documentId: number) {
   return queryOptions({
     queryKey: queryKeys.documents.versions(documentId),
     queryFn: () => getDocumentVersions(documentId),
-  });
-}
-
-/**
- * 获取上传资源变更配置。
- */
-export function uploadDocumentMutationOptions(queryClient: QueryClient) {
-  return mutationOptions({
-    mutationFn: (file: File) => uploadDocument(file),
-    onSuccess: async () => {
-      await invalidateDocuments(queryClient);
-    },
   });
 }
 

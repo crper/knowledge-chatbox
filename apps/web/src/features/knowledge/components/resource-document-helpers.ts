@@ -7,7 +7,7 @@ import type { KnowledgeDocumentStatus } from "../api/documents";
 
 type TranslationFn = (key: string) => string;
 
-export type KnowledgeDocumentStatusMeta = {
+type KnowledgeDocumentStatusMeta = {
   label: string;
   variant: "destructive" | "outline" | "secondary";
 };

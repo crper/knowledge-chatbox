@@ -11,7 +11,7 @@ const CHAT_UI_STORE_STORAGE_KEY = "knowledge-chatbox-chat-ui-store";
 /**
  * 定义聊天发送快捷键选项。
  */
-export const CHAT_SEND_SHORTCUT_OPTIONS = ["shift-enter", "enter"] as const;
+const CHAT_SEND_SHORTCUT_OPTIONS = ["shift-enter", "enter"] as const;
 
 /**
  * 描述聊天发送Shortcut的数据结构。

@@ -10,6 +10,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { WorkspacePage } from "@/components/shared/workspace-page";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -281,6 +282,9 @@ export function SettingsPage({ user }: { user: AppUser }) {
     />
   );
 
+  const backgroundRefreshError =
+    settingsQuery.isError && latestSettings ? getApiErrorMessage(settingsQuery.error) : null;
+
   if (!isAdmin || (activeSection !== "providers" && activeSection !== "prompt")) {
     const sectionMain =
       activeSection === "security"
@@ -404,6 +408,14 @@ export function SettingsPage({ user }: { user: AppUser }) {
       description={t(sectionDefinition.descriptionKey)}
       main={
         <div className="space-y-4">
+          {backgroundRefreshError ? (
+            <Alert
+              className="rounded-xl border-destructive/30 bg-destructive/5 px-4 py-3"
+              variant="destructive"
+            >
+              <AlertDescription>{backgroundRefreshError}</AlertDescription>
+            </Alert>
+          ) : null}
           <Card className="workspace-surface border-border/70">
             <CardContent className="pt-0">{systemMain}</CardContent>
           </Card>

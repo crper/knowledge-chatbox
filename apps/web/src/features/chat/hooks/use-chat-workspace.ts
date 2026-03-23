@@ -17,9 +17,17 @@ import { deleteChatMessage, type ChatMessageItem } from "../api/chat";
 import { startChatStream, type ChatStreamAttachmentInput } from "../api/chat-stream";
 import { useChatStreamStore } from "../store/chat-stream-store";
 import { useChatUiStore, type ChatAttachmentItem } from "../store/chat-ui-store";
-import type { ReadyChatAttachment } from "../utils/chat-attachments";
 import { buildDisplayMessages } from "../utils/build-display-messages";
 import { resolveSessionTitle } from "../utils/session-title";
+
+type ReadyChatAttachment = ChatAttachmentItem & {
+  file: File;
+  kind: "image" | "document";
+  mimeType: string;
+  resourceDocumentId: number;
+  resourceDocumentVersionId: number;
+  status: "uploaded";
+};
 
 function serializeChatAttachments(attachments: ReadyChatAttachment[]): ChatStreamAttachmentInput[] {
   return attachments.map((attachment) => ({

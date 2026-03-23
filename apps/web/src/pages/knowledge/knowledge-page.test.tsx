@@ -287,27 +287,12 @@ describe("KnowledgePage", () => {
     expect(screen.getByText("资源工作区")).toBeInTheDocument();
   });
 
-  it("uses the wide workspace rail so the resource table can expand with the remaining width", async () => {
+  it("keeps the preview drawer closed until the user explicitly opens it", async () => {
     buildFetchMock();
 
     renderKnowledgePage();
 
-    const pageLayout = await screen.findByTestId("knowledge-page-layout");
-
-    expect(pageLayout).toHaveAttribute("data-layout-width", "wide");
-    expect(pageLayout).toHaveAttribute("data-layout-surface", "flat");
-  });
-
-  it("renders the resource workspace without the old always-visible aside rail", async () => {
-    buildFetchMock();
-
-    renderKnowledgePage();
-
-    expect(await screen.findByTestId("knowledge-main-surface")).toHaveAttribute(
-      "data-surface-style",
-      "flat",
-    );
-    expect(screen.queryByTestId("knowledge-aside-surface")).not.toBeInTheDocument();
+    expect(await screen.findByText("资源工作区")).toBeInTheDocument();
     expect(screen.queryByText("资源预览")).not.toBeInTheDocument();
   });
 

@@ -4,12 +4,16 @@
 
 `apps/api` 负责认证、用户管理、资源入库、检索问答、系统设置，以及启动时的初始化与补偿。这里主要记录后端包内需要长期维护的工程信息：职责划分、目录入口、运行约束、环境变量、验证命令和排查入口。
 
+接手这个包前，先回仓库根目录看根 [README.md](../../README.md) 的唯一官方开发主线；这里不再重复维护仓库级启动流程，只补充后端包内命令和运行边界。
+
 系统边界、前端协作关系、数据库设计和运行时链路，以 `docs/arch/*` 为准；这里不再平行维护整套系统说明。
 
 ## 先读哪里
 
 第一次接手后端，建议先看：
 
+- [README.md](../../README.md)
+- [CONTRIBUTING.md](../../CONTRIBUTING.md)
 - [docs/arch/system-overview.md](../../docs/arch/system-overview.md)
 - [docs/arch/provider-and-settings.md](../../docs/arch/provider-and-settings.md)
 - [docs/arch/api-surface-and-permissions.md](../../docs/arch/api-surface-and-permissions.md)
@@ -120,15 +124,23 @@ apps/api/
 
 `uv` 是这个包使用的 Python 依赖与运行入口，项目主页见 [astral-sh/uv](https://github.com/astral-sh/uv)。这个包里的依赖安装、命令执行和本地开发都通过 `uv` 统一完成。
 
+这些命令默认建立在仓库根目录已经执行过 `just setup` 的前提上；如果你只是想补齐整个仓库依赖，优先回根目录继续用 `just setup`。
+
 ```bash
 cd apps/api
-uv sync --group dev
 uv run ruff check
 uv run ruff format --check
 uv run basedpyright
 uv run --group dev python -m pytest
 uv run python -m alembic upgrade head
 uv run -m uvicorn knowledge_chatbox_api.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+如果你明确只想在包内单独补依赖，再执行：
+
+```bash
+cd apps/api
+uv sync --all-groups
 ```
 
 如果只想快速起服务，至少先做 migration：
@@ -176,12 +188,12 @@ uv run -m uvicorn knowledge_chatbox_api.main:app --reload --host 0.0.0.0 --port 
 
 ```bash
 just init-env
-scripts/docker-deploy.sh check
-scripts/docker-deploy.sh build
-scripts/docker-deploy.sh up
-scripts/docker-deploy.sh health
-scripts/docker-deploy.sh down
-./reset-local-data.sh --yes
+just docker-check
+just docker-build
+just docker-up
+just docker-health
+just docker-down
+just reset-data
 ```
 
 更细的容器拓扑、Compose 语义和重置数据 runbook 见 [docs/arch/deployment-and-operations.md](../../docs/arch/deployment-and-operations.md)。

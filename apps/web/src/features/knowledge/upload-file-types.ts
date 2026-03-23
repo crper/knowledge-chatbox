@@ -4,17 +4,6 @@
 
 import type { Accept, FileError } from "react-dropzone";
 
-export const SUPPORTED_UPLOAD_FILE_EXTENSIONS = [
-  "txt",
-  "md",
-  "pdf",
-  "docx",
-  "png",
-  "jpg",
-  "jpeg",
-  "webp",
-] as const;
-
 export const SUPPORTED_UPLOAD_ACCEPT_MAP = {
   "text/plain": [".txt"],
   "text/markdown": [".md"],
@@ -38,10 +27,6 @@ const MIME_TYPE_TO_KIND = {
 } as const;
 
 export type SupportedUploadKind = "image" | "document";
-
-export const SUPPORTED_UPLOAD_ACCEPT = Object.values(SUPPORTED_UPLOAD_ACCEPT_MAP)
-  .flatMap((extensions) => extensions)
-  .join(",");
 
 export function detectSupportedUploadKind(file: File): SupportedUploadKind | null {
   const mimeKind = MIME_TYPE_TO_KIND[file.type as keyof typeof MIME_TYPE_TO_KIND];

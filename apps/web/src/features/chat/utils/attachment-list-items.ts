@@ -20,7 +20,7 @@ export type AttachmentListItem = {
   statusLabel?: string;
 };
 
-export type ChatAttachmentDescriptor = {
+type ChatAttachmentDescriptor = {
   attachment: ChatMessageAttachmentItem;
   displayName: string;
   id: string;
@@ -29,7 +29,7 @@ export type ChatAttachmentDescriptor = {
   rawName?: string;
 };
 
-export function describeAttachmentListName(
+function describeAttachmentListName(
   attachment: { kind: "image" | "document"; name: string },
   index: number,
 ) {
@@ -95,18 +95,4 @@ export function buildChatAttachmentDescriptors(
       rawName: display.rawName,
     };
   });
-}
-
-export function buildChatAttachmentListItems(input: {
-  attachments: ChatMessageAttachmentItem[];
-  onPreview?: (attachmentId: string) => void;
-}): AttachmentListItem[] {
-  return buildChatAttachmentDescriptors(input.attachments).map((descriptor) => ({
-    displayName: descriptor.displayName,
-    id: descriptor.id,
-    kind: descriptor.kind,
-    onPreview: descriptor.previewable ? () => input.onPreview?.(descriptor.id) : undefined,
-    previewable: descriptor.previewable,
-    rawName: descriptor.rawName,
-  }));
 }

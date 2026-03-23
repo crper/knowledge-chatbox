@@ -12,7 +12,7 @@ import { useSessionStore } from "@/lib/auth/session-store";
 /**
  * 描述统一 API 响应包裹结构。
  */
-export type ApiEnvelope<T> = {
+type ApiEnvelope<T> = {
   success: boolean;
   data: T | null;
   error: { code?: string; message?: string } | null;

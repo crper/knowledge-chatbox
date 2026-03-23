@@ -7,7 +7,7 @@ import type { AppUser } from "@/lib/api/client";
 /**
  * 描述设置分区标识的数据结构。
  */
-export type SettingsSectionId = "providers" | "prompt" | "preferences" | "security" | "management";
+type SettingsSectionId = "providers" | "prompt" | "preferences" | "security" | "management";
 
 type SettingsSectionDefinition = {
   descriptionKey: string;

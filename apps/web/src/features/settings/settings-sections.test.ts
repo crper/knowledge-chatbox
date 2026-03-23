@@ -1,11 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import type { AppUser } from "@/lib/api/client";
-import {
-  getDefaultSettingsSection,
-  getSettingsSections,
-  resolveSettingsSection,
-} from "./settings-sections";
+import { getDefaultSettingsSection, resolveSettingsSection } from "./settings-sections";
 
 function buildUser(role: "admin" | "user"): AppUser {
   return {
@@ -18,30 +14,14 @@ function buildUser(role: "admin" | "user"): AppUser {
 }
 
 describe("settings-sections", () => {
-  it("returns all settings groups for admins", () => {
-    const admin = buildUser("admin");
-
-    expect(getSettingsSections(admin).map((section) => section.id)).toEqual([
-      "providers",
-      "prompt",
-      "preferences",
-      "security",
-      "management",
-    ]);
-    expect(getDefaultSettingsSection(admin)).toBe("providers");
+  it("returns role-based default sections", () => {
+    expect(getDefaultSettingsSection(buildUser("admin"))).toBe("providers");
+    expect(getDefaultSettingsSection(buildUser("user"))).toBe("preferences");
   });
 
-  it("returns only self-service groups for normal users", () => {
-    const user = buildUser("user");
-
-    expect(getSettingsSections(user).map((section) => section.id)).toEqual([
-      "preferences",
-      "security",
-    ]);
-    expect(getDefaultSettingsSection(user)).toBe("preferences");
-  });
-
-  it("falls back to the allowed default section when the raw value is invalid", () => {
+  it("keeps allowed sections and falls back when the raw value is invalid", () => {
+    expect(resolveSettingsSection("security", buildUser("user"))).toBe("security");
+    expect(resolveSettingsSection("providers", buildUser("admin"))).toBe("providers");
     expect(resolveSettingsSection("management", buildUser("user"))).toBe("preferences");
     expect(resolveSettingsSection("system", buildUser("admin"))).toBe("providers");
     expect(resolveSettingsSection("unknown", buildUser("admin"))).toBe("providers");

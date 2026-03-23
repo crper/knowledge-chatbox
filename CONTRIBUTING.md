@@ -2,7 +2,15 @@
 
 感谢你愿意参与 Knowledge Chatbox。
 
-这份文档只回答三件事：先看哪里、第一次怎么跑起来、提交前至少做什么。项目当前仍以 V1 为主，优先级始终是“简单、稳定、可维护”，不要为了小功能引入过度设计。
+这份文档只回答三件事：接手顺序、提交前至少做什么、哪些改动必须同步文档。项目当前仍以 V1 为主，优先级始终是“简单、稳定、可维护”，不要为了小功能引入过度设计。
+
+仓库级首次启动只有一条官方主线，以根 [README.md](./README.md) 的“快速开始”为准：
+
+```bash
+just init-env
+just setup
+just dev
+```
 
 ## 开始前先看
 
@@ -14,24 +22,11 @@
 
 ## 本地前置依赖
 
-请先确保本机可用：
-
-- `just`
-- `uv`
-- `vp`
-- Python `3.12`
-- Node.js
-
-说明：
-
-- `just` 负责仓库级命令入口
-- `uv` 负责后端依赖与 Python 运行
-- `vp` 负责前端 Vite+ 工具链；如果本机还没有，可先看官方安装文档：[viteplus.dev/guide/install](https://viteplus.dev/guide/install)
-- `just` 和 `uv` 如果本机尚未安装，请先按各自官方文档完成安装
+前置依赖和安装链接统一看根 [README.md](./README.md) 的“准备本地工具”一节；这里不再重复维护第二份环境准备说明。
 
 ## 首次启动
 
-首次 clone 后，推荐从仓库根目录执行：
+首次 clone 后，仍按根 README 的官方主线从仓库根目录执行：
 
 ```bash
 just init-env
@@ -45,6 +40,7 @@ just dev
 - `just dev` 只负责启动，不会自动补装前端依赖
 - `just reset-dev` 会清空本地数据，只用于“环境已经乱掉，需要一键回到干净状态”
 - 首次接手仓库时，不建议把 `just reset-dev` 当成初始化入口
+- `apps/web/README.md` 和 `apps/api/README.md` 只补充包内命令，不再重复定义仓库级启动流程
 
 如果本机默认端口被占用，可以这样启动：
 
@@ -58,6 +54,7 @@ API_PORT=18080 WEB_PORT=13000 just dev
 just --list
 just setup
 just dev
+just repo-check
 just test
 just api-dev
 just web-dev
@@ -72,6 +69,7 @@ just docker-up
 至少执行：
 
 ```bash
+just repo-check
 just test
 ```
 

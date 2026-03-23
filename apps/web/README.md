@@ -4,6 +4,8 @@
 
 `apps/web` 负责登录、对话、资源、设置和用户管理这套 Web 工作台。这里主要记录前端包内需要长期维护的工程信息：命令、目录边界、状态边界、共享组件入口和读代码顺序。
 
+接手这个包前，先回仓库根目录看根 [README.md](../../README.md) 的唯一官方开发主线；这里不再重复维护仓库级启动流程，只补充前端包内命令和结构边界。
+
 完整的信息架构、交互语义和工作台产品边界，以 [docs/arch/frontend-workspace.md](../../docs/arch/frontend-workspace.md) 为准；这里不再平行维护一套产品说明。
 
 ```text
@@ -17,6 +19,8 @@
 
 第一次接手前端，建议按这个顺序补上下文：
 
+- [README.md](../../README.md)
+- [CONTRIBUTING.md](../../CONTRIBUTING.md)
 - [docs/arch/system-overview.md](../../docs/arch/system-overview.md)
 - [docs/arch/frontend-workspace.md](../../docs/arch/frontend-workspace.md)
 - [docs/arch/provider-and-settings.md](../../docs/arch/provider-and-settings.md)
@@ -48,6 +52,8 @@
 
 `vp` 是项目使用的 Vite+ 统一前端工具链命令，项目主页见 [voidzero-dev/vite-plus](https://github.com/voidzero-dev/vite-plus)。这个包里的开发、检查、测试和构建都通过 `vp` 入口执行，不直接使用 `pnpm`、`npm` 或 `yarn`。
 
+这些命令默认建立在仓库根目录已经执行过 `just setup` 的前提上。
+
 ```bash
 cd apps/web
 vp run api:generate
@@ -66,7 +72,7 @@ vp build
 - `vp test` 跑前端测试
 - `vp build` 产出生产构建
 
-如果你要的是本地单机稳定运行，不要继续把 `vp dev` 当成部署入口，请回到仓库根目录看 `README.md` 的 Docker / 单机部署部分，入口是 `just docker-up`。
+如果你要的是本地单机稳定运行，不要继续把 `vp dev` 当成部署入口，请回到仓库根目录看 [README.md](../../README.md) 的 Docker / 单机部署部分，入口是 `just docker-up`。
 
 ## 环境变量
 

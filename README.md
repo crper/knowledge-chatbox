@@ -35,7 +35,23 @@
 
 ## 快速开始
 
-### 0. 准备本地工具
+### 0. 唯一官方开发主线
+
+首次 clone 或依赖刚更新时，统一从仓库根目录执行：
+
+```bash
+just init-env
+just setup
+just dev
+```
+
+说明：
+
+- 这条路径是仓库唯一官方开发主线
+- `apps/web/README.md` 和 `apps/api/README.md` 只补充各自包内命令，不再重复定义仓库级启动流程
+- 如果你只想先理解接手顺序和提交前要求，再看 [CONTRIBUTING.md](./CONTRIBUTING.md)
+
+### 1. 准备本地工具
 
 首次接手仓库前，请先确保本机已有这些命令：
 
@@ -52,7 +68,7 @@
 - `vp` 负责前端 Vite+ 工具链；如果本机还没有，可先看官方安装文档：[viteplus.dev/guide/install](https://viteplus.dev/guide/install)
 - `just` 和 `uv` 如果本机尚未安装，请先按各自官方文档完成安装
 
-### 1. 初始化环境
+### 2. 初始化环境
 
 ```bash
 just init-env
@@ -65,7 +81,7 @@ cp .env.example .env
 - 用户名：`admin`
 - 密码：`admin123456`
 
-### 2. 安装依赖
+### 3. 安装依赖
 
 ```bash
 just setup
@@ -78,22 +94,23 @@ just setup
 - 前端会执行 `vp install`
 - `just dev` 默认假定依赖已经装好；如果直接在 fresh clone 上运行，前端会因为缺少本地依赖而启动失败
 
-### 3. 选择运行方式
+### 4. 选择运行方式
 
 | 目标 | 命令 | 说明 |
 | --- | --- | --- |
 | 首次安装依赖 | `just setup` | 同步后端虚拟环境和前端依赖 |
 | 看仓库入口 | `just --list` | 查看当前保留的高频命令 |
 | 本地开发 | `just dev` | 依赖已安装后启动前后端 |
+| 检查仓库表面约束 | `just repo-check` | 校验 README / 包级 README 和 `justfile` 的关键入口是否保持一致 |
 | 只跑后端 | `just api-dev` | FastAPI 开发态 |
 | 只跑前端 | `just web-dev` | Web 开发态 |
-| 检查与测试 | `just test` | 前后端检查与测试 |
+| 检查与测试 | `just test` | 先跑 `repo-check`，再执行前后端检查与测试 |
 | 重置本地数据 | `just reset-dev` | 清空数据、同步依赖并重新拉起 |
 | 单机部署 | `just docker-up` | Docker Compose 运行 |
 
 `just reset-dev` 会清空本地数据，只适合“环境已经乱掉，需要一键回到干净状态”的场景，不作为首次启动入口。
 
-### 4. 打开服务
+### 5. 打开服务
 
 - Web: `http://localhost:3000`
 - API health: `http://localhost:8000/api/health`
@@ -105,8 +122,9 @@ just setup
 
 | 想做什么 | 先看哪里 |
 | --- | --- |
-| 第一次接手仓库 | [docs/arch/README.md](./docs/arch/README.md) |
+| 第一次接手仓库并准备开发 | [CONTRIBUTING.md](./CONTRIBUTING.md) |
 | 只想先跑起来 | [快速开始](#快速开始) |
+| 想先看架构文档导航 | [docs/arch/README.md](./docs/arch/README.md) |
 | 只改前端 | [apps/web/README.md](./apps/web/README.md) |
 | 只改后端 | [apps/api/README.md](./apps/api/README.md) |
 | 理解系统边界 | [docs/arch/system-overview.md](./docs/arch/system-overview.md) |

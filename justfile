@@ -47,6 +47,9 @@ dev:
     {{dev_script}}
 
 # 检查与测试
+repo-check:
+    uv run --project {{api_dir}} python scripts/check_repo_surface.py
+
 api-check:
     cd {{api_dir}} && uv run ruff check && uv run ruff format --check && uv run basedpyright
 
@@ -62,7 +65,7 @@ web-test:
 web-build:
     cd {{web_dir}} && vp run api:check && vp build
 
-test: api-check api-test web-check web-test
+test: repo-check api-check api-test web-check web-test
 
 # 本地数据
 reset-data:

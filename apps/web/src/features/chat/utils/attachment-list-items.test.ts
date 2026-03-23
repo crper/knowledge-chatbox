@@ -2,21 +2,23 @@ import { i18n } from "@/i18n";
 import type { ChatAttachmentItem as ChatMessageAttachmentItem } from "../api/chat";
 import type { ChatAttachmentItem as ChatComposerAttachmentItem } from "../store/chat-ui-store";
 import {
-  buildChatAttachmentListItems,
+  buildChatAttachmentDescriptors,
   buildComposerAttachmentListItems,
-  describeAttachmentListName,
 } from "./attachment-list-items";
 
 describe("attachment-list-items", () => {
   it("collapses opaque image names into session attachment labels", () => {
     expect(
-      describeAttachmentListName(
+      buildChatAttachmentDescriptors([
         {
-          kind: "image",
+          attachment_id: "remote-image",
+          type: "image",
           name: "e31c779fc7a14e68b23cf94c999b0a61.jpeg~tplv-a9rns2rl98-image_raw_b.png",
+          mime_type: "image/png",
+          resource_document_version_id: 11,
+          size_bytes: 1,
         },
-        0,
-      ),
+      ])[0],
     ).toMatchObject({
       displayName: "会话图片附件 1",
       rawName: "e31c779fc7a14e68b23cf94c999b0a61.jpeg~tplv-a9rns2rl98-image_raw_b.png",
@@ -25,13 +27,16 @@ describe("attachment-list-items", () => {
 
   it("does not collapse uppercase extensions", () => {
     expect(
-      describeAttachmentListName(
+      buildChatAttachmentDescriptors([
         {
-          kind: "image",
+          attachment_id: "remote-image",
+          type: "image",
           name: "f2280f620f9045129491d54f4de3997d.PNG",
+          mime_type: "image/png",
+          resource_document_version_id: 11,
+          size_bytes: 1,
         },
-        1,
-      ),
+      ])[0],
     ).toMatchObject({
       displayName: "f2280f620f9045129491d54f4de3997d.PNG",
       rawName: undefined,
@@ -43,13 +48,16 @@ describe("attachment-list-items", () => {
 
     try {
       expect(
-        describeAttachmentListName(
+        buildChatAttachmentDescriptors([
           {
-            kind: "image",
+            attachment_id: "remote-image",
+            type: "image",
             name: "e31c779fc7a14e68b23cf94c999b0a61.jpeg~tplv-a9rns2rl98-image_raw_b.png",
+            mime_type: "image/png",
+            resource_document_version_id: 11,
+            size_bytes: 1,
           },
-          0,
-        ),
+        ])[0],
       ).toMatchObject({
         displayName: "Session image attachment 1",
         rawName: "e31c779fc7a14e68b23cf94c999b0a61.jpeg~tplv-a9rns2rl98-image_raw_b.png",
@@ -103,10 +111,7 @@ describe("attachment-list-items", () => {
       onPreview: vi.fn(),
       onRemove: vi.fn(),
     });
-    const chatItems = buildChatAttachmentListItems({
-      attachments: messageAttachments,
-      onPreview: vi.fn(),
-    });
+    const chatItems = buildChatAttachmentDescriptors(messageAttachments);
 
     expect(composerItems).toHaveLength(2);
     expect(composerItems[0]).toMatchObject({

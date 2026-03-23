@@ -129,7 +129,7 @@ function SettingsSidebarNav({
 /**
  * 定义工作区底部。
  */
-export function WorkspaceFooter({
+function WorkspaceFooter({
   className,
   onNavigate,
   onLogout,

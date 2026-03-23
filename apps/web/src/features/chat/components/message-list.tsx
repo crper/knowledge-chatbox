@@ -18,7 +18,7 @@ import { ImageViewerDialog, type ImageViewerItem } from "./image-viewer-dialog";
 import { MarkdownMessage } from "./markdown-message";
 import { SourceList } from "./source-list";
 
-export type MessageListProps = {
+type MessageListProps = {
   messages: ChatMessageItem[];
   onDeleteFailed?: (message: ChatMessageItem) => void;
   onEditFailed?: (message: ChatMessageItem) => void;

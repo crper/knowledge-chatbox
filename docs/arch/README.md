@@ -2,7 +2,7 @@
 
 这组文档只记录仓库当前实现和长期维护约定，不记录历史任务计划，也不写理想化设计稿。这一页本身是 `docs/arch` 的导航页，目的是让你按问题进入，而不是从头到尾顺读一遍。像 `docs/superpowers/` 这类生成型目录不属于手工维护文档集合。
 
-如果你只是想先跑起来，先看仓库根 `README.md`；如果你只接手某一端，再补 `apps/web/README.md` 或 `apps/api/README.md`。
+如果你只是想先跑起来，先看仓库根 `README.md`；如果你要接手仓库并开始开发，先看根 `README.md` 和 `CONTRIBUTING.md`；如果你只接手某一端，再补 `apps/web/README.md` 或 `apps/api/README.md`。
 
 [系统总览](./system-overview.md) • [前端工作台](./frontend-workspace.md) • [Provider 与设置](./provider-and-settings.md) • [API 与权限边界](./api-surface-and-permissions.md) • [数据库设计](./database-design.md) • [运行时流程](./runtime-flows.md) • [仓库地图与约定](./repo-map-and-conventions.md) • [部署与运维](./deployment-and-operations.md)
 
@@ -23,8 +23,10 @@
 
 ### 第一次接手仓库
 
-1. 先看 [system-overview.md](./system-overview.md)
-2. 再看 [repo-map-and-conventions.md](./repo-map-and-conventions.md)
+1. 先看根 [README.md](../../README.md)
+2. 再看 [CONTRIBUTING.md](../../CONTRIBUTING.md)
+3. 再看 [system-overview.md](./system-overview.md)
+4. 最后看 [repo-map-and-conventions.md](./repo-map-and-conventions.md)
 
 ### 想改前端工作台
 
@@ -53,6 +55,7 @@
 
 - 这里写的是“当前实现真相”。代码如果已经变了，文档也必须跟着变。
 - 优先把长期有效的架构信息集中放在 `docs/arch`，不要再新建一套平行说明。
+- 仓库级启动主线以根 `README.md` 为准；`docs/arch` 只补长期真相，不重复维护第二套 onboarding。
 - 历史设计稿或执行计划一旦完成，要把长期有效结论折叠进 `docs/arch`，不要长期保留平行目录。
 - 生成型目录不算手工维护文档；如果只是工具产物，不要放进正式文档集合，也不要和 `docs/arch` 并列长期保留。
 - 目录结构、运行命令、环境变量、权限边界、provider 语义、索引重建流程发生变化时，要同步更新相关页面。
