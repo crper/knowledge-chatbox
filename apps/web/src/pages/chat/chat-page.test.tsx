@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import type { ChatMessageItem } from "@/features/chat/api/chat";
 import { useChatStreamStore } from "@/features/chat/store/chat-stream-store";
 import { useChatUiStore } from "@/features/chat/store/chat-ui-store";
+import { useUiStore } from "@/lib/store/ui-store";
 import { AppProviders } from "@/providers/app-providers";
 import { AppRouter } from "@/router";
 import { jsonResponse } from "@/test/http";
@@ -122,6 +123,7 @@ function buildAuthenticatedFetch(options?: {
   messageCount?: number;
   messages?: ChatMessageItem[];
   messagesBySession?: Record<number, ChatMessageItem[]>;
+  sessions?: Array<{ id: number; title: string | null }>;
   streamErrorResponse?: {
     body: unknown;
     status: number;
@@ -130,10 +132,12 @@ function buildAuthenticatedFetch(options?: {
   streamFinalDelayMs?: number;
   streamFramesBySession?: Record<number, string[]>;
 }) {
-  const sessions: Array<{ id: number; title: string | null }> = [
-    { id: 1, title: "Session A" },
-    { id: 2, title: "Session B" },
-  ];
+  const sessions = (
+    options?.sessions ?? [
+      { id: 1, title: "Session A" },
+      { id: 2, title: "Session B" },
+    ]
+  ).map((session) => ({ ...session }));
   let streamedUserMessage: {
     attachments_json?: Array<{
       archived_at?: string | null;
@@ -1810,7 +1814,48 @@ describe("chat workspace", () => {
     );
 
     await waitFor(() => {
-      expect(successSpy).toHaveBeenCalledWith("会话 Session B 已生成完成。");
+      expect(successSpy).toHaveBeenCalledWith("Session B 已生成完成。");
+    });
+  });
+
+  it("uses the localized untitled session fallback in background completion toasts", async () => {
+    useUiStore.setState({ language: "en" });
+    await i18n.changeLanguage("en");
+    buildAuthenticatedFetch({
+      sessions: [
+        { id: 1, title: "Session A" },
+        { id: 2, title: null },
+      ],
+    });
+    const successSpy = vi.spyOn(toast, "success");
+
+    useChatStreamStore.setState({
+      runsById: {
+        205: {
+          runId: 205,
+          sessionId: 2,
+          assistantMessageId: 24,
+          userMessageId: 23,
+          userContent: "hello",
+          content: "done",
+          sources: [],
+          errorMessage: null,
+          status: "succeeded",
+          toastShown: false,
+        },
+      },
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/chat/1"]}>
+        <AppProviders>
+          <AppRouter />
+        </AppProviders>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(successSpy).toHaveBeenCalledWith("Untitled Session is ready.");
     });
   });
 

@@ -81,7 +81,7 @@ flowchart LR
 - provider 相关 bootstrap 现在会在单条 `app_settings` 记录里同时种入 `provider_profiles_json`、`response_route_json`、`embedding_route_json`、`vision_route_json`，并把 `pending_embedding_route_json` 初始化为空
 - 默认 Ollama bootstrap 当前对齐为 `qwen3.5:4b` 作为 chat / vision 模板值，避免设置页首屏和连接测试看到的默认模型不一致
 - API 响应头默认附带 `X-Request-ID`，日志里同样会输出 `request_id`
-- SQLite 连接默认开启 `WAL` 和 `busy_timeout=5000`，降低流式事件写入与标准页面读取并发时直接触发锁错误的概率
+- SQLite 连接默认开启 `WAL` 和 `busy_timeout=30000`，降低流式事件写入与标准页面读取并发时直接触发锁错误的概率
 - 数据目录全部 bind mount 到宿主机，容器重建后数据仍在
 - 同名资源如果内容哈希未变化，API 会直接返回当前版本；因此 `data/uploads` 和 `data/normalized` 的增长更接近“真实内容变更”而不是“重复点击上传”
 - Linux 场景下通过 `host.docker.internal:host-gateway` 访问宿主机 Ollama

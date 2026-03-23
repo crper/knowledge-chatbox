@@ -92,6 +92,7 @@ flowchart TD
 - 纯图片泛化看图请求默认跳过 retrieval
 - 无附件时，问答仍会继续查询当前用户 personal `space` 里已入库的历史知识
 - 受保护读取接口在鉴权阶段保持纯读，不再为 session 心跳同步写 `auth_sessions.last_seen_at`；避免流式回答持有 SQLite 写事务时，把 `/api/auth/me`、`/api/settings` 这类并发页面读取锁成 `database is locked`
+- 流式 assistant projection 和 `chat_run_events` 当前按短批次提交；目标是让整段回答进行中，仍能继续处理会话改名、新建会话这类并发写请求，而不是一直等到流结束才释放 SQLite 写锁
 - 图片不可解码或 provider 仍拒绝处理时，后端先收敛成稳定语义，不把 provider 原始格式报错直接暴露为长期契约
 
 关键入口：

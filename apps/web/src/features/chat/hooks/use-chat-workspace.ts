@@ -286,10 +286,7 @@ export function useChatWorkspace(activeSessionId: number | null) {
       }
 
       const session = sessions.find((item) => item.id === run.sessionId);
-      const title = resolveSessionTitle(
-        session?.title,
-        t("backgroundSessionFallbackTitle", { id: run.sessionId }),
-      );
+      const title = resolveSessionTitle(session?.title, t("sessionTitleFallback"));
       toast.success(t("backgroundSessionCompletedToast", { title }));
       markToastShown(run.runId);
       removeRun(run.runId);
