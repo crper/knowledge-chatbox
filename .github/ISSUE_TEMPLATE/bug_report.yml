@@ -1,0 +1,94 @@
+name: Bug Report
+description: 报告一个可以稳定复现的问题
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        提交前请先确认：
+
+        - 你已经搜索过现有 Issue
+        - 你使用的是当前仓库最新代码或接近最新的本地分支
+        - 你提供的信息足够让别人复现问题
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: 影响范围
+      description: 这个问题主要出现在什么位置？
+      options:
+        - Web
+        - API
+        - Docker / Deployment
+        - Docs
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: 问题概述
+      description: 用 1-3 句话描述问题本身和影响
+      placeholder: 登录后上传 PDF 会直接失败，并返回 500。
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 按顺序写出最短复现路径
+      placeholder: |
+        1. 执行 just init-env、just setup、just dev
+        2. 打开 /knowledge
+        3. 上传某个 PDF
+        4. 观察结果
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 预期结果
+      placeholder: 上传成功，资源进入 processing / indexed 流程。
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际结果
+      placeholder: 上传后立刻报错，页面提示 document_upload_failed。
+    validations:
+      required: true
+
+  - type: textarea
+    id: env
+    attributes:
+      label: 环境信息
+      description: 尽量写清系统、浏览器、运行方式、模型 provider 等
+      placeholder: |
+        - OS:
+        - Browser:
+        - Run mode: just dev / docker-up
+        - Provider:
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 相关日志或截图
+      description: 粘贴关键报错、接口响应、控制台日志或截图
+      render: shell
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 提交前检查
+      options:
+        - label: 我已经搜索过现有 Issue
+          required: true
+        - label: 我已经尽量提供了可复现步骤和关键信息
+          required: true

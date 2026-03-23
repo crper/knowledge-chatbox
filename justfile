@@ -28,6 +28,11 @@ help:
 init-env:
     cp .env.example {{env_file}}
 
+# 安装依赖
+setup:
+    cd {{api_dir}} && uv sync --all-groups
+    cd {{web_dir}} && vp install
+
 # 本地开发
 api-migrate:
     cd {{api_dir}} && uv run python -m alembic upgrade head

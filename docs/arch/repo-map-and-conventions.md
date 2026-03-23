@@ -175,6 +175,8 @@ knowledge-chatbox/
 默认优先在仓库根目录使用 `just`：
 
 ```bash
+just init-env
+just setup
 just --list
 just dev
 just test
@@ -189,6 +191,8 @@ just docker-ps
 just docker-logs api
 just docker-health
 ```
+
+首次 clone、前端 `pnpm-lock.yaml` 变更，或后端 `uv.lock` 变更后，先执行 `just setup`；`just dev` 不负责补装依赖。
 
 只有当你明确需要子项目独立运行时，再进入 `apps/web` 或 `apps/api` 执行细分命令。
 
@@ -243,8 +247,11 @@ scripts/docker-deploy.sh build
 
 `just reset-dev` 会先执行 `reset-local-data.sh`，再同步依赖并拉起前后端开发态脚本。
 
+如果你只想补齐依赖、不想清空本地数据，使用 `just setup`。
+
 ```bash
 ./reset-local-data.sh --yes
+just setup
 just reset-dev
 ```
 

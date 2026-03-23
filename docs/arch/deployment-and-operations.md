@@ -11,6 +11,7 @@
 
 | 模式 | 推荐入口 | 适合什么 |
 | --- | --- | --- |
+| 首次本地开发初始化 | `just init-env` -> `just setup` -> `just dev` | 第一次 clone 或依赖更新后补齐环境并拉起开发态 |
 | 日常本地开发 | `just dev`、`just api-dev`、`just web-dev` | 改代码、看热更新、排查局部问题 |
 | 本地单机稳定运行 | `just docker-up` | 像生产一样在一台机器上长期跑 |
 | 运行态排查 | `just docker-ps`、`just docker-logs`、`just docker-health` | 看容器状态、日志和健康检查 |
@@ -18,10 +19,12 @@
 
 ### 本地开发
 
-- 推荐入口：仓库根目录 `just dev`
+- 首次 clone 或依赖刚更新时，先执行：`just init-env` -> `just setup`
+- 依赖已安装后的推荐入口：仓库根目录 `just dev`
 - 后端本地静态检查入口：仓库根目录 `just api-check`，内部会执行 `ruff check`、`ruff format --check` 和 `basedpyright`
 - Web 子命令：`apps/web` 下用 `vp dev`
 - API 子命令：`apps/api` 下用 `uv run -m uvicorn ...`
+- `just setup` 是非破坏性的依赖同步入口；它会执行 `apps/api` 下的 `uv sync --all-groups` 和 `apps/web` 下的 `vp install`
 - 如果你要的是“本地像生产一样稳定跑起来”，请直接看下方 Docker Compose 部分，不要继续用 `vp dev` 或 `uvicorn --reload`
 - 数据：统一落在仓库根目录 `data/`
 - OpenAPI 契约校验当前是严格门禁：`just web-check` / `vp run api:check` 如果发现 `apps/web/openapi/schema.json` 或 `src/lib/api/generated/schema.d.ts` 漂移会直接失败；标准修复入口是 `cd apps/web && vp run api:generate`
@@ -93,6 +96,7 @@ flowchart LR
 | `docker-compose.yml` | 定义 `web` / `api` 两个服务、端口、健康检查、bind mount 和日志策略 | 需要看容器拓扑、端口或挂载关系 |
 | `scripts/docker-deploy.sh` | 统一封装 Compose 校验、构建、启动、停止、日志、健康检查 | 日常 Docker 启停和排查 |
 | `scripts/export_openapi.py` | 导出 FastAPI OpenAPI schema 给前端生成契约类型 | 改 API route / schema 后同步前端契约；`vp run api:check` / `just web-check` 也依赖它做快照校验 |
+| `just setup` | 同步后端 `uv` 环境和前端依赖，不清空本地数据 | 首次 clone、依赖变更，或单纯想补装依赖 |
 | `reset-local-data.sh` | 清空本地 SQLite / Chroma / uploads / normalized，并可重跑 migration | 本地需要回到干净状态 |
 | `just reset-dev` | 清空本地数据、同步依赖并拉起前后端开发态 | 本地开发状态已经混乱，需要一步回到可运行状态 |
 | `just docker-check / build / up / down / restart / ps / logs / health` | 仓库根统一入口 | 日常单机部署、排障和验证 |
@@ -203,6 +207,7 @@ COMPOSE_FILE=/abs/path/docker-compose.yml scripts/docker-deploy.sh check
 - 清空上传目录、标准化目录、Chroma 索引目录
 - 删除 SQLite 文件
 - 默认重新执行 `uv run python -m alembic upgrade head`
+- 如果只需要补装依赖，不需要执行它；直接用 `just setup`
 - `just reset-dev` 还会补做 `uv sync --all-groups`、`vp install`，最后拉起前后端开发态脚本
 
 ### 安全措施
@@ -217,6 +222,7 @@ COMPOSE_FILE=/abs/path/docker-compose.yml scripts/docker-deploy.sh check
 ./reset-local-data.sh
 ./reset-local-data.sh --yes
 ENV_FILE=/abs/path/.env ./reset-local-data.sh --yes
+just setup
 just reset-dev
 ```
 
@@ -298,6 +304,29 @@ scripts/docker-deploy.sh check
 
 - 先检查 `.env`、端口、URL、路径配置是否合理
 - 还没启动 Docker daemon，但想先把静态配置问题挡掉
+
+### 首次本地开发启动
+
+```bash
+just init-env
+just setup
+just dev
+```
+
+等价拆解：
+
+```bash
+cp .env.example .env
+cd apps/api && uv sync --all-groups
+cd apps/web && vp install
+just dev
+```
+
+适用场景：
+
+- 第一次 clone 仓库
+- 前端或后端依赖刚发生变化
+- 当前只想补齐依赖，不想清空本地数据
 
 ### API 起不来
 

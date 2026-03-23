@@ -4,10 +4,11 @@
 
 把“上传资料、标准化、索引、问答、来源回看、系统配置、用户管理”收进同一套单机工作流。前端使用 React + Vite+，后端使用 FastAPI；SQLite 保存业务真相，Chroma 保存检索派生索引，原始文件和标准化结果直接落在本地目录。
 
-[快速开始](#快速开始) • [文档入口](#文档入口) • [开发入口](#开发入口) • [Docker 单机部署](#docker-单机部署)
+[快速开始](#快速开始) • [文档入口](#文档入口) • [开发入口](#开发入口) • [Docker 单机部署](#docker-单机部署) • [参与贡献](#参与贡献)
 
 > [!WARNING]
-> 当前项目仍处于 WIP 阶段，主要在本地 `Ollama qwen3.5:4b` 环境下联调与验证功能有效性(Docker Compose能跑，但是明显有性能问题，电脑带不动，建议开发体验用 `just dev` 直接跑)；
+> 当前项目仍处于 WIP 阶段，主要在本地 `Ollama qwen3.5:4b` 环境下联调和验证功能有效性。
+> Docker Compose 可以跑通，但本地机器资源占用较高；日常开发更建议直接使用 `just dev`。
 > 欢迎提 Issue、开 PR，或直接参与一起完善它。
 
 ## 项目亮点
@@ -29,10 +30,27 @@
 | 🗂️ 本地优先存储 | 已支持 | SQLite、Chroma、上传文件和标准化结果都落本地目录 |
 | 🪶 依赖克制 | 已支持 | V1 不引入 Redis、Celery、对象存储等非必需基础设施 |
 
-## 演示DEMO
-[bilibli: v1](https://www.bilibili.com/video/BV1RCQQBvEKb/?vd_source=c217126ec335b1b5117485606ac9594f)
+## 演示 Demo
+[Bilibili: v1](https://www.bilibili.com/video/BV1RCQQBvEKb/?vd_source=c217126ec335b1b5117485606ac9594f)
 
 ## 快速开始
+
+### 0. 准备本地工具
+
+首次接手仓库前，请先确保本机已有这些命令：
+
+- `just`
+- `uv`
+- `vp`
+- Python `3.12`
+- Node.js
+
+说明：
+
+- `just` 负责仓库级命令入口
+- `uv` 负责后端依赖与 Python 运行
+- `vp` 负责前端 Vite+ 工具链；如果本机还没有，可先看官方安装文档：[viteplus.dev/guide/install](https://viteplus.dev/guide/install)
+- `just` 和 `uv` 如果本机尚未安装，请先按各自官方文档完成安装
 
 ### 1. 初始化环境
 
@@ -47,19 +65,35 @@ cp .env.example .env
 - 用户名：`admin`
 - 密码：`admin123456`
 
-### 2. 选择运行方式
+### 2. 安装依赖
+
+```bash
+just setup
+```
+
+说明：
+
+- 首次 clone 后必须先执行一次
+- 后端会执行 `uv sync --all-groups`
+- 前端会执行 `vp install`
+- `just dev` 默认假定依赖已经装好；如果直接在 fresh clone 上运行，前端会因为缺少本地依赖而启动失败
+
+### 3. 选择运行方式
 
 | 目标 | 命令 | 说明 |
 | --- | --- | --- |
+| 首次安装依赖 | `just setup` | 同步后端虚拟环境和前端依赖 |
 | 看仓库入口 | `just --list` | 查看当前保留的高频命令 |
-| 本地开发 | `just dev` | 前后端一起启动 |
+| 本地开发 | `just dev` | 依赖已安装后启动前后端 |
 | 只跑后端 | `just api-dev` | FastAPI 开发态 |
 | 只跑前端 | `just web-dev` | Web 开发态 |
 | 检查与测试 | `just test` | 前后端检查与测试 |
 | 重置本地数据 | `just reset-dev` | 清空数据、同步依赖并重新拉起 |
 | 单机部署 | `just docker-up` | Docker Compose 运行 |
 
-### 3. 打开服务
+`just reset-dev` 会清空本地数据，只适合“环境已经乱掉，需要一键回到干净状态”的场景，不作为首次启动入口。
+
+### 4. 打开服务
 
 - Web: `http://localhost:3000`
 - API health: `http://localhost:8000/api/health`
@@ -160,3 +194,10 @@ knowledge-chatbox/
 - 前端统一使用 `vp`
 - 后端统一使用 `uv`
 - 小功能优先简单、稳定、可维护，不提前引入超出 V1 范围的大型抽象
+
+## 参与贡献
+
+- 提交前先看 [CONTRIBUTING.md](./CONTRIBUTING.md)
+- Bug 反馈使用仓库里的 Bug Issue 模板
+- 功能建议使用 Feature Request 模板
+- License 见 [LICENSE](./LICENSE)

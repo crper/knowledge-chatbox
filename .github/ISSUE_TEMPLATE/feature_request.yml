@@ -1,0 +1,70 @@
+name: Feature Request
+description: 提出一个明确的问题、目标和建议方案
+title: "[Feature] "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        功能建议请尽量聚焦单一目标。
+
+        这个项目当前仍以 V1 为主，优先考虑：
+
+        - 是否能解决真实问题
+        - 是否能保持实现简单、稳定、可维护
+        - 是否明显超出当前 V1 边界
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 你想解决什么问题？
+      description: 先描述问题或使用场景，不要只写“想要一个新功能”
+      placeholder: 目前资源页缺少按状态筛选，资料多了之后很难快速找到失败或处理中项。
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 你建议的方案
+      description: 写你期待的行为、入口和大致交互
+      placeholder: 在资源页顶部增加状态筛选，只覆盖 indexed / processing / failed 三类。
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 你考虑过的替代方案
+      description: 如果有更简单的做法，也请一起写出来
+      placeholder: 也可以先只提供失败项快捷筛选，而不是完整高级搜索。
+
+  - type: textarea
+    id: value
+    attributes:
+      label: 这个功能的价值
+      description: 为什么值得做？它会改善什么？
+      placeholder: 能减少管理员排查失败文档的时间，也能避免用户误以为上传卡死。
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 你心中的验收标准
+      description: 用几条可验证的行为描述“做完之后应该是什么样”
+      placeholder: |
+        - 可以按状态筛选资源
+        - 切换筛选后列表立即刷新
+        - 不影响现有上传与预览流程
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 提交前检查
+      options:
+        - label: 我已经搜索过现有 Issue，确认这不是重复建议
+          required: true
+        - label: 我已经尽量把问题、方案和价值说明清楚
+          required: true
