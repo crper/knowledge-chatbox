@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from knowledge_chatbox_api.core.errors import AppError
+from knowledge_chatbox_api.core.logging import get_logger
 from knowledge_chatbox_api.models.auth import User
 from knowledge_chatbox_api.providers.factory import (
     build_embedding_adapter_from_settings,
@@ -28,6 +29,8 @@ from knowledge_chatbox_api.services.chat.retry_service import (
 from knowledge_chatbox_api.services.chat.runtime_settings import build_chat_runtime_settings
 from knowledge_chatbox_api.services.settings.settings_service import SettingsService
 from knowledge_chatbox_api.utils.chroma import get_chroma_store
+
+logger = get_logger(__name__)
 
 
 class ChatRouteError(AppError):
@@ -230,6 +233,14 @@ class ChatApplicationService:
             assistant_message.status = "failed"
             assistant_message.error_message = str(exc)
             assistant_message.sources_json = []
+            logger.warning(
+                "chat_sync_message_failed",
+                session_id=session_id,
+                response_provider=chat_service._response_provider_name(),
+                response_model=chat_service._response_model(),
+                failure_type="chat_answer_error",
+                error_message=str(exc),
+            )
 
         self.session.commit()
         self.session.refresh(user_message)

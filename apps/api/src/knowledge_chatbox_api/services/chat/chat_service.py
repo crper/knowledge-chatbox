@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from knowledge_chatbox_api.core.logging import get_logger
 from knowledge_chatbox_api.providers.factory import build_embedding_adapter_from_settings
 from knowledge_chatbox_api.repositories.chat_repository import ChatRepository
 from knowledge_chatbox_api.services.chat.prompt_attachment_service import (
@@ -13,6 +14,7 @@ from knowledge_chatbox_api.services.chat.retrieval_service import RetrievalServi
 from knowledge_chatbox_api.utils.embedding_cache import CachedEmbeddingProvider
 
 PROMPT_HISTORY_MESSAGE_LIMIT = 4
+logger = get_logger(__name__)
 
 
 class ChatService:
@@ -53,6 +55,15 @@ class ChatService:
             attachments=attachments,
         )
         answer = self.response_adapter.response(prompt_messages, self.settings)
+        logger.info(
+            "chat_response_completed",
+            session_id=session_id,
+            attachment_count=len(attachments or []),
+            source_count=len(sources),
+            answer_length=len(answer) if isinstance(answer, str) else 0,
+            response_provider=self._response_provider_name(),
+            response_model=self._response_model(),
+        )
         return {"answer": answer, "sources": sources}
 
     def build_prompt_messages_and_sources(
@@ -102,6 +113,14 @@ class ChatService:
             else:
                 prompt_messages.append({"role": "user", "content": question})
 
+        logger.info(
+            "chat_prompt_assembled",
+            session_id=session_id,
+            attachment_count=len(attachments or []),
+            retrieved_source_count=len(retrieved_context.sources),
+            response_provider=self._response_provider_name(),
+            response_model=self._response_model(),
+        )
         return prompt_messages, retrieved_context.sources
 
     def _system_prompt_content(self) -> str | None:
@@ -113,3 +132,19 @@ class ChatService:
 
     def _get_embedding_adapter(self):
         return build_embedding_adapter_from_settings(self.settings)
+
+    def _response_provider_name(self) -> str:
+        route = getattr(self.settings, "response_route", None)
+        if isinstance(route, dict):
+            provider = route.get("provider", "openai")
+            return provider if isinstance(provider, str) else "openai"
+        provider = getattr(route, "provider", "openai")
+        return provider if isinstance(provider, str) else "openai"
+
+    def _response_model(self) -> str:
+        route = getattr(self.settings, "response_route", None)
+        if isinstance(route, dict):
+            model = route.get("model", "unknown")
+            return model if isinstance(model, str) else "unknown"
+        model = getattr(route, "model", "unknown")
+        return model if isinstance(model, str) else "unknown"

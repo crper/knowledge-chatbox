@@ -60,6 +60,7 @@ class ChatPersistenceService:
         run.finished_at = now
         assistant_message.status = "failed"
         assistant_message.error_message = error_message
+        assistant_message.sources_json = []
         assistant_message.updated_at = now
         self.session.commit()
         self._pending_text_deltas = 0

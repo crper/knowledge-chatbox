@@ -5,12 +5,14 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
+from knowledge_chatbox_api.core.logging import get_logger
 from knowledge_chatbox_api.services.chat.attachment_metadata import build_attachment_metadata
 from knowledge_chatbox_api.services.chat.chat_persistence_service import ChatPersistenceService
 from knowledge_chatbox_api.services.chat.chat_service import ChatService
 
 STREAM_INTERRUPTED_ERROR_MESSAGE = "本次生成连接中断，请重试。"
 PROVIDER_STREAM_ENDED_EARLY_ERROR_MESSAGE = "provider stream ended before completion"
+logger = get_logger(__name__)
 
 
 def _event_attr(event: Any, name: str, default=None):
@@ -105,6 +107,14 @@ class ChatRunService:
         self.session.refresh(assistant_message)
         self.session.refresh(run)
         event_seq = 0
+        logger.info(
+            "chat_stream_run_started",
+            run_id=run.id,
+            session_id=session_id,
+            attachment_count=len(attachments or []),
+            response_provider=self._response_provider_name(),
+            response_model=self._response_model(),
+        )
 
         try:
             event_seq, event = self._append_event(
@@ -161,6 +171,15 @@ class ChatRunService:
                 user_message.status = "failed"
                 user_message.error_message = str(exc)
                 self.persistence.fail_run(run, assistant_message, str(exc))
+                logger.warning(
+                    "chat_stream_run_failed",
+                    run_id=run.id,
+                    session_id=session_id,
+                    response_provider=self._response_provider_name(),
+                    response_model=self._response_model(),
+                    failure_type="prompt_assembly_error",
+                    error_message=str(exc),
+                )
                 event_seq, event = self._append_event(
                     run,
                     event_seq,
@@ -260,6 +279,15 @@ class ChatRunService:
                     )
                     yield event
                     self.persistence.complete_run(run, assistant_message, sources, usage)
+                    logger.info(
+                        "chat_stream_run_completed",
+                        run_id=run.id,
+                        session_id=session_id,
+                        assistant_message_id=assistant_message.id,
+                        source_count=len(sources),
+                        response_provider=self._response_provider_name(),
+                        response_model=self._response_model(),
+                    )
                     event_seq, event = self._append_event(
                         run,
                         event_seq,
@@ -288,6 +316,15 @@ class ChatRunService:
                     user_message.status = "failed"
                     user_message.error_message = error_message
                     self.persistence.fail_run(run, assistant_message, error_message)
+                    logger.warning(
+                        "chat_stream_run_failed",
+                        run_id=run.id,
+                        session_id=session_id,
+                        response_provider=self._response_provider_name(),
+                        response_model=self._response_model(),
+                        failure_type="provider_error",
+                        error_message=error_message,
+                    )
                     event_seq, event = self._append_event(
                         run,
                         event_seq,
@@ -309,6 +346,15 @@ class ChatRunService:
                     assistant_message,
                     PROVIDER_STREAM_ENDED_EARLY_ERROR_MESSAGE,
                 )
+                logger.warning(
+                    "chat_stream_run_failed",
+                    run_id=run.id,
+                    session_id=session_id,
+                    response_provider=self._response_provider_name(),
+                    response_model=self._response_model(),
+                    failure_type="provider_stream_ended_early",
+                    error_message=PROVIDER_STREAM_ENDED_EARLY_ERROR_MESSAGE,
+                )
                 event_seq, event = self._append_event(
                     run,
                     event_seq,
@@ -323,6 +369,15 @@ class ChatRunService:
                 return
 
             self.persistence.complete_run(run, assistant_message, sources, usage)
+            logger.info(
+                "chat_stream_run_completed",
+                run_id=run.id,
+                session_id=session_id,
+                assistant_message_id=assistant_message.id,
+                source_count=len(sources),
+                response_provider=self._response_provider_name(),
+                response_model=self._response_model(),
+            )
             event_seq, event = self._append_event(
                 run,
                 event_seq,
@@ -391,3 +446,12 @@ class ChatRunService:
         if run.status not in {"pending", "running"}:
             return
         self.persistence.fail_run(run, assistant_message, STREAM_INTERRUPTED_ERROR_MESSAGE)
+        logger.warning(
+            "chat_stream_run_failed",
+            run_id=run.id,
+            session_id=run.session_id,
+            response_provider=self._response_provider_name(),
+            response_model=self._response_model(),
+            failure_type="stream_interrupted",
+            error_message=STREAM_INTERRUPTED_ERROR_MESSAGE,
+        )

@@ -91,6 +91,7 @@ class IngestionService:
         document_version: DocumentRevision | None = None
         normalized_path: str | None = None
         indexing_targets: list[IndexingTarget] = []
+        file_type: str | None = None
 
         try:
             file_type = self._detect_file_type(filename, content_type)
@@ -105,6 +106,15 @@ class IngestionService:
             if versioning_result.duplicate_content:
                 self._remove_file(str(upload_artifact.path))
                 self.session.refresh(document_version)
+                self.logger.info(
+                    "document_upload_completed",
+                    filename=filename,
+                    file_type=file_type,
+                    document_id=document_entity.id,
+                    document_revision_id=document_version.id,
+                    deduplicated=True,
+                    background_processing=False,
+                )
                 return UploadDocumentResult(
                     background_processing=False,
                     deduplicated=True,
@@ -118,6 +128,15 @@ class IngestionService:
             if file_type in IMAGE_DOCUMENT_FILE_TYPES:
                 self.session.commit()
                 self.session.refresh(document_version)
+                self.logger.info(
+                    "document_upload_completed",
+                    filename=filename,
+                    file_type=file_type,
+                    document_id=document_entity.id,
+                    document_revision_id=document_version.id,
+                    deduplicated=False,
+                    background_processing=True,
+                )
                 return UploadDocumentResult(
                     background_processing=True,
                     deduplicated=False,
@@ -132,13 +151,22 @@ class IngestionService:
             )
             self.session.commit()
             self.session.refresh(document_version)
+            self.logger.info(
+                "document_upload_completed",
+                filename=filename,
+                file_type=file_type,
+                document_id=document_entity.id,
+                document_revision_id=document_version.id,
+                deduplicated=False,
+                background_processing=False,
+            )
             return UploadDocumentResult(
                 background_processing=False,
                 deduplicated=False,
                 document=document_entity,
                 revision=document_version,
             )
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
             self.session.rollback()
             if document_version is not None:
                 self._delete_document_chunks_for_targets(document_version, indexing_targets)
@@ -147,6 +175,15 @@ class IngestionService:
                 self._remove_file(str(upload_artifact.path))
             if normalized_path:
                 self._remove_file(normalized_path)
+            self.logger.exception(
+                "document_upload_failed",
+                filename=filename,
+                file_type=file_type,
+                document_id=document_entity.id if document_entity is not None else None,
+                document_revision_id=document_version.id if document_version is not None else None,
+                failure_stage="upload_document",
+                exception_type=type(exc).__name__,
+            )
             raise
 
     def complete_document_ingestion(self, revision_id: int) -> DocumentRevision:
@@ -169,16 +206,23 @@ class IngestionService:
             )
             self.session.commit()
             self.session.refresh(document_version)
+            self.logger.info(
+                "document_background_ingestion_completed",
+                document_revision_id=document_version.id,
+                file_type=document_version.file_type,
+            )
             return document_version
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
             self.session.rollback()
             failed_revision = self.document_repository.get_by_id(revision_id)
             if failed_revision is None:
                 raise
             self.logger.exception(
-                "Document background ingestion failed",
+                "document_background_ingestion_failed",
                 document_revision_id=revision_id,
                 file_type=document_version.file_type,
+                failure_stage="background_ingestion",
+                exception_type=type(exc).__name__,
             )
             self._delete_document_chunks_for_targets(failed_revision, indexing_targets)
             failed_revision.normalized_path = None
