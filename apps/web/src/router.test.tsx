@@ -40,6 +40,38 @@ function QueryClientCapture({
 
 function mockAuthResponse(data: unknown, ok = true, status = 200) {
   return vi.fn().mockImplementation((input: string) => {
+    if (input.endsWith("/api/auth/bootstrap")) {
+      if (!ok && status === 401) {
+        return Promise.resolve(
+          jsonResponse({
+            success: true,
+            data: {
+              authenticated: false,
+              access_token: null,
+              expires_in: null,
+              token_type: "Bearer",
+              user: null,
+            },
+            error: null,
+          }),
+        );
+      }
+
+      return Promise.resolve(
+        jsonResponse({
+          success: true,
+          data: {
+            authenticated: true,
+            access_token: "refreshed-token",
+            expires_in: 900,
+            token_type: "Bearer",
+            user: data,
+          },
+          error: null,
+        }),
+      );
+    }
+
     if (input.endsWith("/api/auth/refresh")) {
       if (!ok && status === 401) {
         return Promise.resolve(
@@ -166,6 +198,22 @@ function mockAuthenticatedChatWorkspaceResponse({
   messagesBySession?: Record<number, unknown[]>;
 } = {}) {
   return vi.fn().mockImplementation((input: string) => {
+    if (input.endsWith("/api/auth/bootstrap")) {
+      return Promise.resolve(
+        jsonResponse({
+          success: true,
+          data: {
+            authenticated: true,
+            access_token: "refreshed-token",
+            expires_in: 900,
+            token_type: "Bearer",
+            user: AUTHENTICATED_ADMIN,
+          },
+          error: null,
+        }),
+      );
+    }
+
     if (input.endsWith("/api/auth/refresh")) {
       return Promise.resolve(
         jsonResponse({
@@ -393,6 +441,10 @@ describe("AppRouter", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockImplementation((input: string) => {
+        if (input.endsWith("/api/auth/bootstrap")) {
+          return Promise.resolve(new Response("", { status: 500, statusText: "Server Error" }));
+        }
+
         if (input.endsWith("/api/auth/refresh")) {
           return Promise.resolve(new Response("", { status: 500, statusText: "Server Error" }));
         }
@@ -422,16 +474,19 @@ describe("AppRouter", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockImplementation((input: string) => {
-        if (input.endsWith("/api/auth/refresh")) {
+        if (input.endsWith("/api/auth/bootstrap")) {
           return Promise.resolve(
-            jsonResponse(
-              {
-                success: false,
-                data: null,
-                error: { code: "unauthorized", message: "Authentication required." },
+            jsonResponse({
+              success: true,
+              data: {
+                authenticated: false,
+                access_token: null,
+                expires_in: null,
+                token_type: "Bearer",
+                user: null,
               },
-              { status: 401, statusText: "Unauthorized" },
-            ),
+              error: null,
+            }),
           );
         }
 
@@ -453,6 +508,20 @@ describe("AppRouter", () => {
 
     expect(await screen.findByRole("heading", { name: "登录" })).toBeInTheDocument();
     expect(screen.queryByText("服务暂时不可用，请稍后重试。")).not.toBeInTheDocument();
+  });
+
+  it("redirects from /login when bootstrap restores an authenticated session", async () => {
+    vi.stubGlobal("fetch", mockAuthResponse(AUTHENTICATED_ADMIN));
+
+    render(
+      <MemoryRouter initialEntries={["/login"]}>
+        <AppProviders>
+          <AppRouter />
+        </AppProviders>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole("button", { name: "新建会话" })).toBeInTheDocument();
   });
 
   it("renders admin navigation for authenticated admin users", async () => {

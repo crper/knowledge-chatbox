@@ -1,6 +1,7 @@
 import { getAccessToken, setAccessToken } from "@/lib/auth/token-store";
 import { jsonResponse } from "@/test/http";
 import {
+  bootstrapAuthSession,
   changePassword,
   getCurrentUser,
   login,
@@ -65,6 +66,56 @@ describe("auth api", () => {
       expect.objectContaining({ method: "POST" }),
     );
     expect(getAccessToken()).toBe("refreshed-token");
+  });
+
+  it("calls bootstrap endpoint and stores the access token when a refresh session can be restored", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        success: true,
+        data: {
+          authenticated: true,
+          access_token: "bootstrapped-token",
+          expires_in: 900,
+          token_type: "Bearer",
+          user: { username: "admin" },
+        },
+        error: null,
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(bootstrapAuthSession()).resolves.toMatchObject({
+      accessToken: "bootstrapped-token",
+      user: { username: "admin" },
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      apiPath("/api/auth/bootstrap"),
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(getAccessToken()).toBe("bootstrapped-token");
+  });
+
+  it("returns null when bootstrap endpoint reports an anonymous session", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          success: true,
+          data: {
+            authenticated: false,
+            access_token: null,
+            expires_in: null,
+            token_type: "Bearer",
+            user: null,
+          },
+          error: null,
+        }),
+      ),
+    );
+
+    await expect(bootstrapAuthSession()).resolves.toBeNull();
+    expect(getAccessToken()).toBeNull();
   });
 
   it("calls logout endpoint", async () => {

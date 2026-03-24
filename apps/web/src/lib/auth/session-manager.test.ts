@@ -11,20 +11,23 @@ describe("session-manager", () => {
     vi.unstubAllGlobals();
   });
 
-  it("marks the session anonymous when refresh returns unauthorized during bootstrap", async () => {
+  it("marks the session anonymous when bootstrap endpoint reports no active session", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockImplementation((input: string) => {
-        if (input.endsWith("/api/auth/refresh")) {
+        if (input.endsWith("/api/auth/bootstrap")) {
           return Promise.resolve(
-            jsonResponse(
-              {
-                success: false,
-                data: null,
-                error: { code: "unauthorized", message: "Authentication required." },
+            jsonResponse({
+              success: true,
+              data: {
+                authenticated: false,
+                access_token: null,
+                expires_in: null,
+                token_type: "Bearer",
+                user: null,
               },
-              { status: 401, statusText: "Unauthorized" },
-            ),
+              error: null,
+            }),
           );
         }
 

@@ -53,6 +53,16 @@ class LoginResponse(BaseModel):
     user: AuthUserRead
 
 
+class SessionBootstrapRead(BaseModel):
+    """描述启动期认证恢复结果。"""
+
+    authenticated: bool
+    access_token: str | None = None
+    expires_in: int | None = None
+    token_type: str = "Bearer"
+    user: AuthUserRead | None = None
+
+
 class ChangePasswordRequest(BaseModel):
     """描述Change密码请求体。"""
 

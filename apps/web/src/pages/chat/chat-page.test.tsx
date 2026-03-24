@@ -155,6 +155,28 @@ function buildAuthenticatedFetch(options?: {
     sources_json: [];
   } | null = null;
   const fetchMock = vi.fn().mockImplementation((input: string, init?: RequestInit) => {
+    if (input.endsWith("/api/auth/bootstrap")) {
+      return Promise.resolve(
+        jsonResponse({
+          success: true,
+          data: {
+            authenticated: true,
+            access_token: "fresh-token",
+            expires_in: 900,
+            token_type: "Bearer",
+            user: {
+              id: 1,
+              username: "admin",
+              role: "admin",
+              status: "active",
+              theme_preference: "system",
+            },
+          },
+          error: null,
+        }),
+      );
+    }
+
     if (input.endsWith("/api/auth/refresh")) {
       return Promise.resolve(
         jsonResponse({

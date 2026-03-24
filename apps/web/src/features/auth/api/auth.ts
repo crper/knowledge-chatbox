@@ -25,6 +25,14 @@ type LoginEnvelope = AccessTokenEnvelope & {
   user: AppUser;
 };
 
+type SessionBootstrapEnvelope = {
+  authenticated: boolean;
+  access_token: string | null;
+  expires_in: number | null;
+  token_type: "Bearer";
+  user: AppUser | null;
+};
+
 /**
  * 获取当前用户。
  */
@@ -73,6 +81,27 @@ export async function refreshSession() {
   const accessToken = await requestAccessTokenRefresh();
   setAccessToken(accessToken);
   return accessToken;
+}
+
+/**
+ * 启动期恢复 refresh session；匿名态返回 null，不把它当成异常。
+ */
+export async function bootstrapAuthSession() {
+  const result = await openapiRequestRequired<SessionBootstrapEnvelope>(
+    apiFetchClient.POST("/api/auth/bootstrap"),
+  );
+
+  if (!result.authenticated || !result.access_token || !result.user) {
+    clearAccessToken();
+    return null;
+  }
+
+  setAccessToken(result.access_token);
+  return {
+    accessToken: result.access_token,
+    expiresIn: result.expires_in ?? 0,
+    user: result.user,
+  };
 }
 
 /**

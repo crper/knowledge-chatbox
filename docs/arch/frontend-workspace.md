@@ -130,7 +130,7 @@
 
 权限规则：
 
-- 启动期先通过 `/api/auth/refresh` 尝试恢复会话
+- 启动期先通过 `/api/auth/bootstrap` 尝试恢复 refresh session
 - 未登录或 access token 失效统一跳到 `/login`，并保留原目标地址
 - 已登录访问 `/login` 会被重定向到 `/chat`
 - 普通用户访问 `/users` 会看到 `403` 页面
@@ -184,6 +184,7 @@
 
 - access token 当前只保存在内存，不落 `localStorage`
 - refresh token 继续走 HttpOnly cookie，不在前端可读范围内
+- `/api/auth/bootstrap` 负责启动期恢复：匿名态返回 `200 + authenticated=false`，已登录态返回新 access token 和当前用户
 - `lib/api/generated/client.ts` 会自动附加 bearer access token；遇到 `401` 时按单飞策略调用 `/api/auth/refresh`
 - 若刷新失败，会清空内存 access token 并把会话状态标记为 `expired`
 - 修改密码这类账号安全错误不会直接把后端原始 message 塞回 UI；已知语义码会在组件层按当前语言翻译后展示；修改密码成功时，前端会清空当前用户缓存、把会话状态标记为 `expired`，并回到登录页

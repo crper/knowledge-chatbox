@@ -102,6 +102,36 @@ def test_refresh_rotates_cookie_and_returns_new_access_token(api_client: TestCli
     assert refresh_response.cookies.get("knowledge_chatbox_session") != original_cookie
 
 
+def test_bootstrap_returns_authenticated_false_without_session_cookie(
+    api_client: TestClient,
+) -> None:
+    response = api_client.post("/api/auth/bootstrap")
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert payload["success"] is True
+    assert payload["data"]["authenticated"] is False
+    assert payload["data"]["access_token"] is None
+    assert payload["data"]["user"] is None
+
+
+def test_bootstrap_restores_session_without_rotating_cookie(api_client: TestClient) -> None:
+    api_client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": "admin123456"},
+    )
+
+    bootstrap_response = api_client.post("/api/auth/bootstrap")
+    payload = bootstrap_response.json()
+
+    assert bootstrap_response.status_code == 200
+    assert payload["success"] is True
+    assert payload["data"]["authenticated"] is True
+    assert payload["data"]["user"]["username"] == "admin"
+    assert isinstance(payload["data"]["access_token"], str)
+    assert "knowledge_chatbox_session" not in bootstrap_response.cookies
+
+
 def test_login_preflight_request_is_allowed(api_client: TestClient) -> None:
     response = api_client.options(
         "/api/auth/login",

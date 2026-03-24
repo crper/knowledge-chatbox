@@ -215,6 +215,15 @@ class AuthService:
         self.session.commit()
         return refresh_token, self._build_access_token(user)
 
+    def bootstrap_session(self, token: str | None) -> tuple[str, User] | None:
+        """启动期尝试恢复会话；匿名态返回 None，而不是抛认证异常。"""
+        try:
+            user = self.get_current_user(token)
+        except UnauthorizedError:
+            return None
+
+        return self._build_access_token(user), user
+
     def change_password(self, user: User, current_password: str, new_password: str) -> User:
         """修改密码。"""
         verified, _ = self.password_manager.verify_password(user.password_hash, current_password)

@@ -17,6 +17,7 @@ from knowledge_chatbox_api.schemas.auth import (
     ChangePasswordRequest,
     LoginRequest,
     LoginResponse,
+    SessionBootstrapRead,
     UpdatePreferencesRequest,
 )
 from knowledge_chatbox_api.schemas.common import Envelope
@@ -96,6 +97,37 @@ def refresh(
         data=AccessTokenRead(
             access_token=access_token,
             expires_in=auth_service.settings.access_token_ttl_minutes * 60,
+        ),
+        error=None,
+    )
+
+
+@router.post("/bootstrap", response_model=Envelope[SessionBootstrapRead])
+def bootstrap(
+    request: Request,
+    response: Response,
+    token: SessionTokenDep,
+    auth_service: AuthServiceDep,
+) -> Envelope[SessionBootstrapRead]:
+    """启动期恢复 refresh session；匿名态返回 200 + authenticated=false。"""
+    restored = auth_service.bootstrap_session(token)
+
+    if restored is None:
+        response.delete_cookie(auth_service.settings.session_cookie_name, path="/")
+        return Envelope(
+            success=True,
+            data=SessionBootstrapRead(authenticated=False),
+            error=None,
+        )
+
+    access_token, user = restored
+    return Envelope(
+        success=True,
+        data=SessionBootstrapRead(
+            authenticated=True,
+            access_token=access_token,
+            expires_in=auth_service.settings.access_token_ttl_minutes * 60,
+            user=to_auth_user_read(user),
         ),
         error=None,
     )

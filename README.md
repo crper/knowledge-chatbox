@@ -126,6 +126,7 @@ just setup
 | 第一次接手仓库并准备开发 | [CONTRIBUTING.md](./CONTRIBUTING.md) |
 | 只想先跑起来 | [快速开始](#快速开始) |
 | 想先看架构文档导航 | [docs/arch/README.md](./docs/arch/README.md) |
+| 想理解登录 / 会话恢复 / refresh | [docs/arch/auth-and-session-flow.md](./docs/arch/auth-and-session-flow.md) |
 | 只改前端 | [apps/web/README.md](./apps/web/README.md) |
 | 只改后端 | [apps/api/README.md](./apps/api/README.md) |
 | 理解系统边界 | [docs/arch/system-overview.md](./docs/arch/system-overview.md) |

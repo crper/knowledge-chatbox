@@ -43,15 +43,17 @@ flowchart TD
 
 1. 登录成功后，后端返回短期 bearer `access token`
 2. 后端同时通过 HttpOnly cookie 写入可轮换 `refresh session`
-3. 前端启动期若内存里没有 access token，会先请求 `/api/auth/refresh`
-4. 受保护请求默认带 `Authorization: Bearer <access token>`
-5. 若业务请求返回 `401`，前端按单飞策略重试 `/api/auth/refresh`
-6. refresh 成功则回放原请求；失败则清空内存 access token，并把会话状态标记为 `expired`
+3. 前端启动期若内存里没有 access token，会先请求 `/api/auth/bootstrap`
+4. `/api/auth/bootstrap` 若命中有效 refresh session，会直接返回新 access token；若当前就是匿名态，则返回 `200 + authenticated=false`
+5. 受保护请求默认带 `Authorization: Bearer <access token>`
+6. 若业务请求返回 `401`，前端按单飞策略重试 `/api/auth/refresh`
+7. refresh 成功则回放原请求；失败则清空内存 access token，并把会话状态标记为 `expired`
 
 关键约束：
 
 - access token 当前只保存在前端内存，不落 `localStorage`
 - refresh session 继续以服务端 `auth_sessions` 为真相源
+- 启动期匿名探测和业务请求续期当前已分开：前者走 `/api/auth/bootstrap`，后者走 `/api/auth/refresh`
 - refresh cookie 默认按请求 scheme 自动决定是否带 `Secure`；如果 HTTPS 终止在反向代理而应用层拿不到 `https`，要显式设置 `SESSION_COOKIE_SECURE=true`
 - 资源上传、普通 JSON 请求和 SSE 流式聊天共享同一套 `401 -> refresh -> retry once` 语义
 - `/api/auth/me` 在鉴权阶段保持纯读，不为 session 心跳同步写库

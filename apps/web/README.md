@@ -157,7 +157,7 @@ apps/web/
 - 服务端列表、详情、最终结果不要再复制一份进 Zustand
 - 页面优先组合 `features/*` 的 hook 和组件，不在 page 里直接堆 query + mutation + 副作用
 - access token 当前只放在内存，不进 `localStorage`；前端会话状态单独放在 `lib/auth/session-store.ts`，用于区分 `bootstrapping / authenticated / anonymous / expired / degraded`
-- 顶层 `AppBootstrapGate` 会在路由渲染前尝试通过 `/api/auth/refresh` 恢复会话；若恢复失败且当前不是 `/login`，受保护页面会在“回登录页”和“认证降级页”之间做分流
+- 顶层 `AppBootstrapGate` 会在路由渲染前尝试通过 `/api/auth/bootstrap` 恢复 refresh session；匿名态返回 `200 + authenticated=false`，不会把登录页首屏探测表现成控制台错误；若启动恢复失败且当前不是 `/login`，受保护页面会在“回登录页”和“认证降级页”之间做分流
 - provider 设置页这类复杂表单，纯校验 helper 当前只返回 i18n key；具体文案由组件层按当前语言翻译，不在纯逻辑层硬编码中英文字符串
 - 主题先写本地 store；登录用户在设置中心或账户中枢切换时会同步 `/api/auth/preferences`，登录页匿名态先切的主题会在登录成功后补写到账号偏好
 - 最近访问的聊天会话 ID 会持久化到 `localStorage`；打开 `/chat` 时优先恢复该会话，恢复期间先保持加载态；若记录已失效则回退到当前列表第一项，没有会话时清空记录并保持空入口态

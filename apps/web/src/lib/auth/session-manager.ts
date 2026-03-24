@@ -4,7 +4,7 @@
 
 import type { QueryClient } from "@tanstack/react-query";
 
-import { getCurrentUser, refreshSession } from "@/features/auth/api/auth";
+import { bootstrapAuthSession, getCurrentUser } from "@/features/auth/api/auth";
 import { ApiRequestError } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/query-keys";
 import { clearAccessToken, getAccessToken } from "./token-store";
@@ -14,17 +14,25 @@ import { useSessionStore } from "./session-store";
  * 启动时恢复当前会话状态。
  */
 export async function bootstrapSession(queryClient: QueryClient) {
-  try {
-    if (!getAccessToken()) {
-      await refreshSession();
-    }
-  } catch (error) {
-    if (error instanceof ApiRequestError && error.status === 401) {
-      markSessionAnonymous();
-      return null;
-    }
+  if (!getAccessToken()) {
+    try {
+      const restored = await bootstrapAuthSession();
+      if (!restored) {
+        markSessionAnonymous();
+        return null;
+      }
 
-    throw error;
+      queryClient.setQueryData(queryKeys.auth.me, restored.user);
+      useSessionStore.getState().setStatus("authenticated");
+      return restored.user;
+    } catch (error) {
+      if (error instanceof ApiRequestError && error.status === 401) {
+        markSessionAnonymous();
+        return null;
+      }
+
+      throw error;
+    }
   }
 
   const user = await queryClient.fetchQuery({

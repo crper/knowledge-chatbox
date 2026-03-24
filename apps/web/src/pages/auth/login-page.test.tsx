@@ -33,6 +33,44 @@ function authenticatedFetch(
   options?: { loginError?: { code?: string; message?: string; status: number } },
 ) {
   return vi.fn().mockImplementation((input: string, init?: RequestInit) => {
+    if (input.endsWith("/api/auth/bootstrap")) {
+      if (!role) {
+        return Promise.resolve(
+          jsonResponse({
+            success: true,
+            data: {
+              authenticated: false,
+              access_token: null,
+              expires_in: null,
+              token_type: "Bearer",
+              user: null,
+            },
+            error: null,
+          }),
+        );
+      }
+
+      return Promise.resolve(
+        jsonResponse({
+          success: true,
+          data: {
+            authenticated: true,
+            access_token: "refreshed-token",
+            expires_in: 900,
+            token_type: "Bearer",
+            user: {
+              id: 1,
+              username: role,
+              role,
+              status: "active",
+              theme_preference: "system",
+            },
+          },
+          error: null,
+        }),
+      );
+    }
+
     if (input.endsWith("/api/auth/refresh")) {
       if (!role) {
         return Promise.resolve(

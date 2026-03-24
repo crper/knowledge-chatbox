@@ -4,13 +4,14 @@
 
 如果你只是想先跑起来，先看仓库根 `README.md`；如果你要接手仓库并开始开发，先看根 `README.md` 和 `CONTRIBUTING.md`；如果你只接手某一端，再补 `apps/web/README.md` 或 `apps/api/README.md`。
 
-[系统总览](./system-overview.md) • [前端工作台](./frontend-workspace.md) • [Provider 与设置](./provider-and-settings.md) • [API 与权限边界](./api-surface-and-permissions.md) • [数据库设计](./database-design.md) • [运行时流程](./runtime-flows.md) • [仓库地图与约定](./repo-map-and-conventions.md) • [部署与运维](./deployment-and-operations.md)
+[系统总览](./system-overview.md) • [认证与会话流程](./auth-and-session-flow.md) • [前端工作台](./frontend-workspace.md) • [Provider 与设置](./provider-and-settings.md) • [API 与权限边界](./api-surface-and-permissions.md) • [数据库设计](./database-design.md) • [运行时流程](./runtime-flows.md) • [仓库地图与约定](./repo-map-and-conventions.md) • [部署与运维](./deployment-and-operations.md)
 
 ## 文档导航
 
 | 文档 | 什么时候打开 | 读完会知道什么 |
 | --- | --- | --- |
 | [system-overview.md](./system-overview.md) | 第一次接触仓库 | V1 目标、系统边界、核心模型、主链路和非目标 |
+| [auth-and-session-flow.md](./auth-and-session-flow.md) | 需要理解登录、启动恢复、refresh 与改密后失效 | access token / refresh session 分工、启动恢复、`401 -> refresh -> retry once`、改密后重新登录 |
 | [frontend-workspace.md](./frontend-workspace.md) | 需要理解 Web 工作台 | 三栏工作台、账户中枢、设置中心、页面边界、前端状态分工 |
 | [provider-and-settings.md](./provider-and-settings.md) | 需要改模型配置或排查 provider | OpenAI / Anthropic / Voyage / Ollama 配置、settings API、pending embedding route、索引代际切换 |
 | [api-surface-and-permissions.md](./api-surface-and-permissions.md) | 需要对接口或权限做改动 | 路由分组、角色边界、统一响应格式、幂等和流式约束 |
@@ -26,18 +27,21 @@
 1. 先看根 [README.md](../../README.md)
 2. 再看 [CONTRIBUTING.md](../../CONTRIBUTING.md)
 3. 再看 [system-overview.md](./system-overview.md)
-4. 最后看 [repo-map-and-conventions.md](./repo-map-and-conventions.md)
+4. 再看 [auth-and-session-flow.md](./auth-and-session-flow.md)
+5. 最后看 [repo-map-and-conventions.md](./repo-map-and-conventions.md)
 
 ### 想改前端工作台
 
 1. 先看 [frontend-workspace.md](./frontend-workspace.md)
-2. 再看 [api-surface-and-permissions.md](./api-surface-and-permissions.md)
+2. 再看 [auth-and-session-flow.md](./auth-and-session-flow.md)
+3. 再看 [api-surface-and-permissions.md](./api-surface-and-permissions.md)
 
 ### 想改后端接口或数据层
 
 1. 先看 [api-surface-and-permissions.md](./api-surface-and-permissions.md)
-2. 再看 [database-design.md](./database-design.md)
-3. 最后按需要补 [runtime-flows.md](./runtime-flows.md)
+2. 若涉及认证，再看 [auth-and-session-flow.md](./auth-and-session-flow.md)
+3. 再看 [database-design.md](./database-design.md)
+4. 最后按需要补 [runtime-flows.md](./runtime-flows.md)
 
 ### 想改 provider、索引或设置中心
 
@@ -54,8 +58,9 @@
 ### 想做回归验证或排查启动 / 认证 / 流式细节
 
 1. 先看 [repo-map-and-conventions.md](./repo-map-and-conventions.md)
-2. 再看 [runtime-flows.md](./runtime-flows.md)
-3. 需要包级命令时补 [apps/web/README.md](../../apps/web/README.md) 或 [apps/api/README.md](../../apps/api/README.md)
+2. 再看 [auth-and-session-flow.md](./auth-and-session-flow.md)
+3. 再看 [runtime-flows.md](./runtime-flows.md)
+4. 需要包级命令时补 [apps/web/README.md](../../apps/web/README.md) 或 [apps/api/README.md](../../apps/api/README.md)
 
 ## 维护原则
 

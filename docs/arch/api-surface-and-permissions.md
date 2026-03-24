@@ -10,6 +10,7 @@
 ## 2. 认证与角色
 
 - `POST /api/auth/login`
+- `POST /api/auth/bootstrap`
 - `POST /api/auth/refresh`
 - `GET /api/auth/me`
 - `POST /api/auth/logout`
@@ -17,6 +18,7 @@
 当前约束：
 
 - `POST /api/auth/login` 当前返回短期 bearer `access token`，并继续通过 HttpOnly cookie 写入可轮换 `refresh session`
+- `POST /api/auth/bootstrap` 用于启动期恢复 refresh session；匿名态返回 `200 + authenticated=false`，已登录态只返回新的 bearer `access token + user`，不轮换 refresh session
 - `POST /api/auth/refresh` 会轮换 refresh session，并返回新的 bearer `access token`
 - `GET /api/auth/me`、`/api/settings` 等受保护读取接口当前优先接受 `Authorization: Bearer <token>`
 - `GET /api/auth/me` 当前是纯读取会话与用户，不在每次请求里同步刷新 `auth_sessions.last_seen_at`
