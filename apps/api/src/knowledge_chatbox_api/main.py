@@ -90,7 +90,8 @@ def _raise_if_database_schema_incompatible(error: OperationalError) -> None:
                 "检测到旧 schema/旧迁移历史，请执行 `just reset-data` 后再启动当前版本。"
             ) from None
         raise RuntimeError(
-            "数据库尚未初始化。请先在 apps/api 目录执行 `uv run python -m alembic upgrade head`，"
+            "数据库尚未初始化。请先在仓库根目录执行 `just api-migrate`"
+            "（或在 apps/api 目录执行 `uv run python -m alembic upgrade head`），"
             "再启动 API 服务。"
         ) from None
 
@@ -127,9 +128,16 @@ def create_app() -> FastAPI:
                 admin = auth_service.ensure_default_admin()
                 SpaceRepository(session).ensure_personal_space(user_id=admin.id)
                 SettingsService(session, settings).get_or_create_settings_record()
-                compensate_processing_documents(session)
-                compensate_active_chat_runs(session)
-                compensate_index_rebuild_status(session, settings)
+                compensated_documents = compensate_processing_documents(session)
+                compensated_runs = compensate_active_chat_runs(session)
+                compensated_rebuild = compensate_index_rebuild_status(session, settings)
+                logger.info(
+                    "Startup compensation completed",
+                    admin_id=admin.id,
+                    compensated_documents=compensated_documents,
+                    compensated_runs=compensated_runs,
+                    compensated_index_rebuild=compensated_rebuild,
+                )
             except OperationalError as error:
                 _raise_if_database_schema_incompatible(error)
                 raise

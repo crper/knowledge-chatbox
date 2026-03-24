@@ -1,6 +1,9 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 
+import { queryKeys } from "@/lib/api/query-keys";
 import { useSessionStore } from "@/lib/auth/session-store";
 import { AppProviders } from "@/providers/app-providers";
 import { AppRouter } from "@/router";
@@ -20,6 +23,20 @@ const AUTHENTICATED_ADMIN = {
   status: "active",
   theme_preference: "system",
 } as const;
+
+function QueryClientCapture({
+  onReady,
+}: {
+  onReady: (client: ReturnType<typeof useQueryClient>) => void;
+}) {
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    onReady(queryClient);
+  }, [onReady, queryClient]);
+
+  return null;
+}
 
 function mockAuthResponse(data: unknown, ok = true, status = 200) {
   return vi.fn().mockImplementation((input: string) => {
@@ -339,6 +356,37 @@ describe("AppRouter", () => {
     );
 
     expect(await screen.findByRole("heading", { name: "登录" })).toBeInTheDocument();
+  });
+
+  it("redirects to login instead of rendering a blank protected shell when current user cache becomes empty", async () => {
+    vi.stubGlobal("fetch", mockAuthResponse(AUTHENTICATED_ADMIN));
+    let capturedQueryClient: ReturnType<typeof useQueryClient> | null = null;
+
+    render(
+      <MemoryRouter initialEntries={["/settings"]}>
+        <AppProviders>
+          <QueryClientCapture
+            onReady={(queryClient) => {
+              capturedQueryClient = queryClient;
+            }}
+          />
+          <AppRouter />
+        </AppProviders>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole("heading", { name: "提供商配置" })).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(capturedQueryClient).not.toBeNull();
+    });
+
+    await act(async () => {
+      capturedQueryClient?.setQueryData(queryKeys.auth.me, null);
+    });
+
+    expect(await screen.findByRole("heading", { name: "登录" })).toBeInTheDocument();
+    expect(useSessionStore.getState().status).toBe("expired");
   });
 
   it("surfaces auth service errors instead of redirecting to login", async () => {

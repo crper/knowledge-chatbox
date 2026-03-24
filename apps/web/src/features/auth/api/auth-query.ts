@@ -21,12 +21,9 @@ export function currentUserQueryOptions() {
 /**
  * 获取修改密码变更配置。
  */
-export function changePasswordMutationOptions(queryClient: QueryClient) {
+export function changePasswordMutationOptions() {
   return mutationOptions({
     mutationFn: changePassword,
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.auth.me });
-    },
   });
 }
 

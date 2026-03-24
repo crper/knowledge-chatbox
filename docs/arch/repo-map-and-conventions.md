@@ -180,6 +180,7 @@ knowledge-chatbox/
 just init-env
 just setup
 just --list
+just api-migrate
 just dev
 just repo-check
 just test
@@ -195,7 +196,7 @@ just docker-logs api
 just docker-health
 ```
 
-首次 clone、前端 `pnpm-lock.yaml` 变更，或后端 `uv.lock` 变更后，先按根 `README.md` 执行 `just init-env -> just setup -> just dev`；其中 `just dev` 不负责补装依赖。`just repo-check` 负责校验 README / 包级 README 与 `justfile` 的关键入口约束。
+首次 clone、前端 `pnpm-lock.yaml` 变更，或后端 `uv.lock` 变更后，先按根 `README.md` 执行 `just init-env -> just setup -> just dev`；其中 `just dev` 不负责补装依赖。`just repo-check` 负责校验 README / 包级 README 与 `justfile` 的关键入口约束。如果只是补齐本地数据库 schema、不想直接启动 API，优先在仓库根执行 `just api-migrate`。
 
 只有当你明确需要子项目独立运行时，再进入 `apps/web` 或 `apps/api` 执行细分命令。
 

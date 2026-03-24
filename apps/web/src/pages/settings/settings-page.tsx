@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router-dom";
+import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -30,9 +31,11 @@ import {
 import type { AppSettings } from "@/features/settings/api/settings";
 import { getSettingsSections, resolveSettingsSection } from "@/features/settings/settings-sections";
 import { getIndexStatusLabel } from "@/features/settings/utils/index-status";
+import { queryKeys } from "@/lib/api/query-keys";
 import { formatProviderProfile, getProviderLabel } from "@/lib/provider-display";
 import type { AppUser } from "@/lib/api/client";
 import { getApiErrorMessage } from "@/lib/api/client";
+import { markSessionExpired } from "@/lib/auth/session-manager";
 import { useIsMobile } from "@/lib/hooks/use-mobile";
 
 /**
@@ -58,7 +61,7 @@ export function SettingsPage({ user }: { user: AppUser }) {
   );
   const updateMutation = useMutation(updateSettingsMutationOptions(queryClient));
   const testMutation = useMutation(testProviderConnectionMutationOptions());
-  const passwordMutation = useMutation(changePasswordMutationOptions(queryClient));
+  const passwordMutation = useMutation(changePasswordMutationOptions());
   const preferenceMutation = useMutation(updatePreferencesMutationOptions(queryClient));
 
   useEffect(() => {
@@ -278,6 +281,10 @@ export function SettingsPage({ user }: { user: AppUser }) {
       onClose={() => setPasswordDialogOpen(false)}
       onSubmit={async (input) => {
         await passwordMutation.mutateAsync(input);
+        await queryClient.cancelQueries({ queryKey: queryKeys.auth.me });
+        queryClient.setQueryData(queryKeys.auth.me, null);
+        markSessionExpired();
+        toast.success(t("changePasswordSuccessToast", { ns: "auth" }));
       }}
     />
   );

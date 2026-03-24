@@ -7,6 +7,20 @@ import { AppProviders } from "@/providers/app-providers";
 import { AppRouter } from "@/router";
 import { jsonResponse } from "@/test/http";
 
+const sonnerMocks = vi.hoisted(() => ({
+  error: vi.fn(),
+  success: vi.fn(),
+}));
+
+vi.mock("sonner", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("sonner")>();
+
+  return {
+    ...actual,
+    toast: sonnerMocks,
+  };
+});
+
 const DEFAULT_SYSTEM_PROMPT = [
   "你是 Knowledge Chatbox 的 AI 助手。",
   "请基于用户提供的问题、会话历史和检索到的资源内容，给出准确、简洁、可执行的回答。",
@@ -210,6 +224,8 @@ describe("login page", () => {
   beforeEach(async () => {
     localStorage.clear();
     useSessionStore.getState().reset();
+    sonnerMocks.error.mockReset();
+    sonnerMocks.success.mockReset();
     await i18n.changeLanguage("zh-CN");
   });
 
@@ -622,6 +638,39 @@ describe("login page", () => {
     fireEvent.click(screen.getByRole("link", { name: "账号安全" }));
     expect(await screen.findByRole("heading", { name: "账号安全" })).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "修改密码" })).toBeInTheDocument();
+  });
+
+  it("returns to login after changing password successfully", async () => {
+    const fetchMock = authenticatedFetch("admin");
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={["/settings?section=security"]}>
+        <AppProviders>
+          <AppRouter />
+        </AppProviders>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "修改密码" }));
+    fireEvent.change(await screen.findByLabelText("当前密码"), {
+      target: { value: "admin123456" },
+    });
+    fireEvent.change(screen.getByLabelText("新密码"), {
+      target: { value: "new-admin-123" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "提交" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringMatching(/\/api\/auth\/change-password$/),
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+
+    expect(await screen.findByRole("heading", { name: "登录" })).toBeInTheDocument();
+    expect(useSessionStore.getState().status).toBe("expired");
+    expect(sonnerMocks.success).toHaveBeenCalledWith("密码已更新，请重新登录。");
   });
 
   it("allows theme switching on login page", async () => {

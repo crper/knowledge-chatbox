@@ -139,7 +139,7 @@
 - 主区保留当前状态摘要、主配置表单和必要操作入口；高级区只承载检索覆盖、备用模板和 Timeout
 - 本地校验 helper 只返回稳定的 validation key；具体文案在组件层通过 i18n 翻译
 - 本地校验只负责字段完整性和基础数值约束；provider 可达性、鉴权和模型存在性仍通过 `POST /api/settings/test-routes` 判断
-- `账号安全` 分组里的修改密码弹窗沿用同一原则：前端先做字段校验，后端保留 `invalid_credentials` 这类稳定语义码
+- `账号安全` 分组里的修改密码弹窗沿用同一原则：前端先做字段校验，后端保留 `invalid_credentials` 这类稳定语义码；修改密码成功后当前登录状态立即失效，前端回到登录页要求重新登录
 - 设置中心的页面组织与交互边界，统一看 [frontend-workspace.md](./frontend-workspace.md)
 
 ## 6. 索引重建状态

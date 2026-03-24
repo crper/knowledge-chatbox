@@ -51,6 +51,12 @@
 2. 再看根 [README.md](../../README.md) 里的运行模式表
 3. 最后回头检查 [repo-map-and-conventions.md](./repo-map-and-conventions.md) 里的文档同步规则
 
+### 想做回归验证或排查启动 / 认证 / 流式细节
+
+1. 先看 [repo-map-and-conventions.md](./repo-map-and-conventions.md)
+2. 再看 [runtime-flows.md](./runtime-flows.md)
+3. 需要包级命令时补 [apps/web/README.md](../../apps/web/README.md) 或 [apps/api/README.md](../../apps/api/README.md)
+
 ## 维护原则
 
 - 这里写的是“当前实现真相”。代码如果已经变了，文档也必须跟着变。

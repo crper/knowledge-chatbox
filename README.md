@@ -100,6 +100,7 @@ just setup
 | --- | --- | --- |
 | 首次安装依赖 | `just setup` | 同步后端虚拟环境和前端依赖 |
 | 看仓库入口 | `just --list` | 查看当前保留的高频命令 |
+| 手动执行数据库迁移 | `just api-migrate` | 只补齐本地 API schema，不启动服务 |
 | 本地开发 | `just dev` | 依赖已安装后启动前后端 |
 | 检查仓库表面约束 | `just repo-check` | 校验 README / 包级 README 和 `justfile` 的关键入口是否保持一致 |
 | 只跑后端 | `just api-dev` | FastAPI 开发态 |

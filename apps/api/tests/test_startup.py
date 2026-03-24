@@ -32,7 +32,7 @@ def test_startup_requires_database_migration(
 
     app = create_app()
 
-    with pytest.raises(RuntimeError, match=r"uv run python -m alembic upgrade head"):
+    with pytest.raises(RuntimeError, match=r"just api-migrate"):
         with TestClient(app):
             pass
 

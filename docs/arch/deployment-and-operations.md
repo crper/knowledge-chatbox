@@ -23,6 +23,7 @@
 
 - 首次 clone 或依赖刚更新时，先执行：`just init-env` -> `just setup`
 - 依赖已安装后的推荐入口：仓库根目录 `just dev`
+- 只需要手动补齐本地数据库 schema 时，优先使用仓库根目录 `just api-migrate`
 - 后端本地静态检查入口：仓库根目录 `just api-check`，内部会执行 `ruff check`、`ruff format --check` 和 `basedpyright`
 - 仓库表面入口检查：仓库根目录 `just repo-check`，用于校验 README / 包级 README 和 `justfile` 的关键入口约束
 - Web 子命令：`apps/web` 下用 `vp dev`
