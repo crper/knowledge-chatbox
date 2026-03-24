@@ -10,6 +10,7 @@ from knowledge_chatbox_api.services.chat.chat_persistence_service import ChatPer
 from knowledge_chatbox_api.services.chat.chat_service import ChatService
 
 STREAM_INTERRUPTED_ERROR_MESSAGE = "本次生成连接中断，请重试。"
+PROVIDER_STREAM_ENDED_EARLY_ERROR_MESSAGE = "provider stream ended before completion"
 
 
 def _event_attr(event: Any, name: str, default=None):
@@ -198,6 +199,7 @@ class ChatRunService:
                 yield event
 
             started_text = False
+            saw_completed = False
             usage: dict | None = None
 
             for chunk in self.response_adapter.stream_response(prompt_messages, self.settings):
@@ -234,6 +236,7 @@ class ChatRunService:
                     continue
 
                 if chunk_type == "completed":
+                    saw_completed = True
                     usage = _event_attr(chunk, "usage")
                     if started_text:
                         event_seq, event = self._append_event(
@@ -297,6 +300,27 @@ class ChatRunService:
                     )
                     yield event
                     return
+
+            if not saw_completed:
+                user_message.status = "failed"
+                user_message.error_message = PROVIDER_STREAM_ENDED_EARLY_ERROR_MESSAGE
+                self.persistence.fail_run(
+                    run,
+                    assistant_message,
+                    PROVIDER_STREAM_ENDED_EARLY_ERROR_MESSAGE,
+                )
+                event_seq, event = self._append_event(
+                    run,
+                    event_seq,
+                    "run.failed",
+                    {
+                        "run_id": run.id,
+                        "assistant_message_id": assistant_message.id,
+                        "error_message": PROVIDER_STREAM_ENDED_EARLY_ERROR_MESSAGE,
+                    },
+                )
+                yield event
+                return
 
             self.persistence.complete_run(run, assistant_message, sources, usage)
             event_seq, event = self._append_event(

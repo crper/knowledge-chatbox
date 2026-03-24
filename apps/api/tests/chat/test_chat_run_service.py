@@ -237,6 +237,59 @@ def test_chat_run_service_marks_run_failed_when_stream_is_closed_early(
     assert chat_run.error_message == "本次生成连接中断，请重试。"
 
 
+def test_chat_run_service_marks_run_failed_when_provider_stream_ends_without_completed(
+    migrated_db_session,
+) -> None:
+    class HangingStreamingAdapterStub:
+        def stream_response(self, messages, settings):
+            del messages, settings
+            yield SimpleNamespace(type="text_delta", delta="partial")
+            yield SimpleNamespace(type="text_delta", delta=" response")
+
+    chat_session = create_chat_session(migrated_db_session)
+    chat_repository = ChatRepository(migrated_db_session)
+    run_repository = ChatRunRepository(migrated_db_session)
+    event_repository = ChatRunEventRepository(migrated_db_session)
+    service = ChatRunService(
+        session=migrated_db_session,
+        chat_repository=chat_repository,
+        chat_run_repository=run_repository,
+        chat_run_event_repository=event_repository,
+        retry_service=RetryService(chat_repository, migrated_db_session),
+        chroma_store=InMemoryChromaStore(),
+        response_adapter=HangingStreamingAdapterStub(),
+        embedding_adapter=None,
+        settings=SimpleNamespace(
+            response_route={"provider": "openai", "model": "gpt-5.4"},
+            embedding_route={"provider": "openai", "model": "text-embedding-3-small"},
+            system_prompt=None,
+            active_index_generation=1,
+        ),
+        presenter=ChatStreamPresenter(),
+    )
+
+    events = list(
+        service.stream_run(
+            session_id=chat_session.id,
+            content="question",
+            client_request_id="req-stream-eof-1",
+        )
+    )
+
+    messages = chat_repository.list_messages(chat_session.id)
+    assistant_message = next(message for message in messages if message.role == "assistant")
+    chat_run = run_repository.get_run(events[0]["data"]["run_id"])
+    persisted_events = event_repository.list_for_run(events[0]["data"]["run_id"])
+
+    assert [event["event"] for event in events][-1] == "run.failed"
+    assert assistant_message.status == "failed"
+    assert assistant_message.error_message == "provider stream ended before completion"
+    assert chat_run is not None
+    assert chat_run.status == "failed"
+    assert chat_run.error_message == "provider stream ended before completion"
+    assert persisted_events[-1].event_type == "run.failed"
+
+
 def test_chat_stream_wrapper_closes_inner_run_stream_when_consumer_disconnects(
     migrated_db_session,
 ) -> None:
