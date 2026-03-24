@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from io import BytesIO
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 from PIL import Image
@@ -190,6 +191,61 @@ def create_prompt_document_version(
     migrated_db_session.commit()
     migrated_db_session.refresh(document_version)
     return document_version
+
+
+def test_chat_service_uses_recent_history_query_for_prompt_assembly() -> None:
+    class RecentHistoryRepository:
+        def __init__(self) -> None:
+            self.requested_limit: int | None = None
+
+        def list_messages(self, session_id: int):
+            del session_id
+            raise AssertionError("ChatService should not load full history for prompt assembly.")
+
+        def list_recent_messages(self, session_id: int, *, limit: int):
+            del session_id
+            self.requested_limit = limit
+            return [
+                SimpleNamespace(role="assistant", content="message-3"),
+                SimpleNamespace(role="user", content="message-4"),
+                SimpleNamespace(role="assistant", content="message-5"),
+                SimpleNamespace(role="user", content="message-6"),
+            ]
+
+        def get_session(self, session_id: int):
+            del session_id
+            return SimpleNamespace(space_id=1)
+
+    repository = RecentHistoryRepository()
+    service = ChatService(
+        session=None,
+        chat_repository=repository,
+        chroma_store=InMemoryChromaStore(),
+        response_adapter=ResponseAdapterStub(),
+        embedding_adapter=EmbeddingAdapterStub(),
+        settings=type(
+            "SettingsStub",
+            (),
+            {
+                "active_index_generation": 1,
+                "system_prompt": None,
+                "provider_profiles": {},
+                "embedding_route": {"provider": "openai", "model": "text-embedding-3-small"},
+            },
+        )(),
+    )
+
+    prompt_messages, sources = service.build_prompt_messages_and_sources(1, "hello")
+
+    assert repository.requested_limit == 4
+    assert sources == []
+    assert prompt_messages == [
+        {"role": "assistant", "content": "message-3"},
+        {"role": "user", "content": "message-4"},
+        {"role": "assistant", "content": "message-5"},
+        {"role": "user", "content": "message-6"},
+        {"role": "user", "content": "hello"},
+    ]
 
 
 def test_chat_service_uses_embedding_adapter_for_query_and_returns_sources(

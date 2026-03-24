@@ -31,6 +31,7 @@ DOCUMENT_ATTACHMENT_PROCESSING_ERROR_MESSAGE = (
     "Attached document could not be processed. Make sure it was indexed successfully and retry."
 )
 ATTACHED_DOCUMENT_PROMPT_CHAR_LIMIT = 6000
+PROMPT_HISTORY_MESSAGE_LIMIT = 4
 MIN_RETRIEVAL_SOURCE_SCORE = 0.45
 SMALL_TALK_QUERIES = {
     "hello",
@@ -122,7 +123,10 @@ class ChatService:
         *,
         attachments: list[dict[str, Any]] | None = None,
     ) -> tuple[list[dict[str, Any]], list[dict]]:
-        history = self.chat_repository.list_messages(session_id)
+        history = self.chat_repository.list_recent_messages(
+            session_id,
+            limit=PROMPT_HISTORY_MESSAGE_LIMIT,
+        )
         chat_session = self.chat_repository.get_session(session_id)
         active_space_id = chat_session.space_id if chat_session is not None else None
         prompt_attachments = self._build_prompt_attachments(attachments, active_space_id)
@@ -227,7 +231,7 @@ class ChatService:
                 }
             )
         prompt_messages.extend(
-            {"role": message.role, "content": message.content} for message in history[-4:]
+            {"role": message.role, "content": message.content} for message in history
         )
         if not history or history[-1].role != "user" or history[-1].content != question:
             if prompt_attachments:

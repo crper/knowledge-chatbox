@@ -198,6 +198,20 @@ class ChatRepository:
         )
         return list(self.session.scalars(statement).all())
 
+    def list_recent_messages(self, session_id: int, *, limit: int) -> list[ChatMessage]:
+        """按时间顺序返回最近 N 条消息。"""
+        if limit <= 0:
+            return []
+        statement = (
+            select(ChatMessage)
+            .where(ChatMessage.session_id == session_id)
+            .order_by(ChatMessage.id.desc())
+            .limit(limit)
+        )
+        messages = list(self.session.scalars(statement).all())
+        messages.reverse()
+        return messages
+
     def get_assistant_reply(self, reply_to_message_id: int) -> ChatMessage | None:
         """获取AssistantReply。"""
         statement = (
