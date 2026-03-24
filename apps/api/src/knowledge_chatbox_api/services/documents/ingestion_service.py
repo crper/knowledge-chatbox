@@ -35,6 +35,7 @@ from knowledge_chatbox_api.services.settings.settings_service import (
     SettingsService,
 )
 from knowledge_chatbox_api.utils.chroma import get_chroma_store
+from knowledge_chatbox_api.utils.files import PersistedUpload
 
 
 @dataclass
@@ -77,32 +78,32 @@ class IngestionService:
         self,
         actor,
         filename: str,
-        content: bytes,
+        upload_artifact: PersistedUpload,
         content_type: str,
     ) -> UploadDocumentResult:
-        file_type = self._detect_file_type(filename, content_type)
         document_entity: Document | None = None
         document_version: DocumentRevision | None = None
         normalized_path: str | None = None
         indexing_targets: list[IndexingTarget] = []
 
         try:
+            file_type = self._detect_file_type(filename, content_type)
             versioning_result = self.versioning_service.create_document_version(
                 actor=actor,
                 filename=filename,
-                content=content,
+                upload_artifact=upload_artifact,
                 file_type=file_type,
             )
             document_entity = versioning_result.document
             document_version = versioning_result.version
             if versioning_result.duplicate_content:
+                self._remove_file(str(upload_artifact.path))
                 self.session.refresh(document_version)
                 return UploadDocumentResult(
                     deduplicated=True,
                     document=document_entity,
                     revision=document_version,
                 )
-            document_version.file_size = len(content)
             document_version.lifecycle_status = "processing"
 
             normalized = self._normalize_document(document_version.origin_path, file_type)
@@ -132,6 +133,8 @@ class IngestionService:
             if document_version is not None:
                 self._delete_document_chunks_for_targets(document_version, indexing_targets)
                 self._remove_file(document_version.origin_path)
+            else:
+                self._remove_file(str(upload_artifact.path))
             if normalized_path:
                 self._remove_file(normalized_path)
             raise

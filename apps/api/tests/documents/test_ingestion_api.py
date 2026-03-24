@@ -76,6 +76,10 @@ def test_upload_document_returns_existing_revision_for_duplicate_content(
     api_client: TestClient,
 ) -> None:
     login_admin(api_client)
+    upload_dir = get_settings().upload_dir
+    existing_uploads = (
+        {path.name for path in upload_dir.iterdir()} if upload_dir.exists() else set()
+    )
 
     first_response = api_client.post(
         "/api/documents/upload",
@@ -113,6 +117,8 @@ def test_upload_document_returns_existing_revision_for_duplicate_content(
 
     second_chunks = store.list_by_document_id(first_payload["revision"]["id"])
     assert len(second_chunks) == len(first_chunks)
+    current_uploads = {path.name for path in upload_dir.iterdir()}
+    assert len(current_uploads - existing_uploads) == 1
 
 
 def test_reindex_document_returns_conflict_when_document_is_not_normalized(
@@ -151,8 +157,8 @@ def test_upload_document_does_not_leak_internal_error_message(
 ) -> None:
     login_admin(api_client)
 
-    def _explode_upload_document(self, actor, filename: str, content: bytes, content_type: str):
-        del self, actor, filename, content, content_type
+    def _explode_upload_document(self, actor, filename: str, upload_artifact, content_type: str):
+        del self, actor, filename, upload_artifact, content_type
         raise RuntimeError("internal parser exploded")
 
     monkeypatch.setattr(IngestionService, "upload_document", _explode_upload_document)
@@ -168,3 +174,29 @@ def test_upload_document_does_not_leak_internal_error_message(
         "message": "Document upload failed.",
         "details": None,
     }
+
+
+def test_upload_document_cleans_persisted_source_file_when_normalization_fails(
+    api_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    login_admin(api_client)
+    upload_dir = get_settings().upload_dir
+    existing_uploads = (
+        {path.name for path in upload_dir.iterdir()} if upload_dir.exists() else set()
+    )
+
+    def _explode_normalize(self, origin_path: str, file_type: str):
+        del self, origin_path, file_type
+        raise RuntimeError("normalize exploded")
+
+    monkeypatch.setattr(IngestionService, "_normalize_document", _explode_normalize)
+
+    response = api_client.post(
+        "/api/documents/upload",
+        files={"file": ("note.txt", b"hello world", "text/plain")},
+    )
+
+    assert response.status_code == 500
+    current_uploads = {path.name for path in upload_dir.iterdir()}
+    assert current_uploads == existing_uploads

@@ -34,6 +34,7 @@
 - OpenAPI 契约校验当前是严格门禁：`just web-check` / `vp run api:check` 如果发现 `apps/web/openapi/schema.json` 或 `src/lib/api/generated/schema.d.ts` 漂移会直接失败；标准修复入口是 `cd apps/web && vp run api:generate`
 - API 启动后默认暴露 `/docs`、`/redoc`、`/openapi.json`；它们与前端契约生成共用同一份 FastAPI OpenAPI 真相源
 - 认证当前使用 `PyJWT` 短期 access token + HttpOnly refresh cookie；refresh cookie 默认按请求 scheme 自动决定是否带 `Secure`，若部署在 HTTPS 反向代理后且应用层拿不到 `https` scheme，则需要显式配置 `SESSION_COOKIE_SECURE=true`；本地和容器环境都需要提供稳定的 `JWT_SECRET_KEY`；前端启动期会通过 `/api/auth/bootstrap` 恢复 refresh session，普通请求、资源上传与 SSE 流式聊天里的 `401` 续期仍走 `/api/auth/refresh`
+- 资源上传当前会先按块落到 `data/uploads`，同时增量计算 `content_hash` 和 `file_size`；因此即使 `web` 容器把 `client_max_body_size` 放宽到 `2g`，API 进程也不会再把整份文件一次性读进内存
 - 浏览器内的布局、虚拟列表、抽屉、附件面板、账户菜单、会话恢复、标题兜底和设置文案收敛，都是纯前端运行时行为；它们不新增环境变量、容器、副进程或本地运维步骤，具体语义统一看 [frontend-workspace.md](./frontend-workspace.md)
 - 聊天附件在服务端侧的图片重读、标准化文本拼接、多附件逐个检索后合并等行为，属于 API 运行时输入整形与召回策略；它们同样不新增额外运维动作，具体链路统一看 [runtime-flows.md](./runtime-flows.md)
 
@@ -91,6 +92,7 @@ flowchart LR
 - SQLite 连接默认开启 `WAL` 和 `busy_timeout=30000`，降低流式事件写入与标准页面读取并发时直接触发锁错误的概率
 - 数据目录全部 bind mount 到宿主机，容器重建后数据仍在
 - 同名资源如果内容哈希未变化，API 会直接返回当前版本；因此 `data/uploads` 和 `data/normalized` 的增长更接近“真实内容变更”而不是“重复点击上传”
+- 上传在标准化或索引阶段失败时，会清理本次新落盘的源文件与标准化副产物，避免宿主机目录被失败重试慢慢堆满
 - Linux 场景下通过 `host.docker.internal:host-gateway` 访问宿主机 Ollama
 
 ## 2. 运维资产地图
@@ -140,7 +142,7 @@ flowchart LR
 - 使用 bind mount 而不是 Docker volume，目的是让本地文件和 SQLite 可直接查看
 - 日志驱动统一限制大小，避免宿主机被容器日志打满
 - Docker 单机模式把 API 收敛到同源 `/api`，优先避免 refresh cookie、SSE 和受保护文件落到跨源链路
-- Docker 单机模式下，大文件上传的第一层限制来自 `web` 容器里的 `nginx client_max_body_size`，当前已放宽到 `2g`
+- Docker 单机模式下，大文件上传的第一层限制来自 `web` 容器里的 `nginx client_max_body_size`，当前已放宽到 `2g`；第二层则是 API 自身的磁盘空间与标准化/索引耗时，而不是 Python 进程是否还能容纳整份请求体
 - 前端构建期 API 地址仍然是固化值；改了相关构建参数后必须重新 build
 
 ## 4. `scripts/docker-deploy.sh` 怎么用

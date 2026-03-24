@@ -26,6 +26,7 @@ from knowledge_chatbox_api.services.documents.errors import (
     UnsupportedFileTypeError,
 )
 from knowledge_chatbox_api.services.documents.ingestion_service import IngestionService
+from knowledge_chatbox_api.utils.files import save_upload_stream
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 UploadFileDep = Annotated[UploadFile, File(...)]
@@ -164,22 +165,27 @@ async def upload_document(
     """处理Upload文档相关逻辑。"""
     service = IngestionService(session, settings)
     repository = DocumentRepository(session)
+    filename = file.filename or "upload.bin"
+    content_type = file.content_type or "application/octet-stream"
     try:
+        upload_artifact = await save_upload_stream(settings.upload_dir, filename, file)
         upload_result = service.upload_document(
             current_user,
-            file.filename or "upload.bin",
-            await file.read(),
-            file.content_type or "application/octet-stream",
+            filename,
+            upload_artifact,
+            content_type,
         )
     except (UnsupportedFileTypeError, InvalidDocumentError):
         raise
     except Exception as exc:  # noqa: BLE001
         logger.exception(
             "Document upload failed unexpectedly",
-            filename=file.filename or "upload.bin",
-            content_type=file.content_type or "application/octet-stream",
+            filename=filename,
+            content_type=content_type,
         )
         raise DocumentUploadFailedError() from exc
+    finally:
+        await file.close()
     response.status_code = (
         status.HTTP_200_OK if upload_result.deduplicated else status.HTTP_201_CREATED
     )

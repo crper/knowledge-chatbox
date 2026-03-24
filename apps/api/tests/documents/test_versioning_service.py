@@ -11,6 +11,8 @@ from knowledge_chatbox_api.models.auth import User
 from knowledge_chatbox_api.models.document import Document, DocumentRevision
 from knowledge_chatbox_api.models.space import Space
 from knowledge_chatbox_api.services.documents.versioning_service import VersioningService
+from knowledge_chatbox_api.utils.files import PersistedUpload
+from knowledge_chatbox_api.utils.hashing import sha256_bytes
 
 
 def test_document_models_use_document_revision_name_only() -> None:
@@ -47,6 +49,16 @@ def create_space(migrated_db_session, admin: User, slug: str = "space-a") -> Spa
 
 def create_versioning_service(migrated_db_session) -> VersioningService:
     return VersioningService(migrated_db_session, get_settings())
+
+
+def create_persisted_upload(tmp_path: Path, filename: str, content: bytes) -> PersistedUpload:
+    path = tmp_path / filename
+    path.write_bytes(content)
+    return PersistedUpload(
+        path=path,
+        content_hash=sha256_bytes(content),
+        file_size=len(content),
+    )
 
 
 def test_document_logical_name_must_be_unique_within_knowledge_base(migrated_db_session) -> None:
@@ -136,11 +148,12 @@ def test_new_upload_creates_document_and_version_one(
     monkeypatch.setenv("UPLOAD_DIR", str(tmp_path / "uploads"))
     admin = create_admin(migrated_db_session)
     service = create_versioning_service(migrated_db_session)
+    upload_artifact = create_persisted_upload(tmp_path, "spec.pdf", b"hello world")
 
     result = service.create_document_version(
         actor=admin,
         filename="spec.pdf",
-        content=b"hello world",
+        upload_artifact=upload_artifact,
         file_type="pdf",
     )
 
@@ -161,17 +174,19 @@ def test_same_name_upload_creates_new_version_and_updates_document_pointer(
     monkeypatch.setenv("UPLOAD_DIR", str(tmp_path / "uploads"))
     admin = create_admin(migrated_db_session)
     service = create_versioning_service(migrated_db_session)
+    first_upload = create_persisted_upload(tmp_path, "first-spec.pdf", b"first version")
+    second_upload = create_persisted_upload(tmp_path, "second-spec.pdf", b"second version")
 
     first = service.create_document_version(
         actor=admin,
         filename="spec.pdf",
-        content=b"first version",
+        upload_artifact=first_upload,
         file_type="pdf",
     )
     second = service.create_document_version(
         actor=admin,
         filename="spec.pdf",
-        content=b"second version",
+        upload_artifact=second_upload,
         file_type="pdf",
     )
 
@@ -195,17 +210,19 @@ def test_duplicate_hash_reuses_latest_version_without_creating_new_version(
     monkeypatch.setenv("UPLOAD_DIR", str(tmp_path / "uploads"))
     admin = create_admin(migrated_db_session)
     service = create_versioning_service(migrated_db_session)
+    first_upload = create_persisted_upload(tmp_path, "first-spec.pdf", b"same content")
+    duplicate_upload = create_persisted_upload(tmp_path, "duplicate-spec.pdf", b"same content")
 
     first = service.create_document_version(
         actor=admin,
         filename="spec.pdf",
-        content=b"same content",
+        upload_artifact=first_upload,
         file_type="pdf",
     )
     second = service.create_document_version(
         actor=admin,
         filename="spec.pdf",
-        content=b"same content",
+        upload_artifact=duplicate_upload,
         file_type="pdf",
     )
 
@@ -223,7 +240,6 @@ def test_duplicate_hash_reuses_latest_version_without_creating_new_version(
     assert document is not None
     assert document.current_version_number == 1
     assert len(versions) == 1
-    assert len(list((tmp_path / "uploads").glob("*"))) == 1
 
 
 def test_versioning_service_joins_caller_transaction(
@@ -234,11 +250,12 @@ def test_versioning_service_joins_caller_transaction(
     monkeypatch.setenv("UPLOAD_DIR", str(tmp_path / "uploads"))
     admin = create_admin(migrated_db_session)
     service = create_versioning_service(migrated_db_session)
+    upload_artifact = create_persisted_upload(tmp_path, "draft.pdf", b"draft version")
 
     result = service.create_document_version(
         actor=admin,
         filename="draft.pdf",
-        content=b"draft version",
+        upload_artifact=upload_artifact,
         file_type="pdf",
     )
 

@@ -11,8 +11,7 @@ from knowledge_chatbox_api.models.document import Document, DocumentRevision
 from knowledge_chatbox_api.repositories.document_repository import DocumentRepository
 from knowledge_chatbox_api.repositories.space_repository import SpaceRepository
 from knowledge_chatbox_api.services.documents.constants import VISIBLE_DOCUMENT_STATUSES
-from knowledge_chatbox_api.utils.files import save_bytes
-from knowledge_chatbox_api.utils.hashing import sha256_bytes
+from knowledge_chatbox_api.utils.files import PersistedUpload
 
 
 @dataclass
@@ -38,12 +37,12 @@ class VersioningService:
         *,
         actor: User,
         filename: str,
-        content: bytes,
+        upload_artifact: PersistedUpload,
         file_type: str,
     ) -> VersioningResult:
         """Create the next document version and flush ids without committing."""
         logical_name = Path(filename).name
-        content_hash = sha256_bytes(content)
+        content_hash = upload_artifact.content_hash
         personal_space = self.space_repository.ensure_personal_space(user_id=actor.id)
         latest = self.repository.get_latest_by_logical_name(
             logical_name,
@@ -65,7 +64,6 @@ class VersioningService:
             )
 
         next_version = 1 if latest_version is None else latest_version.revision_no + 1
-        saved_path = save_bytes(self.settings.upload_dir, filename, content)
 
         if latest_document is None:
             document = Document(
@@ -93,7 +91,8 @@ class VersioningService:
             content_hash=content_hash,
             file_type=file_type,
             ingest_status="uploaded",
-            source_path=str(saved_path),
+            source_path=str(upload_artifact.path),
+            file_size=upload_artifact.file_size,
             supersedes_revision_id=latest_version.id if latest_version is not None else None,
             created_by_user_id=actor.id,
             updated_by_user_id=actor.id,
