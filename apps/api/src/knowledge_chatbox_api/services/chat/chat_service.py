@@ -10,6 +10,7 @@ from typing import Any
 from PIL import Image, ImageOps, UnidentifiedImageError
 from sqlalchemy import and_, or_, select
 
+from knowledge_chatbox_api.core.logging import get_logger
 from knowledge_chatbox_api.models.document import Document, DocumentRevision
 from knowledge_chatbox_api.providers.factory import build_embedding_adapter_from_settings
 from knowledge_chatbox_api.repositories.chat_repository import ChatRepository
@@ -80,6 +81,7 @@ GENERIC_IMAGE_ONLY_QUERIES = {
         "what does this image say",
     }
 }
+logger = get_logger(__name__)
 
 
 class ChatService:
@@ -139,21 +141,19 @@ class ChatService:
             attachments=attachments,
         )
         if should_retrieve and self._has_retrievable_documents(active_space_id):
-            embedding_adapter = self.embedding_adapter or self._get_embedding_adapter()
             generation = getattr(self.settings, "active_index_generation", 1)
-            try:
-                embeddings = embedding_adapter.embed([retrieval_query_text], self.settings)
-            except Exception:  # noqa: BLE001
-                embeddings = []
-            query_embedding = embeddings[0] if embeddings else None
-            retrieved_chunks = self._query_retrieved_chunks(
-                retrieval_query_text,
-                active_space_id=active_space_id,
-                attachment_revision_ids=attachment_revision_ids,
-                generation=generation,
-                query_embedding=query_embedding,
-                where_filter=where_filter,
-            )
+            query_embedding = self._embed_retrieval_query_or_none(retrieval_query_text)
+            if query_embedding is not None:
+                retrieved_chunks = self._query_retrieved_chunks(
+                    retrieval_query_text,
+                    active_space_id=active_space_id,
+                    attachment_revision_ids=attachment_revision_ids,
+                    generation=generation,
+                    query_embedding=query_embedding,
+                    where_filter=where_filter,
+                )
+            else:
+                retrieved_chunks = []
         else:
             retrieved_chunks = []
         retrieved_chunks = [
@@ -303,6 +303,19 @@ class ChatService:
 
     def _get_embedding_adapter(self):
         return build_embedding_adapter_from_settings(self.settings)
+
+    def _embed_retrieval_query_or_none(self, query_text: str) -> list[float] | None:
+        embedding_adapter = self.embedding_adapter or self._get_embedding_adapter()
+        try:
+            embeddings = embedding_adapter.embed([query_text], self.settings)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "Retrieval degraded because query embedding generation failed",
+                exception_type=type(exc).__name__,
+                query_length=len(query_text),
+            )
+            return None
+        return embeddings[0] if embeddings else None
 
     def _should_retrieve_knowledge(
         self,

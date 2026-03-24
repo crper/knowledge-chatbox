@@ -37,6 +37,16 @@ class EmbeddingAdapterStub:
         return [[0.2, 0.8]]
 
 
+class FailingEmbeddingAdapterStub:
+    def __init__(self) -> None:
+        self.embed_calls: list[list[str]] = []
+
+    def embed(self, texts: list[str], settings) -> list[list[float]]:
+        del settings
+        self.embed_calls.append(texts)
+        raise RuntimeError("embedding backend unavailable")
+
+
 def create_user_and_session(migrated_db_session):
     user = User(
         username="alice",
@@ -293,6 +303,46 @@ def test_chat_service_uses_embedding_adapter_for_query_and_returns_sources(
     assert embedding_adapter.embed_calls == [["How do I set up OpenAI?"]]
     assert result["answer"] == "answer from provider"
     assert result["sources"]
+    assert response_adapter.response_calls
+
+
+def test_chat_service_skips_retrieval_when_embedding_generation_fails(
+    migrated_db_session,
+) -> None:
+    _, chat_session, repository = create_user_and_session(migrated_db_session)
+    response_adapter = ResponseAdapterStub()
+    embedding_adapter = FailingEmbeddingAdapterStub()
+    create_document_version(migrated_db_session, chat_session.user_id)
+
+    class RetrievalMustNotRunChromaStore:
+        def query(self, *_args, **_kwargs):
+            raise AssertionError(
+                "retrieval query should be skipped when embedding generation fails"
+            )
+
+    service = ChatService(
+        session=migrated_db_session,
+        chat_repository=repository,
+        chroma_store=RetrievalMustNotRunChromaStore(),
+        response_adapter=response_adapter,
+        embedding_adapter=embedding_adapter,
+        settings=type(
+            "SettingsStub",
+            (),
+            {
+                "active_index_generation": 1,
+                "system_prompt": None,
+                "provider_profiles": {},
+                "embedding_route": {"provider": "openai", "model": "text-embedding-3-small"},
+            },
+        )(),
+    )
+
+    result = service.answer_question(chat_session.id, "How do I set up OpenAI?")
+
+    assert embedding_adapter.embed_calls == [["How do I set up OpenAI?"]]
+    assert result["answer"] == "answer from provider"
+    assert result["sources"] == []
     assert response_adapter.response_calls
 
 
