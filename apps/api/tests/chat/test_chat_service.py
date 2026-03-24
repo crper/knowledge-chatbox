@@ -306,24 +306,43 @@ def test_chat_service_uses_embedding_adapter_for_query_and_returns_sources(
     assert response_adapter.response_calls
 
 
-def test_chat_service_skips_retrieval_when_embedding_generation_fails(
+def test_chat_service_falls_back_to_text_search_when_embedding_generation_fails(
     migrated_db_session,
 ) -> None:
     _, chat_session, repository = create_user_and_session(migrated_db_session)
     response_adapter = ResponseAdapterStub()
     embedding_adapter = FailingEmbeddingAdapterStub()
-    create_document_version(migrated_db_session, chat_session.user_id)
+    document_version = create_document_version(migrated_db_session, chat_session.user_id)
 
-    class RetrievalMustNotRunChromaStore:
-        def query(self, *_args, **_kwargs):
-            raise AssertionError(
-                "retrieval query should be skipped when embedding generation fails"
+    class FallbackSearchChromaStore:
+        def __init__(self) -> None:
+            self.query_calls: list[dict[str, Any]] = []
+
+        def query(self, query_text, *, query_embedding=None, **kwargs):
+            self.query_calls.append(
+                {
+                    "query_embedding": query_embedding,
+                    "query_text": query_text,
+                    "where": kwargs.get("where"),
+                }
             )
+            return [
+                {
+                    "id": f"{document_version.id}:0",
+                    "document_id": document_version.document_id,
+                    "document_revision_id": document_version.id,
+                    "text": "OpenAI provider setup guide.",
+                    "metadata": {"section_title": "Guide", "page_number": 3},
+                    "score": 1.0,
+                }
+            ]
+
+    chroma_store = FallbackSearchChromaStore()
 
     service = ChatService(
         session=migrated_db_session,
         chat_repository=repository,
-        chroma_store=RetrievalMustNotRunChromaStore(),
+        chroma_store=chroma_store,
         response_adapter=response_adapter,
         embedding_adapter=embedding_adapter,
         settings=type(
@@ -341,8 +360,26 @@ def test_chat_service_skips_retrieval_when_embedding_generation_fails(
     result = service.answer_question(chat_session.id, "How do I set up OpenAI?")
 
     assert embedding_adapter.embed_calls == [["How do I set up OpenAI?"]]
+    assert chroma_store.query_calls == [
+        {
+            "query_embedding": None,
+            "query_text": "How do I set up OpenAI?",
+            "where": {"space_id": chat_session.space_id},
+        }
+    ]
     assert result["answer"] == "answer from provider"
-    assert result["sources"] == []
+    assert result["sources"] == [
+        {
+            "document_id": document_version.document_id,
+            "document_revision_id": document_version.id,
+            "document_name": "guide.md",
+            "chunk_id": f"{document_version.id}:0",
+            "snippet": "OpenAI provider setup guide.",
+            "page_number": 3,
+            "section_title": "Guide",
+            "score": 1.0,
+        }
+    ]
     assert response_adapter.response_calls
 
 

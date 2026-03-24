@@ -10,7 +10,7 @@ from knowledge_chatbox_api.models.auth import User
 from knowledge_chatbox_api.models.document import Document, DocumentRevision
 from knowledge_chatbox_api.repositories.document_repository import DocumentRepository
 from knowledge_chatbox_api.repositories.space_repository import SpaceRepository
-from knowledge_chatbox_api.services.documents.constants import VISIBLE_DOCUMENT_STATUSES
+from knowledge_chatbox_api.services.documents.constants import DEDUPLICABLE_DOCUMENT_STATUSES
 from knowledge_chatbox_api.utils.files import PersistedUpload
 
 
@@ -53,7 +53,7 @@ class VersioningService:
         latest_version = latest[1] if latest is not None else None
         duplicate_content = (
             latest_version is not None
-            and latest_version.ingest_status in VISIBLE_DOCUMENT_STATUSES
+            and latest_version.ingest_status in DEDUPLICABLE_DOCUMENT_STATUSES
             and latest_version.content_hash == content_hash
         )
         if duplicate_content and latest_document is not None and latest_version is not None:

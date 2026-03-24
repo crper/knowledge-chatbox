@@ -7,7 +7,7 @@ from sqlalchemy.engine import Row
 from sqlalchemy.orm import Session
 
 from knowledge_chatbox_api.models.document import Document, DocumentRevision
-from knowledge_chatbox_api.services.documents.constants import VISIBLE_DOCUMENT_STATUSES
+from knowledge_chatbox_api.services.documents.constants import LISTABLE_DOCUMENT_STATUSES
 
 
 class DocumentRepository:
@@ -78,7 +78,7 @@ class DocumentRepository:
             )
             .where(
                 Document.status == "active",
-                DocumentRevision.ingest_status.in_(VISIBLE_DOCUMENT_STATUSES),
+                DocumentRevision.ingest_status.in_(LISTABLE_DOCUMENT_STATUSES),
             )
             .order_by(Document.updated_at.desc(), Document.id.desc())
         )

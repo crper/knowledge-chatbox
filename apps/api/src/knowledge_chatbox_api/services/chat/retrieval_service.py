@@ -110,9 +110,6 @@ class RetrievalService:
 
         generation = getattr(self.settings, "active_index_generation", 1)
         query_embedding = self._embed_query_or_none(normalized_query)
-        if query_embedding is None:
-            return RetrievedContext(context_sections=[], sources=[])
-
         retrieved_chunks = self._query_retrieved_chunks(
             normalized_query,
             active_space_id=active_space_id,

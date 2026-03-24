@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 
 from knowledge_chatbox_api.db.session import create_session_factory
 from knowledge_chatbox_api.repositories.chat_repository import ChatRepository
 from knowledge_chatbox_api.repositories.chat_run_repository import ChatRunRepository
 from knowledge_chatbox_api.repositories.document_repository import DocumentRepository
 from knowledge_chatbox_api.services.chat.chat_run_service import STREAM_INTERRUPTED_ERROR_MESSAGE
+from knowledge_chatbox_api.services.documents.constants import IMAGE_DOCUMENT_FILE_TYPES
+from knowledge_chatbox_api.services.documents.ingestion_service import IngestionService
 from knowledge_chatbox_api.services.documents.rebuild_service import RebuildService
 from knowledge_chatbox_api.services.settings.settings_service import (
     INDEX_REBUILD_STATUS_RUNNING,
@@ -16,14 +19,28 @@ from knowledge_chatbox_api.services.settings.settings_service import (
 )
 
 
-def compensate_processing_documents(session) -> int:
-    """把异常中断的 processing 文档回退为 failed。"""
+def complete_document_ingestion(settings, revision_id: int) -> bool:
+    """在独立 session 中补全文档标准化与索引。"""
+    session_factory = create_session_factory()
+    with session_factory() as session:
+        revision = IngestionService(session, settings).complete_document_ingestion(revision_id)
+        return revision.lifecycle_status == "indexed"
+
+
+def compensate_processing_documents(session, settings) -> int:
+    """启动时恢复或回退异常中断的 processing 文档。"""
     repository = DocumentRepository(session)
     documents = repository.list_processing_documents()
+    pending_resume_ids: list[int] = []
     for document in documents:
+        if document.file_type in IMAGE_DOCUMENT_FILE_TYPES and Path(document.origin_path).exists():
+            pending_resume_ids.append(document.id)
+            continue
         document.lifecycle_status = "failed"
         document.error_message = "Processing interrupted during previous run."
     session.commit()
+    for revision_id in pending_resume_ids:
+        complete_document_ingestion(settings, revision_id)
     return len(documents)
 
 

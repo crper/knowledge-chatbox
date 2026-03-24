@@ -149,7 +149,7 @@ knowledge-chatbox/
 - 改聊天检索限域时，当前真相是“`services/chat/chat_service.py` 负责组合 `space_id + document_revision_id` 条件，`utils/chroma.py` 负责把复合条件归一化成 Chroma 兼容 `where`，并保证内存 / 持久化 store 语义一致”；不要在各调用方自己手拼不同方言
 - 改认证与会话链路时，当前真相是“前端只在内存保存 access token，refresh session 继续走 HttpOnly cookie，`/api/auth/me` 等受保护读取接口在鉴权阶段保持纯读”；不要把 access token 落进 `localStorage`，也不要把 session 心跳重新塞回高频读路径
 - 改认证与会话链路时，启动期匿名探测与业务请求续期当前已经分开：前端用 `/api/auth/bootstrap` 处理“是否能恢复已有 refresh session”，匿名态返回 `200 + authenticated=false`；业务请求里的 `401` 续期仍走 `/api/auth/refresh`；更细时序统一看 [auth-and-session-flow.md](./auth-and-session-flow.md)
-- 改上传与附件链路时，当前真相是“聊天区和资源页共用 document upload helper；前端只持久化附件元数据与作用域提示；后端负责读取标准化文本、收窄检索范围和图片 JPEG payload 转换”；不要在前端维护第二份附件正文缓存，也不要把上传请求做回 cookie-only 分支
+- 改上传与附件链路时，当前真相是“聊天区和资源页共用 document upload helper；前端只持久化附件元数据与作用域提示；后端按文件类型分流：文本文档同步标准化，图片先返回 `processing` 再后台补全；聊天当前轮图片仍直接读取原图”；不要在前端维护第二份附件正文缓存，也不要把上传请求做回 cookie-only 分支
 - 改后端上传链路时，当前真相是“`api/routes/documents.py` 先把上传流按块落盘，`VersioningService` 只消费已落盘工件并写入 document/document_revision，重复内容与失败路径的源文件清理由 `IngestionService` 收口”；不要再把整份文件一次性读成 `bytes` 后在 service 层到处传
 - 改聊天 UI 时，附件展示、图片查看、消息视口、失败恢复带、新会话空态、会话恢复和默认标题语义，统一以 [frontend-workspace.md](./frontend-workspace.md) 为准；这里不再平行维护一套页面级视觉规则
 - 改资源页或标准工作区壳层时，优先沿用 `WorkspacePage`、`data-table` 和预览抽屉这套共享结构；布局真相同样放在 [frontend-workspace.md](./frontend-workspace.md)

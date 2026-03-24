@@ -159,8 +159,9 @@ uv run -m uvicorn knowledge_chatbox_api.main:app --reload --host 0.0.0.0 --port 
 - API 启动后默认暴露 `/docs`、`/redoc`、`/openapi.json`；它们与 `scripts/export_openapi.py` 共用同一份 FastAPI OpenAPI 真相源
 - 数据默认落在 `data/uploads`、`data/normalized`、`data/sqlite`、`data/chroma`
 - `/api/documents/upload` 当前会先把上传内容按块落到 `data/uploads`，同时增量计算 `content_hash` 和 `file_size`；命中重复内容时会复用现有修订，并清理本次临时源文件
+- 文本文档（`txt / md / pdf / docx`）当前仍在请求内完成标准化与索引；图片（`png / jpg / jpeg / webp`）会先返回 `processing`，再由后台任务补做 vision 标准化与索引
 - SQLite 连接默认开启 `WAL` 和 `busy_timeout=30000`；API 响应头与日志都带 `X-Request-ID` / `request_id`
-- 当前认证是“`PyJWT` 短期 access token + 服务端 refresh session”混合模式；受保护接口、资源上传和 SSE 流式聊天都优先接受 `Authorization: Bearer <token>`
+- 当前认证是“`PyJWT` 短期 access token + 服务端 refresh session”混合模式；受保护接口、资源上传和 SSE 流式聊天都优先接受 `Authorization: Bearer <token>`；same-origin Web 部署仍使用相对 `/api/*` 路径，不依赖绝对 API origin
 - 启动期会话恢复与业务请求续期当前已分开：前者走 `/api/auth/bootstrap`，匿名态返回 `200 + authenticated=false`；后者仍通过 `/api/auth/refresh` 轮换 refresh session 并续发 access token
 - provider 设置收敛到 `app_settings` 一条记录，核心字段是 `provider_profiles_json`、`response_route_json`、`embedding_route_json`、`pending_embedding_route_json`、`vision_route_json`
 - 当前 capability route 支持独立选择 `response / embedding / vision`；切换检索 provider 或 embedding model 会触发后台 generation 重建

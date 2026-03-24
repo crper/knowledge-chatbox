@@ -128,7 +128,7 @@ def create_app() -> FastAPI:
                 admin = auth_service.ensure_default_admin()
                 SpaceRepository(session).ensure_personal_space(user_id=admin.id)
                 SettingsService(session, settings).get_or_create_settings_record()
-                compensated_documents = compensate_processing_documents(session)
+                compensated_documents = compensate_processing_documents(session, settings)
                 compensated_runs = compensate_active_chat_runs(session)
                 compensated_rebuild = compensate_index_rebuild_status(session, settings)
                 logger.info(

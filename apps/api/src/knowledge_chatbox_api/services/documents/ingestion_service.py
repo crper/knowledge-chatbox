@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from knowledge_chatbox_api.core.logging import get_logger
 from knowledge_chatbox_api.models.document import Document, DocumentRevision
 from knowledge_chatbox_api.providers.factory import (
     build_embedding_adapter,
@@ -20,6 +22,7 @@ from knowledge_chatbox_api.schemas.settings import (
 from knowledge_chatbox_api.services.documents.chunking_service import ChunkingService
 from knowledge_chatbox_api.services.documents.constants import (
     CONTENT_TYPE_TO_FILE_TYPE,
+    IMAGE_DOCUMENT_FILE_TYPES,
     SUPPORTED_DOCUMENT_FILE_TYPES,
 )
 from knowledge_chatbox_api.services.documents.errors import (
@@ -42,6 +45,7 @@ from knowledge_chatbox_api.utils.files import PersistedUpload
 class UploadDocumentResult:
     """Describe one upload outcome for the API layer."""
 
+    background_processing: bool
     deduplicated: bool
     document: Document
     revision: DocumentRevision
@@ -74,6 +78,8 @@ class IngestionService:
             settings=settings_record,
         )
 
+    logger = get_logger(__name__)
+
     def upload_document(
         self,
         actor,
@@ -100,30 +106,34 @@ class IngestionService:
                 self._remove_file(str(upload_artifact.path))
                 self.session.refresh(document_version)
                 return UploadDocumentResult(
+                    background_processing=False,
                     deduplicated=True,
                     document=document_entity,
                     revision=document_version,
                 )
             document_version.lifecycle_status = "processing"
-
-            normalized = self._normalize_document(document_version.origin_path, file_type)
-            normalized_path = normalized.normalized_path
-            document_version.normalized_path = normalized.normalized_path
-            settings_record = self.settings_service.get_or_create_settings_record()
-            indexing_targets = self._build_indexing_targets(settings_record)
-            for target in indexing_targets:
-                self._refresh_indexing_service(target.settings)
-                self.indexing_service.index_document(
-                    document_version,
-                    normalized.content,
-                    generation=target.generation,
-                    section_title=self._derive_section_title(normalized.content),
-                )
-            document_version.lifecycle_status = "indexed"
             document_version.error_message = None
+            document_version.indexed_at = None
+
+            if file_type in IMAGE_DOCUMENT_FILE_TYPES:
+                self.session.commit()
+                self.session.refresh(document_version)
+                return UploadDocumentResult(
+                    background_processing=True,
+                    deduplicated=False,
+                    document=document_entity,
+                    revision=document_version,
+                )
+
+            normalized_path, indexing_targets = self._ingest_revision(
+                document_version=document_version,
+                file_type=file_type,
+                use_vision=True,
+            )
             self.session.commit()
             self.session.refresh(document_version)
             return UploadDocumentResult(
+                background_processing=False,
                 deduplicated=False,
                 document=document_entity,
                 revision=document_version,
@@ -138,6 +148,51 @@ class IngestionService:
             if normalized_path:
                 self._remove_file(normalized_path)
             raise
+
+    def complete_document_ingestion(self, revision_id: int) -> DocumentRevision:
+        document_version = self.document_repository.get_by_id(revision_id)
+        if document_version is None:
+            raise DocumentNotFoundError()
+        if document_version.lifecycle_status == "indexed":
+            return document_version
+
+        normalized_path: str | None = None
+        indexing_targets: list[IndexingTarget] = []
+        try:
+            document_version.lifecycle_status = "processing"
+            document_version.error_message = None
+            document_version.indexed_at = None
+            normalized_path, indexing_targets = self._ingest_revision(
+                document_version=document_version,
+                file_type=document_version.file_type,
+                use_vision=True,
+            )
+            self.session.commit()
+            self.session.refresh(document_version)
+            return document_version
+        except Exception:  # noqa: BLE001
+            self.session.rollback()
+            failed_revision = self.document_repository.get_by_id(revision_id)
+            if failed_revision is None:
+                raise
+            self.logger.exception(
+                "Document background ingestion failed",
+                document_revision_id=revision_id,
+                file_type=document_version.file_type,
+            )
+            self._delete_document_chunks_for_targets(failed_revision, indexing_targets)
+            failed_revision.normalized_path = None
+            failed_revision.chunk_count = None
+            failed_revision.indexed_at = None
+            failed_revision.lifecycle_status = "failed"
+            failed_revision.error_message = self._background_ingestion_error_message(
+                failed_revision.file_type
+            )
+            self.session.commit()
+            if normalized_path:
+                self._remove_file(normalized_path)
+            self.session.refresh(failed_revision)
+            return failed_revision
 
     def list_documents(self, actor) -> list[tuple[Document, DocumentRevision]]:
         return self.document_repository.list_latest(space_ids=self._visible_space_ids(actor.id))
@@ -169,6 +224,8 @@ class IngestionService:
         if document_version is None:
             raise DocumentNotFoundError()
         if document_version.normalized_path is None:
+            if document_version.file_type in IMAGE_DOCUMENT_FILE_TYPES:
+                return self.complete_document_ingestion(document_version.id)
             raise DocumentNotNormalizedError()
         content = Path(document_version.normalized_path).read_text(encoding="utf-8")
         settings_record = self.settings_service.get_or_create_settings_record()
@@ -185,6 +242,7 @@ class IngestionService:
                 )
             document_version.lifecycle_status = "indexed"
             document_version.error_message = None
+            document_version.indexed_at = datetime.now(UTC)
             self.session.commit()
             self.session.refresh(document_version)
             return document_version
@@ -215,14 +273,53 @@ class IngestionService:
                 self._remove_file(normalized_path)
             self._remove_file(origin_path)
 
-    def _normalize_document(self, origin_path: str, file_type: str):
+    def _normalize_document(
+        self,
+        origin_path: str,
+        file_type: str,
+        *,
+        use_vision: bool = True,
+    ):
         settings_record = self.settings_service.get_or_create_settings_record()
         service = NormalizationService(
             normalized_dir=self.app_settings.normalized_dir,
-            provider=build_vision_adapter_from_settings(settings_record),
+            provider=build_vision_adapter_from_settings(settings_record) if use_vision else None,
             provider_settings=settings_record,
         )
         return service.normalize(Path(origin_path), file_type)
+
+    def _background_ingestion_error_message(self, file_type: str) -> str:
+        if file_type in IMAGE_DOCUMENT_FILE_TYPES:
+            return "Image processing failed."
+        return "Document processing failed."
+
+    def _ingest_revision(
+        self,
+        *,
+        document_version: DocumentRevision,
+        file_type: str,
+        use_vision: bool,
+    ) -> tuple[str, list[IndexingTarget]]:
+        normalized = self._normalize_document(
+            document_version.origin_path,
+            file_type,
+            use_vision=use_vision,
+        )
+        document_version.normalized_path = normalized.normalized_path
+        settings_record = self.settings_service.get_or_create_settings_record()
+        indexing_targets = self._build_indexing_targets(settings_record)
+        for target in indexing_targets:
+            self._refresh_indexing_service(target.settings)
+            self.indexing_service.index_document(
+                document_version,
+                normalized.content,
+                generation=target.generation,
+                section_title=self._derive_section_title(normalized.content),
+            )
+        document_version.lifecycle_status = "indexed"
+        document_version.error_message = None
+        document_version.indexed_at = datetime.now(UTC)
+        return normalized.normalized_path, indexing_targets
 
     def _refresh_indexing_service(self, settings_record) -> None:
         self.indexing_service.embedding_provider = build_embedding_adapter(

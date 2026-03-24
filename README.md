@@ -157,6 +157,7 @@ just docker-down
 - `just docker-check` 只做 Compose 和 `.env` 静态校验，不要求 Docker daemon 已启动
 - Docker 单机模式里，`web` 容器会把同源 `/api` 反代到 `api` 服务，避免 refresh cookie / 文件预览落到跨源链路
 - Docker 单机模式里，`web` 容器的 Nginx 已把单次请求体上限放宽到 `2GB`，避免大 PDF 被默认 `413 Payload Too Large` 提前拦截；API 侧上传链路也会先按块落盘并增量计算哈希，避免把整份文件一次性读进 Python 内存
+- 文本文档上传当前仍在请求内完成标准化与索引；图片上传会先返回 `processing`，随后由后台任务补做 vision 标准化与索引
 - `just docker-up` 默认复用当前镜像；首次启动、改了 Dockerfile / lockfile，或改了前端构建期 API 地址时，先执行 `just docker-build`
 
 更细的容器拓扑、部署脚本、副作用和重置 runbook 见 [docs/arch/deployment-and-operations.md](./docs/arch/deployment-and-operations.md)。

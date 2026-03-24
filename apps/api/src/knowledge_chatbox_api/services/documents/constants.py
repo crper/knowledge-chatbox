@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-VISIBLE_DOCUMENT_STATUSES = ("uploaded", "processing", "indexed")
+LISTABLE_DOCUMENT_STATUSES = ("uploaded", "processing", "indexed", "failed")
+DEDUPLICABLE_DOCUMENT_STATUSES = ("uploaded", "processing", "indexed")
 TEXT_DOCUMENT_FILE_TYPES = frozenset({"txt"})
 MARKDOWN_DOCUMENT_FILE_TYPES = frozenset({"md"})
 DOCX_DOCUMENT_FILE_TYPES = frozenset({"docx"})

@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from io import BytesIO
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
+from PIL import Image
 
 from knowledge_chatbox_api.core.config import get_settings
 from knowledge_chatbox_api.db.session import create_session_factory
@@ -13,6 +16,7 @@ from knowledge_chatbox_api.services.settings.settings_service import (
     INDEX_REBUILD_STATUS_RUNNING,
     SettingsService,
 )
+from knowledge_chatbox_api.tasks import document_jobs
 from knowledge_chatbox_api.utils.chroma import get_chroma_store
 
 
@@ -22,6 +26,17 @@ def login_admin(api_client: TestClient) -> None:
         json={"username": "admin", "password": "admin123456"},
     )
     assert response.status_code == 200
+
+
+def build_png_bytes() -> bytes:
+    buffer = BytesIO()
+    Image.new("RGB", (4, 4), color=(255, 0, 0)).save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def write_normalized_fixture(path: Path, content: str = "normalized image content") -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
 
 
 def test_upload_document_indexes_active_generation(api_client: TestClient) -> None:
@@ -186,8 +201,8 @@ def test_upload_document_cleans_persisted_source_file_when_normalization_fails(
         {path.name for path in upload_dir.iterdir()} if upload_dir.exists() else set()
     )
 
-    def _explode_normalize(self, origin_path: str, file_type: str):
-        del self, origin_path, file_type
+    def _explode_normalize(self, origin_path: str, file_type: str, *, use_vision: bool = True):
+        del self, origin_path, file_type, use_vision
         raise RuntimeError("normalize exploded")
 
     monkeypatch.setattr(IngestionService, "_normalize_document", _explode_normalize)
@@ -200,3 +215,134 @@ def test_upload_document_cleans_persisted_source_file_when_normalization_fails(
     assert response.status_code == 500
     current_uploads = {path.name for path in upload_dir.iterdir()}
     assert current_uploads == existing_uploads
+
+
+def test_upload_image_returns_processing_and_schedules_background_ingestion(
+    api_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    login_admin(api_client)
+    completed_revision_ids: list[int] = []
+
+    monkeypatch.setattr(
+        document_jobs,
+        "complete_document_ingestion",
+        lambda _settings, revision_id: completed_revision_ids.append(revision_id) or True,
+    )
+
+    response = api_client.post(
+        "/api/documents/upload",
+        files={"file": ("image.png", build_png_bytes(), "image/png")},
+    )
+
+    assert response.status_code == 202
+    payload = response.json()["data"]
+    assert payload["revision"]["ingest_status"] == "processing"
+    assert payload["revision"]["normalized_path"] is None
+    assert completed_revision_ids == [payload["revision"]["id"]]
+
+
+def test_complete_document_ingestion_indexes_processing_image_revision(
+    api_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    login_admin(api_client)
+    monkeypatch.setattr(document_jobs, "complete_document_ingestion", lambda *_args: True)
+
+    upload_response = api_client.post(
+        "/api/documents/upload",
+        files={"file": ("image.png", build_png_bytes(), "image/png")},
+    )
+    assert upload_response.status_code == 202
+    revision_id = upload_response.json()["data"]["revision"]["id"]
+
+    normalized_path = tmp_path / "normalized" / "image.md"
+
+    def _normalize(self, origin_path: str, file_type: str, *, use_vision: bool = True):
+        del self, origin_path, file_type, use_vision
+        write_normalized_fixture(normalized_path)
+        return SimpleNamespace(
+            content="normalized image content",
+            media_type="text/markdown",
+            normalized_path=str(normalized_path),
+        )
+
+    monkeypatch.setattr(IngestionService, "_normalize_document", _normalize)
+
+    session_factory = create_session_factory()
+    with session_factory() as session:
+        revision = IngestionService(session, get_settings()).complete_document_ingestion(
+            revision_id
+        )
+        assert revision.ingest_status == "indexed"
+        assert revision.normalized_path == str(normalized_path)
+        assert revision.chunk_count is not None
+        assert revision.indexed_at is not None
+
+    listed_response = api_client.get("/api/documents")
+    assert listed_response.status_code == 200
+    assert listed_response.json()["data"][0]["latest_revision"]["ingest_status"] == "indexed"
+
+
+def test_complete_document_ingestion_marks_failed_image_revision_visible(
+    api_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    login_admin(api_client)
+    monkeypatch.setattr(document_jobs, "complete_document_ingestion", lambda *_args: True)
+
+    upload_response = api_client.post(
+        "/api/documents/upload",
+        files={"file": ("image.png", build_png_bytes(), "image/png")},
+    )
+    assert upload_response.status_code == 202
+    revision_id = upload_response.json()["data"]["revision"]["id"]
+
+    def _explode_normalize(self, origin_path: str, file_type: str, *, use_vision: bool = True):
+        del self, origin_path, file_type, use_vision
+        raise RuntimeError("vision exploded")
+
+    monkeypatch.setattr(IngestionService, "_normalize_document", _explode_normalize)
+
+    session_factory = create_session_factory()
+    with session_factory() as session:
+        revision = IngestionService(session, get_settings()).complete_document_ingestion(
+            revision_id
+        )
+        assert revision.ingest_status == "failed"
+        assert revision.normalized_path is None
+        assert revision.error_message == "Image processing failed."
+
+    listed_response = api_client.get("/api/documents")
+    assert listed_response.status_code == 200
+    assert listed_response.json()["data"][0]["latest_revision"]["ingest_status"] == "failed"
+
+
+def test_compensate_processing_documents_resumes_processing_images(
+    api_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    login_admin(api_client)
+    monkeypatch.setattr(document_jobs, "complete_document_ingestion", lambda *_args: True)
+
+    upload_response = api_client.post(
+        "/api/documents/upload",
+        files={"file": ("image.png", build_png_bytes(), "image/png")},
+    )
+    assert upload_response.status_code == 202
+    revision_id = upload_response.json()["data"]["revision"]["id"]
+
+    resumed_revision_ids: list[int] = []
+    monkeypatch.setattr(
+        document_jobs,
+        "complete_document_ingestion",
+        lambda _settings, next_revision_id: resumed_revision_ids.append(next_revision_id) or True,
+    )
+
+    session_factory = create_session_factory()
+    with session_factory() as session:
+        resumed_count = document_jobs.compensate_processing_documents(session, get_settings())
+
+    assert resumed_count == 1
+    assert resumed_revision_ids == [revision_id]

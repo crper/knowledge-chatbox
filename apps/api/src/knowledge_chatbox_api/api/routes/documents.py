@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, File, Response, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, File, Response, UploadFile, status
 from fastapi.responses import FileResponse
 
 from knowledge_chatbox_api.api.deps import CurrentUserDep, DbSessionDep, SettingsDep
@@ -18,6 +18,7 @@ from knowledge_chatbox_api.schemas.document import (
     DocumentSummaryRead,
     DocumentUploadRead,
 )
+from knowledge_chatbox_api.services.documents.constants import IMAGE_DOCUMENT_FILE_TYPES
 from knowledge_chatbox_api.services.documents.errors import (
     DocumentFileNotFoundError,
     DocumentNotFoundError,
@@ -26,6 +27,7 @@ from knowledge_chatbox_api.services.documents.errors import (
     UnsupportedFileTypeError,
 )
 from knowledge_chatbox_api.services.documents.ingestion_service import IngestionService
+from knowledge_chatbox_api.tasks import document_jobs
 from knowledge_chatbox_api.utils.files import save_upload_stream
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
@@ -153,6 +155,10 @@ def get_document_revisions(
 @router.post(
     "/upload",
     response_model=Envelope[DocumentUploadRead],
+    responses={
+        status.HTTP_200_OK: {"description": "Existing document revision reused."},
+        status.HTTP_202_ACCEPTED: {"description": "Image accepted for background ingestion."},
+    },
     status_code=status.HTTP_201_CREATED,
 )
 async def upload_document(
@@ -160,6 +166,7 @@ async def upload_document(
     session: DbSessionDep,
     settings: SettingsDep,
     current_user: CurrentUserDep,
+    background_tasks: BackgroundTasks,
     file: UploadFileDep,
 ) -> Envelope[DocumentUploadRead]:
     """处理Upload文档相关逻辑。"""
@@ -186,9 +193,19 @@ async def upload_document(
         raise DocumentUploadFailedError() from exc
     finally:
         await file.close()
-    response.status_code = (
-        status.HTTP_200_OK if upload_result.deduplicated else status.HTTP_201_CREATED
-    )
+    if upload_result.background_processing:
+        background_tasks.add_task(
+            document_jobs.complete_document_ingestion,
+            settings,
+            upload_result.revision.id,
+        )
+
+    if upload_result.deduplicated:
+        response.status_code = status.HTTP_200_OK
+    elif upload_result.revision.file_type in IMAGE_DOCUMENT_FILE_TYPES:
+        response.status_code = status.HTTP_202_ACCEPTED
+    else:
+        response.status_code = status.HTTP_201_CREATED
     latest_revision = repository.get_latest_revision(upload_result.document)
     return Envelope(
         success=True,

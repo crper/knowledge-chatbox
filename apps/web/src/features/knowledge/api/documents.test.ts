@@ -1,6 +1,12 @@
 import { getAccessToken, setAccessToken } from "@/lib/auth/token-store";
 import { jsonResponse } from "@/test/http";
-import { deleteDocument, getDocumentVersions, getDocuments, uploadDocument } from "./documents";
+import {
+  buildApiUrl,
+  deleteDocument,
+  getDocumentVersions,
+  getDocuments,
+  uploadDocument,
+} from "./documents";
 
 function apiPath(path: string) {
   return expect.stringMatching(new RegExp(`${path.replaceAll("/", "\\/")}$`));
@@ -298,6 +304,16 @@ describe("documents api", () => {
     expect(xhr.requestBody).toBeInstanceOf(FormData);
     expect(onProgress).toHaveBeenNthCalledWith(1, 50);
     expect(onProgress).toHaveBeenNthCalledWith(2, 100);
+  });
+
+  it("builds a same-origin relative upload path when no API origin is configured", () => {
+    expect(buildApiUrl("/api/documents/upload", "")).toBe("/api/documents/upload");
+    expect(buildApiUrl("/api/documents/upload", "http://localhost:8000")).toBe(
+      "http://localhost:8000/api/documents/upload",
+    );
+    expect(buildApiUrl("/api/documents/upload", "http://localhost:8000/")).toBe(
+      "http://localhost:8000/api/documents/upload",
+    );
   });
 
   it("refreshes the access token and retries the upload after an unauthorized response", async () => {

@@ -121,6 +121,14 @@ export async function getDocumentVersions(documentId: number) {
   return revisions.map((revision) => toKnowledgeDocumentVersion(revision));
 }
 
+export function buildApiUrl(path: string, apiBaseUrl: string = env.apiBaseUrl) {
+  const normalizedBaseUrl = apiBaseUrl.endsWith("/") ? apiBaseUrl.slice(0, -1) : apiBaseUrl;
+  if (!normalizedBaseUrl) {
+    return path;
+  }
+  return `${normalizedBaseUrl}${path}`;
+}
+
 export function uploadDocument(
   file: File,
   options?: {
@@ -137,7 +145,7 @@ export function uploadDocument(
       formData.append("file", file);
 
       const xhr = new XMLHttpRequest();
-      xhr.open("POST", `${env.apiBaseUrl}/api/documents/upload`);
+      xhr.open("POST", buildApiUrl("/api/documents/upload"));
       xhr.withCredentials = true;
       if (accessToken) {
         xhr.setRequestHeader("Authorization", `Bearer ${accessToken}`);
