@@ -79,7 +79,7 @@ export function SystemPromptForm({
       <form.Subscribe selector={(state) => state.errors}>
         {(errors) => (
           <SettingsActionBar
-            errorMessage={getFirstFormError(errors)}
+            errorMessage={getFirstFormError(errors, t)}
             notice={notice}
             onTest={() => {}}
             savePending={savePending}

@@ -7,15 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
-import { getFormErrorMessages } from "@/lib/forms";
-
-function toFieldErrors(errors: unknown[], manualError?: string) {
-  const messages = [...getFormErrorMessages(errors), manualError].filter(
-    (message): message is string => typeof message === "string" && message.trim().length > 0,
-  );
-
-  return messages.map((message) => ({ message }));
-}
+import { toFieldErrorItems } from "@/lib/forms";
 
 export function SystemPromptSection({
   form,
@@ -50,7 +42,11 @@ export function SystemPromptSection({
             />
             <FieldDescription>{t("systemPromptHint")}</FieldDescription>
             <FieldError
-              errors={toFieldErrors(field.state.meta.errors, manualFieldErrors?.system_prompt)}
+              errors={toFieldErrorItems(
+                field.state.meta.errors,
+                t,
+                manualFieldErrors?.system_prompt,
+              )}
             />
           </Field>
         )}
@@ -69,7 +65,12 @@ export function SettingsActionBar({
   testPending,
 }: {
   errorMessage?: string | null;
-  notice?: { message: string; title: string; variant?: "default" | "destructive" } | null;
+  notice?: {
+    items?: Array<{ healthy: boolean; label: string; message: string }>;
+    message: string;
+    title: string;
+    variant?: "default" | "destructive";
+  } | null;
   onTest: () => void;
   savePending?: boolean;
   showTestAction?: boolean;
@@ -124,6 +125,19 @@ export function SettingsActionBar({
         <Alert className="mt-4 rounded-xl bg-background/48 px-4 py-3">
           <AlertTitle>{notice.title}</AlertTitle>
           <AlertDescription className="mt-1 whitespace-pre-line">{notice.message}</AlertDescription>
+          {"items" in notice && Array.isArray(notice.items) && notice.items.length > 0 ? (
+            <ul aria-label={t("connectionStatusListLabel")} className="mt-3 space-y-2">
+              {notice.items.map((item) => (
+                <li
+                  key={item.label}
+                  className="flex flex-col gap-1 rounded-lg border border-border/60 bg-background/40 px-3 py-2"
+                >
+                  <span className="text-sm font-medium">{item.label}</span>
+                  <span className="text-sm text-muted-foreground">{item.message}</span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
         </Alert>
       ) : (
         <p className="mt-4 text-sm leading-6 text-muted-foreground">{t("saveHint")}</p>

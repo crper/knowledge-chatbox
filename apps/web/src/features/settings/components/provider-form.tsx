@@ -2,12 +2,12 @@
  * @file 设置相关界面组件模块。
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -28,6 +28,8 @@ import {
   buildProviderSettingsView,
   getDefaultEmbeddingProvider,
   PRIMARY_PROVIDER_OPTIONS,
+  type ProviderSettingsFieldName,
+  type ProviderSettingsValidationResult,
   type PrimaryProviderName,
   type ProviderProfileModels,
   type ProviderSettingsView,
@@ -40,6 +42,7 @@ import {
 } from "./provider-form-state";
 import { getIndexStatusLabel } from "../utils/index-status";
 import { SettingsActionBar } from "./provider-form-sections";
+import { getFirstFormError, toFieldErrorItems } from "@/lib/forms";
 
 type ProviderFormProps = {
   initialValues: AppSettings;
@@ -50,6 +53,7 @@ type ProviderFormProps = {
 };
 
 type FormNotice = {
+  items?: Array<{ label: string; message: string; healthy: boolean }>;
   message: string;
   title: string;
   variant?: "default" | "destructive";
@@ -157,12 +161,16 @@ function updatePrimaryProfileField(
 
 function renderProfileFields({
   includeModelFields,
+  inputRef,
+  manualFieldErrors,
   onChange,
   profile,
   provider,
   t,
 }: {
   includeModelFields: boolean;
+  inputRef?: (key: ProfileFieldDefinition["key"], node: HTMLInputElement | null) => void;
+  manualFieldErrors?: Partial<Record<ProfileFieldDefinition["key"], string>>;
   onChange: (key: ProfileFieldDefinition["key"], value: string) => void;
   profile: ProviderProfileModels[TemplateProviderName];
   provider: TemplateProviderName;
@@ -179,12 +187,15 @@ function renderProfileFields({
           <FieldLabel>{field.label}</FieldLabel>
           <Input
             aria-label={field.label}
+            aria-invalid={Boolean(manualFieldErrors?.[field.key])}
             className={providerFormControlClassName}
             onChange={(event) => onChange(field.key, event.target.value)}
+            ref={(node) => inputRef?.(field.key, node)}
             type={field.type ?? "text"}
             value={getProfileFieldValue(profile, field.key)}
           />
           {field.hint ? <FieldDescription>{t(field.hint)}</FieldDescription> : null}
+          <FieldError errors={toFieldErrorItems([], undefined, manualFieldErrors?.[field.key])} />
         </Field>
       ))}
     </FieldGroup>
@@ -230,6 +241,13 @@ export function ProviderForm({
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [notice, setNotice] = useState<FormNotice | null>(null);
+  const [validationResult, setValidationResult] = useState<ProviderSettingsValidationResult | null>(
+    null,
+  );
+  const [pendingScrollField, setPendingScrollField] = useState<ProviderSettingsFieldName | null>(
+    null,
+  );
+  const fieldRefs = useRef<Partial<Record<ProviderSettingsFieldName, HTMLInputElement | null>>>({});
   const chatModelLabel = t("chatModelLabel");
   const embeddingModelLabel = t("embeddingModelLabel");
   const visionModelLabel = t("visionModelLabel");
@@ -241,6 +259,8 @@ export function ProviderForm({
     setAdvancedOpen(false);
     setErrorMessage(null);
     setNotice(null);
+    setValidationResult(null);
+    setPendingScrollField(null);
   }, [initialValues]);
 
   const activeEmbeddingRoute =
@@ -263,7 +283,52 @@ export function ProviderForm({
   const clearFeedback = () => {
     setErrorMessage(null);
     setNotice(null);
+    setValidationResult(null);
   };
+
+  const fieldErrorMessages = {
+    chatModel: getFirstFormError([validationResult?.fields?.chatModel], t),
+    embeddingModel: getFirstFormError([validationResult?.fields?.embeddingModel], t),
+    primaryBaseUrl: getFirstFormError([validationResult?.fields?.primaryBaseUrl], t),
+    providerTimeoutSeconds: getFirstFormError(
+      [validationResult?.fields?.providerTimeoutSeconds],
+      t,
+    ),
+    retrievalEmbeddingModel: getFirstFormError(
+      [validationResult?.fields?.retrievalEmbeddingModel],
+      t,
+    ),
+    visionModel: getFirstFormError([validationResult?.fields?.visionModel], t),
+  };
+
+  const scrollToField = (field: ProviderSettingsFieldName) => {
+    if (field === "retrievalEmbeddingModel" && !advancedOpen) {
+      setAdvancedOpen(true);
+      setPendingScrollField(field);
+      return;
+    }
+
+    const target = fieldRefs.current[field];
+    target?.scrollIntoView?.({ block: "center", behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    if (!pendingScrollField) {
+      return;
+    }
+
+    const target = fieldRefs.current[pendingScrollField];
+    if (!target) {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      target.scrollIntoView?.({ block: "center", behavior: "smooth" });
+      setPendingScrollField(null);
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [advancedOpen, pendingScrollField]);
 
   const handleViewChange = (updater: (current: ProviderSettingsView) => ProviderSettingsView) => {
     clearFeedback();
@@ -274,9 +339,11 @@ export function ProviderForm({
     event.preventDefault();
     clearFeedback();
 
-    const validationError = validateProviderSettingsView(draft);
-    if (validationError) {
-      setErrorMessage(t(validationError));
+    const validation = validateProviderSettingsView(draft);
+    if (validation) {
+      setValidationResult(validation);
+      setErrorMessage(getFirstFormError([validation.form], t));
+      scrollToField(validation.firstInvalidField);
       return;
     }
 
@@ -301,9 +368,11 @@ export function ProviderForm({
   const handleTest = async () => {
     clearFeedback();
 
-    const validationError = validateProviderSettingsView(draft);
-    if (validationError) {
-      setErrorMessage(t(validationError));
+    const validation = validateProviderSettingsView(draft);
+    if (validation) {
+      setValidationResult(validation);
+      setErrorMessage(getFirstFormError([validation.form], t));
+      scrollToField(validation.firstInvalidField);
       return;
     }
 
@@ -311,25 +380,29 @@ export function ProviderForm({
       const result = await onTestProvider(toSettingsPayload(draft));
       const allHealthy =
         result.response.healthy && result.embedding.healthy && result.vision.healthy;
+      const items = [
+        {
+          healthy: result.response.healthy,
+          label: t("statusChatLabel"),
+          message: getCapabilityHealthMessage(result.response, t, ollamaBaseUrl),
+        },
+        {
+          healthy: result.embedding.healthy,
+          label: t("statusRetrievalLabel"),
+          message: getCapabilityHealthMessage(result.embedding, t, ollamaBaseUrl),
+        },
+        {
+          healthy: result.vision.healthy,
+          label: t("statusVisionLabel"),
+          message: getCapabilityHealthMessage(result.vision, t, ollamaBaseUrl),
+        },
+      ];
       setNotice({
         title: allHealthy ? t("connectionSuccessNotice") : t("testConnectionFailedNotice"),
-        message: [
-          `${t("statusChatLabel")}: ${getCapabilityHealthMessage(
-            result.response,
-            t,
-            ollamaBaseUrl,
-          )}`,
-          `${t("statusRetrievalLabel")}: ${getCapabilityHealthMessage(
-            result.embedding,
-            t,
-            ollamaBaseUrl,
-          )}`,
-          `${t("statusVisionLabel")}: ${getCapabilityHealthMessage(
-            result.vision,
-            t,
-            ollamaBaseUrl,
-          )}`,
-        ].join("\n"),
+        items,
+        message: allHealthy
+          ? t("connectionSuccessNotice")
+          : t("testConnectionPartialNotice", { count: items.length }),
         variant: allHealthy ? "default" : "destructive",
       });
     } catch (error) {
@@ -419,19 +492,27 @@ export function ProviderForm({
             <FieldLabel>{chatModelLabel}</FieldLabel>
             <Input
               aria-label={chatModelLabel}
+              aria-invalid={Boolean(fieldErrorMessages.chatModel)}
               className={providerFormControlClassName}
               onChange={(event) =>
                 handleViewChange((current) =>
                   updatePrimaryProfileField(current, "chat_model", event.target.value),
                 )
               }
+              ref={(node) => {
+                fieldRefs.current.chatModel = node;
+              }}
               value={draft.chatModel}
+            />
+            <FieldError
+              errors={toFieldErrorItems([], undefined, fieldErrorMessages.chatModel ?? undefined)}
             />
           </Field>
           <Field>
             <FieldLabel>{embeddingModelLabel}</FieldLabel>
             <Input
               aria-label={embeddingModelLabel}
+              aria-invalid={Boolean(fieldErrorMessages.embeddingModel)}
               className={providerFormControlClassName}
               onChange={(event) =>
                 handleViewChange((current) => {
@@ -452,34 +533,59 @@ export function ProviderForm({
                   };
                 })
               }
+              ref={(node) => {
+                fieldRefs.current.embeddingModel = node;
+              }}
               value={draft.embeddingModel}
+            />
+            <FieldError
+              errors={toFieldErrorItems(
+                [],
+                undefined,
+                fieldErrorMessages.embeddingModel ?? undefined,
+              )}
             />
           </Field>
           <Field>
             <FieldLabel>{visionModelLabel}</FieldLabel>
             <Input
               aria-label={visionModelLabel}
+              aria-invalid={Boolean(fieldErrorMessages.visionModel)}
               className={providerFormControlClassName}
               onChange={(event) =>
                 handleViewChange((current) =>
                   updatePrimaryProfileField(current, "vision_model", event.target.value),
                 )
               }
+              ref={(node) => {
+                fieldRefs.current.visionModel = node;
+              }}
               value={draft.visionModel}
             />
             <FieldDescription>{t("visionModelHint")}</FieldDescription>
+            <FieldError
+              errors={toFieldErrorItems([], undefined, fieldErrorMessages.visionModel ?? undefined)}
+            />
           </Field>
           {primaryConnectionFields.map((field) => (
             <Field key={`primary-${field.key}`}>
               <FieldLabel>{field.label}</FieldLabel>
               <Input
                 aria-label={field.label}
+                aria-invalid={
+                  field.key === "base_url" && Boolean(fieldErrorMessages.primaryBaseUrl)
+                }
                 className={providerFormControlClassName}
                 onChange={(event) =>
                   handleViewChange((current) =>
                     updatePrimaryProfileField(current, field.key, event.target.value),
                   )
                 }
+                ref={(node) => {
+                  if (field.key === "base_url") {
+                    fieldRefs.current.primaryBaseUrl = node;
+                  }
+                }}
                 type={field.type ?? "text"}
                 value={getProfileFieldValue(
                   draft.providerProfiles[draft.primaryProvider],
@@ -487,6 +593,15 @@ export function ProviderForm({
                 )}
               />
               {field.hint ? <FieldDescription>{t(field.hint)}</FieldDescription> : null}
+              {field.key === "base_url" ? (
+                <FieldError
+                  errors={toFieldErrorItems(
+                    [],
+                    undefined,
+                    fieldErrorMessages.primaryBaseUrl ?? undefined,
+                  )}
+                />
+              ) : null}
             </Field>
           ))}
         </FieldGroup>
@@ -566,6 +681,7 @@ export function ProviderForm({
                     <FieldLabel>{retrievalEmbeddingModelLabel}</FieldLabel>
                     <Input
                       aria-label={retrievalEmbeddingModelLabel}
+                      aria-invalid={Boolean(fieldErrorMessages.retrievalEmbeddingModel)}
                       className={providerFormControlClassName}
                       onChange={(event) =>
                         handleViewChange((current) => ({
@@ -578,7 +694,17 @@ export function ProviderForm({
                           retrievalEmbeddingModel: event.target.value,
                         }))
                       }
+                      ref={(node) => {
+                        fieldRefs.current.retrievalEmbeddingModel = node;
+                      }}
                       value={draft.retrievalEmbeddingModel}
+                    />
+                    <FieldError
+                      errors={toFieldErrorItems(
+                        [],
+                        undefined,
+                        fieldErrorMessages.retrievalEmbeddingModel ?? undefined,
+                      )}
                     />
                   </Field>
                 </FieldGroup>
@@ -649,6 +775,7 @@ export function ProviderForm({
                   <FieldLabel>{t("providerTimeoutLabel")}</FieldLabel>
                   <Input
                     aria-label={t("providerTimeoutLabel")}
+                    aria-invalid={Boolean(fieldErrorMessages.providerTimeoutSeconds)}
                     className={providerFormControlClassName}
                     min="1"
                     onChange={(event) =>
@@ -657,10 +784,20 @@ export function ProviderForm({
                         providerTimeoutSeconds: Number(event.target.value || "0"),
                       }))
                     }
+                    ref={(node) => {
+                      fieldRefs.current.providerTimeoutSeconds = node;
+                    }}
                     type="number"
                     value={String(draft.providerTimeoutSeconds)}
                   />
                   <FieldDescription>{t("providerTimeoutHint")}</FieldDescription>
+                  <FieldError
+                    errors={toFieldErrorItems(
+                      [],
+                      undefined,
+                      fieldErrorMessages.providerTimeoutSeconds ?? undefined,
+                    )}
+                  />
                 </Field>
               </FieldGroup>
             </section>

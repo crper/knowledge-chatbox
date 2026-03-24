@@ -250,6 +250,46 @@ describe("login page", () => {
     );
   });
 
+  it("keeps login validation visible until the corrected fields blur", async () => {
+    const fetchMock = authenticatedFetch(null);
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={["/login"]}>
+        <AppProviders>
+          <AppRouter />
+        </AppProviders>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "登录" }));
+
+    expect(await screen.findByText("请输入用户名和密码。")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("用户名"), {
+      target: { value: "admin" },
+    });
+    expect(screen.getByText("请输入用户名和密码。")).toBeInTheDocument();
+
+    fireEvent.blur(screen.getByLabelText("用户名"));
+    expect(screen.getByText("请输入用户名和密码。")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("密码"), {
+      target: { value: "secret-123" },
+    });
+    expect(screen.getByText("请输入用户名和密码。")).toBeInTheDocument();
+
+    fireEvent.blur(screen.getByLabelText("密码"));
+
+    await waitFor(() => {
+      expect(screen.queryByText("请输入用户名和密码。")).not.toBeInTheDocument();
+    });
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      expect.stringMatching(/\/api\/auth\/login$/),
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
   it("shows login page for unauthenticated users", async () => {
     vi.stubGlobal("fetch", authenticatedFetch(null));
 

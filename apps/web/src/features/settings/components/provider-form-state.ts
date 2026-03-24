@@ -1,3 +1,12 @@
+import {
+  buildFormValidationResult,
+  formError,
+  isValidHttpUrl,
+  positiveIntegerInRange,
+  trimmedRequired,
+  type FormErrorDescriptor,
+  type FormValidationResult,
+} from "@/lib/forms";
 import type {
   AppSettings,
   EmbeddingProviderName,
@@ -21,12 +30,17 @@ export type ProviderSettingsView = {
   visionModel: string;
 };
 
-type ProviderSettingsValidationKey =
-  | "chatModelRequiredError"
-  | "embeddingModelRequiredError"
-  | "retrievalEmbeddingModelRequiredError"
-  | "visionModelRequiredError"
-  | "providerTimeoutInvalidError";
+export type ProviderSettingsFieldName =
+  | "chatModel"
+  | "embeddingModel"
+  | "visionModel"
+  | "primaryBaseUrl"
+  | "retrievalEmbeddingModel"
+  | "providerTimeoutSeconds";
+
+export type ProviderSettingsValidationResult = FormValidationResult<ProviderSettingsFieldName> & {
+  firstInvalidField: ProviderSettingsFieldName;
+};
 
 export const PRIMARY_PROVIDER_OPTIONS: PrimaryProviderName[] = ["ollama", "openai", "anthropic"];
 export const TEMPLATE_PROVIDER_OPTIONS: TemplateProviderName[] = [
@@ -245,26 +259,57 @@ export function toSettingsPayload(view: ProviderSettingsView) {
 
 export function validateProviderSettingsView(
   view: ProviderSettingsView,
-): ProviderSettingsValidationKey | null {
-  if (!view.chatModel.trim()) {
-    return "chatModelRequiredError";
+): ProviderSettingsValidationResult | undefined {
+  const fields: Partial<Record<ProviderSettingsFieldName, FormErrorDescriptor | undefined>> = {
+    chatModel: trimmedRequired(view.chatModel, "chatModelRequiredError"),
+    embeddingModel: trimmedRequired(view.embeddingModel, "embeddingModelRequiredError"),
+    primaryBaseUrl: validatePrimaryBaseUrl(view),
+    providerTimeoutSeconds: positiveIntegerInRange(
+      view.providerTimeoutSeconds,
+      1,
+      600,
+      "providerTimeoutInvalidError",
+    ),
+    retrievalEmbeddingModel: view.retrievalOverrideEnabled
+      ? trimmedRequired(view.retrievalEmbeddingModel, "retrievalEmbeddingModelRequiredError")
+      : undefined,
+    visionModel: trimmedRequired(view.visionModel, "visionModelRequiredError"),
+  };
+
+  const result = buildFormValidationResult(formError("providerValidationSummaryError"), fields);
+
+  if (!result) {
+    return undefined;
   }
 
-  if (!view.embeddingModel.trim()) {
-    return "embeddingModelRequiredError";
+  return {
+    ...result,
+    firstInvalidField: getFirstInvalidField(fields),
+  };
+}
+
+function getFirstInvalidField(
+  fields: Partial<Record<ProviderSettingsFieldName, FormErrorDescriptor | undefined>>,
+): ProviderSettingsFieldName {
+  const order: ProviderSettingsFieldName[] = [
+    "chatModel",
+    "embeddingModel",
+    "visionModel",
+    "primaryBaseUrl",
+    "retrievalEmbeddingModel",
+    "providerTimeoutSeconds",
+  ];
+
+  return order.find((field) => fields[field] !== undefined) ?? "chatModel";
+}
+
+function validatePrimaryBaseUrl(view: ProviderSettingsView) {
+  const baseUrl = view.providerProfiles[view.primaryProvider].base_url;
+  if (view.primaryProvider === "ollama" && !normalizeText(baseUrl)) {
+    return formError("providerTestOllamaBaseUrlMissing");
   }
 
-  if (view.retrievalOverrideEnabled && !view.retrievalEmbeddingModel.trim()) {
-    return "retrievalEmbeddingModelRequiredError";
-  }
-
-  if (!view.visionModel.trim()) {
-    return "visionModelRequiredError";
-  }
-
-  if (!Number.isInteger(view.providerTimeoutSeconds) || view.providerTimeoutSeconds <= 0) {
-    return "providerTimeoutInvalidError";
-  }
-
-  return null;
+  return isValidHttpUrl(baseUrl, "baseUrlInvalidError", {
+    allowEmpty: view.primaryProvider !== "ollama",
+  });
 }

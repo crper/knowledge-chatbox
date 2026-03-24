@@ -3,7 +3,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { useForm } from "@tanstack/react-form";
+import { revalidateLogic, useForm } from "@tanstack/react-form";
 import type { FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -17,10 +17,18 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { ApiRequestError, getApiErrorMessage } from "@/lib/api/client";
-import { getFirstFormError, handleFormSubmitEvent } from "@/lib/forms";
+import {
+  buildFormValidationResult,
+  formError,
+  getFirstFormError,
+  handleFormSubmitEvent,
+  minLength,
+  toFieldErrorItems,
+  trimmedRequired,
+} from "@/lib/forms";
 
 type ChangePasswordDialogProps = {
   open: boolean;
@@ -39,25 +47,31 @@ export function ChangePasswordDialog({ open, onClose, onSubmit }: ChangePassword
       currentPassword: "",
       newPassword: "",
     },
+    validationLogic: revalidateLogic({
+      mode: "submit",
+      modeAfterSubmission: "blur",
+    }),
     validators: {
-      onSubmit: ({ value }) => {
-        if (!value.currentPassword && !value.newPassword) {
-          return t("changePasswordValidationError");
+      onDynamic: ({ value }) => {
+        const currentPassword = trimmedRequired(
+          value.currentPassword,
+          "currentPasswordRequiredError",
+        );
+        const newPassword =
+          trimmedRequired(value.newPassword, "newPasswordRequiredError") ??
+          minLength(value.newPassword, 8, "passwordLengthValidationError");
+
+        if (!currentPassword && !newPassword) {
+          return undefined;
         }
 
-        if (!value.currentPassword) {
-          return t("currentPasswordRequiredError");
-        }
+        const formIssue =
+          currentPassword && newPassword ? formError("changePasswordValidationError") : undefined;
 
-        if (!value.newPassword) {
-          return t("newPasswordRequiredError");
-        }
-
-        if (value.newPassword.length < 8) {
-          return t("passwordLengthValidationError");
-        }
-
-        return undefined;
+        return buildFormValidationResult(formIssue, {
+          currentPassword,
+          newPassword,
+        });
       },
     },
     onSubmit: async ({ formApi, value }) => {
@@ -115,17 +129,19 @@ export function ChangePasswordDialog({ open, onClose, onSubmit }: ChangePassword
                   <FieldLabel htmlFor="current-password">{t("currentPasswordLabel")}</FieldLabel>
                   <Input
                     aria-label={t("currentPasswordLabel")}
+                    aria-invalid={field.state.meta.errors.length > 0}
                     autoComplete="current-password"
                     className="h-10 rounded-xl border-border/80 bg-background/80"
                     id="current-password"
                     onChange={(event) => {
                       setSubmitError(null);
-                      form.setErrorMap({ onSubmit: undefined });
                       field.handleChange(event.target.value);
                     }}
+                    onBlur={() => field.handleBlur()}
                     type="password"
                     value={field.state.value}
                   />
+                  <FieldError errors={toFieldErrorItems(field.state.meta.errors, t)} />
                 </Field>
               )}
             </form.Field>
@@ -135,24 +151,26 @@ export function ChangePasswordDialog({ open, onClose, onSubmit }: ChangePassword
                   <FieldLabel htmlFor="new-password">{t("newPasswordLabel")}</FieldLabel>
                   <Input
                     aria-label={t("newPasswordLabel")}
+                    aria-invalid={field.state.meta.errors.length > 0}
                     autoComplete="new-password"
                     className="h-10 rounded-xl border-border/80 bg-background/80"
                     id="new-password"
                     onChange={(event) => {
                       setSubmitError(null);
-                      form.setErrorMap({ onSubmit: undefined });
                       field.handleChange(event.target.value);
                     }}
+                    onBlur={() => field.handleBlur()}
                     type="password"
                     value={field.state.value}
                   />
+                  <FieldError errors={toFieldErrorItems(field.state.meta.errors, t)} />
                 </Field>
               )}
             </form.Field>
           </FieldGroup>
-          <form.Subscribe selector={(state) => state.errors}>
-            {(errors) => {
-              const errorMessage = getFirstFormError(errors);
+          <form.Subscribe selector={(state) => state.errorMap.onDynamic}>
+            {(dynamicError) => {
+              const errorMessage = getFirstFormError([dynamicError], t);
               const submitErrorMessage = getSubmitErrorMessage();
               const displayError = errorMessage || submitErrorMessage;
               return displayError ? (

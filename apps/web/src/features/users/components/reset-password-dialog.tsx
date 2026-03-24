@@ -3,7 +3,7 @@
  */
 
 import { useEffect } from "react";
-import { useForm } from "@tanstack/react-form";
+import { revalidateLogic, useForm } from "@tanstack/react-form";
 import type { FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -17,9 +17,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { getFirstFormError, handleFormSubmitEvent } from "@/lib/forms";
+import {
+  buildFormValidationResult,
+  getFirstFormError,
+  handleFormSubmitEvent,
+  minLength,
+  toFieldErrorItems,
+} from "@/lib/forms";
 
 type ResetPasswordDialogProps = {
   open: boolean;
@@ -42,13 +48,15 @@ export function ResetPasswordDialog({
     defaultValues: {
       newPassword: "",
     },
+    validationLogic: revalidateLogic({
+      mode: "submit",
+      modeAfterSubmission: "blur",
+    }),
     validators: {
-      onSubmit: ({ value }) => {
-        if (value.newPassword.length < 8) {
-          return t("resetPasswordValidationError", { ns: "users" });
-        }
+      onDynamic: ({ value }) => {
+        const newPassword = minLength(value.newPassword, 8, "resetPasswordValidationError");
 
-        return undefined;
+        return buildFormValidationResult(undefined, { newPassword });
       },
     },
     onSubmit: async ({ formApi, value }) => {
@@ -57,7 +65,10 @@ export function ResetPasswordDialog({
         onClose();
       } catch (error) {
         formApi.setErrorMap({
-          onSubmit: error instanceof Error ? error.message : t("resetPasswordFailed"),
+          onSubmit: {
+            fields: {},
+            form: error instanceof Error ? error.message : t("resetPasswordFailed"),
+          },
         });
         throw error;
       }
@@ -96,6 +107,7 @@ export function ResetPasswordDialog({
                   </FieldLabel>
                   <Input
                     aria-label={t("newPasswordLabel", { ns: "auth" })}
+                    aria-invalid={field.state.meta.errors.length > 0}
                     autoComplete="new-password"
                     className="h-10 rounded-xl border-border/80 bg-background/80"
                     id="reset-user-password"
@@ -103,16 +115,18 @@ export function ResetPasswordDialog({
                       form.setErrorMap({ onSubmit: undefined });
                       field.handleChange(event.target.value);
                     }}
+                    onBlur={() => field.handleBlur()}
                     type="password"
                     value={field.state.value}
                   />
+                  <FieldError errors={toFieldErrorItems(field.state.meta.errors, t)} />
                 </Field>
               )}
             </form.Field>
           </FieldGroup>
-          <form.Subscribe selector={(state) => state.errors}>
-            {(errors) => {
-              const errorMessage = getFirstFormError(errors);
+          <form.Subscribe selector={(state) => state.errorMap}>
+            {(errorMap) => {
+              const errorMessage = getFirstFormError([errorMap.onDynamic, errorMap.onSubmit], t);
               return errorMessage ? (
                 <Alert variant="destructive">
                   <AlertDescription>{errorMessage}</AlertDescription>

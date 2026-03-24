@@ -2,16 +2,22 @@
  * @file 认证相关界面组件模块。
  */
 
-import { useForm } from "@tanstack/react-form";
+import { revalidateLogic, useForm } from "@tanstack/react-form";
 import type { FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { handleFormSubmitEvent } from "@/lib/forms";
-import { getFirstFormError } from "@/lib/forms";
+import {
+  buildFormValidationResult,
+  formError,
+  getFirstFormError,
+  handleFormSubmitEvent,
+  toFieldErrorItems,
+  trimmedRequired,
+} from "@/lib/forms";
 
 type LoginFormProps = {
   errorMessage?: string | null;
@@ -29,13 +35,19 @@ export function LoginForm({ errorMessage = null, onFieldChange, onSubmit }: Logi
       password: "",
       username: "",
     },
+    validationLogic: revalidateLogic({
+      mode: "submit",
+      modeAfterSubmission: "blur",
+    }),
     validators: {
-      onSubmit: ({ value }) => {
-        if (!value.username.trim() || !value.password) {
-          return t("loginValidationError");
-        }
+      onDynamic: ({ value }) => {
+        const username = trimmedRequired(value.username, "usernameRequiredError");
+        const password = trimmedRequired(value.password, "passwordRequiredError");
 
-        return undefined;
+        return buildFormValidationResult(formError("loginValidationError"), {
+          password,
+          username,
+        });
       },
     },
     onSubmit: async ({ value }) => {
@@ -64,17 +76,19 @@ export function LoginForm({ errorMessage = null, onFieldChange, onSubmit }: Logi
               </FieldLabel>
               <Input
                 aria-label={t("usernameLabel")}
+                aria-invalid={field.state.meta.errors.length > 0}
                 autoComplete="username"
                 className="h-11 rounded-[1rem] border-border/80 bg-background/68 px-4 focus-visible:bg-background/82"
                 id="login-username"
                 onChange={(event) => {
                   onFieldChange?.();
-                  form.setErrorMap({ onSubmit: undefined });
                   field.handleChange(event.target.value);
                 }}
+                onBlur={() => field.handleBlur()}
                 placeholder={t("usernameLabel")}
                 value={field.state.value}
               />
+              <FieldError errors={toFieldErrorItems(field.state.meta.errors, t)} />
             </Field>
           )}
         </form.Field>
@@ -89,25 +103,27 @@ export function LoginForm({ errorMessage = null, onFieldChange, onSubmit }: Logi
               </FieldLabel>
               <Input
                 aria-label={t("passwordLabel")}
+                aria-invalid={field.state.meta.errors.length > 0}
                 autoComplete="current-password"
                 className="h-11 rounded-[1rem] border-border/80 bg-background/68 px-4 focus-visible:bg-background/82"
                 id="login-password"
                 onChange={(event) => {
                   onFieldChange?.();
-                  form.setErrorMap({ onSubmit: undefined });
                   field.handleChange(event.target.value);
                 }}
+                onBlur={() => field.handleBlur()}
                 placeholder={t("passwordLabel")}
                 type="password"
                 value={field.state.value}
               />
+              <FieldError errors={toFieldErrorItems(field.state.meta.errors, t)} />
             </Field>
           )}
         </form.Field>
       </FieldGroup>
-      <form.Subscribe selector={(state) => state.errors}>
-        {(errors) => {
-          const formErrorMessage = getFirstFormError(errors);
+      <form.Subscribe selector={(state) => state.errorMap.onDynamic}>
+        {(dynamicError) => {
+          const formErrorMessage = getFirstFormError([dynamicError], t);
           const feedbackMessage = formErrorMessage || errorMessage;
 
           return (

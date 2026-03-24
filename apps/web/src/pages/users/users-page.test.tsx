@@ -179,6 +179,38 @@ describe("UsersPage", () => {
     );
   });
 
+  it("keeps create-user validation visible until the corrected password field blurs", async () => {
+    const fetchMock = buildUsersFetch();
+
+    render(
+      <QueryProvider>
+        <UsersPage />
+      </QueryProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "创建用户" }));
+    fireEvent.click(screen.getByRole("button", { name: "提交创建" }));
+
+    expect(await screen.findByText("请输入用户名和初始密码。")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("新用户名"), { target: { value: "new-user" } });
+    fireEvent.blur(screen.getByLabelText("新用户名"));
+    expect(screen.getByText("请输入用户名和初始密码。")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("初始密码"), { target: { value: "secret-123" } });
+    expect(screen.getByText("请输入用户名和初始密码。")).toBeInTheDocument();
+
+    fireEvent.blur(screen.getByLabelText("初始密码"));
+
+    await waitFor(() => {
+      expect(screen.queryByText("请输入用户名和初始密码。")).not.toBeInTheDocument();
+    });
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      expect.stringMatching(/\/api\/users$/),
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
   it("keeps create user inputs after submit failure", async () => {
     buildUsersFetch("admin", { createUserSucceeds: false });
 
@@ -248,6 +280,37 @@ describe("UsersPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "确认重置" }));
 
     expect(await screen.findByText("请输入至少 8 位的新密码。")).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      expect.stringMatching(/\/api\/users\/2\/reset-password$/),
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("keeps reset-password validation visible until the corrected password field blurs", async () => {
+    const fetchMock = buildUsersFetch();
+
+    render(
+      <QueryProvider>
+        <UsersPage />
+      </QueryProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "重置密码 bob" }));
+    fireEvent.click(screen.getByRole("button", { name: "确认重置" }));
+
+    expect(await screen.findByText("请输入至少 8 位的新密码。")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("新密码"), {
+      target: { value: "new-secret-456" },
+    });
+
+    expect(screen.getByText("请输入至少 8 位的新密码。")).toBeInTheDocument();
+
+    fireEvent.blur(screen.getByLabelText("新密码"));
+
+    await waitFor(() => {
+      expect(screen.queryByText("请输入至少 8 位的新密码。")).not.toBeInTheDocument();
+    });
     expect(fetchMock).not.toHaveBeenCalledWith(
       expect.stringMatching(/\/api\/users\/2\/reset-password$/),
       expect.objectContaining({ method: "POST" }),

@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
 import { i18n } from "@/i18n";
@@ -546,6 +546,59 @@ describe("SettingsPage", () => {
     expect(await screen.findByText("Chat Model is required.")).toBeInTheDocument();
     expect(screen.queryByText("Chat Model 为必填项。")).not.toBeInTheDocument();
     expect(settingsApi.updateSettings).not.toHaveBeenCalled();
+  });
+
+  it("blocks save when the active provider base url is not a valid absolute http/https url", async () => {
+    renderSettingsPage();
+
+    fireEvent.change(await screen.findByLabelText("OpenAI Base URL"), {
+      target: { value: "api.openai.com/v1" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存设置" }));
+
+    expect(
+      await screen.findByText("请输入完整地址，必须以 http:// 或 https:// 开头。"),
+    ).toBeInTheDocument();
+    expect(settingsApi.updateSettings).not.toHaveBeenCalled();
+  });
+
+  it("blocks save when provider timeout exceeds the 1-600 range", async () => {
+    renderSettingsPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "展开高级配置" }));
+    fireEvent.change(await screen.findByLabelText("Provider Timeout (Seconds)"), {
+      target: { value: "601" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存设置" }));
+
+    expect(
+      await screen.findByText("Provider Timeout (Seconds) 必须在 1-600 之间。"),
+    ).toBeInTheDocument();
+    expect(settingsApi.updateSettings).not.toHaveBeenCalled();
+  });
+
+  it("shows a partial connection summary with three capability rows", async () => {
+    vi.mocked(settingsApi.testProviderConnection).mockResolvedValue(
+      buildConnectionResult({
+        embedding: {
+          healthy: false,
+          message: "embedding unavailable",
+        },
+      }),
+    );
+
+    renderSettingsPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "测试连接" }));
+
+    expect(
+      await screen.findByText("连接测试未完全通过，请检查以下 3 项状态。"),
+    ).toBeInTheDocument();
+    const statusList = screen.getByRole("list", { name: "连接测试状态" });
+    expect(statusList).toBeInTheDocument();
+    expect(within(statusList).getByText("聊天")).toBeInTheDocument();
+    expect(within(statusList).getByText("检索")).toBeInTheDocument();
+    expect(within(statusList).getByText("视觉")).toBeInTheDocument();
   });
 
   it("shows only self-service sections for non-admin users without loading system settings", async () => {

@@ -67,4 +67,36 @@ describe("ChangePasswordDialog", () => {
     });
     expect(onClose).not.toHaveBeenCalled();
   });
+
+  it("keeps local validation visible until the user blurs the corrected field", async () => {
+    const onClose = vi.fn();
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <AppProviders>
+        <ChangePasswordDialog open onClose={onClose} onSubmit={onSubmit} />
+      </AppProviders>,
+    );
+
+    fireEvent.change(await screen.findByLabelText("新密码"), {
+      target: { value: "new-password-123" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "提交" }));
+
+    expect(await screen.findByText("请输入当前密码。")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("当前密码"), {
+      target: { value: "old-password" },
+    });
+
+    expect(screen.getByText("请输入当前密码。")).toBeInTheDocument();
+
+    fireEvent.blur(screen.getByLabelText("当前密码"));
+
+    await waitFor(() => {
+      expect(screen.queryByText("请输入当前密码。")).not.toBeInTheDocument();
+    });
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+  });
 });
