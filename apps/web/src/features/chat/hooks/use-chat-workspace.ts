@@ -91,6 +91,63 @@ function resolveSubmitErrorMessage(error: unknown, fallback: string) {
   return message;
 }
 
+function toComposerAttachmentSignature(attachment: ChatAttachmentItem) {
+  return JSON.stringify({
+    attachmentId: attachment.id,
+    documentId: attachment.resourceDocumentId ?? null,
+    documentRevisionId: attachment.resourceDocumentVersionId ?? null,
+    kind: attachment.kind,
+    mimeType: attachment.mimeType ?? null,
+    name: attachment.name,
+    sizeBytes: attachment.sizeBytes ?? null,
+  });
+}
+
+function toMessageAttachmentSignature(
+  attachment: NonNullable<ChatMessageItem["attachments_json"]>[number],
+) {
+  return JSON.stringify({
+    attachmentId: attachment.attachment_id,
+    documentId: attachment.resource_document_id ?? null,
+    documentRevisionId: attachment.resource_document_version_id ?? null,
+    kind: attachment.type,
+    mimeType: attachment.mime_type,
+    name: attachment.name,
+    sizeBytes: attachment.size_bytes,
+  });
+}
+
+function shouldResetComposerSnapshotForRetry({
+  composerAttachments,
+  composerDraft,
+  retryAttachments,
+  retryContent,
+}: {
+  composerAttachments: ChatAttachmentItem[];
+  composerDraft: string;
+  retryAttachments: ChatMessageItem["attachments_json"];
+  retryContent: string;
+}) {
+  if (composerDraft.trim() !== retryContent.trim()) {
+    return false;
+  }
+
+  const normalizedComposerAttachments = composerAttachments
+    .map(toComposerAttachmentSignature)
+    .sort();
+  const normalizedRetryAttachments = (retryAttachments ?? [])
+    .map(toMessageAttachmentSignature)
+    .sort();
+
+  if (normalizedComposerAttachments.length !== normalizedRetryAttachments.length) {
+    return false;
+  }
+
+  return normalizedComposerAttachments.every(
+    (attachmentSignature, index) => attachmentSignature === normalizedRetryAttachments[index],
+  );
+}
+
 /**
  * 封装聊天工作区的数据与交互。
  */
@@ -506,6 +563,25 @@ export function useChatWorkspace(activeSessionId: number | null) {
               ?.userContent ??
             message.content)
           : message.content;
+      const retryAttachments =
+        message.role === "assistant"
+          ? (messages.find((item) => item.id === retryOfMessageId)?.attachments_json ?? null)
+          : (message.attachments_json ?? null);
+      const draftSnapshot = useChatUiStore.getState().draftsBySession[String(sessionId)] ?? "";
+      const attachmentSnapshot = cloneChatAttachments(
+        useChatUiStore.getState().attachmentsBySession[String(sessionId)] ?? [],
+      );
+      const shouldResetComposerSnapshot = shouldResetComposerSnapshotForRetry({
+        composerAttachments: attachmentSnapshot,
+        composerDraft: draftSnapshot,
+        retryAttachments,
+        retryContent,
+      });
+
+      if (shouldResetComposerSnapshot) {
+        setDraft(sessionId, "");
+        clearAttachments(sessionId);
+      }
 
       try {
         setScrollToLatestRequestKey((current) => current + 1);
@@ -515,6 +591,10 @@ export function useChatWorkspace(activeSessionId: number | null) {
           retryOfMessageId,
         });
       } catch {
+        if (shouldResetComposerSnapshot) {
+          setDraft(sessionId, draftSnapshot);
+          setAttachments(sessionId, attachmentSnapshot);
+        }
         return;
       } finally {
         finishSessionSubmit(sessionId);
@@ -522,11 +602,14 @@ export function useChatWorkspace(activeSessionId: number | null) {
     },
     [
       beginSessionSubmit,
+      clearAttachments,
       finishSessionSubmit,
       messages,
       resolvedActiveSessionId,
       runsById,
       sendMutation,
+      setAttachments,
+      setDraft,
     ],
   );
 

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { i18n } from "@/i18n";
 import { toast } from "sonner";
@@ -10,6 +10,15 @@ import { useUiStore } from "@/lib/store/ui-store";
 import { AppProviders } from "@/providers/app-providers";
 import { AppRouter } from "@/router";
 import { jsonResponse } from "@/test/http";
+
+type MockChatAttachment = NonNullable<ChatMessageItem["attachments_json"]>[number] & {
+  document_id?: number | null;
+  document_revision_id?: number | null;
+};
+
+type MockChatMessage = Omit<ChatMessageItem, "attachments_json"> & {
+  attachments_json?: MockChatAttachment[] | null;
+};
 
 class MockXMLHttpRequest {
   static instances: MockXMLHttpRequest[] = [];
@@ -121,14 +130,15 @@ function buildUploadPayload(overrides?: {
 function buildAuthenticatedFetch(options?: {
   delayCreateSession?: boolean;
   messageCount?: number;
-  messages?: ChatMessageItem[];
-  messagesBySession?: Record<number, ChatMessageItem[]>;
+  messages?: MockChatMessage[];
+  messagesBySession?: Record<number, MockChatMessage[]>;
   sessions?: Array<{ id: number; title: string | null }>;
   streamErrorResponse?: {
     body: unknown;
     status: number;
   };
   streamFrames?: string[];
+  streamFramesSequence?: string[][];
   streamFinalDelayMs?: number;
   streamFramesBySession?: Record<number, string[]>;
 }) {
@@ -138,6 +148,7 @@ function buildAuthenticatedFetch(options?: {
       { id: 2, title: "Session B" },
     ]
   ).map((session) => ({ ...session }));
+  const streamFramesQueue = options?.streamFramesSequence?.map((frames) => [...frames]) ?? null;
   let streamedUserMessage: {
     attachments_json?: Array<{
       archived_at?: string | null;
@@ -154,6 +165,7 @@ function buildAuthenticatedFetch(options?: {
     status: "succeeded";
     sources_json: [];
   } | null = null;
+  let streamedAssistantMessage: ChatMessageItem | null = null;
   const fetchMock = vi.fn().mockImplementation((input: string, init?: RequestInit) => {
     if (input.endsWith("/api/auth/bootstrap")) {
       return Promise.resolve(
@@ -330,25 +342,59 @@ function buildAuthenticatedFetch(options?: {
         }>;
         content?: string;
       };
+      const frames = streamFramesQueue?.shift() ??
+        options?.streamFramesBySession?.[sessionId] ??
+        options?.streamFrames ?? [
+          `event: run.started\ndata: {"run_id":${sessionId * 10 + 5},"session_id":${sessionId},"assistant_message_id":${sessionId * 10 + 4}}\n\n`,
+          `event: message.delta\ndata: {"run_id":${sessionId * 10 + 5},"assistant_message_id":${sessionId * 10 + 4},"delta":"streamed answer"}\n\n`,
+          `event: sources.final\ndata: {"run_id":${sessionId * 10 + 5},"assistant_message_id":${sessionId * 10 + 4},"sources":[]}\n\n`,
+          `event: run.completed\ndata: {"run_id":${sessionId * 10 + 5},"session_id":${sessionId},"assistant_message_id":${sessionId * 10 + 4}}\n\n`,
+          "event: done\ndata: {}\n\n",
+        ];
+      const runStartedFrame = frames.find((frame) => frame.startsWith("event: run.started"));
+      const runFailedFrame = frames.find((frame) => frame.startsWith("event: run.failed"));
+      const startedPayload = runStartedFrame
+        ? (JSON.parse(runStartedFrame.split("data: ")[1]!.trim()) as {
+            assistant_message_id?: number;
+            user_message_id?: number;
+          })
+        : {};
+      const failedPayload = runFailedFrame
+        ? (JSON.parse(runFailedFrame.split("data: ")[1]!.trim()) as {
+            assistant_message_id?: number;
+            error_message?: string;
+          })
+        : null;
       streamedUserMessage = {
         attachments_json: payload.attachments,
         content: payload.content ?? "",
-        id: 3,
+        id: startedPayload.user_message_id ?? 3,
         role: "user",
         status: "succeeded",
         sources_json: [],
       };
+      streamedAssistantMessage = failedPayload
+        ? {
+            id: failedPayload.assistant_message_id ?? startedPayload.assistant_message_id ?? 4,
+            role: "assistant",
+            content: "",
+            status: "failed",
+            error_message: failedPayload.error_message ?? "provider unavailable",
+            reply_to_message_id: startedPayload.user_message_id ?? 3,
+            sources_json: [],
+          }
+        : {
+            id: startedPayload.assistant_message_id ?? 4,
+            role: "assistant",
+            content: "streamed answer",
+            status: "succeeded",
+            error_message: null,
+            reply_to_message_id: startedPayload.user_message_id ?? 3,
+            sources_json: [],
+          };
       const encoder = new TextEncoder();
       const stream = new ReadableStream({
         start(controller) {
-          const frames = options?.streamFramesBySession?.[sessionId] ??
-            options?.streamFrames ?? [
-              `event: run.started\ndata: {"run_id":${sessionId * 10 + 5},"session_id":${sessionId},"assistant_message_id":${sessionId * 10 + 4}}\n\n`,
-              `event: message.delta\ndata: {"run_id":${sessionId * 10 + 5},"assistant_message_id":${sessionId * 10 + 4},"delta":"streamed answer"}\n\n`,
-              `event: sources.final\ndata: {"run_id":${sessionId * 10 + 5},"assistant_message_id":${sessionId * 10 + 4},"sources":[]}\n\n`,
-              `event: run.completed\ndata: {"run_id":${sessionId * 10 + 5},"session_id":${sessionId},"assistant_message_id":${sessionId * 10 + 4}}\n\n`,
-              "event: done\ndata: {}\n\n",
-            ];
           let index = 0;
 
           const pushFrame = () => {
@@ -462,7 +508,7 @@ function buildAuthenticatedFetch(options?: {
             ...(streamedUserMessage
               ? [
                   streamedUserMessage,
-                  {
+                  streamedAssistantMessage ?? {
                     id: 4,
                     role: "assistant",
                     content: "streamed answer",
@@ -722,9 +768,10 @@ describe("chat workspace", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "新建会话" }));
 
-    expect(await screen.findByRole("heading", { name: "未命名会话" })).toBeInTheDocument();
-    expect(screen.getByLabelText("消息输入")).toHaveValue("");
-    expect(screen.queryByText("stale.png")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByLabelText("消息输入")).toHaveValue("");
+      expect(screen.queryByText("stale.png")).not.toBeInTheDocument();
+    });
   });
 
   it("shows an explicit empty state when session search has no matches", async () => {
@@ -1718,6 +1765,194 @@ describe("chat workspace", () => {
       expect(screen.getByRole("heading", { name: "Session B" })).toBeInTheDocument();
       expect(screen.getByLabelText("消息输入")).toBeEnabled();
       expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();
+    });
+  });
+
+  it("clears the restored composer snapshot after a retry succeeds across session switches", async () => {
+    buildAuthenticatedFetch({
+      messages: [
+        {
+          id: 1,
+          role: "user",
+          content: "文档说了啥",
+          status: "succeeded",
+          sources_json: [],
+          attachments_json: [
+            {
+              attachment_id: "old-att",
+              type: "document",
+              name: "old.pdf",
+              mime_type: "application/pdf",
+              size_bytes: 64,
+              document_id: 8,
+              document_revision_id: 18,
+            },
+          ],
+        },
+        {
+          id: 2,
+          role: "assistant",
+          content: "",
+          status: "failed",
+          error_message: "provider unavailable",
+          reply_to_message_id: 1,
+          sources_json: [],
+        },
+      ],
+      streamFinalDelayMs: 150,
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/chat/1"]}>
+        <AppProviders>
+          <AppRouter />
+        </AppProviders>
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole("link", { name: "Session A" });
+    expect(await screen.findByRole("link", { name: "Session B" })).toBeInTheDocument();
+    act(() => {
+      useChatUiStore.setState({
+        attachmentsBySession: {
+          "1": [
+            {
+              id: "old-att",
+              kind: "document",
+              name: "old.pdf",
+              sizeBytes: 64,
+              status: "uploaded",
+              mimeType: "application/pdf",
+              resourceDocumentId: 8,
+              resourceDocumentVersionId: 18,
+            },
+          ],
+        },
+        draftsBySession: {
+          "1": "文档说了啥",
+        },
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("消息输入")).toHaveValue("文档说了啥");
+      expect(
+        within(screen.getByTestId("message-input-attachments")).getByText("old.pdf"),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(await screen.findByRole("button", { name: "重试" }));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("消息输入")).toHaveValue("");
+      expect(screen.getByLabelText("消息输入")).toBeDisabled();
+      expect(screen.queryByTestId("message-input-attachments")).not.toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("link", { name: "Session B" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Session B" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("link", { name: "Session A" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Session A" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "发送中" })).not.toBeInTheDocument();
+      expect(screen.getByLabelText("消息输入")).toHaveValue("");
+      expect(screen.queryByTestId("message-input-attachments")).not.toBeInTheDocument();
+    });
+  });
+
+  it("keeps newer composer input when retrying an older failed message", async () => {
+    buildAuthenticatedFetch({
+      messages: [
+        {
+          id: 1,
+          role: "user",
+          content: "旧问题",
+          status: "succeeded",
+          sources_json: [],
+          attachments_json: [
+            {
+              attachment_id: "old-att",
+              type: "document",
+              name: "old.pdf",
+              mime_type: "application/pdf",
+              size_bytes: 64,
+              document_id: 8,
+              document_revision_id: 18,
+            },
+          ],
+        },
+        {
+          id: 2,
+          role: "assistant",
+          content: "",
+          status: "failed",
+          error_message: "provider unavailable",
+          reply_to_message_id: 1,
+          sources_json: [],
+        },
+      ],
+      streamFinalDelayMs: 150,
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/chat/1"]}>
+        <AppProviders>
+          <AppRouter />
+        </AppProviders>
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole("link", { name: "Session A" });
+    act(() => {
+      useChatUiStore.setState({
+        attachmentsBySession: {
+          "1": [
+            {
+              id: "new-att",
+              kind: "document",
+              name: "new.pdf",
+              sizeBytes: 128,
+              status: "uploaded",
+              mimeType: "application/pdf",
+              resourceDocumentId: 12,
+              resourceDocumentVersionId: 34,
+            },
+          ],
+        },
+        draftsBySession: {
+          "1": "后来新写的问题",
+        },
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("消息输入")).toHaveValue("后来新写的问题");
+      expect(
+        within(screen.getByTestId("message-input-attachments")).getByText("new.pdf"),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(await screen.findByRole("button", { name: "重试" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "发送中" })).toBeDisabled();
+      expect(screen.getByLabelText("消息输入")).toHaveValue("后来新写的问题");
+      expect(
+        within(screen.getByTestId("message-input-attachments")).getByText("new.pdf"),
+      ).toBeInTheDocument();
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: "发送中" })).not.toBeInTheDocument();
+      expect(screen.getByLabelText("消息输入")).toHaveValue("后来新写的问题");
+      expect(
+        within(screen.getByTestId("message-input-attachments")).getByText("new.pdf"),
+      ).toBeInTheDocument();
     });
   });
 
