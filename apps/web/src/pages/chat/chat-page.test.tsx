@@ -10,6 +10,7 @@ import { useUiStore } from "@/lib/store/ui-store";
 import { AppProviders } from "@/providers/app-providers";
 import { AppRouter } from "@/router";
 import { jsonResponse } from "@/test/http";
+import { mockMobileViewport } from "@/test/viewport";
 
 type MockChatAttachment = NonNullable<ChatMessageItem["attachments_json"]>[number] & {
   document_id?: number | null;
@@ -548,25 +549,6 @@ function buildAuthenticatedFetch(options?: {
 
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
-}
-
-function mockMobileViewport() {
-  Object.defineProperty(window, "innerWidth", {
-    configurable: true,
-    writable: true,
-    value: 390,
-  });
-
-  window.matchMedia = vi.fn().mockImplementation((query: string) => ({
-    matches: query.includes("767px"),
-    media: query,
-    onchange: null,
-    addEventListener: vi.fn(),
-    removeEventListener: vi.fn(),
-    addListener: vi.fn(),
-    removeListener: vi.fn(),
-    dispatchEvent: vi.fn(),
-  }));
 }
 
 describe("chat workspace", () => {

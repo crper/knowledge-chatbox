@@ -7,7 +7,9 @@ import * as settingsApi from "@/features/settings/api/settings";
 import type { AppSettings, ProviderConnectionResult } from "@/features/settings/api/settings";
 import type { AppUser } from "@/lib/api/client";
 import { ThemeProvider } from "@/providers/theme-provider";
+import { buildAppSettings, buildAppUser, buildProviderConnectionResult } from "@/test/fixtures/app";
 import { createTestQueryClient } from "@/test/query-client";
+import { mockDesktopViewport } from "@/test/viewport";
 import { SettingsPage } from "./settings-page";
 
 vi.mock("@/features/settings/api/settings", async () => {
@@ -23,180 +25,7 @@ vi.mock("@/features/settings/api/settings", async () => {
   };
 });
 
-const DEFAULT_SYSTEM_PROMPT = [
-  "你是 Knowledge Chatbox 的 AI 助手。",
-  "请基于用户提供的问题、会话历史和检索到的资源内容，给出准确、简洁、可执行的回答。",
-  "优先引用资源事实，不要编造未在上下文中出现的信息。",
-  "永远回复中文。",
-].join("\n");
-
-function buildUser(role: "admin" | "user"): AppUser {
-  return {
-    id: 1,
-    username: role,
-    role,
-    status: "active",
-    theme_preference: "system",
-  };
-}
-
-function buildSettingsPayload(overrides: Partial<AppSettings> = {}): AppSettings {
-  const base: AppSettings = {
-    id: 1,
-    provider_profiles: {
-      openai: {
-        api_key: "********",
-        base_url: "https://api.openai.com/v1",
-        chat_model: "gpt-5.4",
-        embedding_model: "text-embedding-3-small",
-        vision_model: "gpt-5.4",
-      },
-      anthropic: {
-        api_key: null,
-        base_url: "https://api.anthropic.com",
-        chat_model: "claude-sonnet-4-5",
-        vision_model: "claude-sonnet-4-5",
-      },
-      voyage: {
-        api_key: null,
-        base_url: "https://api.voyageai.com/v1",
-        embedding_model: "voyage-3.5",
-      },
-      ollama: {
-        base_url: "http://localhost:11434",
-        chat_model: "qwen3.5:4b",
-        embedding_model: "nomic-embed-text",
-        vision_model: "qwen3.5:4b",
-      },
-    },
-    response_route: { provider: "openai", model: "gpt-5.4" },
-    embedding_route: { provider: "openai", model: "text-embedding-3-small" },
-    pending_embedding_route: null,
-    vision_route: { provider: "openai", model: "gpt-5.4" },
-    system_prompt: DEFAULT_SYSTEM_PROMPT,
-    provider_timeout_seconds: 60,
-    updated_by_user_id: 1,
-    updated_at: "2026-03-21T00:00:00Z",
-    active_index_generation: 3,
-    building_index_generation: null,
-    index_rebuild_status: "idle",
-    rebuild_started: false,
-    reindex_required: false,
-  };
-
-  return {
-    ...base,
-    ...overrides,
-    provider_profiles: {
-      ...base.provider_profiles,
-      ...overrides.provider_profiles,
-      openai: {
-        ...base.provider_profiles.openai,
-        ...overrides.provider_profiles?.openai,
-      },
-      anthropic: {
-        ...base.provider_profiles.anthropic,
-        ...overrides.provider_profiles?.anthropic,
-      },
-      voyage: {
-        ...base.provider_profiles.voyage,
-        ...overrides.provider_profiles?.voyage,
-      },
-      ollama: {
-        ...base.provider_profiles.ollama,
-        ...overrides.provider_profiles?.ollama,
-      },
-    },
-    response_route: {
-      ...base.response_route,
-      ...overrides.response_route,
-    },
-    embedding_route: {
-      ...base.embedding_route,
-      ...overrides.embedding_route,
-    },
-    pending_embedding_route:
-      overrides.pending_embedding_route === undefined
-        ? base.pending_embedding_route
-        : overrides.pending_embedding_route,
-    vision_route: {
-      ...base.vision_route,
-      ...overrides.vision_route,
-    },
-  };
-}
-
-type ProviderConnectionResultOverrides = {
-  response?: Partial<ProviderConnectionResult["response"]>;
-  embedding?: Partial<ProviderConnectionResult["embedding"]>;
-  vision?: Partial<ProviderConnectionResult["vision"]>;
-};
-
-function buildConnectionResult(
-  overrides: ProviderConnectionResultOverrides = {},
-): ProviderConnectionResult {
-  const base: ProviderConnectionResult = {
-    response: {
-      provider: "openai",
-      model: "gpt-5.4",
-      healthy: true,
-      message: "ok",
-      latency_ms: 10,
-    },
-    embedding: {
-      provider: "openai",
-      model: "text-embedding-3-small",
-      healthy: true,
-      message: "ok",
-      latency_ms: 10,
-    },
-    vision: {
-      provider: "openai",
-      model: "gpt-5.4",
-      healthy: true,
-      message: "ok",
-      latency_ms: 10,
-    },
-  };
-
-  return {
-    ...base,
-    ...overrides,
-    response: {
-      ...base.response,
-      ...overrides.response,
-    },
-    embedding: {
-      ...base.embedding,
-      ...overrides.embedding,
-    },
-    vision: {
-      ...base.vision,
-      ...overrides.vision,
-    },
-  };
-}
-
-function mockDesktopViewport() {
-  Object.defineProperty(window, "innerWidth", {
-    configurable: true,
-    writable: true,
-    value: 1280,
-  });
-
-  window.matchMedia = vi.fn().mockImplementation((query: string) => ({
-    matches: false,
-    media: query,
-    onchange: null,
-    addEventListener: vi.fn(),
-    removeEventListener: vi.fn(),
-    addListener: vi.fn(),
-    removeListener: vi.fn(),
-    dispatchEvent: vi.fn(),
-  }));
-}
-
-function renderSettingsPage(user: AppUser = buildUser("admin"), initialEntry = "/settings") {
+function renderSettingsPage(user: AppUser = buildAppUser("admin"), initialEntry = "/settings") {
   const queryClient = createTestQueryClient({
     defaultOptions: {
       queries: {
@@ -219,17 +48,18 @@ function renderSettingsPage(user: AppUser = buildUser("admin"), initialEntry = "
 
 describe("SettingsPage", () => {
   beforeEach(async () => {
-    vi.clearAllMocks();
     mockDesktopViewport();
     await i18n.changeLanguage("zh-CN");
-    vi.mocked(settingsApi.getSettings).mockResolvedValue(buildSettingsPayload());
-    vi.mocked(settingsApi.updateSettings).mockResolvedValue(buildSettingsPayload());
-    vi.mocked(settingsApi.testProviderConnection).mockResolvedValue(buildConnectionResult());
+    vi.mocked(settingsApi.getSettings).mockResolvedValue(buildAppSettings());
+    vi.mocked(settingsApi.updateSettings).mockResolvedValue(buildAppSettings());
+    vi.mocked(settingsApi.testProviderConnection).mockResolvedValue(
+      buildProviderConnectionResult(),
+    );
   });
 
   it("renders provider settings around the primary provider path", async () => {
     vi.mocked(settingsApi.getSettings).mockResolvedValue(
-      buildSettingsPayload({
+      buildAppSettings({
         provider_profiles: {
           openai: {
             api_key: "********",
@@ -303,7 +133,7 @@ describe("SettingsPage", () => {
 
   it("saves the edited primary provider draft and shows rebuild feedback", async () => {
     vi.mocked(settingsApi.updateSettings).mockResolvedValue(
-      buildSettingsPayload({
+      buildAppSettings({
         embedding_route: { provider: "openai", model: "text-embedding-3-large" },
         provider_profiles: {
           openai: {
@@ -358,7 +188,7 @@ describe("SettingsPage", () => {
   });
 
   it("keeps the latest saved settings visible and shows a non-blocking alert when the follow-up refresh fails", async () => {
-    const savedSettings = buildSettingsPayload({
+    const savedSettings = buildAppSettings({
       provider_profiles: {
         openai: {
           chat_model: "gpt-5.4-mini",
@@ -367,7 +197,7 @@ describe("SettingsPage", () => {
       response_route: { provider: "openai", model: "gpt-5.4-mini" },
     });
     vi.mocked(settingsApi.getSettings)
-      .mockResolvedValueOnce(buildSettingsPayload())
+      .mockResolvedValueOnce(buildAppSettings())
       .mockRejectedValueOnce(new Error("设置刷新失败"));
     vi.mocked(settingsApi.updateSettings).mockResolvedValue(savedSettings);
 
@@ -434,7 +264,7 @@ describe("SettingsPage", () => {
       }),
     );
 
-    resolveTest?.(buildConnectionResult());
+    resolveTest?.(buildProviderConnectionResult());
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "测试连接" })).toBeEnabled();
@@ -443,7 +273,7 @@ describe("SettingsPage", () => {
 
   it("shows localized OpenAI compatibility guidance when the model is unavailable", async () => {
     vi.mocked(settingsApi.testProviderConnection).mockResolvedValue(
-      buildConnectionResult({
+      buildProviderConnectionResult({
         response: {
           healthy: false,
           code: "openai_model_not_available",
@@ -461,7 +291,7 @@ describe("SettingsPage", () => {
 
   it("shows localized OpenAI authentication guidance when the api key is rejected", async () => {
     vi.mocked(settingsApi.testProviderConnection).mockResolvedValue(
-      buildConnectionResult({
+      buildProviderConnectionResult({
         response: {
           healthy: false,
           code: "openai_invalid_api_key",
@@ -479,7 +309,7 @@ describe("SettingsPage", () => {
 
   it("shows localized Ollama base url guidance when the gateway is unreachable", async () => {
     vi.mocked(settingsApi.getSettings).mockResolvedValue(
-      buildSettingsPayload({
+      buildAppSettings({
         provider_profiles: {
           ollama: {
             base_url: "http://host.docker.internal:11434",
@@ -488,7 +318,7 @@ describe("SettingsPage", () => {
       }),
     );
     vi.mocked(settingsApi.testProviderConnection).mockResolvedValue(
-      buildConnectionResult({
+      buildProviderConnectionResult({
         response: {
           provider: "ollama",
           model: "qwen3.5:4b",
@@ -579,7 +409,7 @@ describe("SettingsPage", () => {
 
   it("shows a partial connection summary with three capability rows", async () => {
     vi.mocked(settingsApi.testProviderConnection).mockResolvedValue(
-      buildConnectionResult({
+      buildProviderConnectionResult({
         embedding: {
           healthy: false,
           message: "embedding unavailable",
@@ -602,7 +432,7 @@ describe("SettingsPage", () => {
   });
 
   it("shows only self-service sections for non-admin users without loading system settings", async () => {
-    renderSettingsPage(buildUser("user"), "/settings?section=preferences");
+    renderSettingsPage(buildAppUser("user"), "/settings?section=preferences");
 
     expect(await screen.findByRole("heading", { name: "偏好与外观" })).toBeInTheDocument();
     expect(screen.queryByRole("combobox", { name: "主 Provider" })).not.toBeInTheDocument();

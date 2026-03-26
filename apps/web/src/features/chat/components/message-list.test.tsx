@@ -1,20 +1,8 @@
 import { render, screen, within } from "@testing-library/react";
 import { fireEvent } from "@testing-library/react";
 
+import { mockDesktopViewport, mockMobileViewport } from "@/test/viewport";
 import { MessageList } from "./message-list";
-
-function mockViewport({ isMobile }: { isMobile: boolean }) {
-  window.matchMedia = vi.fn().mockImplementation((query: string) => ({
-    matches: isMobile && query.includes("max-width: 767px"),
-    media: query,
-    onchange: null,
-    addEventListener: vi.fn(),
-    removeEventListener: vi.fn(),
-    addListener: vi.fn(),
-    removeListener: vi.fn(),
-    dispatchEvent: vi.fn(),
-  }));
-}
 
 function buildImageAttachment(name: string) {
   return {
@@ -29,7 +17,7 @@ function buildImageAttachment(name: string) {
 describe("MessageList", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
-    mockViewport({ isMobile: false });
+    mockDesktopViewport();
   });
 
   it("keeps successful message attachments expanded by default", () => {
@@ -192,7 +180,7 @@ describe("MessageList", () => {
   });
 
   it("falls back to a stacked message lane on mobile", () => {
-    mockViewport({ isMobile: true });
+    mockMobileViewport();
 
     render(
       <MessageList

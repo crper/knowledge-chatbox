@@ -173,9 +173,8 @@ ResizeObserverMock.prototype.observe = vi.fn(function observe(
   );
 });
 
-vi.stubGlobal("ResizeObserver", ResizeObserverMock);
-
 beforeEach(() => {
+  vi.stubGlobal("ResizeObserver", ResizeObserverMock);
   window.localStorage.removeItem(LANGUAGE_STORAGE_KEY);
   window.localStorage.removeItem(THEME_STORAGE_KEY);
   window.localStorage.removeItem(LAST_VISITED_CHAT_SESSION_STORAGE_KEY);

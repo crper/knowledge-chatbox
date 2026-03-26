@@ -5,6 +5,7 @@ import { i18n } from "@/i18n";
 import { useSessionStore } from "@/lib/auth/session-store";
 import { AppProviders } from "@/providers/app-providers";
 import { AppRouter } from "@/router";
+import { buildAppSettings, buildAppUser } from "@/test/fixtures/app";
 import { jsonResponse } from "@/test/http";
 
 const sonnerMocks = vi.hoisted(() => ({
@@ -20,13 +21,6 @@ vi.mock("sonner", async (importOriginal) => {
     toast: sonnerMocks,
   };
 });
-
-const DEFAULT_SYSTEM_PROMPT = [
-  "你是 Knowledge Chatbox 的 AI 助手。",
-  "请基于用户提供的问题、会话历史和检索到的资源内容，给出准确、简洁、可执行的回答。",
-  "优先引用资源事实，不要编造未在上下文中出现的信息。",
-  "永远回复中文。",
-].join("\n");
 
 function authenticatedFetch(
   role: "admin" | "user" | null = null,
@@ -58,13 +52,7 @@ function authenticatedFetch(
             access_token: "refreshed-token",
             expires_in: 900,
             token_type: "Bearer",
-            user: {
-              id: 1,
-              username: role,
-              role,
-              status: "active",
-              theme_preference: "system",
-            },
+            user: buildAppUser(role),
           },
           error: null,
         }),
@@ -107,13 +95,7 @@ function authenticatedFetch(
       return Promise.resolve(
         jsonResponse({
           success: true,
-          data: {
-            id: 1,
-            username: role,
-            role,
-            status: "active",
-            theme_preference: "system",
-          },
+          data: buildAppUser(role),
           error: null,
         }),
       );
@@ -144,13 +126,7 @@ function authenticatedFetch(
             access_token: "login-token",
             expires_in: 900,
             token_type: "Bearer",
-            user: {
-              id: 1,
-              username: "admin",
-              role: "admin",
-              status: "active",
-              theme_preference: "system",
-            },
+            user: buildAppUser("admin"),
           },
           error: null,
         }),
@@ -161,20 +137,14 @@ function authenticatedFetch(
       return Promise.resolve(
         jsonResponse({
           success: true,
-          data: {
-            id: 1,
-            username: "admin",
-            role: "admin",
-            status: "active",
-            theme_preference: "system",
-          },
+          data: buildAppUser("admin"),
           error: null,
         }),
       );
     }
 
     if (input.endsWith("/api/auth/preferences")) {
-      const requestBody =
+      const requestBody: { theme_preference: "dark" | "light" | "system" } =
         typeof init?.body === "string"
           ? (JSON.parse(init.body) as { theme_preference: "dark" | "light" | "system" })
           : { theme_preference: "dark" };
@@ -182,13 +152,9 @@ function authenticatedFetch(
       return Promise.resolve(
         jsonResponse({
           success: true,
-          data: {
-            id: 1,
-            username: "admin",
-            role: "admin",
-            status: "active",
+          data: buildAppUser("admin", {
             theme_preference: requestBody.theme_preference,
-          },
+          }),
           error: null,
         }),
       );
@@ -198,57 +164,17 @@ function authenticatedFetch(
       return Promise.resolve(
         jsonResponse({
           success: true,
-          data: {
-            id: 1,
+          data: buildAppSettings({
+            active_index_generation: 1,
             provider_profiles: {
               openai: {
                 api_key: "",
-                base_url: "https://api.openai.com/v1",
-                chat_model: "gpt-5.4",
-                embedding_model: "text-embedding-3-small",
-                vision_model: "gpt-5.4",
-              },
-              anthropic: {
-                api_key: null,
-                base_url: "https://api.anthropic.com",
-                chat_model: "claude-sonnet-4-5",
-                vision_model: "claude-sonnet-4-5",
-              },
-              voyage: {
-                api_key: null,
-                base_url: "https://api.voyageai.com/v1",
-                embedding_model: "voyage-3.5",
               },
               ollama: {
                 base_url: "http://localhost:11434",
-                chat_model: "qwen3.5:4b",
-                embedding_model: "nomic-embed-text",
-                vision_model: "qwen3.5:4b",
               },
             },
-            response_route: {
-              provider: "openai",
-              model: "gpt-5.4",
-            },
-            embedding_route: {
-              provider: "openai",
-              model: "text-embedding-3-small",
-            },
-            pending_embedding_route: null,
-            vision_route: {
-              provider: "openai",
-              model: "gpt-5.4",
-            },
-            system_prompt: DEFAULT_SYSTEM_PROMPT,
-            provider_timeout_seconds: 60,
-            updated_by_user_id: 1,
-            updated_at: "2026-03-21T00:00:00Z",
-            active_index_generation: 1,
-            building_index_generation: null,
-            index_rebuild_status: "idle",
-            rebuild_started: false,
-            reindex_required: false,
-          },
+          }),
           error: null,
         }),
       );
@@ -509,13 +435,7 @@ describe("login page", () => {
                   access_token: "login-token",
                   expires_in: 900,
                   token_type: "Bearer",
-                  user: {
-                    id: 1,
-                    username: "admin",
-                    role: "admin",
-                    status: "active",
-                    theme_preference: "system",
-                  },
+                  user: buildAppUser("admin"),
                 },
                 error: null,
               }),

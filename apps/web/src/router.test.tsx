@@ -7,22 +7,19 @@ import { queryKeys } from "@/lib/api/query-keys";
 import { useSessionStore } from "@/lib/auth/session-store";
 import { AppProviders } from "@/providers/app-providers";
 import { AppRouter } from "@/router";
+import { buildAppSettings, buildAppUser } from "@/test/fixtures/app";
 import { jsonResponse } from "@/test/http";
+import { mockDesktopViewport, mockMobileViewport } from "@/test/viewport";
 
 const LAST_VISITED_CHAT_SESSION_STORAGE_KEY = "knowledge-chatbox-last-chat-session-id";
-const DEFAULT_SYSTEM_PROMPT = [
-  "你是 Knowledge Chatbox 的 AI 助手。",
-  "请基于用户提供的问题、会话历史和检索到的资源内容，给出准确、简洁、可执行的回答。",
-  "优先引用资源事实，不要编造未在上下文中出现的信息。",
-  "永远回复中文。",
-].join("\n");
-const AUTHENTICATED_ADMIN = {
-  id: 1,
-  username: "admin",
-  role: "admin",
-  status: "active",
-  theme_preference: "system",
-} as const;
+
+function cloneMockData<T>(value: T): T {
+  if (value === null || typeof value !== "object") {
+    return value;
+  }
+
+  return JSON.parse(JSON.stringify(value)) as T;
+}
 
 function QueryClientCapture({
   onReady,
@@ -40,6 +37,8 @@ function QueryClientCapture({
 
 function mockAuthResponse(data: unknown, ok = true, status = 200) {
   return vi.fn().mockImplementation((input: string) => {
+    const responseData = cloneMockData(data);
+
     if (input.endsWith("/api/auth/bootstrap")) {
       if (!ok && status === 401) {
         return Promise.resolve(
@@ -65,7 +64,7 @@ function mockAuthResponse(data: unknown, ok = true, status = 200) {
             access_token: "refreshed-token",
             expires_in: 900,
             token_type: "Bearer",
-            user: data,
+            user: responseData,
           },
           error: null,
         }),
@@ -102,7 +101,7 @@ function mockAuthResponse(data: unknown, ok = true, status = 200) {
     if (input.endsWith("/api/auth/me")) {
       return Promise.resolve(
         jsonResponse(
-          { success: ok, data, error: ok ? null : { code: "unauthorized" } },
+          { success: ok, data: responseData, error: ok ? null : { code: "unauthorized" } },
           { status },
         ),
       );
@@ -112,55 +111,16 @@ function mockAuthResponse(data: unknown, ok = true, status = 200) {
       return Promise.resolve(
         jsonResponse({
           success: true,
-          data: {
-            id: 1,
+          data: buildAppSettings({
             provider_profiles: {
               openai: {
                 api_key: "",
-                base_url: "https://api.openai.com/v1",
-                chat_model: "gpt-5.4",
-                embedding_model: "text-embedding-3-small",
-                vision_model: "gpt-5.4",
-              },
-              anthropic: {
-                api_key: null,
-                base_url: "https://api.anthropic.com",
-                chat_model: "claude-sonnet-4-5",
-                vision_model: "claude-sonnet-4-5",
-              },
-              voyage: {
-                api_key: null,
-                base_url: "https://api.voyageai.com/v1",
-                embedding_model: "voyage-3.5",
               },
               ollama: {
                 base_url: "http://localhost:11434",
-                chat_model: "qwen3.5:4b",
-                embedding_model: "nomic-embed-text",
-                vision_model: "qwen3.5:4b",
               },
             },
-            response_route: {
-              provider: "openai",
-              model: "gpt-5.4",
-            },
-            embedding_route: {
-              provider: "openai",
-              model: "text-embedding-3-small",
-            },
-            pending_embedding_route: null,
-            vision_route: {
-              provider: "openai",
-              model: "gpt-5.4",
-            },
-            system_prompt: DEFAULT_SYSTEM_PROMPT,
-            provider_timeout_seconds: 60,
-            active_index_generation: 3,
-            building_index_generation: null,
-            index_rebuild_status: "idle",
-            rebuild_started: false,
-            reindex_required: false,
-          },
+          }),
           error: null,
         }),
       );
@@ -207,7 +167,7 @@ function mockAuthenticatedChatWorkspaceResponse({
             access_token: "refreshed-token",
             expires_in: 900,
             token_type: "Bearer",
-            user: AUTHENTICATED_ADMIN,
+            user: buildAppUser("admin"),
           },
           error: null,
         }),
@@ -232,7 +192,7 @@ function mockAuthenticatedChatWorkspaceResponse({
       return Promise.resolve(
         jsonResponse({
           success: true,
-          data: AUTHENTICATED_ADMIN,
+          data: buildAppUser("admin"),
           error: null,
         }),
       );
@@ -242,55 +202,16 @@ function mockAuthenticatedChatWorkspaceResponse({
       return Promise.resolve(
         jsonResponse({
           success: true,
-          data: {
-            id: 1,
+          data: buildAppSettings({
             provider_profiles: {
               openai: {
                 api_key: "",
-                base_url: "https://api.openai.com/v1",
-                chat_model: "gpt-5.4",
-                embedding_model: "text-embedding-3-small",
-                vision_model: "gpt-5.4",
-              },
-              anthropic: {
-                api_key: null,
-                base_url: "https://api.anthropic.com",
-                chat_model: "claude-sonnet-4-5",
-                vision_model: "claude-sonnet-4-5",
-              },
-              voyage: {
-                api_key: null,
-                base_url: "https://api.voyageai.com/v1",
-                embedding_model: "voyage-3.5",
               },
               ollama: {
                 base_url: "http://localhost:11434",
-                chat_model: "qwen3.5:4b",
-                embedding_model: "nomic-embed-text",
-                vision_model: "qwen3.5:4b",
               },
             },
-            response_route: {
-              provider: "openai",
-              model: "gpt-5.4",
-            },
-            embedding_route: {
-              provider: "openai",
-              model: "text-embedding-3-small",
-            },
-            pending_embedding_route: null,
-            vision_route: {
-              provider: "openai",
-              model: "gpt-5.4",
-            },
-            system_prompt: DEFAULT_SYSTEM_PROMPT,
-            provider_timeout_seconds: 60,
-            active_index_generation: 3,
-            building_index_generation: null,
-            index_rebuild_status: "idle",
-            rebuild_started: false,
-            reindex_required: false,
-          },
+          }),
           error: null,
         }),
       );
@@ -300,7 +221,7 @@ function mockAuthenticatedChatWorkspaceResponse({
       return Promise.resolve(
         jsonResponse({
           success: true,
-          data: sessions,
+          data: cloneMockData(sessions),
           error: null,
         }),
       );
@@ -322,7 +243,7 @@ function mockAuthenticatedChatWorkspaceResponse({
       return Promise.resolve(
         jsonResponse({
           success: true,
-          data: messagesBySession[sessionId] ?? [],
+          data: cloneMockData(messagesBySession[sessionId] ?? []),
           error: null,
         }),
       );
@@ -330,44 +251,6 @@ function mockAuthenticatedChatWorkspaceResponse({
 
     return Promise.resolve(jsonResponse({ success: true, data: [], error: null }));
   });
-}
-
-function mockMobileViewport() {
-  Object.defineProperty(window, "innerWidth", {
-    configurable: true,
-    writable: true,
-    value: 390,
-  });
-
-  window.matchMedia = vi.fn().mockImplementation((query: string) => ({
-    matches: query.includes("767px"),
-    media: query,
-    onchange: null,
-    addEventListener: vi.fn(),
-    removeEventListener: vi.fn(),
-    addListener: vi.fn(),
-    removeListener: vi.fn(),
-    dispatchEvent: vi.fn(),
-  }));
-}
-
-function mockDesktopViewport() {
-  Object.defineProperty(window, "innerWidth", {
-    configurable: true,
-    writable: true,
-    value: 1280,
-  });
-
-  window.matchMedia = vi.fn().mockImplementation((query: string) => ({
-    matches: false,
-    media: query,
-    onchange: null,
-    addEventListener: vi.fn(),
-    removeEventListener: vi.fn(),
-    addListener: vi.fn(),
-    removeListener: vi.fn(),
-    dispatchEvent: vi.fn(),
-  }));
 }
 
 describe("AppRouter", () => {
@@ -407,7 +290,7 @@ describe("AppRouter", () => {
   });
 
   it("redirects to login instead of rendering a blank protected shell when current user cache becomes empty", async () => {
-    vi.stubGlobal("fetch", mockAuthResponse(AUTHENTICATED_ADMIN));
+    vi.stubGlobal("fetch", mockAuthResponse(buildAppUser("admin")));
     let capturedQueryClient: ReturnType<typeof useQueryClient> | null = null;
 
     render(
@@ -511,7 +394,7 @@ describe("AppRouter", () => {
   });
 
   it("redirects from /login when bootstrap restores an authenticated session", async () => {
-    vi.stubGlobal("fetch", mockAuthResponse(AUTHENTICATED_ADMIN));
+    vi.stubGlobal("fetch", mockAuthResponse(buildAppUser("admin")));
 
     render(
       <MemoryRouter initialEntries={["/login"]}>
@@ -597,7 +480,11 @@ describe("AppRouter", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByRole("heading", { name: "Session B" })).toBeInTheDocument();
+    const restoredSessionLink = await screen.findByRole("link", { name: "Session B" });
+
+    await waitFor(() => {
+      expect(restoredSessionLink).toHaveAttribute("aria-current", "page");
+    });
     expect(await screen.findByText("答案")).toBeInTheDocument();
     await waitFor(() =>
       expect(window.localStorage.getItem(LAST_VISITED_CHAT_SESSION_STORAGE_KEY)).toBe("2"),
