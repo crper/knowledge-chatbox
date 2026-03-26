@@ -82,3 +82,26 @@ def test_alembic_creates_missing_sqlite_parent_directory(
 
     assert sqlite_path.parent.exists() is True
     assert sqlite_path.exists() is True
+
+
+def test_alembic_upgrade_works_when_cwd_is_not_apps_api(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    sqlite_path = tmp_path / "cwd-test" / "test.db"
+    monkeypatch.setenv("SQLITE_PATH", str(sqlite_path))
+
+    config = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
+    monkeypatch.chdir(tmp_path)
+
+    command.upgrade(config, "head")
+
+    with sqlite3.connect(sqlite_path) as connection:
+        tables = {
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
+
+    assert "users" in tables
