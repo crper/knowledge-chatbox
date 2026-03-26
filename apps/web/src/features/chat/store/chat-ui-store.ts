@@ -8,6 +8,7 @@ import { persist, type PersistStorage, type StorageValue } from "zustand/middlew
 export const CHAT_SEND_SHORTCUT_STORAGE_KEY = "knowledge-chatbox-chat-send-shortcut";
 export const CHAT_DRAFTS_STORAGE_KEY = "knowledge-chatbox-chat-drafts";
 const CHAT_UI_STORE_STORAGE_KEY = "knowledge-chatbox-chat-ui-store";
+const CHAT_UI_STORAGE_WRITE_DELAY_MS = 180;
 /**
  * 定义聊天发送快捷键选项。
  */
@@ -85,29 +86,96 @@ type ChatUiState = {
 
 type PersistedChatUiState = Pick<ChatUiState, "draftsBySession" | "sendShortcut">;
 
+let pendingPersistedChatUiState: StorageValue<PersistedChatUiState> | null = null;
+let persistTimer: number | null = null;
+let lastPersistedSnapshot = "";
+let flushLifecycleBound = false;
+
+function serializePersistedChatUiState(value: StorageValue<PersistedChatUiState>) {
+  return JSON.stringify({
+    draftsBySession: value.state.draftsBySession,
+    sendShortcut: value.state.sendShortcut,
+  });
+}
+
+function clearPersistTimer() {
+  if (persistTimer === null) {
+    return;
+  }
+
+  window.clearTimeout(persistTimer);
+  persistTimer = null;
+}
+
+function flushPersistedChatUiState() {
+  if (typeof window === "undefined" || pendingPersistedChatUiState === null) {
+    return;
+  }
+
+  const nextValue = pendingPersistedChatUiState;
+  const nextSnapshot = serializePersistedChatUiState(nextValue);
+  pendingPersistedChatUiState = null;
+  clearPersistTimer();
+
+  if (nextSnapshot === lastPersistedSnapshot) {
+    return;
+  }
+
+  window.localStorage.setItem(CHAT_SEND_SHORTCUT_STORAGE_KEY, nextValue.state.sendShortcut);
+  window.localStorage.setItem(
+    CHAT_DRAFTS_STORAGE_KEY,
+    JSON.stringify(nextValue.state.draftsBySession),
+  );
+  lastPersistedSnapshot = nextSnapshot;
+}
+
+function bindPersistFlushLifecycle() {
+  if (typeof window === "undefined" || flushLifecycleBound) {
+    return;
+  }
+
+  const flushOnHidden = () => {
+    if (document.visibilityState === "hidden") {
+      flushPersistedChatUiState();
+    }
+  };
+
+  window.addEventListener("pagehide", flushPersistedChatUiState);
+  document.addEventListener("visibilitychange", flushOnHidden);
+  flushLifecycleBound = true;
+}
+
 const chatUiStoreStorage: PersistStorage<PersistedChatUiState> = {
-  getItem: () => ({
-    state: {
+  getItem: () => {
+    const state = {
       draftsBySession: loadDrafts(),
       sendShortcut: loadSendShortcut(),
-    },
-  }),
+    } satisfies PersistedChatUiState;
+    lastPersistedSnapshot = JSON.stringify(state);
+
+    return { state };
+  },
   setItem: (_name, value: StorageValue<PersistedChatUiState>) => {
     if (typeof window === "undefined") {
       return;
     }
 
-    window.localStorage.setItem(CHAT_SEND_SHORTCUT_STORAGE_KEY, value.state.sendShortcut);
-    window.localStorage.setItem(
-      CHAT_DRAFTS_STORAGE_KEY,
-      JSON.stringify(value.state.draftsBySession),
-    );
+    bindPersistFlushLifecycle();
+    pendingPersistedChatUiState = value;
+    if (persistTimer !== null) {
+      return;
+    }
+
+    persistTimer = window.setTimeout(flushPersistedChatUiState, CHAT_UI_STORAGE_WRITE_DELAY_MS);
   },
   removeItem: () => {
     if (typeof window === "undefined") {
       return;
     }
 
+    pendingPersistedChatUiState = null;
+    clearPersistTimer();
+    lastPersistedSnapshot = "";
     window.localStorage.removeItem(CHAT_SEND_SHORTCUT_STORAGE_KEY);
     window.localStorage.removeItem(CHAT_DRAFTS_STORAGE_KEY);
   },

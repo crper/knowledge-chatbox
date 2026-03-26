@@ -594,8 +594,8 @@ describe("chat workspace", () => {
 
     expect(await screen.findByRole("link", { name: "Session A" })).toBeInTheDocument();
     expect(screen.getByTestId("chat-desktop-layout")).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "消息输入" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "去资源区添加资料" })).toBeInTheDocument();
+    expect(await screen.findByRole("textbox", { name: "消息输入" })).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: "去资源区添加资料" })).toBeInTheDocument();
   });
 
   it("toggles the left chat sidebar with cmd/ctrl+b", async () => {
@@ -833,9 +833,11 @@ describe("chat workspace", () => {
       target: { value: "draft question" },
     });
 
-    expect(window.localStorage.getItem("knowledge-chatbox-chat-drafts")).toContain(
-      "draft question",
-    );
+    await waitFor(() => {
+      expect(window.localStorage.getItem("knowledge-chatbox-chat-drafts")).toContain(
+        "draft question",
+      );
+    });
   });
 
   it("stores draft by session and keeps it isolated when switching sessions", async () => {

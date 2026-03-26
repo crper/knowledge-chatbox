@@ -2,7 +2,7 @@
  * @file 工作区相关界面组件模块。
  */
 
-import { useMemo, useState } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PencilLineIcon, PlusIcon, SearchIcon, Trash2Icon } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -79,6 +79,7 @@ export function ChatSidebar({
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const activeSessionId = parseChatSessionIdFromPathname(pathname);
+  const deferredSearchValue = useDeferredValue(searchValue);
   const sessionTitleFallback = t("sessionTitleFallback", { ns: "chat" });
 
   const sessionsQuery = useQuery(chatSessionsQueryOptions());
@@ -102,7 +103,7 @@ export function ChatSidebar({
 
   const sessions = Array.isArray(sessionsQuery.data) ? sessionsQuery.data : [];
   const filteredSessions = useMemo(() => {
-    const keyword = searchValue.trim().toLowerCase();
+    const keyword = deferredSearchValue.trim().toLowerCase();
     if (!keyword) {
       return sessions;
     }
@@ -110,7 +111,7 @@ export function ChatSidebar({
     return sessions.filter((session) =>
       resolveSessionTitle(session.title, sessionTitleFallback).toLowerCase().includes(keyword),
     );
-  }, [searchValue, sessionTitleFallback, sessions]);
+  }, [deferredSearchValue, sessionTitleFallback, sessions]);
 
   const beginRename = (sessionId: number, title: string | null) => {
     setEditingSessionId(sessionId);

@@ -2,7 +2,7 @@
  * @file 资源页面模块。
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { FilesIcon, ScanSearchIcon, SearchIcon, UploadIcon } from "lucide-react";
 
@@ -74,6 +74,7 @@ export function KnowledgePage() {
   const [selectedDocumentId, setSelectedDocumentId] = useState<number | null>(null);
   const [typeFilter, setTypeFilter] = useState<ResourceTypeFilter>("all");
   const [statusFilter, setStatusFilter] = useState<"all" | KnowledgeDocumentStatus>("all");
+  const deferredSearchValue = useDeferredValue(searchValue);
   const {
     canManageDocuments,
     cancelUpload,
@@ -93,7 +94,7 @@ export function KnowledgePage() {
     versions,
   } = useKnowledgeWorkspace();
   const filteredDocuments = useMemo(() => {
-    const normalizedQuery = searchValue.trim().toLowerCase();
+    const normalizedQuery = deferredSearchValue.trim().toLowerCase();
     return documents.filter((document) => {
       const matchesQuery =
         normalizedQuery.length === 0 ||
@@ -109,7 +110,7 @@ export function KnowledgePage() {
 
       return matchesQuery && matchesType && matchesStatus;
     });
-  }, [documents, searchValue, statusFilter, typeFilter]);
+  }, [deferredSearchValue, documents, statusFilter, typeFilter]);
   const indexedCount = documents.filter((document) => document.status === "indexed").length;
   const hasDocuments = documents.length > 0;
   const selectedDocument = useMemo(

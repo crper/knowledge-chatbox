@@ -2,7 +2,7 @@
  * @file 前端模块。
  */
 
-import { useEffect, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Navigate, Route, Routes } from "react-router-dom";
@@ -11,21 +11,36 @@ import { currentUserQueryOptions } from "@/features/auth/api/auth-query";
 import type { AppUser } from "@/lib/api/client";
 import { useSessionStore } from "@/lib/auth/session-store";
 import { markSessionExpired } from "@/lib/auth/session-manager";
-import { AppShellLayout } from "@/layouts/app-shell-layout";
 import { LoginPage } from "@/pages/auth/login-page";
-import { ChatPage } from "@/pages/chat/chat-page";
-import { KnowledgePage } from "@/pages/knowledge/knowledge-page";
-import { SettingsPage } from "@/pages/settings/settings-page";
 import { AuthDegradedPage } from "@/pages/system/auth-degraded-page";
 import { ForbiddenPage } from "@/pages/system/forbidden-page";
-import { UsersPage } from "@/pages/users/users-page";
 import { AppBootstrapGate } from "@/router/bootstrap-gate";
 import { ProtectedRoute, PublicRoute, RoleRoute } from "@/router/guards";
+
+const AppShellLayout = lazy(async () => ({
+  default: (await import("@/layouts/app-shell-layout")).AppShellLayout,
+}));
+const ChatPage = lazy(async () => ({
+  default: (await import("@/pages/chat/chat-page")).ChatPage,
+}));
+const KnowledgePage = lazy(async () => ({
+  default: (await import("@/pages/knowledge/knowledge-page")).KnowledgePage,
+}));
+const SettingsPage = lazy(async () => ({
+  default: (await import("@/pages/settings/settings-page")).SettingsPage,
+}));
+const UsersPage = lazy(async () => ({
+  default: (await import("@/pages/users/users-page")).UsersPage,
+}));
 
 function LoadingState() {
   const { t } = useTranslation("common");
 
   return <div className="p-6 text-sm text-muted-foreground">{t("loading")}</div>;
+}
+
+function RouteSuspense({ children }: { children: ReactNode }) {
+  return <Suspense fallback={<LoadingState />}>{children}</Suspense>;
 }
 
 function CurrentUserBoundary({ children }: { children: (user: AppUser) => ReactNode }) {
@@ -61,11 +76,27 @@ function CurrentUserBoundary({ children }: { children: (user: AppUser) => ReactN
 }
 
 function ProtectedLayout() {
-  return <CurrentUserBoundary>{(user) => <AppShellLayout user={user} />}</CurrentUserBoundary>;
+  return (
+    <CurrentUserBoundary>
+      {(user) => (
+        <RouteSuspense>
+          <AppShellLayout user={user} />
+        </RouteSuspense>
+      )}
+    </CurrentUserBoundary>
+  );
 }
 
 function SettingsRoute() {
-  return <CurrentUserBoundary>{(user) => <SettingsPage user={user} />}</CurrentUserBoundary>;
+  return (
+    <CurrentUserBoundary>
+      {(user) => (
+        <RouteSuspense>
+          <SettingsPage user={user} />
+        </RouteSuspense>
+      )}
+    </CurrentUserBoundary>
+  );
 }
 
 /**
@@ -91,15 +122,38 @@ export function AppRouter() {
           }
         >
           <Route path="/" element={<Navigate replace to="/chat" />} />
-          <Route path="/knowledge" element={<KnowledgePage />} />
-          <Route path="/chat" element={<ChatPage />} />
-          <Route path="/chat/:sessionId" element={<ChatPage />} />
+          <Route
+            path="/knowledge"
+            element={
+              <RouteSuspense>
+                <KnowledgePage />
+              </RouteSuspense>
+            }
+          />
+          <Route
+            path="/chat"
+            element={
+              <RouteSuspense>
+                <ChatPage />
+              </RouteSuspense>
+            }
+          />
+          <Route
+            path="/chat/:sessionId"
+            element={
+              <RouteSuspense>
+                <ChatPage />
+              </RouteSuspense>
+            }
+          />
           <Route path="/settings" element={<SettingsRoute />} />
           <Route
             path="/users"
             element={
               <RoleRoute role="admin">
-                <UsersPage />
+                <RouteSuspense>
+                  <UsersPage />
+                </RouteSuspense>
               </RoleRoute>
             }
           />
