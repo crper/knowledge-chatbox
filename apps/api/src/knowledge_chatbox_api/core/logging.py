@@ -32,8 +32,9 @@ def setup_logging(level: str = "INFO", environment: str = "local") -> None:
         _add_request_id,
         structlog.processors.TimeStamper(fmt="iso"),
         structlog.processors.StackInfoRenderer(),
-        structlog.processors.format_exc_info,
     ]
+    if environment != "local":
+        shared_processors.append(structlog.processors.format_exc_info)
     renderer = _build_renderer(environment)
     formatter = structlog.stdlib.ProcessorFormatter(
         foreign_pre_chain=shared_processors,
