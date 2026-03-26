@@ -14,6 +14,7 @@ from knowledge_chatbox_api.core.config import get_settings
 CHROMA_COLLECTION_NAME = "knowledge_chatbox_chunks"
 METADATA_PREFIX = "meta__"
 VECTOR_RERANK_CANDIDATE_MULTIPLIER = 4
+TEXT_FALLBACK_MAX_WHERE_DOCUMENT_TERMS = 6
 
 
 class ChunkStore(Protocol):
@@ -93,6 +94,14 @@ def _quoted_phrases(text: str) -> set[str]:
     return {phrase for phrase in phrases if len(phrase) >= 2}
 
 
+def _raw_quoted_phrases(text: str) -> list[str]:
+    return [
+        match.strip()
+        for match in re.findall(r'[“"「『](.+?)[”"」』]', text)
+        if len(match.strip()) >= 2
+    ]
+
+
 def _tokenize_text(text: str) -> set[str]:
     tokens: set[str] = set()
     ascii_buffer: list[str] = []
@@ -129,6 +138,36 @@ def _tokenize_text(text: str) -> set[str]:
     flush_ascii_buffer()
     flush_cjk_buffer()
     return tokens
+
+
+def _text_fallback_where_document_terms(query_text: str) -> list[str]:
+    candidates: list[str] = []
+    seen: set[str] = set()
+
+    def add_candidate(candidate: str) -> None:
+        normalized = candidate.strip()
+        if not normalized or normalized in seen:
+            return
+        seen.add(normalized)
+        candidates.append(normalized)
+
+    for phrase in _raw_quoted_phrases(query_text):
+        add_candidate(phrase)
+
+    stripped_query = query_text.strip()
+    if 2 <= len(stripped_query) <= 120:
+        add_candidate(stripped_query)
+
+    for token in sorted(_tokenize_text(query_text), key=lambda token: (-len(token), token)):
+        if token.isascii() and len(token) < 3:
+            continue
+        if not token.isascii() and len(token) < 2:
+            continue
+        add_candidate(token)
+        if len(candidates) >= TEXT_FALLBACK_MAX_WHERE_DOCUMENT_TERMS:
+            break
+
+    return candidates[:TEXT_FALLBACK_MAX_WHERE_DOCUMENT_TERMS]
 
 
 def _score_records(
@@ -386,6 +425,30 @@ class PersistentChromaStore:
                 return vector_records[:top_k]
 
         if query_text:
+            candidate_limit = max(top_k * VECTOR_RERANK_CANDIDATE_MULTIPLIER, top_k)
+            fallback_terms = _text_fallback_where_document_terms(query_text)
+            if fallback_terms:
+                primary_terms = set(_raw_quoted_phrases(query_text))
+                stripped_query = query_text.strip()
+                if 2 <= len(stripped_query) <= 120:
+                    primary_terms.add(stripped_query)
+                records_by_id: dict[str, dict[str, Any]] = {}
+                for term in fallback_terms:
+                    filtered_result = collection.get(
+                        include=["documents", "metadatas"],
+                        limit=candidate_limit,
+                        where=chroma_where,
+                        where_document={"$contains": term},
+                    )
+                    for record in self._deserialize_records(filtered_result):
+                        records_by_id.setdefault(record["id"], record)
+                    if len(records_by_id) >= top_k and term in primary_terms:
+                        break
+                    if len(records_by_id) >= candidate_limit:
+                        break
+                if records_by_id:
+                    return _score_records(list(records_by_id.values()), query_text, top_k=top_k)
+
             fallback_result = collection.get(
                 include=["documents", "metadatas"],
                 where=chroma_where,

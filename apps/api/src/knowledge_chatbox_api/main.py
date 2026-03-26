@@ -5,6 +5,7 @@ from __future__ import annotations
 import sqlite3
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from time import perf_counter
 from typing import Any
 
 from asgi_correlation_id import CorrelationIdMiddleware
@@ -125,18 +126,42 @@ def create_app() -> FastAPI:
                 ),
             )
             try:
-                admin = auth_service.ensure_default_admin()
-                SpaceRepository(session).ensure_personal_space(user_id=admin.id)
-                SettingsService(session, settings).get_or_create_settings_record()
-                compensated_documents = compensate_processing_documents(session, settings)
-                compensated_runs = compensate_active_chat_runs(session)
-                compensated_rebuild = compensate_index_rebuild_status(session, settings)
+                startup_durations_ms: dict[str, float] = {}
+
+                def run_startup_step(name: str, operation):
+                    started_at = perf_counter()
+                    result = operation()
+                    startup_durations_ms[name] = round((perf_counter() - started_at) * 1000, 2)
+                    return result
+
+                admin = run_startup_step("ensure_default_admin", auth_service.ensure_default_admin)
+                run_startup_step(
+                    "ensure_personal_space",
+                    lambda: SpaceRepository(session).ensure_personal_space(user_id=admin.id),
+                )
+                run_startup_step(
+                    "ensure_app_settings",
+                    lambda: SettingsService(session, settings).get_or_create_settings_record(),
+                )
+                compensated_documents = run_startup_step(
+                    "compensate_processing_documents",
+                    lambda: compensate_processing_documents(session, settings),
+                )
+                compensated_runs = run_startup_step(
+                    "compensate_active_chat_runs",
+                    lambda: compensate_active_chat_runs(session),
+                )
+                compensated_rebuild = run_startup_step(
+                    "compensate_index_rebuild_status",
+                    lambda: compensate_index_rebuild_status(session, settings),
+                )
                 logger.info(
                     "Startup compensation completed",
                     admin_id=admin.id,
                     compensated_documents=compensated_documents,
                     compensated_runs=compensated_runs,
                     compensated_index_rebuild=compensated_rebuild,
+                    startup_durations_ms=startup_durations_ms,
                 )
             except OperationalError as error:
                 _raise_if_database_schema_incompatible(error)

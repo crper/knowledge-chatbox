@@ -14,7 +14,6 @@ from knowledge_chatbox_api.providers.factory import (
     build_vision_adapter_from_settings,
 )
 from knowledge_chatbox_api.repositories.document_repository import DocumentRepository
-from knowledge_chatbox_api.repositories.space_repository import SpaceRepository
 from knowledge_chatbox_api.schemas.settings import (
     ProviderRuntimeSettings,
     build_provider_runtime_settings,
@@ -32,6 +31,7 @@ from knowledge_chatbox_api.services.documents.errors import (
 )
 from knowledge_chatbox_api.services.documents.indexing_service import IndexingService
 from knowledge_chatbox_api.services.documents.normalization_service import NormalizationService
+from knowledge_chatbox_api.services.documents.query_service import DocumentQueryService
 from knowledge_chatbox_api.services.documents.versioning_service import VersioningService
 from knowledge_chatbox_api.services.settings.settings_service import (
     INDEX_REBUILD_STATUS_RUNNING,
@@ -66,17 +66,12 @@ class IngestionService:
         self.session = session
         self.app_settings = app_settings
         self.document_repository = DocumentRepository(session)
-        self.space_repository = SpaceRepository(session)
+        self.query_service = DocumentQueryService(session)
         self.settings_service = SettingsService(session, app_settings)
         self.versioning_service = VersioningService(session, app_settings)
-        settings_record = self.settings_service.get_or_create_settings_record()
-        self.indexing_service = IndexingService(
-            session=session,
-            chunking_service=ChunkingService(),
-            chroma_store=get_chroma_store(),
-            embedding_provider=build_embedding_adapter(settings_record.embedding_route),
-            settings=settings_record,
-        )
+        self._chunking_service = ChunkingService()
+        self._chroma_store = get_chroma_store()
+        self._indexing_service: IndexingService | None = None
 
     logger = get_logger(__name__)
 
@@ -169,7 +164,12 @@ class IngestionService:
         except Exception as exc:  # noqa: BLE001
             self.session.rollback()
             if document_version is not None:
-                self._delete_document_chunks_for_targets(document_version, indexing_targets)
+                if indexing_targets:
+                    self._delete_document_chunks_for_targets(
+                        document_version,
+                        indexing_targets,
+                        indexing_service=self._get_indexing_service(indexing_targets[0].settings),
+                    )
                 self._remove_file(document_version.origin_path)
             else:
                 self._remove_file(str(upload_artifact.path))
@@ -224,7 +224,12 @@ class IngestionService:
                 failure_stage="background_ingestion",
                 exception_type=type(exc).__name__,
             )
-            self._delete_document_chunks_for_targets(failed_revision, indexing_targets)
+            if indexing_targets:
+                self._delete_document_chunks_for_targets(
+                    failed_revision,
+                    indexing_targets,
+                    indexing_service=self._get_indexing_service(indexing_targets[0].settings),
+                )
             failed_revision.normalized_path = None
             failed_revision.chunk_count = None
             failed_revision.indexed_at = None
@@ -239,31 +244,19 @@ class IngestionService:
             return failed_revision
 
     def list_documents(self, actor) -> list[tuple[Document, DocumentRevision]]:
-        return self.document_repository.list_latest(space_ids=self._visible_space_ids(actor.id))
+        return self.query_service.list_documents(actor)
 
     def get_document(self, actor, document_id: int) -> Document | None:
-        document = self.document_repository.get_document_entity(document_id)
-        if document is None:
-            return None
-        if not self._can_access_document(actor.id, document):
-            return None
-        return document
+        return self.query_service.get_document(actor, document_id)
 
     def get_document_revision(self, actor, revision_id: int) -> DocumentRevision | None:
-        document_revision = self.document_repository.get_by_id(revision_id)
-        if document_revision is None:
-            return None
-        document = self.document_repository.get_document_entity(document_revision.document_id)
-        if document is None or not self._can_access_document(actor.id, document):
-            return None
-        return document_revision
+        return self.query_service.get_document_revision(actor, revision_id)
 
     def list_versions(self, actor, document_id: int) -> list[DocumentRevision]:
-        document = self._require_document(actor, document_id)
-        return self.document_repository.list_versions(document.id)
+        return self.query_service.list_versions(actor, document_id)
 
     def reindex_document(self, actor, document_id: int) -> DocumentRevision:
-        document = self._require_document(actor, document_id)
+        document = self.query_service.require_document(actor, document_id)
         document_version = self.document_repository.get_latest_revision(document)
         if document_version is None:
             raise DocumentNotFoundError()
@@ -274,11 +267,15 @@ class IngestionService:
         content = Path(document_version.normalized_path).read_text(encoding="utf-8")
         settings_record = self.settings_service.get_or_create_settings_record()
         indexing_targets = self._build_indexing_targets(settings_record)
-        snapshots = self._snapshot_document_chunks(document_version, indexing_targets)
+        indexing_service = self._get_indexing_service(settings_record)
+        snapshots = self._snapshot_document_chunks(
+            document_version,
+            indexing_targets,
+            indexing_service=indexing_service,
+        )
         try:
             for target in indexing_targets:
-                self._refresh_indexing_service(target.settings)
-                self.indexing_service.index_document(
+                self._get_indexing_service(target.settings).index_document(
                     document_version,
                     content,
                     generation=target.generation,
@@ -292,24 +289,43 @@ class IngestionService:
             return document_version
         except Exception:  # noqa: BLE001
             self.session.rollback()
-            self._restore_document_chunks(document_version, indexing_targets, snapshots)
+            self._restore_document_chunks(
+                document_version,
+                indexing_targets,
+                snapshots,
+                indexing_service=indexing_service,
+            )
             raise
 
     def delete_document(self, actor, document_id: int) -> None:
-        document = self._require_document(actor, document_id)
+        document = self.query_service.require_document(actor, document_id)
         versions = self.document_repository.list_versions(document.id)
         settings_record = self.settings_service.get_or_create_settings_record()
         indexing_targets = self._build_indexing_targets(settings_record)
-        snapshots = self._snapshot_versions_chunks(versions, indexing_targets)
+        indexing_service = self._get_indexing_service(settings_record)
+        snapshots = self._snapshot_versions_chunks(
+            versions,
+            indexing_targets,
+            indexing_service=indexing_service,
+        )
         file_paths = [(version.normalized_path, version.origin_path) for version in versions]
         try:
             for version in versions:
-                self._delete_document_chunks_for_targets(version, indexing_targets)
+                self._delete_document_chunks_for_targets(
+                    version,
+                    indexing_targets,
+                    indexing_service=indexing_service,
+                )
             self.document_repository.delete(document)
             self.session.commit()
         except Exception:  # noqa: BLE001
             self.session.rollback()
-            self._restore_versions_chunks(versions, indexing_targets, snapshots)
+            self._restore_versions_chunks(
+                versions,
+                indexing_targets,
+                snapshots,
+                indexing_service=indexing_service,
+            )
             raise
 
         for normalized_path, origin_path in file_paths:
@@ -353,8 +369,7 @@ class IngestionService:
         settings_record = self.settings_service.get_or_create_settings_record()
         indexing_targets = self._build_indexing_targets(settings_record)
         for target in indexing_targets:
-            self._refresh_indexing_service(target.settings)
-            self.indexing_service.index_document(
+            self._get_indexing_service(target.settings).index_document(
                 document_version,
                 normalized.content,
                 generation=target.generation,
@@ -365,11 +380,24 @@ class IngestionService:
         document_version.indexed_at = datetime.now(UTC)
         return normalized.normalized_path, indexing_targets
 
-    def _refresh_indexing_service(self, settings_record) -> None:
-        self.indexing_service.embedding_provider = build_embedding_adapter(
+    def _get_indexing_service(self, settings_record) -> IndexingService:
+        indexing_service = self._indexing_service
+        if indexing_service is None:
+            indexing_service = IndexingService(
+                session=self.session,
+                chunking_service=self._chunking_service,
+                chroma_store=self._chroma_store,
+                embedding_provider=build_embedding_adapter(settings_record.embedding_route),
+                settings=settings_record,
+            )
+            self._indexing_service = indexing_service
+            return indexing_service
+
+        indexing_service.embedding_provider = build_embedding_adapter(
             settings_record.embedding_route
         )
-        self.indexing_service.settings = settings_record
+        indexing_service.settings = settings_record
+        return indexing_service
 
     def _build_indexing_targets(self, settings_record) -> list[IndexingTarget]:
         targets = [
@@ -411,12 +439,14 @@ class IngestionService:
         self,
         document_version: DocumentRevision,
         targets: list[IndexingTarget],
+        *,
+        indexing_service: IndexingService,
     ) -> None:
         if not targets:
-            self.indexing_service.delete_document_chunks(document_version)
+            indexing_service.delete_document_chunks(document_version)
             return
         for target in targets:
-            self.indexing_service.delete_document_chunks(
+            indexing_service.delete_document_chunks(
                 document_version,
                 generation=target.generation,
             )
@@ -425,11 +455,13 @@ class IngestionService:
         self,
         document_version: DocumentRevision,
         targets: list[IndexingTarget],
+        *,
+        indexing_service: IndexingService,
     ) -> dict[int, list[dict[str, Any]]]:
         snapshots: dict[int, list[dict[str, Any]]] = {}
         for target in targets:
             generation = target.generation
-            snapshots[generation] = self.indexing_service.chroma_store.list_by_document_id(
+            snapshots[generation] = indexing_service.chroma_store.list_by_document_id(
                 document_version.id,
                 generation=generation,
             )
@@ -439,9 +471,16 @@ class IngestionService:
         self,
         versions: list[DocumentRevision],
         targets: list[IndexingTarget],
+        *,
+        indexing_service: IndexingService,
     ) -> dict[int, dict[int, list[dict[str, Any]]]]:
         return {
-            version.id: self._snapshot_document_chunks(version, targets) for version in versions
+            version.id: self._snapshot_document_chunks(
+                version,
+                targets,
+                indexing_service=indexing_service,
+            )
+            for version in versions
         }
 
     def _restore_document_chunks(
@@ -449,17 +488,19 @@ class IngestionService:
         document_version: DocumentRevision,
         targets: list[IndexingTarget],
         snapshots: dict[int, list[dict[str, Any]]],
+        *,
+        indexing_service: IndexingService,
     ) -> None:
         for target in targets:
             generation = target.generation
             records = snapshots.get(generation, [])
-            self.indexing_service.chroma_store.delete_by_document_id(
+            indexing_service.chroma_store.delete_by_document_id(
                 document_version.id,
                 generation=generation,
             )
             if not records:
                 continue
-            self.indexing_service.chroma_store.upsert(
+            indexing_service.chroma_store.upsert(
                 records,
                 embeddings=[record["embedding"] for record in records],
                 generation=generation,
@@ -470,9 +511,16 @@ class IngestionService:
         versions: list[DocumentRevision],
         targets: list[IndexingTarget],
         snapshots: dict[int, dict[int, list[dict[str, Any]]]],
+        *,
+        indexing_service: IndexingService,
     ) -> None:
         for version in versions:
-            self._restore_document_chunks(version, targets, snapshots.get(version.id, {}))
+            self._restore_document_chunks(
+                version,
+                targets,
+                snapshots.get(version.id, {}),
+                indexing_service=indexing_service,
+            )
 
     def _detect_file_type(self, filename: str, content_type: str) -> str:
         suffix = Path(filename).suffix.lower().lstrip(".")
@@ -482,18 +530,6 @@ class IngestionService:
         if detected is not None:
             return detected
         raise UnsupportedFileTypeError(f"Unsupported file type for upload: {filename}")
-
-    def _visible_space_ids(self, user_id: int) -> set[int]:
-        return set(self.space_repository.get_visible_space_ids_for_user(user_id))
-
-    def _can_access_document(self, user_id: int, document: Document) -> bool:
-        return document.space_id in self._visible_space_ids(user_id)
-
-    def _require_document(self, actor, document_id: int) -> Document:
-        document = self.get_document(actor, document_id)
-        if document is None:
-            raise DocumentNotFoundError()
-        return document
 
     def _remove_file(self, path: str | None) -> None:
         if not path:

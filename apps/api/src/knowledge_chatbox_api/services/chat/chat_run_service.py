@@ -117,40 +117,39 @@ class ChatRunService:
         )
 
         try:
-            event_seq, event = self._append_event(
+            event_seq, initial_events = self._append_event_batch(
                 run,
                 event_seq,
-                "run.started",
-                {
-                    "run_id": run.id,
-                    "session_id": session_id,
-                    "user_message_id": user_message.id,
-                    "assistant_message_id": assistant_message.id,
-                },
+                [
+                    (
+                        "run.started",
+                        {
+                            "run_id": run.id,
+                            "session_id": session_id,
+                            "user_message_id": user_message.id,
+                            "assistant_message_id": assistant_message.id,
+                        },
+                    ),
+                    (
+                        "message.started",
+                        {
+                            "run_id": run.id,
+                            "assistant_message_id": assistant_message.id,
+                            "role": "assistant",
+                        },
+                    ),
+                    (
+                        "tool.call",
+                        {
+                            "run_id": run.id,
+                            "tool_name": "knowledge_search",
+                            "input": {"query": user_message.content},
+                        },
+                    ),
+                ],
             )
-            yield event
-            event_seq, event = self._append_event(
-                run,
-                event_seq,
-                "message.started",
-                {
-                    "run_id": run.id,
-                    "assistant_message_id": assistant_message.id,
-                    "role": "assistant",
-                },
-            )
-            yield event
-            event_seq, event = self._append_event(
-                run,
-                event_seq,
-                "tool.call",
-                {
-                    "run_id": run.id,
-                    "tool_name": "knowledge_search",
-                    "input": {"query": user_message.content},
-                },
-            )
-            yield event
+            for event in initial_events:
+                yield event
 
             chat_service = ChatService(
                 session=self.session,
@@ -193,21 +192,18 @@ class ChatRunService:
                 yield event
                 return
 
-            event_seq, event = self._append_event(
-                run,
-                event_seq,
-                "tool.result",
-                {
-                    "run_id": run.id,
-                    "tool_name": "knowledge_search",
-                    "sources_count": len(sources),
-                },
-            )
-            yield event
-            for source in sources:
-                event_seq, event = self._append_event(
-                    run,
-                    event_seq,
+            source_events: list[tuple[str, dict[str, Any]]] = [
+                (
+                    "tool.result",
+                    {
+                        "run_id": run.id,
+                        "tool_name": "knowledge_search",
+                        "sources_count": len(sources),
+                    },
+                )
+            ]
+            source_events.extend(
+                (
                     "part.source",
                     {
                         "run_id": run.id,
@@ -215,6 +211,14 @@ class ChatRunService:
                         "source": source,
                     },
                 )
+                for source in sources
+            )
+            event_seq, presented_source_events = self._append_event_batch(
+                run,
+                event_seq,
+                source_events,
+            )
+            for event in presented_source_events:
                 yield event
 
             started_text = False
@@ -257,27 +261,33 @@ class ChatRunService:
                 if chunk_type == "completed":
                     saw_completed = True
                     usage = _event_attr(chunk, "usage")
+                    completion_events: list[tuple[str, dict[str, Any]]] = []
                     if started_text:
-                        event_seq, event = self._append_event(
-                            run,
-                            event_seq,
-                            "part.text.end",
+                        completion_events.append(
+                            (
+                                "part.text.end",
+                                {
+                                    "run_id": run.id,
+                                    "assistant_message_id": assistant_message.id,
+                                },
+                            )
+                        )
+                    completion_events.append(
+                        (
+                            "usage.final",
                             {
                                 "run_id": run.id,
-                                "assistant_message_id": assistant_message.id,
+                                "usage": usage or {},
                             },
                         )
-                        yield event
-                    event_seq, event = self._append_event(
+                    )
+                    event_seq, presented_completion_events = self._append_event_batch(
                         run,
                         event_seq,
-                        "usage.final",
-                        {
-                            "run_id": run.id,
-                            "usage": usage or {},
-                        },
+                        completion_events,
                     )
-                    yield event
+                    for event in presented_completion_events:
+                        yield event
                     self.persistence.complete_run(run, assistant_message, sources, usage)
                     logger.info(
                         "chat_stream_run_completed",
@@ -288,27 +298,29 @@ class ChatRunService:
                         response_provider=self._response_provider_name(),
                         response_model=self._response_model(),
                     )
-                    event_seq, event = self._append_event(
+                    event_seq, terminal_events = self._append_event_batch(
                         run,
                         event_seq,
-                        "message.completed",
-                        {
-                            "run_id": run.id,
-                            "assistant_message_id": assistant_message.id,
-                            "status": "succeeded",
-                        },
+                        [
+                            (
+                                "message.completed",
+                                {
+                                    "run_id": run.id,
+                                    "assistant_message_id": assistant_message.id,
+                                    "status": "succeeded",
+                                },
+                            ),
+                            (
+                                "run.completed",
+                                {
+                                    "run_id": run.id,
+                                    "assistant_message_id": assistant_message.id,
+                                },
+                            ),
+                        ],
                     )
-                    yield event
-                    event_seq, event = self._append_event(
-                        run,
-                        event_seq,
-                        "run.completed",
-                        {
-                            "run_id": run.id,
-                            "assistant_message_id": assistant_message.id,
-                        },
-                    )
-                    yield event
+                    for event in terminal_events:
+                        yield event
                     return
 
                 if chunk_type == "error":
@@ -378,27 +390,29 @@ class ChatRunService:
                 response_provider=self._response_provider_name(),
                 response_model=self._response_model(),
             )
-            event_seq, event = self._append_event(
+            event_seq, terminal_events = self._append_event_batch(
                 run,
                 event_seq,
-                "message.completed",
-                {
-                    "run_id": run.id,
-                    "assistant_message_id": assistant_message.id,
-                    "status": "succeeded",
-                },
+                [
+                    (
+                        "message.completed",
+                        {
+                            "run_id": run.id,
+                            "assistant_message_id": assistant_message.id,
+                            "status": "succeeded",
+                        },
+                    ),
+                    (
+                        "run.completed",
+                        {
+                            "run_id": run.id,
+                            "assistant_message_id": assistant_message.id,
+                        },
+                    ),
+                ],
             )
-            yield event
-            event_seq, event = self._append_event(
-                run,
-                event_seq,
-                "run.completed",
-                {
-                    "run_id": run.id,
-                    "assistant_message_id": assistant_message.id,
-                },
-            )
-            yield event
+            for event in terminal_events:
+                yield event
         except (GeneratorExit, asyncio.CancelledError):
             self._fail_interrupted_run(run, assistant_message)
             raise
@@ -423,6 +437,31 @@ class ChatRunService:
         if commit:
             self.session.commit()
         return next_seq, self.presenter.event(event_name, data)
+
+    def _append_event_batch(
+        self,
+        run,
+        current_seq: int,
+        events: list[tuple[str, dict[str, Any]]],
+    ) -> tuple[int, list[dict]]:
+        if not events:
+            return current_seq, []
+
+        next_seq = current_seq
+        presented_events: list[dict] = []
+        for event_name, data in events:
+            next_seq += 1
+            self.chat_run_event_repository.append_event(
+                run_id=run.id,
+                seq=next_seq,
+                event_type=event_name,
+                payload_json=data,
+                flush=False,
+            )
+            presented_events.append(self.presenter.event(event_name, data))
+
+        self.session.commit()
+        return next_seq, presented_events
 
     def _replay_existing_run(self, run):
         for event in self.chat_run_event_repository.list_for_run(run.id):

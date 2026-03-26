@@ -15,13 +15,21 @@ class ChatPersistenceService:
     ) -> None:
         self.session = session
         self._pending_text_deltas = 0
+        self._pending_text_fragments: list[str] = []
+        self._pending_text_message = None
         self._text_delta_flush_interval = max(int(text_delta_flush_interval), 1)
 
     def flush_text_buffer(self) -> None:
         if self._pending_text_deltas == 0:
             return
+        if self._pending_text_message is not None and self._pending_text_fragments:
+            self._pending_text_message.content = (
+                f"{self._pending_text_message.content}{''.join(self._pending_text_fragments)}"
+            )
         self.session.commit()
         self._pending_text_deltas = 0
+        self._pending_text_fragments = []
+        self._pending_text_message = None
 
     def mark_run_running(self, run, assistant_message) -> None:
         self.flush_text_buffer()
@@ -34,7 +42,10 @@ class ChatPersistenceService:
         self._pending_text_deltas = 0
 
     def append_text_delta(self, assistant_message, delta: str) -> None:
-        assistant_message.content = f"{assistant_message.content}{delta}"
+        if self._pending_text_message is not assistant_message:
+            self.flush_text_buffer()
+            self._pending_text_message = assistant_message
+        self._pending_text_fragments.append(delta)
         self._pending_text_deltas += 1
         if self._pending_text_deltas >= self._text_delta_flush_interval:
             self.flush_text_buffer()

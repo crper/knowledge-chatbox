@@ -82,7 +82,9 @@ def test_persistent_chroma_store_keeps_text_only_fallback_when_embedding_is_miss
     assert collection.get_calls == [
         {
             "include": ["documents", "metadatas"],
+            "limit": 4,
             "where": {"knowledge_base_id": {"$in": [9]}},
+            "where_document": {"$contains": "OpenAI setup"},
         }
     ]
 

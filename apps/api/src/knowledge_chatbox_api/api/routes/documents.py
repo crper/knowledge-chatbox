@@ -27,6 +27,7 @@ from knowledge_chatbox_api.services.documents.errors import (
     UnsupportedFileTypeError,
 )
 from knowledge_chatbox_api.services.documents.ingestion_service import IngestionService
+from knowledge_chatbox_api.services.documents.query_service import DocumentQueryService
 from knowledge_chatbox_api.tasks import document_jobs
 from knowledge_chatbox_api.utils.files import save_upload_stream
 
@@ -101,11 +102,11 @@ def to_document_summary_read(document, latest_revision) -> DocumentSummaryRead:
 @router.get("", response_model=Envelope[list[DocumentSummaryRead]])
 def list_documents(
     session: DbSessionDep,
-    settings: SettingsDep,
+    _settings: SettingsDep,
     current_user: CurrentUserDep,
 ) -> Envelope[list[DocumentSummaryRead]]:
     """列出文档。"""
-    service = IngestionService(session, settings)
+    service = DocumentQueryService(session)
     documents = service.list_documents(current_user)
     return Envelope(
         success=True,
@@ -118,11 +119,11 @@ def list_documents(
 def get_document(
     document_id: int,
     session: DbSessionDep,
-    settings: SettingsDep,
+    _settings: SettingsDep,
     current_user: CurrentUserDep,
 ) -> Envelope[DocumentSummaryRead]:
     """获取文档。"""
-    service = IngestionService(session, settings)
+    service = DocumentQueryService(session)
     repository = DocumentRepository(session)
     document = service.get_document(current_user, document_id)
     if document is None:
@@ -139,11 +140,11 @@ def get_document(
 def get_document_revisions(
     document_id: int,
     session: DbSessionDep,
-    settings: SettingsDep,
+    _settings: SettingsDep,
     current_user: CurrentUserDep,
 ) -> Envelope[list[DocumentRevisionRead]]:
     """获取文档Versions。"""
-    service = IngestionService(session, settings)
+    service = DocumentQueryService(session)
     documents = service.list_versions(current_user, document_id)
     return Envelope(
         success=True,
@@ -253,11 +254,11 @@ def delete_document(
 def get_document_file(
     document_id: int,
     session: DbSessionDep,
-    settings: SettingsDep,
+    _settings: SettingsDep,
     current_user: CurrentUserDep,
 ):
     """获取文档File。"""
-    service = IngestionService(session, settings)
+    service = DocumentQueryService(session)
     document = service.get_document(current_user, document_id)
     if document is None:
         raise _document_not_found()
@@ -277,11 +278,11 @@ def get_document_file(
 def get_document_revision_file(
     revision_id: int,
     session: DbSessionDep,
-    settings: SettingsDep,
+    _settings: SettingsDep,
     current_user: CurrentUserDep,
 ):
     """获取指定修订原文件。"""
-    document_revision = IngestionService(session, settings).get_document_revision(
+    document_revision = DocumentQueryService(session).get_document_revision(
         current_user,
         revision_id,
     )
