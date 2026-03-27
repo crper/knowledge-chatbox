@@ -10,6 +10,7 @@ from knowledge_chatbox_api.repositories.chat_repository import ChatRepository
 from knowledge_chatbox_api.repositories.chat_run_event_repository import ChatRunEventRepository
 from knowledge_chatbox_api.repositories.chat_run_repository import ChatRunRepository
 from knowledge_chatbox_api.schemas.chat import ActiveChatRunRead, ChatRunRead
+from knowledge_chatbox_api.services.chat import chat_run_service as chat_run_service_module
 from knowledge_chatbox_api.services.chat.chat_run_service import ChatRunService
 from knowledge_chatbox_api.services.chat.chat_stream_presenter import ChatStreamPresenter
 from knowledge_chatbox_api.services.chat.retry_service import RetryService
@@ -229,12 +230,22 @@ def test_chat_run_service_marks_run_failed_when_stream_is_closed_early(
     messages = chat_repository.list_messages(chat_session.id)
     assistant_message = next(message for message in messages if message.role == "assistant")
     chat_run = run_repository.get_run(run_id)
+    replayed_events = list(
+        service.stream_run(
+            session_id=chat_session.id,
+            content="question",
+            client_request_id="req-stream-close-1",
+        )
+    )
+    persisted_events = ChatRunEventRepository(migrated_db_session).list_for_run(run_id)
 
     assert assistant_message.status == "failed"
     assert assistant_message.error_message == "本次生成连接中断，请重试。"
     assert chat_run is not None
     assert chat_run.status == "failed"
     assert chat_run.error_message == "本次生成连接中断，请重试。"
+    assert persisted_events[-1].event_type == "run.failed"
+    assert replayed_events[-1]["event"] == "run.failed"
 
 
 def test_chat_run_service_marks_run_failed_when_provider_stream_ends_without_completed(
@@ -288,6 +299,195 @@ def test_chat_run_service_marks_run_failed_when_provider_stream_ends_without_com
     assert chat_run.status == "failed"
     assert chat_run.error_message == "provider stream ended before completion"
     assert persisted_events[-1].event_type == "run.failed"
+
+
+def test_chat_run_service_keeps_retrieved_sources_when_provider_returns_error(
+    migrated_db_session,
+    monkeypatch,
+) -> None:
+    class ProviderErrorStreamingAdapterStub:
+        def stream_response(self, messages, settings):
+            del messages, settings
+            yield SimpleNamespace(type="error", error_message="provider stream failed")
+
+    class FakeChatService:
+        def __init__(self, **kwargs) -> None:
+            del kwargs
+
+        def build_prompt_messages_and_sources(self, session_id, question, *, attachments=None):
+            del session_id, question, attachments
+            return (
+                [{"role": "user", "content": "question"}],
+                [
+                    {
+                        "document_id": 7,
+                        "document_revision_id": 11,
+                        "document_name": "playbook.md",
+                        "chunk_id": "chunk-1",
+                        "snippet": "retrieved snippet",
+                        "page_number": None,
+                        "section_title": "Intro",
+                        "score": 0.82,
+                    }
+                ],
+            )
+
+    monkeypatch.setattr(chat_run_service_module, "ChatService", FakeChatService)
+
+    chat_session = create_chat_session(migrated_db_session)
+    chat_repository = ChatRepository(migrated_db_session)
+    run_repository = ChatRunRepository(migrated_db_session)
+    event_repository = ChatRunEventRepository(migrated_db_session)
+    service = ChatRunService(
+        session=migrated_db_session,
+        chat_repository=chat_repository,
+        chat_run_repository=run_repository,
+        chat_run_event_repository=event_repository,
+        retry_service=RetryService(chat_repository, migrated_db_session),
+        chroma_store=InMemoryChromaStore(),
+        response_adapter=ProviderErrorStreamingAdapterStub(),
+        embedding_adapter=None,
+        settings=SimpleNamespace(
+            response_route={"provider": "openai", "model": "gpt-5.4"},
+            embedding_route={"provider": "openai", "model": "text-embedding-3-small"},
+            system_prompt=None,
+            active_index_generation=1,
+        ),
+        presenter=ChatStreamPresenter(),
+    )
+
+    events = list(
+        service.stream_run(
+            session_id=chat_session.id,
+            content="question",
+            client_request_id="req-stream-provider-error-1",
+        )
+    )
+
+    messages = chat_repository.list_messages(chat_session.id)
+    assistant_message = next(message for message in messages if message.role == "assistant")
+    chat_run = run_repository.get_run(events[0]["data"]["run_id"])
+    persisted_events = event_repository.list_for_run(events[0]["data"]["run_id"])
+
+    assert [event["event"] for event in events] == [
+        "run.started",
+        "message.started",
+        "tool.call",
+        "tool.result",
+        "part.source",
+        "run.failed",
+    ]
+    assert assistant_message.status == "failed"
+    assert assistant_message.error_message == "provider stream failed"
+    assert assistant_message.sources_json == [
+        {
+            "document_id": 7,
+            "document_revision_id": 11,
+            "document_name": "playbook.md",
+            "chunk_id": "chunk-1",
+            "snippet": "retrieved snippet",
+            "page_number": None,
+            "section_title": "Intro",
+            "score": 0.82,
+        }
+    ]
+    assert chat_run is not None
+    assert chat_run.status == "failed"
+    assert persisted_events[-1].event_type == "run.failed"
+
+
+def test_chat_run_service_keeps_retrieved_sources_when_stream_is_closed_after_source_events(
+    migrated_db_session,
+    monkeypatch,
+) -> None:
+    class ShouldNotReachProviderAdapterStub:
+        def stream_response(self, messages, settings):
+            del messages, settings
+            raise AssertionError("provider stream should not start after source events are closed")
+
+    class FakeChatService:
+        def __init__(self, **kwargs) -> None:
+            del kwargs
+
+        def build_prompt_messages_and_sources(self, session_id, question, *, attachments=None):
+            del session_id, question, attachments
+            return (
+                [{"role": "user", "content": "question"}],
+                [
+                    {
+                        "document_id": 9,
+                        "document_revision_id": 13,
+                        "document_name": "notes.md",
+                        "chunk_id": "chunk-2",
+                        "snippet": "cached source snippet",
+                        "page_number": None,
+                        "section_title": "Scope",
+                        "score": 0.74,
+                    }
+                ],
+            )
+
+    monkeypatch.setattr(chat_run_service_module, "ChatService", FakeChatService)
+
+    chat_session = create_chat_session(migrated_db_session)
+    chat_repository = ChatRepository(migrated_db_session)
+    run_repository = ChatRunRepository(migrated_db_session)
+    service = ChatRunService(
+        session=migrated_db_session,
+        chat_repository=chat_repository,
+        chat_run_repository=run_repository,
+        chat_run_event_repository=ChatRunEventRepository(migrated_db_session),
+        retry_service=RetryService(chat_repository, migrated_db_session),
+        chroma_store=InMemoryChromaStore(),
+        response_adapter=ShouldNotReachProviderAdapterStub(),
+        embedding_adapter=None,
+        settings=SimpleNamespace(
+            response_route={"provider": "openai", "model": "gpt-5.4"},
+            embedding_route={"provider": "openai", "model": "text-embedding-3-small"},
+            system_prompt=None,
+            active_index_generation=1,
+        ),
+        presenter=ChatStreamPresenter(),
+    )
+
+    stream = service.stream_run(
+        session_id=chat_session.id,
+        content="question",
+        client_request_id="req-stream-close-after-source-1",
+    )
+    events = [next(stream) for _ in range(5)]
+    run_id = events[0]["data"]["run_id"]
+
+    stream.close()
+
+    messages = chat_repository.list_messages(chat_session.id)
+    assistant_message = next(message for message in messages if message.role == "assistant")
+    chat_run = run_repository.get_run(run_id)
+
+    assert [event["event"] for event in events] == [
+        "run.started",
+        "message.started",
+        "tool.call",
+        "tool.result",
+        "part.source",
+    ]
+    assert assistant_message.status == "failed"
+    assert assistant_message.error_message == "本次生成连接中断，请重试。"
+    assert assistant_message.sources_json == [
+        {
+            "document_id": 9,
+            "document_revision_id": 13,
+            "document_name": "notes.md",
+            "chunk_id": "chunk-2",
+            "snippet": "cached source snippet",
+            "page_number": None,
+            "section_title": "Scope",
+            "score": 0.74,
+        }
+    ]
+    assert chat_run is not None
+    assert chat_run.status == "failed"
+    assert chat_run.error_message == "本次生成连接中断，请重试。"
 
 
 def test_chat_stream_wrapper_closes_inner_run_stream_when_consumer_disconnects(

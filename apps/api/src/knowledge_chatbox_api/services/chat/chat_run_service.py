@@ -116,6 +116,7 @@ class ChatRunService:
             response_model=self._response_model(),
         )
 
+        sources: list[dict[str, Any]] = []
         try:
             event_seq, initial_events = self._append_event_batch(
                 run,
@@ -167,27 +168,14 @@ class ChatRunService:
                     attachments=attachments,
                 )
             except Exception as exc:  # noqa: BLE001
-                user_message.status = "failed"
-                user_message.error_message = str(exc)
-                self.persistence.fail_run(run, assistant_message, str(exc))
-                logger.warning(
-                    "chat_stream_run_failed",
-                    run_id=run.id,
+                event_seq, event = self._fail_stream_run(
+                    run=run,
+                    assistant_message=assistant_message,
+                    user_message=user_message,
+                    current_seq=event_seq,
                     session_id=session_id,
-                    response_provider=self._response_provider_name(),
-                    response_model=self._response_model(),
-                    failure_type="prompt_assembly_error",
                     error_message=str(exc),
-                )
-                event_seq, event = self._append_event(
-                    run,
-                    event_seq,
-                    "run.failed",
-                    {
-                        "run_id": run.id,
-                        "assistant_message_id": assistant_message.id,
-                        "error_message": str(exc),
-                    },
+                    failure_type="prompt_assembly_error",
                 )
                 yield event
                 return
@@ -222,8 +210,6 @@ class ChatRunService:
                 yield event
 
             started_text = False
-            saw_completed = False
-            usage: dict | None = None
 
             for chunk in self.response_adapter.stream_response(prompt_messages, self.settings):
                 chunk_type = _event_attr(chunk, "type")
@@ -259,163 +245,162 @@ class ChatRunService:
                     continue
 
                 if chunk_type == "completed":
-                    saw_completed = True
-                    usage = _event_attr(chunk, "usage")
-                    completion_events: list[tuple[str, dict[str, Any]]] = []
-                    if started_text:
-                        completion_events.append(
-                            (
-                                "part.text.end",
-                                {
-                                    "run_id": run.id,
-                                    "assistant_message_id": assistant_message.id,
-                                },
-                            )
-                        )
-                    completion_events.append(
-                        (
-                            "usage.final",
-                            {
-                                "run_id": run.id,
-                                "usage": usage or {},
-                            },
-                        )
-                    )
-                    event_seq, presented_completion_events = self._append_event_batch(
-                        run,
-                        event_seq,
-                        completion_events,
-                    )
-                    for event in presented_completion_events:
-                        yield event
-                    self.persistence.complete_run(run, assistant_message, sources, usage)
-                    logger.info(
-                        "chat_stream_run_completed",
-                        run_id=run.id,
+                    event_seq, completion_events = self._complete_stream_run(
+                        run=run,
+                        assistant_message=assistant_message,
+                        current_seq=event_seq,
                         session_id=session_id,
-                        assistant_message_id=assistant_message.id,
-                        source_count=len(sources),
-                        response_provider=self._response_provider_name(),
-                        response_model=self._response_model(),
+                        sources=sources,
+                        started_text=started_text,
+                        usage=_event_attr(chunk, "usage"),
                     )
-                    event_seq, terminal_events = self._append_event_batch(
-                        run,
-                        event_seq,
-                        [
-                            (
-                                "message.completed",
-                                {
-                                    "run_id": run.id,
-                                    "assistant_message_id": assistant_message.id,
-                                    "status": "succeeded",
-                                },
-                            ),
-                            (
-                                "run.completed",
-                                {
-                                    "run_id": run.id,
-                                    "assistant_message_id": assistant_message.id,
-                                },
-                            ),
-                        ],
-                    )
-                    for event in terminal_events:
+                    for event in completion_events:
                         yield event
                     return
 
                 if chunk_type == "error":
-                    error_message = _event_attr(chunk, "error_message") or "provider stream failed"
-                    user_message.status = "failed"
-                    user_message.error_message = error_message
-                    self.persistence.fail_run(run, assistant_message, error_message)
-                    logger.warning(
-                        "chat_stream_run_failed",
-                        run_id=run.id,
+                    event_seq, event = self._fail_stream_run(
+                        run=run,
+                        assistant_message=assistant_message,
+                        user_message=user_message,
+                        current_seq=event_seq,
                         session_id=session_id,
-                        response_provider=self._response_provider_name(),
-                        response_model=self._response_model(),
+                        error_message=_event_attr(chunk, "error_message")
+                        or "provider stream failed",
                         failure_type="provider_error",
-                        error_message=error_message,
-                    )
-                    event_seq, event = self._append_event(
-                        run,
-                        event_seq,
-                        "run.failed",
-                        {
-                            "run_id": run.id,
-                            "assistant_message_id": assistant_message.id,
-                            "error_message": error_message,
-                        },
+                        sources=sources,
                     )
                     yield event
                     return
 
-            if not saw_completed:
-                user_message.status = "failed"
-                user_message.error_message = PROVIDER_STREAM_ENDED_EARLY_ERROR_MESSAGE
-                self.persistence.fail_run(
-                    run,
-                    assistant_message,
-                    PROVIDER_STREAM_ENDED_EARLY_ERROR_MESSAGE,
-                )
-                logger.warning(
-                    "chat_stream_run_failed",
-                    run_id=run.id,
-                    session_id=session_id,
-                    response_provider=self._response_provider_name(),
-                    response_model=self._response_model(),
-                    failure_type="provider_stream_ended_early",
-                    error_message=PROVIDER_STREAM_ENDED_EARLY_ERROR_MESSAGE,
-                )
-                event_seq, event = self._append_event(
-                    run,
-                    event_seq,
-                    "run.failed",
+            event_seq, event = self._fail_stream_run(
+                run=run,
+                assistant_message=assistant_message,
+                user_message=user_message,
+                current_seq=event_seq,
+                session_id=session_id,
+                error_message=PROVIDER_STREAM_ENDED_EARLY_ERROR_MESSAGE,
+                failure_type="provider_stream_ended_early",
+                sources=sources,
+            )
+            yield event
+        except (GeneratorExit, asyncio.CancelledError):
+            self._fail_interrupted_run(
+                run,
+                assistant_message,
+                current_seq=event_seq,
+                sources=sources,
+            )
+            raise
+
+    def _complete_stream_run(
+        self,
+        *,
+        run,
+        assistant_message,
+        current_seq: int,
+        session_id: int,
+        sources: list[dict[str, Any]],
+        started_text: bool,
+        usage: dict | None,
+    ) -> tuple[int, list[dict]]:
+        completion_events: list[tuple[str, dict[str, Any]]] = []
+        if started_text:
+            completion_events.append(
+                (
+                    "part.text.end",
                     {
                         "run_id": run.id,
                         "assistant_message_id": assistant_message.id,
-                        "error_message": PROVIDER_STREAM_ENDED_EARLY_ERROR_MESSAGE,
                     },
                 )
-                yield event
-                return
+            )
+        completion_events.append(
+            (
+                "usage.final",
+                {
+                    "run_id": run.id,
+                    "usage": usage or {},
+                },
+            )
+        )
+        next_seq, presented_completion_events = self._append_event_batch(
+            run,
+            current_seq,
+            completion_events,
+        )
+        self.persistence.complete_run(run, assistant_message, sources, usage)
+        logger.info(
+            "chat_stream_run_completed",
+            run_id=run.id,
+            session_id=session_id,
+            assistant_message_id=assistant_message.id,
+            source_count=len(sources),
+            response_provider=self._response_provider_name(),
+            response_model=self._response_model(),
+        )
+        next_seq, terminal_events = self._append_event_batch(
+            run,
+            next_seq,
+            [
+                (
+                    "message.completed",
+                    {
+                        "run_id": run.id,
+                        "assistant_message_id": assistant_message.id,
+                        "status": "succeeded",
+                    },
+                ),
+                (
+                    "run.completed",
+                    {
+                        "run_id": run.id,
+                        "assistant_message_id": assistant_message.id,
+                    },
+                ),
+            ],
+        )
+        return next_seq, [*presented_completion_events, *terminal_events]
 
-            self.persistence.complete_run(run, assistant_message, sources, usage)
-            logger.info(
-                "chat_stream_run_completed",
-                run_id=run.id,
-                session_id=session_id,
-                assistant_message_id=assistant_message.id,
-                source_count=len(sources),
-                response_provider=self._response_provider_name(),
-                response_model=self._response_model(),
-            )
-            event_seq, terminal_events = self._append_event_batch(
-                run,
-                event_seq,
-                [
-                    (
-                        "message.completed",
-                        {
-                            "run_id": run.id,
-                            "assistant_message_id": assistant_message.id,
-                            "status": "succeeded",
-                        },
-                    ),
-                    (
-                        "run.completed",
-                        {
-                            "run_id": run.id,
-                            "assistant_message_id": assistant_message.id,
-                        },
-                    ),
-                ],
-            )
-            for event in terminal_events:
-                yield event
-        except (GeneratorExit, asyncio.CancelledError):
-            self._fail_interrupted_run(run, assistant_message)
-            raise
+    def _fail_stream_run(
+        self,
+        *,
+        run,
+        assistant_message,
+        user_message,
+        current_seq: int,
+        session_id: int,
+        error_message: str,
+        failure_type: str,
+        sources: list[dict[str, Any]] | None = None,
+    ) -> tuple[int, dict]:
+        user_message.status = "failed"
+        user_message.error_message = error_message
+        self.persistence.fail_run(
+            run,
+            assistant_message,
+            error_message,
+            sources=sources,
+        )
+        logger.warning(
+            "chat_stream_run_failed",
+            run_id=run.id,
+            session_id=session_id,
+            response_provider=self._response_provider_name(),
+            response_model=self._response_model(),
+            failure_type=failure_type,
+            error_message=error_message,
+        )
+        return self._append_event(
+            run,
+            current_seq,
+            "run.failed",
+            {
+                "run_id": run.id,
+                "assistant_message_id": assistant_message.id,
+                "error_message": error_message,
+            },
+        )
 
     def _append_event(
         self,
@@ -481,10 +466,22 @@ class ChatRunService:
         mode = getattr(self.settings, "reasoning_mode", "default")
         return mode if isinstance(mode, str) else "default"
 
-    def _fail_interrupted_run(self, run, assistant_message) -> None:
+    def _fail_interrupted_run(
+        self,
+        run,
+        assistant_message,
+        *,
+        current_seq: int,
+        sources: list[dict[str, Any]] | None = None,
+    ) -> None:
         if run.status not in {"pending", "running"}:
             return
-        self.persistence.fail_run(run, assistant_message, STREAM_INTERRUPTED_ERROR_MESSAGE)
+        self.persistence.fail_run(
+            run,
+            assistant_message,
+            STREAM_INTERRUPTED_ERROR_MESSAGE,
+            sources=sources,
+        )
         logger.warning(
             "chat_stream_run_failed",
             run_id=run.id,
@@ -493,4 +490,14 @@ class ChatRunService:
             response_model=self._response_model(),
             failure_type="stream_interrupted",
             error_message=STREAM_INTERRUPTED_ERROR_MESSAGE,
+        )
+        self._append_event(
+            run,
+            current_seq,
+            "run.failed",
+            {
+                "run_id": run.id,
+                "assistant_message_id": assistant_message.id,
+                "error_message": STREAM_INTERRUPTED_ERROR_MESSAGE,
+            },
         )

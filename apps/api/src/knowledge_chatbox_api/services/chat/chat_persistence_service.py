@@ -63,7 +63,14 @@ class ChatPersistenceService:
         self.session.commit()
         self._pending_text_deltas = 0
 
-    def fail_run(self, run, assistant_message, error_message: str) -> None:
+    def fail_run(
+        self,
+        run,
+        assistant_message,
+        error_message: str,
+        *,
+        sources: list[dict] | None = None,
+    ) -> None:
         self.flush_text_buffer()
         now = datetime.now(UTC)
         run.status = "failed"
@@ -71,7 +78,7 @@ class ChatPersistenceService:
         run.finished_at = now
         assistant_message.status = "failed"
         assistant_message.error_message = error_message
-        assistant_message.sources_json = []
+        assistant_message.sources_json = [] if sources is None else list(sources)
         assistant_message.updated_at = now
         self.session.commit()
         self._pending_text_deltas = 0
