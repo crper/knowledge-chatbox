@@ -17,16 +17,15 @@ vi.mock("./settings", async () => {
 
 describe("settings-query", () => {
   it("invalidates settings and chat profile queries after provider settings are saved", async () => {
-    vi.mocked(settingsApi.updateSettings).mockResolvedValue(
-      buildAppSettings({
-        provider_profiles: {
-          ollama: {
-            base_url: "http://host.docker.internal:11434",
-          },
+    const savedSettings = buildAppSettings({
+      provider_profiles: {
+        ollama: {
+          base_url: "http://host.docker.internal:11434",
         },
-        system_prompt: "prompt",
-      }),
-    );
+      },
+      system_prompt: "prompt",
+    });
+    vi.mocked(settingsApi.updateSettings).mockResolvedValue(savedSettings);
 
     const queryClient = createTestQueryClient({
       defaultOptions: {
@@ -40,8 +39,10 @@ describe("settings-query", () => {
 
     await observer.mutate({});
 
+    expect(queryClient.getQueryData(queryKeys.settings.detail)).toEqual(savedSettings);
     expect(invalidateQueries).toHaveBeenCalledWith({
       queryKey: queryKeys.settings.all,
+      refetchType: "none",
     });
     expect(invalidateQueries).toHaveBeenCalledWith({
       queryKey: queryKeys.chat.profile,

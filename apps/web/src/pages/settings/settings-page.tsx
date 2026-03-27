@@ -2,7 +2,7 @@
  * @file 设置页面模块。
  */
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router-dom";
@@ -46,7 +46,6 @@ export function SettingsPage({ user }: { user: AppUser }) {
   const { t: tCommon } = useTranslation("common");
   const queryClient = useQueryClient();
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
-  const [latestSettings, setLatestSettings] = useState<AppSettings | null>(null);
   const [searchParams] = useSearchParams();
   const isAdmin = user.role === "admin";
   const isMobile = useIsMobile();
@@ -63,12 +62,6 @@ export function SettingsPage({ user }: { user: AppUser }) {
   const testMutation = useMutation(testProviderConnectionMutationOptions());
   const passwordMutation = useMutation(changePasswordMutationOptions());
   const preferenceMutation = useMutation(updatePreferencesMutationOptions(queryClient));
-
-  useEffect(() => {
-    if (settingsQuery.data) {
-      setLatestSettings(settingsQuery.data);
-    }
-  }, [settingsQuery.data]);
 
   const renderAsideCards = (settings?: AppSettings) => (
     <>
@@ -290,7 +283,7 @@ export function SettingsPage({ user }: { user: AppUser }) {
   );
 
   const backgroundRefreshError =
-    settingsQuery.isError && latestSettings ? getApiErrorMessage(settingsQuery.error) : null;
+    settingsQuery.isError && settingsQuery.data ? getApiErrorMessage(settingsQuery.error) : null;
 
   if (!isAdmin || (activeSection !== "providers" && activeSection !== "prompt")) {
     const sectionMain =
@@ -339,7 +332,7 @@ export function SettingsPage({ user }: { user: AppUser }) {
     );
   }
 
-  if (settingsQuery.isError && !latestSettings) {
+  if (settingsQuery.isError && !settingsQuery.data) {
     return (
       <WorkspacePage
         actions={renderSectionNavigation()}
@@ -379,7 +372,7 @@ export function SettingsPage({ user }: { user: AppUser }) {
     );
   }
 
-  const displayedSettings = latestSettings ?? settingsQuery.data;
+  const displayedSettings = settingsQuery.data;
   const systemAside =
     activeSection === "providers" ? renderAsideCards(displayedSettings) : undefined;
   const systemMain =
@@ -388,22 +381,14 @@ export function SettingsPage({ user }: { user: AppUser }) {
         initialValues={displayedSettings}
         savePending={updateMutation.isPending}
         testPending={testMutation.isPending}
-        onSave={async (values) => {
-          const result = await updateMutation.mutateAsync(values);
-          setLatestSettings(result);
-          return result;
-        }}
+        onSave={(values) => updateMutation.mutateAsync(values)}
         onTestProvider={(values) => testMutation.mutateAsync(values)}
       />
     ) : (
       <SystemPromptForm
         initialValues={displayedSettings}
         savePending={updateMutation.isPending}
-        onSave={async (values) => {
-          const result = await updateMutation.mutateAsync(values);
-          setLatestSettings(result);
-          return result;
-        }}
+        onSave={(values) => updateMutation.mutateAsync(values)}
       />
     );
 

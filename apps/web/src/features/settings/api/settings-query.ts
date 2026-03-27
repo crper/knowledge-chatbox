@@ -24,8 +24,12 @@ export function settingsDetailQueryOptions(enabled = true) {
 export function updateSettingsMutationOptions(queryClient: QueryClient) {
   return mutationOptions({
     mutationFn: updateSettings,
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.settings.all });
+    onSuccess: async (settings) => {
+      queryClient.setQueryData(queryKeys.settings.detail, settings);
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.settings.all,
+        refetchType: "none",
+      });
       await queryClient.invalidateQueries({ queryKey: queryKeys.chat.profile });
     },
   });
