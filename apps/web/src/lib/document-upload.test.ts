@@ -40,7 +40,7 @@ describe("document upload workflow", () => {
       { errorMessage: undefined, progress: 0, status: "uploading" },
       { progress: 40, status: "uploading" },
       { progress: 100, status: "uploading" },
-      { errorMessage: undefined, progress: 100 },
+      { errorMessage: undefined, progress: 100, status: "uploaded" },
     ]);
   });
 

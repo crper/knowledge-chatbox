@@ -26,7 +26,7 @@ type KnowledgeUploadItem = {
   id: string;
   name: string;
   progress: number;
-  status: "uploading" | "failed";
+  status: "uploading" | "uploaded" | "failed";
 };
 
 /**
@@ -92,10 +92,6 @@ export function useKnowledgeWorkspace() {
           },
           signal: controller.signal,
           upload: uploadDocument,
-        });
-        updateUploadItem(uploadId, {
-          errorMessage: undefined,
-          progress: 100,
         });
         await queryClient.invalidateQueries({ queryKey: queryKeys.documents.list });
         removeUploadItem(uploadId);

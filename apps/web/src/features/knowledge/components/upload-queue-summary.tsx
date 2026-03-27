@@ -23,7 +23,7 @@ type UploadQueueItem = {
   id: string;
   name: string;
   progress: number;
-  status: "failed" | "uploading";
+  status: "failed" | "uploading" | "uploaded";
 };
 
 type UploadQueueSummaryProps = {
@@ -45,8 +45,8 @@ export function UploadQueueSummary({
   const { t } = useTranslation("knowledge");
   const failedItems = items.filter((item) => item.status === "failed");
   const uploadingItems = items.filter((item) => item.status === "uploading");
+  const hasVisibleItems = failedItems.length > 0 || uploadingItems.length > 0;
   const [expanded, setExpanded] = useState(true);
-  const hasItems = items.length > 0;
 
   useEffect(() => {
     if (failedItems.length > 0) {
@@ -54,7 +54,7 @@ export function UploadQueueSummary({
     }
   }, [failedItems.length]);
 
-  if (!hasItems) {
+  if (!hasVisibleItems) {
     return null;
   }
 

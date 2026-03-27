@@ -5,7 +5,7 @@ import { UNSUPPORTED_UPLOAD_FILE_ERROR_CODE } from "@/features/knowledge/upload-
 export type DocumentUploadPatch = {
   errorMessage?: string;
   progress?: number;
-  status?: "uploading" | "failed";
+  status?: "uploading" | "uploaded" | "failed";
 };
 
 type DocumentUploadMessages = {
@@ -73,6 +73,7 @@ export async function runDocumentUpload<TResult>({
     onPatch({
       errorMessage: undefined,
       progress: 100,
+      status: "uploaded",
     });
     return result;
   } catch (error) {

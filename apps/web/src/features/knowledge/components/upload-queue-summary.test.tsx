@@ -8,7 +8,7 @@ type UploadItem = {
   id: string;
   name: string;
   progress: number;
-  status: "failed" | "uploading";
+  status: "failed" | "uploading" | "uploaded";
 };
 
 function buildUploadingItem(overrides: Partial<UploadItem> = {}): UploadItem {
@@ -28,6 +28,16 @@ function buildFailedItem(overrides: Partial<UploadItem> = {}): UploadItem {
     name: "broken.pdf",
     progress: 0,
     status: "failed",
+    ...overrides,
+  };
+}
+
+function buildUploadedItem(overrides: Partial<UploadItem> = {}): UploadItem {
+  return {
+    id: "uploaded-1",
+    name: "done.pdf",
+    progress: 100,
+    status: "uploaded",
     ...overrides,
   };
 }
@@ -87,5 +97,19 @@ describe("UploadQueueSummary", () => {
 
     expect(onRetry).toHaveBeenCalledWith(failedItem.id);
     expect(onRemove).toHaveBeenCalledWith(failedItem.id);
+  });
+
+  it("does not render an empty queue shell for uploaded-only items", () => {
+    const { container } = render(
+      <UploadQueueSummary
+        items={[buildUploadedItem()]}
+        onCancel={vi.fn()}
+        onRemove={vi.fn()}
+        onRetry={vi.fn()}
+      />,
+    );
+
+    expect(container).toBeEmptyDOMElement();
+    expect(screen.queryByText("上传队列")).not.toBeInTheDocument();
   });
 });
