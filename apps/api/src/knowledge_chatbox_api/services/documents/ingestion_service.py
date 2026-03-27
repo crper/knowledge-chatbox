@@ -144,8 +144,7 @@ class IngestionService:
                 file_type=file_type,
                 use_vision=True,
             )
-            self.session.commit()
-            self.session.refresh(document_version)
+            self._commit_revision_indexed(document_version)
             self.logger.info(
                 "document_upload_completed",
                 filename=filename,
@@ -204,8 +203,7 @@ class IngestionService:
                 file_type=document_version.file_type,
                 use_vision=True,
             )
-            self.session.commit()
-            self.session.refresh(document_version)
+            self._commit_revision_indexed(document_version)
             self.logger.info(
                 "document_background_ingestion_completed",
                 document_revision_id=document_version.id,
@@ -224,20 +222,14 @@ class IngestionService:
                 failure_stage="background_ingestion",
                 exception_type=type(exc).__name__,
             )
-            if indexing_targets:
-                self._delete_document_chunks_for_targets(
-                    failed_revision,
-                    indexing_targets,
-                    indexing_service=self._get_indexing_service(indexing_targets[0].settings),
-                )
-            failed_revision.normalized_path = None
-            failed_revision.chunk_count = None
-            failed_revision.indexed_at = None
-            failed_revision.lifecycle_status = "failed"
-            failed_revision.error_message = self._background_ingestion_error_message(
-                failed_revision.file_type
+            self._delete_document_chunks_if_needed(
+                failed_revision,
+                indexing_targets,
             )
-            self.session.commit()
+            self._commit_revision_failed(
+                failed_revision,
+                error_message=self._background_ingestion_error_message(failed_revision.file_type),
+            )
             if normalized_path:
                 self._remove_file(normalized_path)
             self.session.refresh(failed_revision)
@@ -281,11 +273,7 @@ class IngestionService:
                     generation=target.generation,
                     section_title=self._derive_section_title(content),
                 )
-            document_version.lifecycle_status = "indexed"
-            document_version.error_message = None
-            document_version.indexed_at = datetime.now(UTC)
-            self.session.commit()
-            self.session.refresh(document_version)
+            self._commit_revision_indexed(document_version)
             return document_version
         except Exception:  # noqa: BLE001
             self.session.rollback()
@@ -375,9 +363,7 @@ class IngestionService:
                 generation=target.generation,
                 section_title=self._derive_section_title(normalized.content),
             )
-        document_version.lifecycle_status = "indexed"
-        document_version.error_message = None
-        document_version.indexed_at = datetime.now(UTC)
+        self._set_revision_indexed(document_version)
         return normalized.normalized_path, indexing_targets
 
     def _get_indexing_service(self, settings_record) -> IndexingService:
@@ -450,6 +436,42 @@ class IngestionService:
                 document_version,
                 generation=target.generation,
             )
+
+    def _delete_document_chunks_if_needed(
+        self,
+        document_version: DocumentRevision,
+        targets: list[IndexingTarget],
+    ) -> None:
+        if not targets:
+            return
+        self._delete_document_chunks_for_targets(
+            document_version,
+            targets,
+            indexing_service=self._get_indexing_service(targets[0].settings),
+        )
+
+    def _set_revision_indexed(self, document_version: DocumentRevision) -> None:
+        document_version.lifecycle_status = "indexed"
+        document_version.error_message = None
+        document_version.indexed_at = datetime.now(UTC)
+
+    def _commit_revision_indexed(self, document_version: DocumentRevision) -> None:
+        self._set_revision_indexed(document_version)
+        self.session.commit()
+        self.session.refresh(document_version)
+
+    def _commit_revision_failed(
+        self,
+        document_version: DocumentRevision,
+        *,
+        error_message: str,
+    ) -> None:
+        document_version.normalized_path = None
+        document_version.chunk_count = None
+        document_version.indexed_at = None
+        document_version.lifecycle_status = "failed"
+        document_version.error_message = error_message
+        self.session.commit()
 
     def _snapshot_document_chunks(
         self,

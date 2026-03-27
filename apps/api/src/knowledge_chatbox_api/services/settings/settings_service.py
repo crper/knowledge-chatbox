@@ -105,24 +105,15 @@ class SettingsService:
             settings_record = self.repository.save(self._build_initial_settings_record())
 
         previous_effective_embedding_route = self._effective_embedding_route(settings_record)
-        next_profiles = self._merge_provider_profiles(
-            settings_record.provider_profiles,
-            update_request.provider_profiles,
-        )
-        next_response_route = self._normalize_response_route(
-            update_request.response_route or settings_record.response_route
-        )
-        next_vision_route = self._normalize_vision_route(
-            update_request.vision_route or settings_record.vision_route
-        )
-        requested_embedding_route = self._normalize_embedding_route(
-            update_request.embedding_route or previous_effective_embedding_route
-        )
-        next_profiles = self._sync_route_models_to_profiles(
+        (
             next_profiles,
-            response_route=next_response_route,
-            embedding_route=requested_embedding_route,
-            vision_route=next_vision_route,
+            next_response_route,
+            requested_embedding_route,
+            next_vision_route,
+        ) = self._resolve_requested_routes(
+            settings_record,
+            update_request,
+            embedding_route_fallback=previous_effective_embedding_route,
         )
 
         settings_record.provider_profiles_json = dump_provider_profiles(next_profiles)
@@ -130,11 +121,9 @@ class SettingsService:
         settings_record.vision_route_json = dump_vision_route(next_vision_route)
         if "system_prompt" in update_request.model_fields_set:
             settings_record.system_prompt = update_request.system_prompt
-        if (
-            "provider_timeout_seconds" in update_request.model_fields_set
-            and update_request.provider_timeout_seconds is not None
-        ):
-            settings_record.provider_timeout_seconds = update_request.provider_timeout_seconds
+        resolved_timeout = self._resolve_provider_timeout_seconds(settings_record, update_request)
+        if resolved_timeout is not None:
+            settings_record.provider_timeout_seconds = resolved_timeout
 
         rebuild_started = False
         reindex_required = False
@@ -178,24 +167,12 @@ class SettingsService:
 
         update_request = self._normalize_update_request(payload)
         settings_record = self.get_or_create_settings_record()
-        provider_profiles = self._merge_provider_profiles(
-            settings_record.provider_profiles,
-            update_request.provider_profiles,
-        )
-        response_route = self._normalize_response_route(
-            update_request.response_route or settings_record.response_route
-        )
-        embedding_route = self._normalize_embedding_route(
-            update_request.embedding_route or self._effective_embedding_route(settings_record)
-        )
-        vision_route = self._normalize_vision_route(
-            update_request.vision_route or settings_record.vision_route
-        )
-        provider_profiles = self._sync_route_models_to_profiles(
-            provider_profiles,
-            response_route=response_route,
-            embedding_route=embedding_route,
-            vision_route=vision_route,
+        provider_profiles, response_route, embedding_route, vision_route = (
+            self._resolve_requested_routes(
+                settings_record,
+                update_request,
+                embedding_route_fallback=self._effective_embedding_route(settings_record),
+            )
         )
 
         return SettingsRead(
@@ -207,16 +184,10 @@ class SettingsService:
             embedding_route=settings_record.embedding_route,
             pending_embedding_route=embedding_route,
             vision_route=vision_route,
-            system_prompt=(
-                update_request.system_prompt
-                if "system_prompt" in update_request.model_fields_set
-                else settings_record.system_prompt
-            ),
-            provider_timeout_seconds=(
-                update_request.provider_timeout_seconds
-                if "provider_timeout_seconds" in update_request.model_fields_set
-                and update_request.provider_timeout_seconds is not None
-                else settings_record.provider_timeout_seconds
+            system_prompt=self._resolve_system_prompt(settings_record, update_request),
+            provider_timeout_seconds=self._resolve_provider_timeout_seconds(
+                settings_record,
+                update_request,
             ),
             updated_by_user_id=settings_record.updated_by_user_id,
             updated_at=settings_record.updated_at,
@@ -316,6 +287,60 @@ class SettingsService:
         if isinstance(payload, UpdateSettingsRequest):
             return payload
         return UpdateSettingsRequest.model_validate(payload)
+
+    def _resolve_requested_routes(
+        self,
+        settings_record: AppSettings,
+        update_request: UpdateSettingsRequest,
+        *,
+        embedding_route_fallback: EmbeddingRouteConfig,
+    ) -> tuple[
+        ProviderProfiles,
+        ResponseRouteConfig,
+        EmbeddingRouteConfig,
+        VisionRouteConfig,
+    ]:
+        provider_profiles = self._merge_provider_profiles(
+            settings_record.provider_profiles,
+            update_request.provider_profiles,
+        )
+        response_route = self._normalize_response_route(
+            update_request.response_route or settings_record.response_route
+        )
+        embedding_route = self._normalize_embedding_route(
+            update_request.embedding_route or embedding_route_fallback
+        )
+        vision_route = self._normalize_vision_route(
+            update_request.vision_route or settings_record.vision_route
+        )
+        provider_profiles = self._sync_route_models_to_profiles(
+            provider_profiles,
+            response_route=response_route,
+            embedding_route=embedding_route,
+            vision_route=vision_route,
+        )
+        return provider_profiles, response_route, embedding_route, vision_route
+
+    def _resolve_provider_timeout_seconds(
+        self,
+        settings_record: AppSettings,
+        update_request: UpdateSettingsRequest,
+    ) -> int:
+        if (
+            "provider_timeout_seconds" in update_request.model_fields_set
+            and update_request.provider_timeout_seconds is not None
+        ):
+            return update_request.provider_timeout_seconds
+        return settings_record.provider_timeout_seconds
+
+    def _resolve_system_prompt(
+        self,
+        settings_record: AppSettings,
+        update_request: UpdateSettingsRequest,
+    ) -> str | None:
+        if "system_prompt" in update_request.model_fields_set:
+            return update_request.system_prompt
+        return settings_record.system_prompt
 
     def _merge_provider_profiles(
         self,
