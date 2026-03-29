@@ -115,7 +115,7 @@ apps/api/
 | `/api/auth` | 登录态、登录、刷新 access token、登出、改密 | `api/routes/auth.py` |
 | `/api/users` | 管理员用户管理 | `api/routes/users.py` |
 | `/api/documents` | 资源上传、列表、版本、重建索引、下载文件 | `api/routes/documents.py` |
-| `/api/chat` | 会话、消息、同步问答、流式问答、活动 run | `api/routes/chat.py` |
+| `/api/chat` | 会话、分页消息读取、会话上下文摘要、同步问答、流式问答、活动 run | `api/routes/chat.py` |
 | `/api/settings` | 系统 provider 配置、系统提示词、连接测试 | `api/routes/settings.py` |
 | `/api/health` | 基础健康检查 | `api/routes/health.py` |
 | `/api/health/capabilities` | 当前 response / embedding / vision route 健康检查 | `api/routes/health.py` |
@@ -166,6 +166,8 @@ uv run -m uvicorn knowledge_chatbox_api.main:app --reload --host 0.0.0.0 --port 
 - provider 设置收敛到 `app_settings` 一条记录，核心字段是 `provider_profiles_json`、`response_route_json`、`embedding_route_json`、`pending_embedding_route_json`、`vision_route_json`
 - 当前 capability route 支持独立选择 `response / embedding / vision`；切换检索 provider 或 embedding model 会触发后台 generation 重建
 - 后端业务异常统一返回 `Envelope(success=false, error={ code, message, details })`
+- `/api/chat/sessions/{session_id}/messages` 当前支持可选 `before_id`、`limit`，用于 Web 主区按尾部窗口读取长会话；不带参数时仍保留全量历史返回作兼容路径
+- `/api/chat/sessions/{session_id}/context` 当前返回聊天右栏需要的紧凑摘要：已去重附件、最近一次 assistant 引用和对应消息 id
 - `/api/auth/me`、`/api/settings` 这类受保护读取接口在鉴权阶段保持纯读，避免长时间流式写入把标准页面读取锁成 `500 database is locked`
 - 流式问答的 assistant projection 与 run event 当前按短批次提交，避免整段回答长期持有 SQLite 写事务，把会话改名、新建会话这类并发写操作一起锁住
 - 文档相关稳定错误码：

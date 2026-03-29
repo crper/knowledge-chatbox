@@ -84,7 +84,9 @@ knowledge-chatbox/
 - `lib/api/client.ts` 负责 envelope 解包与前端错误归一化；只统一处理网络失败和 `AbortError`，不要把业务错误或契约错误一律改写成通用 `503`
 - `lib/forms.ts` 统一承接轻量表单辅助，包括错误消息抽取和共享 submit event helper；TanStack Form 对话框优先复用这里的轻量能力
 - `lib/document-upload.ts` 放聊天区和资源页共用的 document upload workflow helper；它统一承接进度 patch、成功 / 失败收敛，以及 abort signal 透传；资源页上传命中服务端去重时，也在这里统一走“无变化，已跳过上传”的前端反馈
-- `features/chat/hooks/use-chat-workspace.ts` 负责聊天 composer 的本地附件队列；当前会在入队前按文件元数据做轻量去重，避免同一文件被重复追加
+- `features/chat/hooks/use-chat-workspace.ts` 负责聊天 composer 的本地附件队列、分页消息窗口协调、流式收尾 patch 和会话级发送锁；当前会在入队前按文件元数据做轻量去重，避免同一文件被重复追加
+- `features/chat/utils/patch-paged-chat-messages.ts` 负责把流式完成 / 失败态优先 patch 进当前已加载消息窗口
+- `features/chat/utils/upload-chat-attachments.ts` 负责聊天区待发送附件的有限并发上传与顺序保持
 - `features/chat/utils/chat-session-recovery.ts` 负责最近访问聊天会话的本地持久化与恢复决策；`/chat` 入口恢复逻辑优先收敛在这里，不要把同一语义分散到多个路由守卫或页面副作用里，也不要在页面里先落空态再补跳转
 - `features/knowledge/components/upload-queue-summary.tsx` 负责资源页专用的紧凑上传队列；它不直接复用聊天附件面板，但沿用“标题 + 条目 + 行内操作”的信息结构
 - 工作台标准侧栏和会话侧栏骨架优先复用 `components/ui/sidebar`；账户中枢与全局偏好切换优先复用 `components/ui/dropdown-menu`；设置页状态提示优先复用 `components/ui/alert`；会话行辅助动作当前是标题区 + 水平动作 rail，不要再为同语义容器平行造一套业务样式组件
@@ -152,6 +154,8 @@ knowledge-chatbox/
 - 改上传与附件链路时，当前真相是“聊天区和资源页共用 document upload helper；前端只持久化附件元数据与作用域提示；后端按文件类型分流：文本文档同步标准化，图片先返回 `processing` 再后台补全；聊天当前轮图片仍直接读取原图”；不要在前端维护第二份附件正文缓存，也不要把上传请求做回 cookie-only 分支
 - 改后端上传链路时，当前真相是“`api/routes/documents.py` 先把上传流按块落盘，`VersioningService` 只消费已落盘工件并写入 document/document_revision，重复内容与失败路径的源文件清理由 `IngestionService` 收口”；不要再把整份文件一次性读成 `bytes` 后在 service 层到处传
 - 改聊天 UI 时，附件展示、图片查看、消息视口、失败恢复带、新会话空态、会话恢复和默认标题语义，统一以 [frontend-workspace.md](./frontend-workspace.md) 为准；这里不再平行维护一套页面级视觉规则
+- 改聊天数据读取时，当前真相是“主区默认先走 `/api/chat/sessions/{id}/messages?limit=80`，继续向上滚动时再带 `before_id + limit` 请求更早消息；右栏走 `/api/chat/sessions/{id}/context`”；不要再让 `ChatResourcePanel` 或其他 UI 组件直接依赖整段消息列表去反推摘要
+- 改流式问答收尾时，当前真相是“Web 优先 patch `messagesWindow` 和 `context`，只有 patch miss 时才回退到对应 query 的失效刷新”；不要把成功或失败收尾重新做回默认整段消息重拉
 - 改资源页或标准工作区壳层时，优先沿用 `WorkspacePage`、`data-table` 和预览抽屉这套共享结构；布局真相同样放在 [frontend-workspace.md](./frontend-workspace.md)
 - 改设置页交互时，当前真相是“纯 helper 返回 i18n key，主区承载当前生效配置，高级区只承载检索覆盖、备用模板和 Timeout”；不要在纯逻辑层硬编码中英文文案
 - 改 API 文档或前端契约时，当前真相是“FastAPI OpenAPI 为唯一接口契约源”；不要再维护一套平行手写接口文档
