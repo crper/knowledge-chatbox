@@ -171,6 +171,18 @@ class ChatRepository:
             attachments_by_message_id.setdefault(attachment.message_id, []).append(attachment)
         return attachments_by_message_id
 
+    def list_session_attachments(self, session_id: int) -> list[ChatMessageAttachment]:
+        """按会话顺序列出所有附件。"""
+        statement = (
+            select(ChatMessageAttachment)
+            .join(ChatMessage, ChatMessage.id == ChatMessageAttachment.message_id)
+            .where(ChatMessage.session_id == session_id)
+            .order_by(ChatMessage.id.asc(), ChatMessageAttachment.id.asc())
+        )
+        attachments = list(self.session.scalars(statement).all())
+        self._attach_document_ids(attachments)
+        return attachments
+
     def _attach_document_ids(self, attachments: list[ChatMessageAttachment]) -> None:
         revision_ids = {
             attachment.document_revision_id
@@ -197,6 +209,18 @@ class ChatRepository:
             .order_by(ChatMessage.id.asc())
         )
         return list(self.session.scalars(statement).all())
+
+    def get_latest_assistant_message(self, session_id: int) -> ChatMessage | None:
+        """获取会话里最后一条 assistant 消息。"""
+        statement = (
+            select(ChatMessage)
+            .where(
+                ChatMessage.session_id == session_id,
+                ChatMessage.role == "assistant",
+            )
+            .order_by(ChatMessage.id.desc())
+        )
+        return self.session.scalars(statement).first()
 
     def list_recent_messages(self, session_id: int, *, limit: int) -> list[ChatMessage]:
         """按时间顺序返回最近 N 条消息。"""

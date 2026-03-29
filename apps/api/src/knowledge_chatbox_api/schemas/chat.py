@@ -156,6 +156,14 @@ class ChatMessageRead(BaseModel):
     created_at: datetime
 
 
+class ChatSessionContextRead(BaseModel):
+    session_id: int
+    attachment_count: int
+    attachments: list[ChatAttachmentMetadata]
+    latest_assistant_message_id: int | None
+    latest_assistant_sources: list[dict[str, Any]]
+
+
 class ChatMessagePairRead(BaseModel):
     user_message: ChatMessageRead
     assistant_message: ChatMessageRead

@@ -2,7 +2,11 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
-import type { ChatAttachmentItem, ChatMessageItem, ChatSourceItem } from "@/features/chat/api/chat";
+import type {
+  ChatAttachmentItem,
+  ChatSessionContextItem,
+  ChatSourceItem,
+} from "@/features/chat/api/chat";
 import { useChatUiStore } from "@/features/chat/store/chat-ui-store";
 import { jsonResponse } from "@/test/http";
 import { createTestQueryClient } from "@/test/query-client";
@@ -30,35 +34,36 @@ function buildDocumentAttachment(name: string): ChatAttachmentItem {
 
 function withDocumentRevision(
   attachment: ChatAttachmentItem,
-  input: { document_id: number; document_revision_id: number },
+  input: { resource_document_id: number; resource_document_version_id: number },
 ) {
   return {
     ...attachment,
-    document_id: input.document_id,
-    document_revision_id: input.document_revision_id,
+    resource_document_id: input.resource_document_id,
+    resource_document_version_id: input.resource_document_version_id,
   } as unknown as ChatAttachmentItem;
 }
 
-function buildAssistantMessage(input?: {
-  attachments_json?: ChatAttachmentItem[];
-  sources_json?: ChatSourceItem[];
-}): ChatMessageItem {
+function buildContext(input?: {
+  attachments?: ChatAttachmentItem[];
+  latest_assistant_message_id?: number | null;
+  latest_assistant_sources?: ChatSourceItem[];
+  session_id?: number;
+}): ChatSessionContextItem {
   return {
-    id: 1,
-    role: "assistant",
-    content: "答复",
-    status: "succeeded",
-    attachments_json: input?.attachments_json ?? [],
-    sources_json: input?.sources_json ?? [],
+    session_id: input?.session_id ?? 1,
+    attachment_count: (input?.attachments ?? []).length,
+    attachments: input?.attachments ?? [],
+    latest_assistant_message_id: input?.latest_assistant_message_id ?? 1,
+    latest_assistant_sources: input?.latest_assistant_sources ?? [],
   };
 }
 
-function stubChatMessagesFetch(messages: ChatMessageItem[]) {
+function stubChatContextFetch(context: ChatSessionContextItem) {
   vi.stubGlobal(
     "fetch",
     vi.fn().mockImplementation((input: string) => {
-      if (input.includes("/api/chat/sessions/1/messages")) {
-        return Promise.resolve(jsonResponse({ success: true, data: messages, error: null }));
+      if (input.includes("/api/chat/sessions/1/context")) {
+        return Promise.resolve(jsonResponse({ success: true, data: context, error: null }));
       }
 
       return Promise.resolve(jsonResponse({ success: true, data: [], error: null }));
@@ -134,7 +139,7 @@ describe("ChatResourcePanel", () => {
   });
 
   it("shows a single compact overview card before attachments and references exist", async () => {
-    stubChatMessagesFetch([buildAssistantMessage({ attachments_json: [], sources_json: [] })]);
+    stubChatContextFetch(buildContext({ attachments: [], latest_assistant_sources: [] }));
 
     renderResourcePanel();
 
@@ -146,13 +151,13 @@ describe("ChatResourcePanel", () => {
   });
 
   it("shows a compact session summary and groups references by document", async () => {
-    stubChatMessagesFetch([
-      buildAssistantMessage({
-        attachments_json: [
+    stubChatContextFetch(
+      buildContext({
+        attachments: [
           buildImageAttachment("f2280f620f9045129491d54f4de3997d.png"),
           buildImageAttachment("a21109ebeb2d438f90a49af9e56ce922.png"),
         ],
-        sources_json: [
+        latest_assistant_sources: [
           {
             chunk_id: "10:0",
             document_id: 10,
@@ -173,7 +178,7 @@ describe("ChatResourcePanel", () => {
           },
         ],
       }),
-    ]);
+    );
 
     renderResourcePanel();
 
@@ -183,41 +188,89 @@ describe("ChatResourcePanel", () => {
     expect(screen.getByText("夜航记录")).toBeInTheDocument();
   });
 
+  it("uses only the latest assistant sources instead of merging historical source groups", async () => {
+    stubChatContextFetch(
+      buildContext({
+        latest_assistant_message_id: 2,
+        latest_assistant_sources: [
+          {
+            chunk_id: "20:0",
+            document_id: 20,
+            document_name: "新文档",
+            snippet: "新片段 A",
+          },
+          {
+            chunk_id: "20:1",
+            document_id: 20,
+            document_name: "新文档",
+            snippet: "新片段 B",
+          },
+        ],
+      }),
+    );
+
+    renderResourcePanel();
+
+    expect(await screen.findByText("1 条引用")).toBeInTheDocument();
+    expect(screen.getByText("新文档")).toBeInTheDocument();
+    expect(screen.queryByText("旧文档")).not.toBeInTheDocument();
+    expect(screen.queryByText("旧片段")).not.toBeInTheDocument();
+  });
+
+  it("renders the deduplicated attachment summary returned by the context query", async () => {
+    stubChatContextFetch(
+      buildContext({
+        attachments: [
+          {
+            ...withDocumentRevision(buildImageAttachment("doc-a-v2.png"), {
+              resource_document_id: 7,
+              resource_document_version_id: 12,
+            }),
+            attachment_id: "doc-a-v2",
+          } as ChatAttachmentItem,
+          {
+            ...buildDocumentAttachment("rev-only-b.pdf"),
+            document_revision_id: 30,
+            attachment_id: "rev-only-b-id",
+          } as ChatAttachmentItem,
+          {
+            ...buildDocumentAttachment("raw-b.pdf"),
+            attachment_id: "raw-shared-id",
+          } as ChatAttachmentItem,
+        ],
+      }),
+    );
+
+    renderResourcePanel();
+
+    expect(await screen.findByText("3 个附件")).toBeInTheDocument();
+    const attachmentList = screen.getByTestId("resource-attachment-list");
+    expect(within(attachmentList).getAllByRole("listitem")).toHaveLength(3);
+  });
+
   it("deduplicates repeated versions of the same session resource and previews the latest version", async () => {
     const fetchMock = vi.fn().mockImplementation((input: string) => {
-      if (input.includes("/api/chat/sessions/1/messages")) {
+      if (input.includes("/api/chat/sessions/1/context")) {
         return Promise.resolve(
           jsonResponse({
             success: true,
-            data: [
-              buildAssistantMessage({
-                attachments_json: [
-                  {
-                    ...withDocumentRevision(buildImageAttachment("same.png"), {
-                      document_id: 7,
-                      document_revision_id: 11,
-                    }),
-                    attachment_id: "image-v1",
-                  } as ChatAttachmentItem,
-                  {
-                    ...withDocumentRevision(buildImageAttachment("same.png"), {
-                      document_id: 7,
-                      document_revision_id: 12,
-                    }),
-                    attachment_id: "image-v2",
-                  } as ChatAttachmentItem,
-                ],
-              }),
-            ],
+            data: buildContext({
+              attachments: [
+                {
+                  ...withDocumentRevision(buildImageAttachment("same.png"), {
+                    resource_document_id: 7,
+                    resource_document_version_id: 12,
+                  }),
+                  attachment_id: "image-v2",
+                } as ChatAttachmentItem,
+              ],
+            }),
             error: null,
           }),
         );
       }
 
-      if (
-        input.includes("/api/documents/revisions/11/file") ||
-        input.includes("/api/documents/revisions/12/file")
-      ) {
+      if (input.includes("/api/documents/revisions/12/file")) {
         return Promise.resolve({
           ok: true,
           blob: () => Promise.resolve(new Blob(["image"], { type: "image/png" })),
@@ -259,14 +312,14 @@ describe("ChatResourcePanel", () => {
   it("uses a native bidirectional scroll container for long panel content", async () => {
     const longTitle = "0175dd9e5d6840e98176fb2591e3f81ba9rns2rl98-image_raw_b.png";
 
-    stubChatMessagesFetch([
-      buildAssistantMessage({
-        attachments_json: [
+    stubChatContextFetch(
+      buildContext({
+        attachments: [
           buildDocumentAttachment("03-tide-reading-list.pdf"),
           buildDocumentAttachment("04-brick-lane-letter.docx"),
           buildDocumentAttachment(longTitle),
         ],
-        sources_json: [
+        latest_assistant_sources: [
           {
             chunk_id: "12:0",
             document_id: 12,
@@ -275,7 +328,7 @@ describe("ChatResourcePanel", () => {
           },
         ],
       }),
-    ]);
+    );
 
     renderResourcePanel();
 
@@ -288,34 +341,19 @@ describe("ChatResourcePanel", () => {
   });
 
   it("only uses the latest assistant message with sources for grouped references", async () => {
-    stubChatMessagesFetch([
-      {
-        ...buildAssistantMessage({
-          sources_json: [
-            {
-              chunk_id: "10:0",
-              document_id: 10,
-              document_name: "旧资料",
-              snippet: "旧片段",
-            },
-          ],
-        }),
-        id: 1,
-      },
-      {
-        ...buildAssistantMessage({
-          sources_json: [
-            {
-              chunk_id: "11:0",
-              document_id: 11,
-              document_name: "最新资料",
-              snippet: "新片段",
-            },
-          ],
-        }),
-        id: 2,
-      },
-    ]);
+    stubChatContextFetch(
+      buildContext({
+        latest_assistant_message_id: 2,
+        latest_assistant_sources: [
+          {
+            chunk_id: "11:0",
+            document_id: 11,
+            document_name: "最新资料",
+            snippet: "新片段",
+          },
+        ],
+      }),
+    );
 
     renderResourcePanel();
 
@@ -327,27 +365,12 @@ describe("ChatResourcePanel", () => {
   });
 
   it("shows empty references when the latest assistant message has no sources", async () => {
-    stubChatMessagesFetch([
-      {
-        ...buildAssistantMessage({
-          sources_json: [
-            {
-              chunk_id: "10:0",
-              document_id: 10,
-              document_name: "仍应保留的资料",
-              snippet: "有效片段",
-            },
-          ],
-        }),
-        id: 1,
-      },
-      {
-        ...buildAssistantMessage({
-          sources_json: [],
-        }),
-        id: 2,
-      },
-    ]);
+    stubChatContextFetch(
+      buildContext({
+        latest_assistant_message_id: 2,
+        latest_assistant_sources: [],
+      }),
+    );
 
     renderResourcePanel();
 
@@ -361,9 +384,9 @@ describe("ChatResourcePanel", () => {
   });
 
   it("shows an expanded attachment panel in the resource list by default", async () => {
-    stubChatMessagesFetch([
-      buildAssistantMessage({
-        attachments_json: [
+    stubChatContextFetch(
+      buildContext({
+        attachments: [
           buildImageAttachment("f2280f620f9045129491d54f4de3997d.png"),
           buildImageAttachment("a21109ebeb2d438f90a49af9e56ce922.png"),
           buildImageAttachment("third.png"),
@@ -372,7 +395,7 @@ describe("ChatResourcePanel", () => {
           buildDocumentAttachment("夜航记录.pdf"),
         ],
       }),
-    ]);
+    );
 
     renderResourcePanel();
 
@@ -394,28 +417,26 @@ describe("ChatResourcePanel", () => {
 
   it("opens an image viewer when a resource image card is clicked", async () => {
     const fetchMock = vi.fn().mockImplementation((input: string) => {
-      if (input.includes("/api/chat/sessions/1/messages")) {
+      if (input.includes("/api/chat/sessions/1/context")) {
         return Promise.resolve(
           jsonResponse({
             success: true,
-            data: [
-              buildAssistantMessage({
-                attachments_json: [
-                  {
-                    ...withDocumentRevision(buildImageAttachment("first.png"), {
-                      document_id: 7,
-                      document_revision_id: 11,
-                    }),
-                  } as ChatAttachmentItem,
-                  {
-                    ...withDocumentRevision(buildImageAttachment("second.png"), {
-                      document_id: 8,
-                      document_revision_id: 12,
-                    }),
-                  } as ChatAttachmentItem,
-                ],
-              }),
-            ],
+            data: buildContext({
+              attachments: [
+                {
+                  ...withDocumentRevision(buildImageAttachment("first.png"), {
+                    resource_document_id: 7,
+                    resource_document_version_id: 11,
+                  }),
+                } as ChatAttachmentItem,
+                {
+                  ...withDocumentRevision(buildImageAttachment("second.png"), {
+                    resource_document_id: 8,
+                    resource_document_version_id: 12,
+                  }),
+                } as ChatAttachmentItem,
+              ],
+            }),
             error: null,
           }),
         );
@@ -442,11 +463,11 @@ describe("ChatResourcePanel", () => {
   });
 
   it("keeps summary count aligned when the session only has document attachments", async () => {
-    stubChatMessagesFetch([
-      buildAssistantMessage({
-        attachments_json: [buildDocumentAttachment("夜航记录.pdf")],
+    stubChatContextFetch(
+      buildContext({
+        attachments: [buildDocumentAttachment("夜航记录.pdf")],
       }),
-    ]);
+    );
 
     renderResourcePanel();
 

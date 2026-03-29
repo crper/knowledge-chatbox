@@ -5,8 +5,9 @@
 import { queryOptions, skipToken } from "@tanstack/react-query";
 
 import { queryKeys } from "@/lib/api/query-keys";
-import { getChatMessages, getChatProfile, getChatSessions } from "./chat";
+import { getChatMessages, getChatProfile, getChatSessionContext, getChatSessions } from "./chat";
 
+const CHAT_CONTEXT_STALE_TIME_MS = 15 * 1000;
 const CHAT_PROFILE_STALE_TIME_MS = 60 * 1000;
 const CHAT_SESSIONS_STALE_TIME_MS = 30 * 1000;
 const CHAT_MESSAGES_STALE_TIME_MS = 15 * 1000;
@@ -30,6 +31,17 @@ export function chatProfileQueryOptions() {
     queryKey: queryKeys.chat.profile,
     queryFn: getChatProfile,
     staleTime: CHAT_PROFILE_STALE_TIME_MS,
+  });
+}
+
+/**
+ * 获取聊天右栏 context 查询配置。
+ */
+export function chatContextQueryOptions(sessionId: number | null) {
+  return queryOptions({
+    queryKey: queryKeys.chat.context(sessionId),
+    queryFn: sessionId === null ? skipToken : () => getChatSessionContext(sessionId),
+    staleTime: CHAT_CONTEXT_STALE_TIME_MS,
   });
 }
 
