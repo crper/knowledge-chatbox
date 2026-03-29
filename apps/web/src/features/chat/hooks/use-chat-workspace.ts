@@ -674,6 +674,7 @@ export function useChatWorkspace(activeSessionId: number | null) {
 
   const hasOlderMessages = messagesWindowQuery.hasNextPage ?? false;
   const isLoadingOlderMessages = messagesWindowQuery.isFetchingNextPage;
+  const messagesWindowReady = resolvedActiveSessionId === null || !messagesWindowQuery.isPending;
 
   const loadOlderMessages = useCallback(async () => {
     if (!hasOlderMessages || isLoadingOlderMessages) {
@@ -699,7 +700,7 @@ export function useChatWorkspace(activeSessionId: number | null) {
     sendShortcut,
     setSendShortcut,
     sessions,
-    sessionsReady: !sessionsQuery.isPending && !messagesWindowQuery.isPending,
+    sessionsReady: !sessionsQuery.isPending && messagesWindowReady,
     setDraft,
     submitMessage,
     submitPending,

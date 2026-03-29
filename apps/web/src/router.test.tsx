@@ -157,6 +157,78 @@ function mockAuthenticatedChatWorkspaceResponse({
   sessions?: Array<{ id: number; title: string; reasoning_mode: string }>;
   messagesBySession?: Record<number, unknown[]>;
 } = {}) {
+  const buildSessionContext = (sessionId: number) => {
+    const messages = cloneMockData(messagesBySession[sessionId] ?? []) as Array<{
+      attachments_json?: Array<{
+        attachment_id?: string;
+        type: string;
+        name: string;
+        mime_type: string;
+        size_bytes?: number;
+        document_id?: number | null;
+        document_revision_id?: number | null;
+      }> | null;
+      id: number;
+      role: string;
+      sources_json?: unknown[] | null;
+    }>;
+    const attachments = (
+      messages.flatMap((message) => message.attachments_json ?? []) ?? []
+    ).reduce<
+      Array<{
+        attachment_id: string;
+        type: string;
+        name: string;
+        mime_type: string;
+        size_bytes: number;
+        document_id?: number | null;
+        document_revision_id?: number | null;
+      }>
+    >((result, attachment) => {
+      const normalizedAttachment = {
+        attachment_id: attachment.attachment_id ?? `${attachment.name}-attachment`,
+        type: attachment.type,
+        name: attachment.name,
+        mime_type: attachment.mime_type,
+        size_bytes: attachment.size_bytes ?? 1,
+        document_id: attachment.document_id ?? null,
+        document_revision_id: attachment.document_revision_id ?? null,
+      };
+      const key =
+        normalizedAttachment.document_id != null
+          ? `document:${normalizedAttachment.document_id}`
+          : normalizedAttachment.document_revision_id != null
+            ? `version:${normalizedAttachment.document_revision_id}`
+            : `attachment:${normalizedAttachment.attachment_id}`;
+      const index = result.findIndex((item) => {
+        const itemKey =
+          item.document_id != null
+            ? `document:${item.document_id}`
+            : item.document_revision_id != null
+              ? `version:${item.document_revision_id}`
+              : `attachment:${item.attachment_id}`;
+        return itemKey === key;
+      });
+      if (index >= 0) {
+        result[index] = normalizedAttachment;
+        return result;
+      }
+      result.push(normalizedAttachment);
+      return result;
+    }, []);
+    const latestAssistantMessage = [...messages]
+      .reverse()
+      .find((message) => message.role === "assistant");
+
+    return {
+      session_id: sessionId,
+      attachment_count: attachments.length,
+      attachments,
+      latest_assistant_message_id: latestAssistantMessage?.id ?? null,
+      latest_assistant_sources: latestAssistantMessage?.sources_json ?? [],
+    };
+  };
+
   return vi.fn().mockImplementation((input: string) => {
     if (input.endsWith("/api/auth/bootstrap")) {
       return Promise.resolve(
@@ -237,13 +309,35 @@ function mockAuthenticatedChatWorkspaceResponse({
       );
     }
 
-    const messageRoute = input.match(/\/api\/chat\/sessions\/(\d+)\/messages$/);
-    if (messageRoute) {
-      const sessionId = Number(messageRoute[1]);
+    const contextRoute = input.match(/\/api\/chat\/sessions\/(\d+)\/context$/);
+    if (contextRoute) {
+      const sessionId = Number(contextRoute[1]);
       return Promise.resolve(
         jsonResponse({
           success: true,
-          data: cloneMockData(messagesBySession[sessionId] ?? []),
+          data: buildSessionContext(sessionId),
+          error: null,
+        }),
+      );
+    }
+
+    const messageRoute = input.match(/\/api\/chat\/sessions\/(\d+)\/messages(?:\?(.*))?$/);
+    if (messageRoute) {
+      const sessionId = Number(messageRoute[1]);
+      const params = new URL(input, "http://testserver").searchParams;
+      const limit = params.get("limit");
+      const beforeId = params.get("before_id");
+      const messages = cloneMockData(messagesBySession[sessionId] ?? []) as Array<{ id: number }>;
+      const filteredMessages =
+        limit === null
+          ? messages
+          : beforeId === null
+            ? messages.slice(-Number(limit))
+            : messages.filter((message) => message.id < Number(beforeId)).slice(-Number(limit));
+      return Promise.resolve(
+        jsonResponse({
+          success: true,
+          data: filteredMessages,
           error: null,
         }),
       );
@@ -610,7 +704,23 @@ describe("AppRouter", () => {
           );
         }
 
-        if (input.endsWith("/api/chat/sessions/2/messages")) {
+        if (input.endsWith("/api/chat/sessions/2/context")) {
+          return Promise.resolve(
+            jsonResponse({
+              success: true,
+              data: {
+                session_id: 2,
+                attachment_count: 0,
+                attachments: [],
+                latest_assistant_message_id: 11,
+                latest_assistant_sources: [],
+              },
+              error: null,
+            }),
+          );
+        }
+
+        if (input.includes("/api/chat/sessions/2/messages?limit=80")) {
           return Promise.resolve(
             jsonResponse({
               success: true,
