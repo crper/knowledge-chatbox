@@ -92,7 +92,7 @@ export function ResourceDocumentRow({
         </p>
       </div>
 
-      <div className="flex items-center gap-2 md:justify-self-end">
+      <div className="flex flex-wrap items-center gap-2 md:justify-self-end">
         <Button
           aria-label={t("previewActionWithName", { name: document.name })}
           onClick={() => onPreviewDocument(document)}

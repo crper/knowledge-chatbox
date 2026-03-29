@@ -3,6 +3,7 @@ import { MemoryRouter } from "react-router-dom";
 
 import { QueryProvider } from "@/providers/query-provider";
 import { jsonResponse } from "@/test/http";
+import { mockDesktopViewport, mockMobileViewport } from "@/test/viewport";
 import { KnowledgePage } from "./knowledge-page";
 
 const sonnerMocks = vi.hoisted(() => ({
@@ -254,6 +255,7 @@ describe("KnowledgePage", () => {
     vi.stubGlobal("XMLHttpRequest", MockXMLHttpRequest);
     sonnerMocks.error.mockReset();
     sonnerMocks.success.mockReset();
+    mockDesktopViewport();
   });
 
   it("renders row-card actions without the old inline delete buttons", async () => {
@@ -549,6 +551,19 @@ describe("KnowledgePage", () => {
     expect(screen.queryByText("资源预览")).not.toBeInTheDocument();
   });
 
+  it("opens preview directly when a resource row is selected on mobile", async () => {
+    mockMobileViewport();
+    buildFetchMock();
+
+    renderKnowledgePage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "guide.pdf" }));
+
+    expect(await screen.findByText("资源预览")).toBeInTheDocument();
+    expect(screen.getAllByText("guide.pdf").length).toBeGreaterThan(0);
+    expect(screen.queryByText("当前资源")).not.toBeInTheDocument();
+  });
+
   it("filters resources locally and clears the selected summary band when the chosen resource is filtered out", async () => {
     const fetchMock = buildFetchMock();
 
@@ -576,6 +591,26 @@ describe("KnowledgePage", () => {
       endsWithApiPath(url, "/api/documents"),
     ).length;
     expect(documentListCallsAfterSearch).toBe(documentListCallsBeforeSearch);
+  });
+
+  it("moves type and status filters into a mobile sheet", async () => {
+    mockMobileViewport();
+    buildFetchMock();
+
+    renderKnowledgePage();
+
+    await screen.findAllByRole("button", { name: "查看版本" });
+    expect(screen.queryByRole("button", { name: "PDF" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "筛选" }));
+
+    expect(await screen.findByText("资源筛选")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "PDF" }));
+
+    await waitFor(() => {
+      expect(screen.queryByText("spec.md")).not.toBeInTheDocument();
+    });
+    expect(screen.getAllByText("guide.pdf").length).toBeGreaterThan(0);
   });
 
   it("renders document management actions for non-admin users", async () => {

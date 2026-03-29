@@ -90,14 +90,14 @@ vp build
 
 ### 主要页面
 
-| 页面   | 作用                                             | 主要代码入口                             |
-| ------ | ------------------------------------------------ | ---------------------------------------- |
-| 登录页 | 登录、主题/语言切换、登录前后偏好衔接            | `src/pages/auth/login-page.tsx`          |
+| 页面   | 作用                                                                     | 主要代码入口                             |
+| ------ | ------------------------------------------------------------------------ | ---------------------------------------- |
+| 登录页 | 登录、主题/语言切换、登录前后偏好衔接                                    | `src/pages/auth/login-page.tsx`          |
 | 对话页 | 会话、分页消息窗口、同步/流式问答、附件面板、图片 viewer、右栏上下文摘要 | `src/pages/chat/chat-page.tsx`           |
-| 资源页 | 上传、资源列表、预览抽屉、版本详情、重建索引     | `src/pages/knowledge/knowledge-page.tsx` |
-| 设置页 | 提供商配置、系统提示词、偏好与账号安全           | `src/pages/settings/settings-page.tsx`   |
-| 用户页 | 管理员用户管理                                   | `src/pages/users/users-page.tsx`         |
-| 系统页 | 认证降级页与 `403` 页面                          | `src/pages/system/*`                     |
+| 资源页 | 上传、资源列表、预览抽屉、版本详情、重建索引                             | `src/pages/knowledge/knowledge-page.tsx` |
+| 设置页 | 提供商配置、系统提示词、偏好与账号安全                                   | `src/pages/settings/settings-page.tsx`   |
+| 用户页 | 管理员用户管理                                                           | `src/pages/users/users-page.tsx`         |
+| 系统页 | 认证降级页与 `403` 页面                                                  | `src/pages/system/*`                     |
 
 ## 工程结构
 
