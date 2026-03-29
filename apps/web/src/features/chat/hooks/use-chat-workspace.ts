@@ -3,12 +3,15 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { FileRejection } from "react-dropzone";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
-import { chatMessagesQueryOptions, chatSessionsQueryOptions } from "@/features/chat/api/chat-query";
+import {
+  chatMessagesWindowInfiniteQueryOptions,
+  chatSessionsQueryOptions,
+} from "@/features/chat/api/chat-query";
 import { uploadDocument } from "@/features/knowledge/api/documents";
 import { detectSupportedUploadKind } from "@/features/knowledge/upload-file-types";
 import { queryKeys } from "@/lib/api/query-keys";
@@ -187,7 +190,9 @@ export function useChatWorkspace(activeSessionId: number | null) {
 
     return sessions.some((session) => session.id === activeSessionId) ? activeSessionId : null;
   }, [activeSessionId, sessions, sessionsQuery.isPending]);
-  const messagesQuery = useQuery(chatMessagesQueryOptions(resolvedActiveSessionId));
+  const messagesWindowQuery = useInfiniteQuery(
+    chatMessagesWindowInfiniteQueryOptions(resolvedActiveSessionId),
+  );
 
   useEffect(() => {
     currentSessionIdRef.current = resolvedActiveSessionId;
@@ -250,7 +255,7 @@ export function useChatWorkspace(activeSessionId: number | null) {
               completeRun(runId);
               void queryClient
                 .invalidateQueries({
-                  queryKey: queryKeys.chat.messages(sessionId),
+                  queryKey: queryKeys.chat.messagesWindow(sessionId),
                 })
                 .then(() => {
                   if (currentSessionIdRef.current === sessionId) {
@@ -270,7 +275,7 @@ export function useChatWorkspace(activeSessionId: number | null) {
               );
               void queryClient
                 .invalidateQueries({
-                  queryKey: queryKeys.chat.messages(sessionId),
+                  queryKey: queryKeys.chat.messagesWindow(sessionId),
                 })
                 .then(() => {
                   pruneRuns([runId]);
@@ -290,7 +295,10 @@ export function useChatWorkspace(activeSessionId: number | null) {
     },
   });
 
-  const messages = Array.isArray(messagesQuery.data) ? messagesQuery.data : [];
+  const messages = useMemo(
+    () => messagesWindowQuery.data?.pages.flatMap((page) => page) ?? [],
+    [messagesWindowQuery.data],
+  );
   const attachments =
     resolvedActiveSessionId === null
       ? []
@@ -455,7 +463,7 @@ export function useChatWorkspace(activeSessionId: number | null) {
         content: nextDraft,
       });
       if (streamResult.userMessageId && serializedAttachments.length > 0) {
-        await queryClient.invalidateQueries({ queryKey: queryKeys.chat.messages(sessionId) });
+        await queryClient.invalidateQueries({ queryKey: queryKeys.chat.messagesWindow(sessionId) });
         void queryClient.invalidateQueries({ queryKey: queryKeys.documents.list });
       }
     } catch {
@@ -628,12 +636,23 @@ export function useChatWorkspace(activeSessionId: number | null) {
       await deleteChatMessage(message.id);
       if (resolvedActiveSessionId !== null) {
         await queryClient.invalidateQueries({
-          queryKey: queryKeys.chat.messages(resolvedActiveSessionId),
+          queryKey: queryKeys.chat.messagesWindow(resolvedActiveSessionId),
         });
       }
     },
     [queryClient, resolvedActiveSessionId],
   );
+
+  const hasOlderMessages = messagesWindowQuery.hasNextPage ?? false;
+  const isLoadingOlderMessages = messagesWindowQuery.isFetchingNextPage;
+
+  const loadOlderMessages = useCallback(async () => {
+    if (!hasOlderMessages || isLoadingOlderMessages) {
+      return;
+    }
+
+    await messagesWindowQuery.fetchNextPage();
+  }, [hasOlderMessages, isLoadingOlderMessages, messagesWindowQuery]);
 
   return {
     activeSession,
@@ -644,16 +663,19 @@ export function useChatWorkspace(activeSessionId: number | null) {
     draft,
     editFailedMessage,
     hasMessages: displayMessages.length > 0,
+    hasOlderMessages,
     removeAttachment,
     retryMessage,
     scrollToLatestRequestKey,
     sendShortcut,
     setSendShortcut,
     sessions,
-    sessionsReady: !sessionsQuery.isPending,
+    sessionsReady: !sessionsQuery.isPending && !messagesWindowQuery.isPending,
     setDraft,
     submitMessage,
     submitPending,
+    isLoadingOlderMessages,
+    loadOlderMessages,
     attachFiles,
     rejectFiles,
   };

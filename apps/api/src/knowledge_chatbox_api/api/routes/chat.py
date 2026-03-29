@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import cast
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Query, status
 from fastapi.responses import StreamingResponse
 
 from knowledge_chatbox_api.api.deps import CurrentUserDep, DbSessionDep, SettingsDep
@@ -225,10 +225,21 @@ def list_messages(
     session_id: int,
     session: DbSessionDep,
     current_user: CurrentUserDep,
+    before_id: int | None = Query(default=None, ge=1),
+    limit: int | None = Query(default=None, ge=1, le=200),
 ) -> Envelope[list[ChatMessageRead]]:
     """列出消息。"""
     service = ChatApplicationService(session, settings=None)
-    messages = service.list_messages(current_user, session_id)
+    messages = (
+        service.list_messages_window(
+            current_user,
+            session_id,
+            before_id=before_id,
+            limit=limit,
+        )
+        if limit is not None
+        else service.list_messages(current_user, session_id)
+    )
     attachments_by_message_id = service.chat_repository.list_attachments_for_message_ids(
         [message.id for message in messages]
     )

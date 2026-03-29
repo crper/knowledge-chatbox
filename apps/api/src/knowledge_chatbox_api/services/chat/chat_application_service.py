@@ -111,6 +111,22 @@ class ChatApplicationService:
         self._require_owned_session(actor, session_id)
         return self.chat_repository.list_messages(session_id)
 
+    def list_messages_window(
+        self,
+        actor: User,
+        session_id: int,
+        *,
+        before_id: int | None,
+        limit: int,
+    ) -> list[Any]:
+        """Return one tail window of messages for one owned session."""
+        self._require_owned_session(actor, session_id)
+        return self.chat_repository.list_messages_window(
+            session_id,
+            before_id=before_id,
+            limit=limit,
+        )
+
     def get_session_context(self, actor: User, session_id: int) -> dict[str, Any]:
         """Return the compact right-panel context for one owned session."""
         self._require_owned_session(actor, session_id)

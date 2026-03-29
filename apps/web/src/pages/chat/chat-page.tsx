@@ -83,6 +83,9 @@ export function ChatPage() {
     draft,
     editFailedMessage,
     hasMessages,
+    hasOlderMessages,
+    isLoadingOlderMessages,
+    loadOlderMessages,
     removeAttachment,
     rejectFiles,
     retryMessage,
@@ -224,9 +227,12 @@ export function ChatPage() {
         {hasMessages ? (
           <ChatMessageViewport
             key={activeSessionId ?? "empty"}
+            hasOlderMessages={hasOlderMessages}
+            isLoadingOlderMessages={isLoadingOlderMessages}
             messages={displayMessages}
             onDeleteFailed={handleDeleteFailed}
             onEditFailed={editFailedMessage}
+            onLoadOlderMessages={loadOlderMessages}
             onRetry={retryMessage}
             scrollToLatestRequestKey={scrollToLatestRequestKey}
           />

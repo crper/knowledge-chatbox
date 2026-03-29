@@ -143,6 +143,97 @@ function buildAuthenticatedFetch(options?: {
   streamFinalDelayMs?: number;
   streamFramesBySession?: Record<number, string[]>;
 }) {
+  const buildSessionContext = (sessionId: number) => {
+    const mappedMessages = options?.messagesBySession?.[sessionId];
+    const baseMessages =
+      mappedMessages ??
+      options?.messages ??
+      (sessionId === 1
+        ? [
+            {
+              id: 1,
+              role: "user",
+              content: "hello",
+              status: "failed",
+              error_message: "provider unavailable",
+              attachments_json: [
+                {
+                  attachment_id: "history-image",
+                  type: "image",
+                  name: "history.png",
+                  mime_type: "image/png",
+                  size_bytes: 1,
+                },
+              ],
+              sources_json: null,
+            },
+            {
+              id: 2,
+              role: "assistant",
+              content: "## Title\n\n|a|b|\n|-|-|\n|1|2|",
+              status: "succeeded",
+              error_message: null,
+              sources_json: [
+                {
+                  chunk_id: "1:0",
+                  section_title: "Guide",
+                  page_number: 2,
+                  snippet: "OpenAI guide snippet",
+                },
+              ],
+            },
+            ...(streamedUserMessage
+              ? [
+                  streamedUserMessage,
+                  streamedAssistantMessage ?? {
+                    id: 4,
+                    role: "assistant",
+                    content: "streamed answer",
+                    status: "succeeded",
+                    sources_json: [],
+                  },
+                ]
+              : []),
+          ]
+        : []);
+    const attachments = (baseMessages as MockChatMessage[])
+      .flatMap((message) => message.attachments_json ?? [])
+      .reduce<MockChatAttachment[]>((result, attachment) => {
+        const key =
+          attachment.document_id != null
+            ? `document:${attachment.document_id}`
+            : attachment.document_revision_id != null
+              ? `version:${attachment.document_revision_id}`
+              : `attachment:${attachment.attachment_id}`;
+        const existingIndex = result.findIndex((item) => {
+          const itemKey =
+            item.document_id != null
+              ? `document:${item.document_id}`
+              : item.document_revision_id != null
+                ? `version:${item.document_revision_id}`
+                : `attachment:${item.attachment_id}`;
+          return itemKey === key;
+        });
+        if (existingIndex >= 0) {
+          result[existingIndex] = attachment;
+          return result;
+        }
+        result.push(attachment);
+        return result;
+      }, []);
+    const latestAssistantMessage = [...(baseMessages as MockChatMessage[])]
+      .reverse()
+      .find((message) => message.role === "assistant");
+
+    return {
+      session_id: sessionId,
+      attachment_count: attachments.length,
+      attachments,
+      latest_assistant_message_id: latestAssistantMessage?.id ?? null,
+      latest_assistant_sources: latestAssistantMessage?.sources_json ?? [],
+    };
+  };
+
   const sessions = (
     options?.sessions ?? [
       { id: 1, title: "Session A" },
@@ -317,6 +408,18 @@ function buildAuthenticatedFetch(options?: {
       return Promise.resolve(jsonResponse({ success: true, data: [], error: null }));
     }
 
+    const sessionContextMatch = input.match(/\/api\/chat\/sessions\/(\d+)\/context$/);
+    if (sessionContextMatch) {
+      const sessionId = Number(sessionContextMatch[1]);
+      return Promise.resolve(
+        jsonResponse({
+          success: true,
+          data: buildSessionContext(sessionId),
+          error: null,
+        }),
+      );
+    }
+
     if (
       input.includes("/api/chat/sessions/") &&
       input.endsWith("/messages/stream") &&
@@ -421,21 +524,34 @@ function buildAuthenticatedFetch(options?: {
       );
     }
 
-    const sessionMessagesMatch = input.match(/\/api\/chat\/sessions\/(\d+)\/messages$/);
+    const sessionMessagesMatch = input.match(/\/api\/chat\/sessions\/(\d+)\/messages(?:\?(.*))?$/);
     if (sessionMessagesMatch) {
       const sessionId = Number(sessionMessagesMatch[1]);
+      const params = new URL(input, "http://testserver").searchParams;
+      const limitParam = params.get("limit");
+      const beforeIdParam = params.get("before_id");
 
       if (options?.messageCount) {
+        const allMessages = Array.from({ length: options.messageCount! }, (_, index) => ({
+          id: index + 1,
+          role: index % 2 === 0 ? "user" : "assistant",
+          content: `message ${index + 1}`,
+          status: "succeeded",
+          sources_json: null,
+        }));
+        const limit = limitParam ? Number(limitParam) : null;
+        const beforeId = beforeIdParam ? Number(beforeIdParam) : null;
+        const filteredMessages =
+          limit === null
+            ? allMessages
+            : beforeId === null
+              ? allMessages.slice(-limit)
+              : allMessages.filter((message) => message.id < beforeId).slice(-limit);
+
         return Promise.resolve(
           jsonResponse({
             success: true,
-            data: Array.from({ length: options.messageCount! }, (_, index) => ({
-              id: index + 1,
-              role: index % 2 === 0 ? "user" : "assistant",
-              content: `message ${index + 1}`,
-              status: "succeeded",
-              sources_json: null,
-            })),
+            data: filteredMessages,
             error: null,
           }),
         );
@@ -624,6 +740,29 @@ describe("chat workspace", () => {
     expect(screen.getByTestId("chat-desktop-layout")).toBeInTheDocument();
     expect(await screen.findByRole("textbox", { name: "消息输入" })).toBeInTheDocument();
     expect(await screen.findByRole("link", { name: "去资源区添加资料" })).toBeInTheDocument();
+  });
+
+  it("requests only the latest message window on initial chat load", async () => {
+    const fetchMock = buildAuthenticatedFetch({ messageCount: 120 });
+
+    render(
+      <MemoryRouter initialEntries={["/chat/1"]}>
+        <AppProviders>
+          <AppRouter />
+        </AppProviders>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole("textbox", { name: "消息输入" })).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(
+          ([url]) =>
+            typeof url === "string" && url.includes("/api/chat/sessions/1/messages?limit=80"),
+        ),
+      ).toBe(true);
+    });
   });
 
   it("toggles the left chat sidebar with cmd/ctrl+b", async () => {
@@ -842,9 +981,11 @@ describe("chat workspace", () => {
     );
 
     expect(await screen.findByRole("link", { name: "Session A" })).toBeInTheDocument();
-    expect(await screen.findByText("message 120")).toBeInTheDocument();
     expect(document.querySelector('[data-chat-contained="true"]')).toBeNull();
-    expect(screen.getAllByTestId("chat-message-virtual-item").length).toBeLessThan(120);
+    await waitFor(() => {
+      expect(screen.getAllByTestId("chat-message-virtual-item").length).toBeGreaterThan(0);
+      expect(screen.getAllByTestId("chat-message-virtual-item").length).toBeLessThan(80);
+    });
   });
 
   it("stores draft in localStorage", async () => {

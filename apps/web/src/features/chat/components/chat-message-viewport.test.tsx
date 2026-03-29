@@ -15,6 +15,7 @@ vi.mock("react-virtuoso", async () => {
       data = [],
       initialItemCount,
       itemContent,
+      startReached,
       scrollerRef,
       "data-testid": testId,
     }: {
@@ -22,6 +23,7 @@ vi.mock("react-virtuoso", async () => {
       data?: ChatMessageItem[];
       initialItemCount?: number;
       itemContent?: (index: number, item?: ChatMessageItem) => React.ReactNode;
+      startReached?: () => void;
       scrollerRef?: (element: HTMLElement | null) => void;
       "data-testid"?: string;
     },
@@ -52,6 +54,9 @@ vi.mock("react-virtuoso", async () => {
 
     return (
       <Scroller data-testid={testId} ref={elementRef}>
+        <button onClick={startReached} type="button">
+          mock-load-older
+        </button>
         {items.map((item, index) => (
           <div key={data[index]?.id ?? `probe-message-${index}`}>{item}</div>
         ))}
@@ -215,5 +220,27 @@ describe("ChatMessageViewport", () => {
     await waitFor(() => {
       expect(scrollToIndexSpy).not.toHaveBeenCalled();
     });
+  });
+
+  it("requests older messages when older history exists", async () => {
+    const onLoadOlderMessages = vi.fn();
+
+    render(
+      <AppProviders>
+        <div style={{ height: "640px" }}>
+          <ChatMessageViewport
+            hasOlderMessages={true}
+            isLoadingOlderMessages={false}
+            messages={buildMessages(80)}
+            onLoadOlderMessages={onLoadOlderMessages}
+            onRetry={vi.fn()}
+          />
+        </div>
+      </AppProviders>,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "mock-load-older" }));
+
+    expect(onLoadOlderMessages).toHaveBeenCalled();
   });
 });

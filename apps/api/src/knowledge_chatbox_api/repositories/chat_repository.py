@@ -210,6 +210,22 @@ class ChatRepository:
         )
         return list(self.session.scalars(statement).all())
 
+    def list_messages_window(
+        self,
+        session_id: int,
+        *,
+        before_id: int | None,
+        limit: int,
+    ) -> list[ChatMessage]:
+        """按尾部窗口列出消息，并保持升序返回。"""
+        statement = select(ChatMessage).where(ChatMessage.session_id == session_id)
+        if before_id is not None:
+            statement = statement.where(ChatMessage.id < before_id)
+        statement = statement.order_by(ChatMessage.id.desc()).limit(limit)
+        messages = list(self.session.scalars(statement).all())
+        messages.reverse()
+        return messages
+
     def get_latest_assistant_message(self, session_id: int) -> ChatMessage | None:
         """获取会话里最后一条 assistant 消息。"""
         statement = (
