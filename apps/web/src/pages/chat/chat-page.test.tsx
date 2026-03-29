@@ -1624,6 +1624,117 @@ describe("chat workspace", () => {
     });
   });
 
+  it("uploads multiple queued attachments before streaming and only sends one stream request", async () => {
+    const fetchMock = buildAuthenticatedFetch();
+
+    render(
+      <MemoryRouter initialEntries={["/chat/1"]}>
+        <AppProviders>
+          <AppRouter />
+        </AppProviders>
+      </MemoryRouter>,
+    );
+
+    const attachInput = await screen.findByLabelText("附加资源", {
+      selector: 'input[type="file"]',
+    });
+    fireEvent.change(attachInput, {
+      target: {
+        files: [
+          new File(["one"], "one.png", { type: "image/png" }),
+          new File(["two"], "two.png", { type: "image/png" }),
+        ],
+      },
+    });
+
+    expect(await screen.findByText("one.png")).toBeInTheDocument();
+    expect(screen.getByText("two.png")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("消息输入"), {
+      target: { value: "一起上传" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    await waitFor(() => {
+      expect(MockXMLHttpRequest.instances).toHaveLength(2);
+    });
+
+    expect(
+      fetchMock.mock.calls.filter(
+        ([url, init]) =>
+          endsWithApiPath(url, "/api/chat/sessions/1/messages/stream") &&
+          typeof init === "object" &&
+          init !== null &&
+          "method" in init &&
+          init.method === "POST",
+      ),
+    ).toHaveLength(0);
+
+    MockXMLHttpRequest.instances[1]!.respond(
+      201,
+      JSON.stringify({
+        success: true,
+        data: buildUploadPayload({
+          document_id: 200,
+          id: 100,
+          name: "two.png",
+        }),
+        error: null,
+      }),
+    );
+
+    expect(
+      fetchMock.mock.calls.filter(
+        ([url, init]) =>
+          endsWithApiPath(url, "/api/chat/sessions/1/messages/stream") &&
+          typeof init === "object" &&
+          init !== null &&
+          "method" in init &&
+          init.method === "POST",
+      ),
+    ).toHaveLength(0);
+
+    MockXMLHttpRequest.instances[0]!.respond(
+      201,
+      JSON.stringify({
+        success: true,
+        data: buildUploadPayload({
+          document_id: 199,
+          id: 99,
+          name: "one.png",
+        }),
+        error: null,
+      }),
+    );
+
+    await waitFor(() => {
+      const streamCalls = fetchMock.mock.calls.filter(
+        ([url, init]) =>
+          endsWithApiPath(url, "/api/chat/sessions/1/messages/stream") &&
+          typeof init === "object" &&
+          init !== null &&
+          "method" in init &&
+          init.method === "POST",
+      );
+
+      expect(streamCalls).toHaveLength(1);
+
+      const [, init] = streamCalls[0]!;
+      const requestBody =
+        typeof init?.body === "string" ? init.body : JSON.stringify(init?.body ?? {});
+      const parsedPayload = JSON.parse(requestBody) as {
+        attachments?: Array<{
+          name: string;
+        }>;
+      };
+
+      expect(parsedPayload.attachments?.map((attachment) => attachment.name)).toEqual([
+        "one.png",
+        "two.png",
+      ]);
+    });
+  });
+
   it("keeps unsupported attachment feedback local to the composer", async () => {
     buildAuthenticatedFetch();
 

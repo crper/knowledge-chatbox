@@ -29,15 +29,7 @@ import { useChatUiStore, type ChatAttachmentItem } from "../store/chat-ui-store"
 import { buildDisplayMessages } from "../utils/build-display-messages";
 import { patchPagedChatMessagesCache } from "../utils/patch-paged-chat-messages";
 import { resolveSessionTitle } from "../utils/session-title";
-
-type ReadyChatAttachment = ChatAttachmentItem & {
-  file: File;
-  kind: "image" | "document";
-  mimeType: string;
-  resourceDocumentId: number;
-  resourceDocumentVersionId: number;
-  status: "uploaded";
-};
+import { uploadQueuedChatAttachments } from "../utils/upload-chat-attachments";
 
 function serializeChatAttachments(attachments: ReadyChatAttachment[]): ChatStreamAttachmentInput[] {
   return attachments.map((attachment) => ({
@@ -67,26 +59,14 @@ function collectLocalAttachmentFingerprints(attachments: ChatAttachmentItem[]) {
   );
 }
 
-function toReadyAttachment(attachment: ChatAttachmentItem): ReadyChatAttachment | null {
-  if (
-    attachment.status !== "uploaded" ||
-    !(attachment.file instanceof File) ||
-    !attachment.mimeType ||
-    typeof attachment.resourceDocumentId !== "number" ||
-    typeof attachment.resourceDocumentVersionId !== "number"
-  ) {
-    return null;
-  }
-
-  return {
-    ...attachment,
-    file: attachment.file,
-    mimeType: attachment.mimeType,
-    resourceDocumentId: attachment.resourceDocumentId,
-    resourceDocumentVersionId: attachment.resourceDocumentVersionId,
-    status: "uploaded",
-  };
-}
+type ReadyChatAttachment = ChatAttachmentItem & {
+  file: File;
+  kind: "image" | "document";
+  mimeType: string;
+  resourceDocumentId: number;
+  resourceDocumentVersionId: number;
+  status: "uploaded";
+};
 
 function resolveSubmitErrorMessage(error: unknown, fallback: string) {
   if (!(error instanceof Error)) {
@@ -593,49 +573,28 @@ export function useChatWorkspace(activeSessionId: number | null) {
     const workingAttachments = cloneChatAttachments(snapshotAttachments);
 
     try {
-      const persistedAttachments: ReadyChatAttachment[] = [];
-      let uploadedCount = 0;
-      for (const attachment of workingAttachments.filter((item) => item.status !== "failed")) {
-        const readyAttachment = toReadyAttachment(attachment);
-        if (readyAttachment) {
-          persistedAttachments.push(readyAttachment);
-          continue;
-        }
-
-        if (attachment.status !== "queued" || !attachment.file || !attachment.mimeType) {
-          continue;
-        }
-
-        try {
-          const document = await runDocumentUpload({
-            failedMessage: t("attachmentUploadFailed"),
-            file: attachment.file,
-            onPatch: (patch) => {
-              Object.assign(attachment, patch);
-            },
-            upload: uploadDocument,
-          });
-
-          attachment.errorMessage = undefined;
-          attachment.progress = 100;
-          attachment.resourceDocumentId = document.document_id;
-          attachment.resourceDocumentVersionId = document.id;
-          attachment.status = "uploaded";
-
-          uploadedCount += 1;
-          const nextReadyAttachment = toReadyAttachment(attachment);
-          if (nextReadyAttachment) {
-            persistedAttachments.push(nextReadyAttachment);
-          }
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : t("attachmentUploadFailed");
-          attachment.errorMessage = errorMessage;
-          attachment.progress = 0;
-          attachment.status = "failed";
-          toast.error(errorMessage);
-          throw error;
-        }
-      }
+      const { uploadedAttachments: persistedAttachments, uploadedCount } =
+        await uploadQueuedChatAttachments({
+          attachments: workingAttachments.filter((item) => item.status !== "failed"),
+          concurrency: 2,
+          failedMessage: t("attachmentUploadFailed"),
+          onPatch: (attachmentId, patch) => {
+            const targetAttachment = workingAttachments.find((item) => item.id === attachmentId);
+            if (!targetAttachment) {
+              return;
+            }
+            Object.assign(targetAttachment, patch);
+          },
+          uploadFile: async (attachment) => {
+            const document = await runDocumentUpload({
+              failedMessage: t("attachmentUploadFailed"),
+              file: attachment.file as File,
+              onPatch: () => {},
+              upload: uploadDocument,
+            });
+            return document;
+          },
+        });
 
       if (uploadedCount > 0) {
         void queryClient.invalidateQueries({ queryKey: queryKeys.documents.list });
