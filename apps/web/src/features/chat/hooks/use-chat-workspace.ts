@@ -3,7 +3,13 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type InfiniteData,
+} from "@tanstack/react-query";
 import type { FileRejection } from "react-dropzone";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -21,6 +27,7 @@ import { startChatStream, type ChatStreamAttachmentInput } from "../api/chat-str
 import { useChatStreamStore } from "../store/chat-stream-store";
 import { useChatUiStore, type ChatAttachmentItem } from "../store/chat-ui-store";
 import { buildDisplayMessages } from "../utils/build-display-messages";
+import { patchPagedChatMessagesCache } from "../utils/patch-paged-chat-messages";
 import { resolveSessionTitle } from "../utils/session-title";
 
 type ReadyChatAttachment = ChatAttachmentItem & {
@@ -198,6 +205,38 @@ export function useChatWorkspace(activeSessionId: number | null) {
     currentSessionIdRef.current = resolvedActiveSessionId;
   }, [resolvedActiveSessionId]);
 
+  const patchSessionContext = useCallback(
+    ({
+      latestAssistantMessageId,
+      latestAssistantSources,
+      sessionId,
+    }: {
+      latestAssistantMessageId: number;
+      latestAssistantSources: Array<Record<string, unknown>>;
+      sessionId: number;
+    }) => {
+      let patched = false;
+
+      queryClient.setQueryData(queryKeys.chat.context(sessionId), (current) => {
+        if (!current || typeof current !== "object") {
+          return current;
+        }
+
+        patched = true;
+        return {
+          ...current,
+          latest_assistant_message_id: latestAssistantMessageId,
+          latest_assistant_sources: latestAssistantSources,
+        };
+      });
+
+      if (!patched) {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.chat.context(sessionId) });
+      }
+    },
+    [queryClient],
+  );
+
   const sendMutation = useMutation({
     mutationFn: async ({
       attachments,
@@ -226,21 +265,55 @@ export function useChatWorkspace(activeSessionId: number | null) {
             const runId = Number(event.data.run_id ?? 0);
             if (event.event === "run.started") {
               activeRunId = runId;
+              const userMessageId =
+                typeof event.data.user_message_id === "number" ? event.data.user_message_id : null;
               startRun({
                 runId,
                 sessionId: Number(event.data.session_id ?? sessionId),
                 assistantMessageId: Number(event.data.assistant_message_id ?? 0),
                 retryOfMessageId: retryOfMessageId ?? null,
-                userMessageId:
-                  typeof event.data.user_message_id === "number"
-                    ? event.data.user_message_id
-                    : null,
+                userMessageId,
                 userContent: content,
               });
+              if (userMessageId !== null) {
+                queryClient.setQueryData<InfiniteData<ChatMessageItem[], number | null>>(
+                  queryKeys.chat.messagesWindow(sessionId),
+                  (current) => {
+                    if (!current || typeof current !== "object" || !("pages" in current)) {
+                      return current;
+                    }
+
+                    const knownIds = new Set(
+                      current.pages.flatMap((page: ChatMessageItem[]) =>
+                        page.map((message) => message.id),
+                      ),
+                    );
+                    if (knownIds.has(userMessageId)) {
+                      return current;
+                    }
+
+                    const nextLastPage = [
+                      ...(current.pages.at(-1) ?? []),
+                      {
+                        content,
+                        id: userMessageId,
+                        role: "user",
+                        status: "succeeded",
+                        sources_json: [],
+                      } satisfies ChatMessageItem,
+                    ];
+
+                    return {
+                      ...current,
+                      pages: [...current.pages.slice(0, -1), nextLastPage],
+                    };
+                  },
+                );
+              }
               return;
             }
 
-            if (event.event === "part.text.delta") {
+            if (event.event === "part.text.delta" || event.event === "message.delta") {
               appendDelta(runId, typeof event.data.delta === "string" ? event.data.delta : "");
               return;
             }
@@ -250,36 +323,153 @@ export function useChatWorkspace(activeSessionId: number | null) {
               return;
             }
 
+            if (event.event === "sources.final" && Array.isArray(event.data.sources)) {
+              for (const source of event.data.sources) {
+                addSource(runId, source as Record<string, unknown>);
+              }
+              return;
+            }
+
             if (event.event === "run.completed") {
               receivedTerminalRunEvent = true;
               completeRun(runId);
-              void queryClient
-                .invalidateQueries({
-                  queryKey: queryKeys.chat.messagesWindow(sessionId),
-                })
-                .then(() => {
-                  if (currentSessionIdRef.current === sessionId) {
-                    pruneRuns([runId]);
-                  }
+              const currentRun = useChatStreamStore.getState().runsById[runId];
+              const patched =
+                currentRun != null
+                  ? patchPagedChatMessagesCache({
+                      appendIfMissing: currentRun.userMessageId
+                        ? [
+                            {
+                              content: currentRun.userContent,
+                              id: currentRun.userMessageId,
+                              role: "user",
+                              status: "succeeded",
+                              sources_json: [],
+                            },
+                            {
+                              content: currentRun.content,
+                              id: currentRun.assistantMessageId,
+                              reply_to_message_id:
+                                currentRun.retryOfMessageId ?? currentRun.userMessageId,
+                              role: "assistant",
+                              status: "succeeded",
+                              sources_json: currentRun.sources as ChatMessageItem["sources_json"],
+                            },
+                          ]
+                        : [
+                            {
+                              content: currentRun.content,
+                              id: currentRun.assistantMessageId,
+                              reply_to_message_id: currentRun.retryOfMessageId ?? null,
+                              role: "assistant",
+                              status: "succeeded",
+                              sources_json: currentRun.sources as ChatMessageItem["sources_json"],
+                            },
+                          ],
+                      assistantMessageId: currentRun.assistantMessageId,
+                      patch: {
+                        content: currentRun.content,
+                        error_message: null,
+                        sources_json: currentRun.sources as ChatMessageItem["sources_json"],
+                        status: "succeeded",
+                      },
+                      queryClient,
+                      sessionId,
+                    })
+                  : false;
+
+              if (currentRun != null) {
+                patchSessionContext({
+                  latestAssistantMessageId: currentRun.assistantMessageId,
+                  latestAssistantSources: currentRun.sources,
+                  sessionId,
                 });
+              }
+
+              const refreshPromise = patched
+                ? Promise.resolve()
+                : queryClient.invalidateQueries({
+                    queryKey: queryKeys.chat.messagesWindow(sessionId),
+                  });
+              void refreshPromise.then(() => {
+                if (currentSessionIdRef.current === sessionId) {
+                  pruneRuns([runId]);
+                }
+              });
               return;
             }
 
             if (event.event === "run.failed") {
               receivedTerminalRunEvent = true;
-              failRun(
-                runId,
+              const errorMessage =
                 typeof event.data.error_message === "string"
                   ? event.data.error_message
-                  : t("assistantStreamingInterruptedError"),
-              );
-              void queryClient
-                .invalidateQueries({
-                  queryKey: queryKeys.chat.messagesWindow(sessionId),
-                })
-                .then(() => {
-                  pruneRuns([runId]);
+                  : t("assistantStreamingInterruptedError");
+              failRun(runId, errorMessage);
+              const currentRun = useChatStreamStore.getState().runsById[runId];
+              const patched =
+                currentRun != null
+                  ? patchPagedChatMessagesCache({
+                      appendIfMissing: currentRun.userMessageId
+                        ? [
+                            {
+                              content: currentRun.userContent,
+                              error_message: errorMessage,
+                              id: currentRun.userMessageId,
+                              role: "user",
+                              status: "failed",
+                              sources_json: [],
+                            },
+                            {
+                              content: currentRun.content,
+                              error_message: errorMessage,
+                              id: currentRun.assistantMessageId,
+                              reply_to_message_id:
+                                currentRun.retryOfMessageId ?? currentRun.userMessageId,
+                              role: "assistant",
+                              status: "failed",
+                              sources_json: currentRun.sources as ChatMessageItem["sources_json"],
+                            },
+                          ]
+                        : [
+                            {
+                              content: currentRun.content,
+                              error_message: errorMessage,
+                              id: currentRun.assistantMessageId,
+                              reply_to_message_id: currentRun.retryOfMessageId ?? null,
+                              role: "assistant",
+                              status: "failed",
+                              sources_json: currentRun.sources as ChatMessageItem["sources_json"],
+                            },
+                          ],
+                      assistantMessageId: currentRun.assistantMessageId,
+                      patch: {
+                        content: currentRun.content,
+                        error_message: errorMessage,
+                        sources_json: currentRun.sources as ChatMessageItem["sources_json"],
+                        status: "failed",
+                      },
+                      queryClient,
+                      sessionId,
+                    })
+                  : false;
+
+              if (currentRun != null) {
+                patchSessionContext({
+                  latestAssistantMessageId: currentRun.assistantMessageId,
+                  latestAssistantSources: currentRun.sources,
+                  sessionId,
                 });
+              }
+
+              const refreshPromise = patched
+                ? Promise.resolve()
+                : queryClient.invalidateQueries({
+                    queryKey: queryKeys.chat.messagesWindow(sessionId),
+                  });
+              void refreshPromise.then(() => {
+                pruneRuns([runId]);
+              });
             }
           },
         });

@@ -449,7 +449,7 @@ function buildAuthenticatedFetch(options?: {
       const frames = streamFramesQueue?.shift() ??
         options?.streamFramesBySession?.[sessionId] ??
         options?.streamFrames ?? [
-          `event: run.started\ndata: {"run_id":${sessionId * 10 + 5},"session_id":${sessionId},"assistant_message_id":${sessionId * 10 + 4}}\n\n`,
+          `event: run.started\ndata: {"run_id":${sessionId * 10 + 5},"session_id":${sessionId},"user_message_id":${sessionId * 10 + 3},"assistant_message_id":${sessionId * 10 + 4}}\n\n`,
           `event: message.delta\ndata: {"run_id":${sessionId * 10 + 5},"assistant_message_id":${sessionId * 10 + 4},"delta":"streamed answer"}\n\n`,
           `event: sources.final\ndata: {"run_id":${sessionId * 10 + 5},"assistant_message_id":${sessionId * 10 + 4},"sources":[]}\n\n`,
           `event: run.completed\ndata: {"run_id":${sessionId * 10 + 5},"session_id":${sessionId},"assistant_message_id":${sessionId * 10 + 4}}\n\n`,
@@ -1061,6 +1061,32 @@ describe("chat workspace", () => {
     });
   });
 
+  it("does not refetch the current message window after a successful stream completes", async () => {
+    const fetchMock = buildAuthenticatedFetch();
+
+    render(
+      <MemoryRouter initialEntries={["/chat/1"]}>
+        <AppProviders>
+          <AppRouter />
+        </AppProviders>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole("link", { name: "Session A" })).toBeInTheDocument();
+    fireEvent.change(await screen.findByLabelText("消息输入"), {
+      target: { value: "hello stream" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    expect(await screen.findByText("streamed answer")).toBeInTheDocument();
+
+    const messageWindowCalls = fetchMock.mock.calls.filter(
+      ([url]) => typeof url === "string" && url.includes("/api/chat/sessions/1/messages?limit=80"),
+    );
+
+    expect(messageWindowCalls).toHaveLength(1);
+  });
+
   it("marks the temporary assistant message as failed when the stream ends unexpectedly", async () => {
     buildAuthenticatedFetch({
       streamFrames: [
@@ -1088,7 +1114,8 @@ describe("chat workspace", () => {
     });
 
     expect(await screen.findByText("本次生成连接中断，请重试。")).toBeInTheDocument();
-    expect(screen.getByText("本次回复生成失败，请点击重试或重新提问。")).toBeInTheDocument();
+    expect(screen.getByText("作为")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "重试" })).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "发送" })).toBeEnabled();
     });
