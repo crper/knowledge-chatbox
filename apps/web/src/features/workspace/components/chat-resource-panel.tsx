@@ -10,7 +10,7 @@ import { NavLink, useParams } from "react-router-dom";
 
 import { CardDescription, CardTitle } from "@/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
-import { getChatMessages } from "@/features/chat/api/chat";
+import { chatContextQueryOptions } from "@/features/chat/api/chat-query";
 import { AttachmentList } from "@/features/chat/components/attachment-list";
 import {
   ImageViewerDialog,
@@ -18,12 +18,10 @@ import {
 } from "@/features/chat/components/image-viewer-dialog";
 import { parseChatSessionId } from "@/features/chat/utils/chat-session-route";
 import { buildChatAttachmentDescriptors } from "@/features/chat/utils/attachment-list-items";
-import { collectAttachments } from "@/features/chat/utils/collect-attachments";
 import { getDocumentFileUrl } from "@/features/chat/utils/document-file-url";
 import { groupChatSources } from "@/features/chat/utils/group-chat-sources";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { queryKeys } from "@/lib/api/query-keys";
 import { cn } from "@/lib/utils";
 
 /**
@@ -43,22 +41,10 @@ export function ChatResourcePanel({
   const { sessionId: sessionIdParam } = useParams<{ sessionId?: string }>();
   const activeSessionId = parseChatSessionId(sessionIdParam);
 
-  const messagesQuery = useQuery({
-    enabled: activeSessionId !== null,
-    queryKey:
-      activeSessionId === null
-        ? (["chat-resource-panel", "idle"] as const)
-        : queryKeys.chat.messages(activeSessionId),
-    queryFn: async () => {
-      if (activeSessionId === null) {
-        return [];
-      }
-      return getChatMessages(activeSessionId);
-    },
-  });
-
-  const messages = Array.isArray(messagesQuery.data) ? messagesQuery.data : [];
-  const attachments = useMemo(() => collectAttachments(messages), [messages]);
+  const contextQuery = useQuery(chatContextQueryOptions(activeSessionId));
+  const context = contextQuery.data ?? null;
+  const attachments = context?.attachments ?? [];
+  const latestAssistantSources = context?.latest_assistant_sources ?? [];
   const attachmentDescriptors = useMemo(
     () => buildChatAttachmentDescriptors(attachments),
     [attachments],
@@ -100,11 +86,6 @@ export function ChatResourcePanel({
         rawName: descriptor.rawName,
       })),
     [attachmentDescriptors, previewIndexes],
-  );
-  const latestAssistantSources = useMemo(
-    () =>
-      [...messages].reverse().find((message) => message.role === "assistant")?.sources_json ?? [],
-    [messages],
   );
   const groupedSources = useMemo(
     () => groupChatSources(latestAssistantSources),

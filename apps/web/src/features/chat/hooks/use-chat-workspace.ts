@@ -3,149 +3,73 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type InfiniteData,
+} from "@tanstack/react-query";
 import type { FileRejection } from "react-dropzone";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
-import { chatMessagesQueryOptions, chatSessionsQueryOptions } from "@/features/chat/api/chat-query";
+import {
+  chatMessagesWindowInfiniteQueryOptions,
+  chatSessionsQueryOptions,
+} from "@/features/chat/api/chat-query";
 import { uploadDocument } from "@/features/knowledge/api/documents";
 import { detectSupportedUploadKind } from "@/features/knowledge/upload-file-types";
 import { queryKeys } from "@/lib/api/query-keys";
 import { getDocumentUploadRejectionMessage, runDocumentUpload } from "@/lib/document-upload";
-import { deleteChatMessage, type ChatMessageItem } from "../api/chat";
+import {
+  deleteChatMessage,
+  type ChatAttachmentItem as PersistedChatAttachmentItem,
+  type ChatMessageItem,
+  type ChatSessionContextItem,
+} from "../api/chat";
 import { startChatStream, type ChatStreamAttachmentInput } from "../api/chat-stream";
+import { useChatSessionSubmitController } from "../hooks/use-chat-session-submit-controller";
 import { useChatStreamStore } from "../store/chat-stream-store";
-import { useChatUiStore, type ChatAttachmentItem } from "../store/chat-ui-store";
+import { useChatUiStore } from "../store/chat-ui-store";
 import { buildDisplayMessages } from "../utils/build-display-messages";
+import {
+  buildLocalAttachmentFingerprint,
+  cloneChatAttachments,
+  collectLocalAttachmentFingerprints,
+  resolveSubmitErrorMessage,
+  serializeChatAttachments,
+  shouldResetComposerSnapshotForRetry,
+} from "../utils/chat-submit-helpers";
+import { patchPagedChatMessagesCache } from "../utils/patch-paged-chat-messages";
 import { resolveSessionTitle } from "../utils/session-title";
+import { uploadQueuedChatAttachments } from "../utils/upload-chat-attachments";
 
-type ReadyChatAttachment = ChatAttachmentItem & {
-  file: File;
-  kind: "image" | "document";
-  mimeType: string;
-  resourceDocumentId: number;
-  resourceDocumentVersionId: number;
-  status: "uploaded";
-};
-
-function serializeChatAttachments(attachments: ReadyChatAttachment[]): ChatStreamAttachmentInput[] {
+function toPersistedChatAttachments(
+  attachments: ChatStreamAttachmentInput[],
+): PersistedChatAttachmentItem[] {
   return attachments.map((attachment) => ({
-    attachment_id: attachment.id,
-    type: attachment.kind,
+    attachment_id: attachment.attachment_id,
+    archived_at: null,
     name: attachment.name,
-    mime_type: attachment.mimeType,
-    size_bytes: attachment.sizeBytes ?? attachment.file.size,
-    document_id: attachment.resourceDocumentId,
-    document_revision_id: attachment.resourceDocumentVersionId,
+    mime_type: attachment.mime_type,
+    resource_document_id: attachment.document_id ?? null,
+    resource_document_version_id: attachment.document_revision_id,
+    size_bytes: attachment.size_bytes,
+    type: attachment.type,
   }));
 }
 
-function cloneChatAttachments(attachments: ChatAttachmentItem[]) {
-  return attachments.map((attachment) => ({ ...attachment }));
-}
-
-function buildLocalAttachmentFingerprint(file: File) {
-  return [file.name, file.type, file.size, file.lastModified].join("::");
-}
-
-function collectLocalAttachmentFingerprints(attachments: ChatAttachmentItem[]) {
-  return new Set(
-    attachments.flatMap((attachment) =>
-      attachment.file instanceof File ? [buildLocalAttachmentFingerprint(attachment.file)] : [],
-    ),
-  );
-}
-
-function toReadyAttachment(attachment: ChatAttachmentItem): ReadyChatAttachment | null {
-  if (
-    attachment.status !== "uploaded" ||
-    !(attachment.file instanceof File) ||
-    !attachment.mimeType ||
-    typeof attachment.resourceDocumentId !== "number" ||
-    typeof attachment.resourceDocumentVersionId !== "number"
-  ) {
-    return null;
+function buildContextAttachmentKey(attachment: PersistedChatAttachmentItem) {
+  if (attachment.resource_document_id != null) {
+    return `document:${attachment.resource_document_id}`;
   }
 
-  return {
-    ...attachment,
-    file: attachment.file,
-    mimeType: attachment.mimeType,
-    resourceDocumentId: attachment.resourceDocumentId,
-    resourceDocumentVersionId: attachment.resourceDocumentVersionId,
-    status: "uploaded",
-  };
-}
-
-function resolveSubmitErrorMessage(error: unknown, fallback: string) {
-  if (!(error instanceof Error)) {
-    return fallback;
+  if (attachment.resource_document_version_id != null) {
+    return `version:${attachment.resource_document_version_id}`;
   }
 
-  const message = error.message.trim();
-  if (!message || message === "chat stream request failed") {
-    return fallback;
-  }
-
-  return message;
-}
-
-function toComposerAttachmentSignature(attachment: ChatAttachmentItem) {
-  return JSON.stringify({
-    attachmentId: attachment.id,
-    documentId: attachment.resourceDocumentId ?? null,
-    documentRevisionId: attachment.resourceDocumentVersionId ?? null,
-    kind: attachment.kind,
-    mimeType: attachment.mimeType ?? null,
-    name: attachment.name,
-    sizeBytes: attachment.sizeBytes ?? null,
-  });
-}
-
-function toMessageAttachmentSignature(
-  attachment: NonNullable<ChatMessageItem["attachments_json"]>[number],
-) {
-  return JSON.stringify({
-    attachmentId: attachment.attachment_id,
-    documentId: attachment.resource_document_id ?? null,
-    documentRevisionId: attachment.resource_document_version_id ?? null,
-    kind: attachment.type,
-    mimeType: attachment.mime_type,
-    name: attachment.name,
-    sizeBytes: attachment.size_bytes,
-  });
-}
-
-function shouldResetComposerSnapshotForRetry({
-  composerAttachments,
-  composerDraft,
-  retryAttachments,
-  retryContent,
-}: {
-  composerAttachments: ChatAttachmentItem[];
-  composerDraft: string;
-  retryAttachments: ChatMessageItem["attachments_json"];
-  retryContent: string;
-}) {
-  if (composerDraft.trim() !== retryContent.trim()) {
-    return false;
-  }
-
-  const normalizedComposerAttachments = composerAttachments
-    .map(toComposerAttachmentSignature)
-    .sort();
-  const normalizedRetryAttachments = (retryAttachments ?? [])
-    .map(toMessageAttachmentSignature)
-    .sort();
-
-  if (normalizedComposerAttachments.length !== normalizedRetryAttachments.length) {
-    return false;
-  }
-
-  return normalizedComposerAttachments.every(
-    (attachmentSignature, index) => attachmentSignature === normalizedRetryAttachments[index],
-  );
+  return `attachment:${attachment.attachment_id}`;
 }
 
 /**
@@ -154,9 +78,7 @@ function shouldResetComposerSnapshotForRetry({
 export function useChatWorkspace(activeSessionId: number | null) {
   const { t } = useTranslation(["chat", "common"]);
   const queryClient = useQueryClient();
-  const submitPendingSessionIdsRef = useRef<Set<number>>(new Set());
   const currentSessionIdRef = useRef(activeSessionId);
-  const [submitPendingSessionIds, setSubmitPendingSessionIds] = useState<number[]>([]);
   const [scrollToLatestRequestKey, setScrollToLatestRequestKey] = useState(0);
   const attachmentsBySession = useChatUiStore((state) => state.attachmentsBySession);
   const addAttachment = useChatUiStore((state) => state.addAttachment);
@@ -177,6 +99,8 @@ export function useChatWorkspace(activeSessionId: number | null) {
   const markToastShown = useChatStreamStore((state) => state.markToastShown);
   const pruneRuns = useChatStreamStore((state) => state.pruneRuns);
   const removeRun = useChatStreamStore((state) => state.removeRun);
+  const { beginSessionSubmit, finishSessionSubmit, isSessionSubmitPending } =
+    useChatSessionSubmitController();
 
   const sessionsQuery = useQuery(chatSessionsQueryOptions());
   const sessions = Array.isArray(sessionsQuery.data) ? sessionsQuery.data : [];
@@ -187,11 +111,109 @@ export function useChatWorkspace(activeSessionId: number | null) {
 
     return sessions.some((session) => session.id === activeSessionId) ? activeSessionId : null;
   }, [activeSessionId, sessions, sessionsQuery.isPending]);
-  const messagesQuery = useQuery(chatMessagesQueryOptions(resolvedActiveSessionId));
+  const messagesWindowQuery = useInfiniteQuery(
+    chatMessagesWindowInfiniteQueryOptions(resolvedActiveSessionId),
+  );
 
   useEffect(() => {
     currentSessionIdRef.current = resolvedActiveSessionId;
   }, [resolvedActiveSessionId]);
+
+  const patchSessionContext = useCallback(
+    ({
+      attachments,
+      latestAssistantMessageId,
+      latestAssistantSources,
+      sessionId,
+    }: {
+      attachments?: ChatSessionContextItem["attachments"];
+      latestAssistantMessageId?: number;
+      latestAssistantSources?: ChatSessionContextItem["latest_assistant_sources"];
+      sessionId: number;
+    }) => {
+      let patched = false;
+
+      queryClient.setQueryData<ChatSessionContextItem | null>(
+        queryKeys.chat.context(sessionId),
+        (current) => {
+          if (!current) {
+            return current;
+          }
+
+          patched = true;
+          const nextAttachments =
+            attachments == null
+              ? current.attachments
+              : (() => {
+                  const attachmentMap = new Map<string, PersistedChatAttachmentItem>();
+                  for (const attachment of current.attachments ?? []) {
+                    attachmentMap.set(buildContextAttachmentKey(attachment), attachment);
+                  }
+                  for (const attachment of attachments) {
+                    attachmentMap.set(buildContextAttachmentKey(attachment), attachment);
+                  }
+                  return Array.from(attachmentMap.values());
+                })();
+
+          return {
+            ...current,
+            attachment_count: nextAttachments?.length ?? 0,
+            attachments: nextAttachments,
+            latest_assistant_message_id:
+              latestAssistantMessageId ?? current.latest_assistant_message_id,
+            latest_assistant_sources: latestAssistantSources ?? current.latest_assistant_sources,
+          };
+        },
+      );
+
+      if (!patched) {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.chat.context(sessionId) });
+      }
+    },
+    [queryClient],
+  );
+
+  const patchUserMessageAttachments = useCallback(
+    ({
+      attachments,
+      sessionId,
+      userMessageId,
+    }: {
+      attachments: PersistedChatAttachmentItem[];
+      sessionId: number;
+      userMessageId: number;
+    }) => {
+      let patched = false;
+
+      queryClient.setQueryData<InfiniteData<ChatMessageItem[], number | null>>(
+        queryKeys.chat.messagesWindow(sessionId),
+        (current) => {
+          if (!current || typeof current !== "object" || !("pages" in current)) {
+            return current;
+          }
+
+          const nextPages = current.pages.map((page) =>
+            page.map((message) => {
+              if (message.id !== userMessageId || message.role !== "user") {
+                return message;
+              }
+
+              patched = true;
+              return {
+                ...message,
+                attachments_json: attachments,
+              };
+            }),
+          );
+
+          return patched ? { ...current, pages: nextPages } : current;
+        },
+      );
+
+      return patched;
+    },
+    [queryClient],
+  );
 
   const sendMutation = useMutation({
     mutationFn: async ({
@@ -221,21 +243,55 @@ export function useChatWorkspace(activeSessionId: number | null) {
             const runId = Number(event.data.run_id ?? 0);
             if (event.event === "run.started") {
               activeRunId = runId;
+              const userMessageId =
+                typeof event.data.user_message_id === "number" ? event.data.user_message_id : null;
               startRun({
                 runId,
                 sessionId: Number(event.data.session_id ?? sessionId),
                 assistantMessageId: Number(event.data.assistant_message_id ?? 0),
                 retryOfMessageId: retryOfMessageId ?? null,
-                userMessageId:
-                  typeof event.data.user_message_id === "number"
-                    ? event.data.user_message_id
-                    : null,
+                userMessageId,
                 userContent: content,
               });
+              if (userMessageId !== null) {
+                queryClient.setQueryData<InfiniteData<ChatMessageItem[], number | null>>(
+                  queryKeys.chat.messagesWindow(sessionId),
+                  (current) => {
+                    if (!current || typeof current !== "object" || !("pages" in current)) {
+                      return current;
+                    }
+
+                    const knownIds = new Set(
+                      current.pages.flatMap((page: ChatMessageItem[]) =>
+                        page.map((message) => message.id),
+                      ),
+                    );
+                    if (knownIds.has(userMessageId)) {
+                      return current;
+                    }
+
+                    const nextLastPage = [
+                      ...(current.pages.at(-1) ?? []),
+                      {
+                        content,
+                        id: userMessageId,
+                        role: "user",
+                        status: "succeeded",
+                        sources_json: [],
+                      } satisfies ChatMessageItem,
+                    ];
+
+                    return {
+                      ...current,
+                      pages: [...current.pages.slice(0, -1), nextLastPage],
+                    };
+                  },
+                );
+              }
               return;
             }
 
-            if (event.event === "part.text.delta") {
+            if (event.event === "part.text.delta" || event.event === "message.delta") {
               appendDelta(runId, typeof event.data.delta === "string" ? event.data.delta : "");
               return;
             }
@@ -245,36 +301,155 @@ export function useChatWorkspace(activeSessionId: number | null) {
               return;
             }
 
+            if (event.event === "sources.final" && Array.isArray(event.data.sources)) {
+              for (const source of event.data.sources) {
+                addSource(runId, source as Record<string, unknown>);
+              }
+              return;
+            }
+
             if (event.event === "run.completed") {
               receivedTerminalRunEvent = true;
               completeRun(runId);
-              void queryClient
-                .invalidateQueries({
-                  queryKey: queryKeys.chat.messages(sessionId),
-                })
-                .then(() => {
-                  if (currentSessionIdRef.current === sessionId) {
-                    pruneRuns([runId]);
-                  }
+              const currentRun = useChatStreamStore.getState().runsById[runId];
+              const patched =
+                currentRun != null
+                  ? patchPagedChatMessagesCache({
+                      appendIfMissing: currentRun.userMessageId
+                        ? [
+                            {
+                              content: currentRun.userContent,
+                              id: currentRun.userMessageId,
+                              role: "user",
+                              status: "succeeded",
+                              sources_json: [],
+                            },
+                            {
+                              content: currentRun.content,
+                              id: currentRun.assistantMessageId,
+                              reply_to_message_id:
+                                currentRun.retryOfMessageId ?? currentRun.userMessageId,
+                              role: "assistant",
+                              status: "succeeded",
+                              sources_json: currentRun.sources as ChatMessageItem["sources_json"],
+                            },
+                          ]
+                        : [
+                            {
+                              content: currentRun.content,
+                              id: currentRun.assistantMessageId,
+                              reply_to_message_id: currentRun.retryOfMessageId ?? null,
+                              role: "assistant",
+                              status: "succeeded",
+                              sources_json: currentRun.sources as ChatMessageItem["sources_json"],
+                            },
+                          ],
+                      assistantMessageId: currentRun.assistantMessageId,
+                      patch: {
+                        content: currentRun.content,
+                        error_message: null,
+                        sources_json: currentRun.sources as ChatMessageItem["sources_json"],
+                        status: "succeeded",
+                      },
+                      queryClient,
+                      sessionId,
+                    })
+                  : false;
+
+              if (currentRun != null) {
+                patchSessionContext({
+                  latestAssistantMessageId: currentRun.assistantMessageId,
+                  latestAssistantSources:
+                    currentRun.sources as ChatSessionContextItem["latest_assistant_sources"],
+                  sessionId,
                 });
+              }
+
+              const refreshPromise = patched
+                ? Promise.resolve()
+                : queryClient.invalidateQueries({
+                    queryKey: queryKeys.chat.messagesWindow(sessionId),
+                  });
+              void refreshPromise.then(() => {
+                if (currentSessionIdRef.current === sessionId) {
+                  pruneRuns([runId]);
+                }
+              });
               return;
             }
 
             if (event.event === "run.failed") {
               receivedTerminalRunEvent = true;
-              failRun(
-                runId,
+              const errorMessage =
                 typeof event.data.error_message === "string"
                   ? event.data.error_message
-                  : t("assistantStreamingInterruptedError"),
-              );
-              void queryClient
-                .invalidateQueries({
-                  queryKey: queryKeys.chat.messages(sessionId),
-                })
-                .then(() => {
-                  pruneRuns([runId]);
+                  : t("assistantStreamingInterruptedError");
+              failRun(runId, errorMessage);
+              const currentRun = useChatStreamStore.getState().runsById[runId];
+              const patched =
+                currentRun != null
+                  ? patchPagedChatMessagesCache({
+                      appendIfMissing: currentRun.userMessageId
+                        ? [
+                            {
+                              content: currentRun.userContent,
+                              error_message: errorMessage,
+                              id: currentRun.userMessageId,
+                              role: "user",
+                              status: "failed",
+                              sources_json: [],
+                            },
+                            {
+                              content: currentRun.content,
+                              error_message: errorMessage,
+                              id: currentRun.assistantMessageId,
+                              reply_to_message_id:
+                                currentRun.retryOfMessageId ?? currentRun.userMessageId,
+                              role: "assistant",
+                              status: "failed",
+                              sources_json: currentRun.sources as ChatMessageItem["sources_json"],
+                            },
+                          ]
+                        : [
+                            {
+                              content: currentRun.content,
+                              error_message: errorMessage,
+                              id: currentRun.assistantMessageId,
+                              reply_to_message_id: currentRun.retryOfMessageId ?? null,
+                              role: "assistant",
+                              status: "failed",
+                              sources_json: currentRun.sources as ChatMessageItem["sources_json"],
+                            },
+                          ],
+                      assistantMessageId: currentRun.assistantMessageId,
+                      patch: {
+                        content: currentRun.content,
+                        error_message: errorMessage,
+                        sources_json: currentRun.sources as ChatMessageItem["sources_json"],
+                        status: "failed",
+                      },
+                      queryClient,
+                      sessionId,
+                    })
+                  : false;
+
+              if (currentRun != null) {
+                patchSessionContext({
+                  latestAssistantMessageId: currentRun.assistantMessageId,
+                  latestAssistantSources:
+                    currentRun.sources as ChatSessionContextItem["latest_assistant_sources"],
+                  sessionId,
                 });
+              }
+
+              const refreshPromise = patched
+                ? Promise.resolve()
+                : queryClient.invalidateQueries({
+                    queryKey: queryKeys.chat.messagesWindow(sessionId),
+                  });
+              void refreshPromise.then(() => {
+                pruneRuns([runId]);
+              });
             }
           },
         });
@@ -290,7 +465,10 @@ export function useChatWorkspace(activeSessionId: number | null) {
     },
   });
 
-  const messages = Array.isArray(messagesQuery.data) ? messagesQuery.data : [];
+  const messages = useMemo(
+    () => messagesWindowQuery.data?.pages.flatMap((page) => page) ?? [],
+    [messagesWindowQuery.data],
+  );
   const attachments =
     resolvedActiveSessionId === null
       ? []
@@ -312,29 +490,7 @@ export function useChatWorkspace(activeSessionId: number | null) {
       }),
     [resolvedActiveSessionId, messages, runsById],
   );
-  const submitPending =
-    resolvedActiveSessionId !== null && submitPendingSessionIds.includes(resolvedActiveSessionId);
-
-  const beginSessionSubmit = useCallback((sessionId: number) => {
-    if (submitPendingSessionIdsRef.current.has(sessionId)) {
-      return false;
-    }
-
-    submitPendingSessionIdsRef.current.add(sessionId);
-    setSubmitPendingSessionIds((current) =>
-      current.includes(sessionId) ? current : [...current, sessionId],
-    );
-    return true;
-  }, []);
-
-  const finishSessionSubmit = useCallback((sessionId: number) => {
-    if (!submitPendingSessionIdsRef.current.has(sessionId)) {
-      return;
-    }
-
-    submitPendingSessionIdsRef.current.delete(sessionId);
-    setSubmitPendingSessionIds((current) => current.filter((item) => item !== sessionId));
-  }, []);
+  const submitPending = isSessionSubmitPending(resolvedActiveSessionId);
 
   useEffect(() => {
     if (sessionsQuery.isPending || sessions.length === 0) {
@@ -395,55 +551,35 @@ export function useChatWorkspace(activeSessionId: number | null) {
     const workingAttachments = cloneChatAttachments(snapshotAttachments);
 
     try {
-      const persistedAttachments: ReadyChatAttachment[] = [];
-      let uploadedCount = 0;
-      for (const attachment of workingAttachments.filter((item) => item.status !== "failed")) {
-        const readyAttachment = toReadyAttachment(attachment);
-        if (readyAttachment) {
-          persistedAttachments.push(readyAttachment);
-          continue;
-        }
-
-        if (attachment.status !== "queued" || !attachment.file || !attachment.mimeType) {
-          continue;
-        }
-
-        try {
-          const document = await runDocumentUpload({
-            failedMessage: t("attachmentUploadFailed"),
-            file: attachment.file,
-            onPatch: (patch) => {
-              Object.assign(attachment, patch);
-            },
-            upload: uploadDocument,
-          });
-
-          attachment.errorMessage = undefined;
-          attachment.progress = 100;
-          attachment.resourceDocumentId = document.document_id;
-          attachment.resourceDocumentVersionId = document.id;
-          attachment.status = "uploaded";
-
-          uploadedCount += 1;
-          const nextReadyAttachment = toReadyAttachment(attachment);
-          if (nextReadyAttachment) {
-            persistedAttachments.push(nextReadyAttachment);
-          }
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : t("attachmentUploadFailed");
-          attachment.errorMessage = errorMessage;
-          attachment.progress = 0;
-          attachment.status = "failed";
-          toast.error(errorMessage);
-          throw error;
-        }
-      }
+      const { uploadedAttachments: persistedAttachments, uploadedCount } =
+        await uploadQueuedChatAttachments({
+          attachments: workingAttachments.filter((item) => item.status !== "failed"),
+          concurrency: 2,
+          failedMessage: t("attachmentUploadFailed"),
+          onPatch: (attachmentId, patch) => {
+            const targetAttachment = workingAttachments.find((item) => item.id === attachmentId);
+            if (!targetAttachment) {
+              return;
+            }
+            Object.assign(targetAttachment, patch);
+          },
+          uploadFile: async (attachment) => {
+            const document = await runDocumentUpload({
+              failedMessage: t("attachmentUploadFailed"),
+              file: attachment.file as File,
+              onPatch: () => {},
+              upload: uploadDocument,
+            });
+            return document;
+          },
+        });
 
       if (uploadedCount > 0) {
         void queryClient.invalidateQueries({ queryKey: queryKeys.documents.list });
       }
 
       const serializedAttachments = serializeChatAttachments(persistedAttachments);
+      const persistedChatAttachments = toPersistedChatAttachments(serializedAttachments);
       if (!nextDraft.trim() && serializedAttachments.length === 0) {
         return;
       }
@@ -455,7 +591,20 @@ export function useChatWorkspace(activeSessionId: number | null) {
         content: nextDraft,
       });
       if (streamResult.userMessageId && serializedAttachments.length > 0) {
-        await queryClient.invalidateQueries({ queryKey: queryKeys.chat.messages(sessionId) });
+        const patched = patchUserMessageAttachments({
+          attachments: persistedChatAttachments,
+          sessionId,
+          userMessageId: streamResult.userMessageId,
+        });
+        patchSessionContext({
+          attachments: persistedChatAttachments,
+          sessionId,
+        });
+        if (!patched) {
+          await queryClient.invalidateQueries({
+            queryKey: queryKeys.chat.messagesWindow(sessionId),
+          });
+        }
         void queryClient.invalidateQueries({ queryKey: queryKeys.documents.list });
       }
     } catch {
@@ -628,12 +777,27 @@ export function useChatWorkspace(activeSessionId: number | null) {
       await deleteChatMessage(message.id);
       if (resolvedActiveSessionId !== null) {
         await queryClient.invalidateQueries({
-          queryKey: queryKeys.chat.messages(resolvedActiveSessionId),
+          queryKey: queryKeys.chat.messagesWindow(resolvedActiveSessionId),
+        });
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.chat.context(resolvedActiveSessionId),
         });
       }
     },
     [queryClient, resolvedActiveSessionId],
   );
+
+  const hasOlderMessages = messagesWindowQuery.hasNextPage ?? false;
+  const isLoadingOlderMessages = messagesWindowQuery.isFetchingNextPage;
+  const messagesWindowReady = resolvedActiveSessionId === null || !messagesWindowQuery.isPending;
+
+  const loadOlderMessages = useCallback(async () => {
+    if (!hasOlderMessages || isLoadingOlderMessages) {
+      return;
+    }
+
+    await messagesWindowQuery.fetchNextPage();
+  }, [hasOlderMessages, isLoadingOlderMessages, messagesWindowQuery]);
 
   return {
     activeSession,
@@ -644,16 +808,19 @@ export function useChatWorkspace(activeSessionId: number | null) {
     draft,
     editFailedMessage,
     hasMessages: displayMessages.length > 0,
+    hasOlderMessages,
     removeAttachment,
     retryMessage,
     scrollToLatestRequestKey,
     sendShortcut,
     setSendShortcut,
     sessions,
-    sessionsReady: !sessionsQuery.isPending,
+    sessionsReady: !sessionsQuery.isPending && messagesWindowReady,
     setDraft,
     submitMessage,
     submitPending,
+    isLoadingOlderMessages,
+    loadOlderMessages,
     attachFiles,
     rejectFiles,
   };

@@ -44,6 +44,14 @@ export type ChatProfileItem = {
   provider: "openai" | "anthropic" | "ollama";
 };
 
+export type ChatSessionContextItem = {
+  session_id: number;
+  attachment_count: number;
+  attachments: ChatAttachmentItem[];
+  latest_assistant_message_id: number | null;
+  latest_assistant_sources: ChatSourceItem[];
+};
+
 export type ChatMessageItem = {
   attachments_json?: ChatAttachmentItem[] | null;
   id: number;
@@ -142,6 +150,32 @@ export async function getChatMessages(sessionId: number) {
     }),
   );
   return messages.map(toChatMessageItem);
+}
+
+export async function getChatMessagesWindow(
+  sessionId: number,
+  input: { beforeId?: number | null; limit: number },
+) {
+  const messages = await openapiRequestRequired<ChatMessageRead[]>(
+    apiFetchClient.GET("/api/chat/sessions/{session_id}/messages", {
+      params: {
+        path: { session_id: sessionId },
+        query: {
+          before_id: input.beforeId ?? undefined,
+          limit: input.limit,
+        },
+      },
+    }),
+  );
+  return messages.map(toChatMessageItem);
+}
+
+export async function getChatSessionContext(sessionId: number) {
+  return openapiRequestRequired<ChatSessionContextItem>(
+    apiFetchClient.GET("/api/chat/sessions/{session_id}/context", {
+      params: { path: { session_id: sessionId } },
+    }),
+  );
 }
 
 export function updateChatSession(

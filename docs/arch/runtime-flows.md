@@ -96,8 +96,11 @@ flowchart TD
 - 若当前轮 query embedding 生成失败，本轮会降级到 Chroma 本地轻量词法匹配；不会退回整代索引的全量词法扫描
 - 纯图片泛化看图请求默认跳过 retrieval
 - 无附件时，问答仍会继续查询当前用户 personal `space` 里已入库的历史知识
+- Web 主区默认通过 `/api/chat/sessions/{id}/messages?limit=80` 先读取最近一段消息窗口，继续向上滚动时再带 `before_id + limit` 请求更早消息
+- Web 右侧上下文栏当前走 `/api/chat/sessions/{id}/context`，返回当前会话已去重附件摘要和最近一次 assistant 引用，不再依赖整段消息列表反推
 - 受保护读取接口在鉴权阶段保持纯读，不再为 session 心跳同步写 `auth_sessions.last_seen_at`；避免流式回答持有 SQLite 写事务时，把 `/api/auth/me`、`/api/settings` 这类并发页面读取锁成 `database is locked`
 - 流式 assistant projection 和 `chat_run_events` 当前按短批次提交；目标是让整段回答进行中，仍能继续处理会话改名、新建会话这类并发写请求，而不是一直等到流结束才释放 SQLite 写锁
+- Web 侧流式完成或失败时，当前会优先 patch 已加载消息窗口和会话摘要；只有 patch miss 时才回退到对应 query 的失效刷新
 - 图片不可解码或 provider 仍拒绝处理时，后端先收敛成稳定语义，不把 provider 原始格式报错直接暴露为长期契约
 
 关键入口：
@@ -107,7 +110,21 @@ flowchart TD
 - `apps/api/src/knowledge_chatbox_api/services/chat/chat_service.py`
 - `apps/api/src/knowledge_chatbox_api/utils/chroma.py`
 
-## 6. 检索 Route 切换与重建
+## 6. 发送前附件上传
+
+1. 当前会话先冻结草稿和附件快照
+2. 已 `uploaded` 的附件直接复用
+3. `queued` 附件按最多 2 个并发上传
+4. 所有附件都上传成功后，才真正发起 `/messages/stream`
+5. 任一附件上传失败时，不再派发新的上传任务；已 in-flight 的上传先收口，再把草稿和附件快照恢复到输入区
+
+关键约束：
+
+- 多附件上传要保持最终发送顺序与用户原始选择顺序一致
+- 上传失败时，不允许出现“部分附件已发出去，但消息没有恢复”的半成功态
+- 聊天区和资源页继续复用同一套 document upload helper、401 刷新与进度 patch 语义
+
+## 7. 检索 Route 切换与重建
 
 1. `PUT /api/settings` 写入 `app_settings.pending_embedding_route_json`
 2. `app_settings` 更新 `building_index_generation + index_rebuild_status`

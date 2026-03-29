@@ -111,6 +111,54 @@ class ChatApplicationService:
         self._require_owned_session(actor, session_id)
         return self.chat_repository.list_messages(session_id)
 
+    def list_messages_window(
+        self,
+        actor: User,
+        session_id: int,
+        *,
+        before_id: int | None,
+        limit: int,
+    ) -> list[Any]:
+        """Return one tail window of messages for one owned session."""
+        self._require_owned_session(actor, session_id)
+        return self.chat_repository.list_messages_window(
+            session_id,
+            before_id=before_id,
+            limit=limit,
+        )
+
+    def get_session_context(self, actor: User, session_id: int) -> dict[str, Any]:
+        """Return the compact right-panel context for one owned session."""
+        self._require_owned_session(actor, session_id)
+        attachments = self.chat_repository.list_session_attachments(session_id)
+        deduplicated_attachments: dict[str, Any] = {}
+        for attachment in attachments:
+            if attachment.document_id is not None:
+                key = f"document:{attachment.document_id}"
+            elif attachment.document_revision_id is not None:
+                key = f"version:{attachment.document_revision_id}"
+            else:
+                key = f"attachment:{attachment.attachment_id}"
+            deduplicated_attachments[key] = attachment
+
+        latest_assistant_message = self.chat_repository.get_latest_assistant_message(session_id)
+        latest_assistant_sources = (
+            latest_assistant_message.sources_json
+            if latest_assistant_message is not None
+            and latest_assistant_message.sources_json is not None
+            else []
+        )
+
+        return {
+            "session_id": session_id,
+            "attachment_count": len(deduplicated_attachments),
+            "attachments": list(deduplicated_attachments.values()),
+            "latest_assistant_message_id": (
+                latest_assistant_message.id if latest_assistant_message is not None else None
+            ),
+            "latest_assistant_sources": latest_assistant_sources,
+        }
+
     def delete_failed_message(self, actor: User, message_id: int) -> None:
         """Delete one failed user message and any assistant replies tied to it."""
         message = self._require_owned_message(actor, message_id)

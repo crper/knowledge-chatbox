@@ -4,7 +4,13 @@
 
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { FilesIcon, ScanSearchIcon, SearchIcon, UploadIcon } from "lucide-react";
+import {
+  FilesIcon,
+  ScanSearchIcon,
+  SearchIcon,
+  SlidersHorizontalIcon,
+  UploadIcon,
+} from "lucide-react";
 
 import { FileDropzone } from "@/components/upload/file-dropzone";
 import { WorkspaceMetricCard, WorkspacePage } from "@/components/shared/workspace-page";
@@ -29,6 +35,14 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import { Spinner } from "@/components/ui/spinner";
 import type {
   KnowledgeDocument,
@@ -41,6 +55,7 @@ import { SelectedResourceBand } from "@/features/knowledge/components/selected-r
 import { UploadQueueSummary } from "@/features/knowledge/components/upload-queue-summary";
 import { useKnowledgeWorkspace } from "@/features/knowledge/hooks/use-knowledge-workspace";
 import { VersionDrawer } from "@/features/knowledge/components/version-drawer";
+import { useIsMobile } from "@/lib/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 
 type ResourceTypeFilter = "all" | "document" | "image" | "markdown" | "pdf" | "text";
@@ -61,14 +76,26 @@ const STATUS_FILTER_VALUES: Array<"all" | KnowledgeDocumentStatus> = [
   "failed",
 ];
 
+function getTypeFilterLabel(value: ResourceTypeFilter, t: (key: string) => string) {
+  return t(`typeFilter${value.charAt(0).toUpperCase()}${value.slice(1)}`);
+}
+
+function getStatusFilterLabel(value: "all" | KnowledgeDocumentStatus, t: (key: string) => string) {
+  return value === "all"
+    ? t("statusFilterAll")
+    : t(`status${value.charAt(0).toUpperCase()}${value.slice(1)}`);
+}
+
 /**
  * 渲染资源页面。
  */
 export function KnowledgePage() {
   const { t } = useTranslation("knowledge");
+  const isMobile = useIsMobile();
   const [pendingDeleteDocument, setPendingDeleteDocument] = useState<KnowledgeDocument | null>(
     null,
   );
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [searchValue, setSearchValue] = useState("");
   const [previewOpen, setPreviewOpen] = useState(false);
   const [selectedDocumentId, setSelectedDocumentId] = useState<number | null>(null);
@@ -113,10 +140,15 @@ export function KnowledgePage() {
   }, [deferredSearchValue, documents, statusFilter, typeFilter]);
   const indexedCount = documents.filter((document) => document.status === "indexed").length;
   const hasDocuments = documents.length > 0;
+  const activeFilterCount = Number(typeFilter !== "all") + Number(statusFilter !== "all");
   const selectedDocument = useMemo(
     () => documents.find((document) => document.id === selectedDocumentId) ?? null,
     [documents, selectedDocumentId],
   );
+  const activeFilterBadges = [
+    typeFilter === "all" ? null : getTypeFilterLabel(typeFilter, t),
+    statusFilter === "all" ? null : getStatusFilterLabel(statusFilter, t),
+  ].filter(Boolean) as string[];
 
   useEffect(() => {
     if (selectedDocumentId === null) {
@@ -134,64 +166,185 @@ export function KnowledgePage() {
     setSelectedDocumentId(null);
   }, [filteredDocuments, selectedDocumentId]);
 
+  const openPreviewForDocument = (document: KnowledgeDocument) => {
+    setSelectedDocumentId(document.id);
+    setPreviewOpen(true);
+  };
+
+  const handleSelectDocument = (document: KnowledgeDocument) => {
+    setSelectedDocumentId(document.id);
+    if (isMobile) {
+      setPreviewOpen(true);
+    }
+  };
+
+  const clearFilters = () => {
+    setTypeFilter("all");
+    setStatusFilter("all");
+  };
+
+  const renderUploadAction = (fullWidth = false) => {
+    if (!canManageDocuments) {
+      return null;
+    }
+
+    return (
+      <FileDropzone onFilesAccepted={enqueueUploads} onFilesRejected={rejectFiles}>
+        {({ getInputProps, getRootProps, isDragAccept, isDragActive, isDragReject, open }) => (
+          <div
+            {...getRootProps({
+              className: cn(
+                "rounded-[1.15rem] transition-transform",
+                fullWidth && "flex-1",
+                isDragAccept && "scale-[1.01]",
+                isDragReject && "scale-[0.99]",
+              ),
+            })}
+          >
+            <input {...getInputProps({ "aria-label": t("uploadAction") })} />
+            <Button
+              className={cn(
+                fullWidth ? "w-full" : "min-w-[8.75rem]",
+                isDragAccept && "border-primary/24 bg-primary/90 text-primary-foreground",
+                isDragReject && "border-destructive/24 bg-destructive/12 text-destructive",
+                isDragActive && "shadow-[0_14px_28px_-18px_hsl(var(--primary)/0.44)]",
+              )}
+              onClick={open}
+              type="button"
+              variant={isDragReject ? "destructive" : "default"}
+            >
+              {localUploadingCount > 0 ? (
+                <Spinner aria-hidden="true" data-icon="inline-start" />
+              ) : (
+                <UploadIcon aria-hidden="true" data-icon="inline-start" />
+              )}
+              {localUploadingCount > 0 ? t("uploadPendingAction") : t("uploadAction")}
+            </Button>
+          </div>
+        )}
+      </FileDropzone>
+    );
+  };
+
+  const mobileFilterSheet = (
+    <Sheet onOpenChange={setMobileFiltersOpen} open={mobileFiltersOpen}>
+      <SheetTrigger asChild>
+        <Button
+          className="flex-1 sm:flex-none"
+          type="button"
+          variant={activeFilterCount > 0 ? "secondary" : "outline"}
+        >
+          <SlidersHorizontalIcon data-icon="inline-start" />
+          {activeFilterCount > 0
+            ? t("mobileFilterActionWithCount", { count: activeFilterCount })
+            : t("mobileFilterAction")}
+        </Button>
+      </SheetTrigger>
+      <SheetContent
+        className="max-h-[85dvh] gap-0 rounded-t-[1.5rem] border-x-0 border-b-0 bg-background/98 p-0"
+        closeLabel={t("closeAction")}
+        side="bottom"
+      >
+        <SheetHeader className="border-b border-border/70">
+          <SheetTitle>{t("mobileFilterTitle")}</SheetTitle>
+          <SheetDescription>{t("mobileFilterDescription")}</SheetDescription>
+        </SheetHeader>
+        <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4">
+          <section className="space-y-3">
+            <div className="space-y-1">
+              <p className="text-ui-title">{t("filterTypeSectionTitle")}</p>
+              <p className="text-ui-subtle text-muted-foreground">{t("searchInputPlaceholder")}</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {TYPE_FILTER_VALUES.map((value) => (
+                <Button
+                  key={value}
+                  onClick={() => setTypeFilter(value)}
+                  size="sm"
+                  type="button"
+                  variant={typeFilter === value ? "default" : "outline"}
+                >
+                  {getTypeFilterLabel(value, t)}
+                </Button>
+              ))}
+            </div>
+          </section>
+
+          <section className="space-y-3">
+            <div className="space-y-1">
+              <p className="text-ui-title">{t("filterStatusSectionTitle")}</p>
+              <p className="text-ui-subtle text-muted-foreground">{t("processingInlineHint")}</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {STATUS_FILTER_VALUES.map((value) => (
+                <Button
+                  key={value}
+                  onClick={() => setStatusFilter(value)}
+                  size="sm"
+                  type="button"
+                  variant={statusFilter === value ? "secondary" : "outline"}
+                >
+                  {getStatusFilterLabel(value, t)}
+                </Button>
+              ))}
+            </div>
+          </section>
+
+          {activeFilterCount > 0 ? (
+            <Button className="w-full" onClick={clearFilters} type="button" variant="ghost">
+              {t("clearFiltersAction")}
+            </Button>
+          ) : null}
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+
   return (
     <>
       <WorkspacePage
         actions={
-          <div className="flex w-full flex-wrap items-center gap-3 md:justify-end">
-            <label className="relative min-w-[min(18rem,100%)] flex-1 basis-[18rem]">
-              <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                aria-label={t("searchInputLabel")}
-                className="h-11 rounded-[1.15rem] border-border/60 bg-background/68 pl-9"
-                onChange={(event) => setSearchValue(event.target.value)}
-                placeholder={t("searchInputPlaceholder")}
-                value={searchValue}
-              />
-            </label>
-            {canManageDocuments ? (
-              <FileDropzone onFilesAccepted={enqueueUploads} onFilesRejected={rejectFiles}>
-                {({
-                  getInputProps,
-                  getRootProps,
-                  isDragAccept,
-                  isDragActive,
-                  isDragReject,
-                  open,
-                }) => (
-                  <div
-                    {...getRootProps({
-                      className: cn(
-                        "rounded-[1.15rem] transition-transform",
-                        isDragAccept && "scale-[1.01]",
-                        isDragReject && "scale-[0.99]",
-                      ),
-                    })}
-                  >
-                    <input {...getInputProps({ "aria-label": t("uploadAction") })} />
-                    <Button
-                      className={cn(
-                        "min-w-[8.75rem]",
-                        isDragAccept && "border-primary/24 bg-primary/90 text-primary-foreground",
-                        isDragReject && "border-destructive/24 bg-destructive/12 text-destructive",
-                        isDragActive && "shadow-[0_14px_28px_-18px_hsl(var(--primary)/0.44)]",
-                      )}
-                      onClick={open}
-                      type="button"
-                      variant={isDragReject ? "destructive" : "default"}
-                    >
-                      {localUploadingCount > 0 ? (
-                        <Spinner aria-hidden="true" data-icon="inline-start" />
-                      ) : (
-                        <UploadIcon aria-hidden="true" data-icon="inline-start" />
-                      )}
-                      {localUploadingCount > 0 ? t("uploadPendingAction") : t("uploadAction")}
-                    </Button>
-                  </div>
-                )}
-              </FileDropzone>
-            ) : null}
-          </div>
+          isMobile ? (
+            <div className="flex w-full flex-col gap-3">
+              <label className="relative w-full">
+                <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  aria-label={t("searchInputLabel")}
+                  className="h-11 rounded-[1.15rem] border-border/60 bg-background/68 pl-9"
+                  onChange={(event) => setSearchValue(event.target.value)}
+                  placeholder={t("searchInputPlaceholder")}
+                  value={searchValue}
+                />
+              </label>
+              <div className="flex w-full flex-wrap gap-2">
+                {mobileFilterSheet}
+                {renderUploadAction(true)}
+              </div>
+              {activeFilterBadges.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {activeFilterBadges.map((label) => (
+                    <Badge className="rounded-full px-3 py-1" key={label} variant="outline">
+                      {label}
+                    </Badge>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <div className="flex w-full flex-wrap items-center gap-3 md:justify-end">
+              <label className="relative min-w-[min(18rem,100%)] flex-1 basis-[18rem]">
+                <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  aria-label={t("searchInputLabel")}
+                  className="h-11 rounded-[1.15rem] border-border/60 bg-background/68 pl-9"
+                  onChange={(event) => setSearchValue(event.target.value)}
+                  placeholder={t("searchInputPlaceholder")}
+                  value={searchValue}
+                />
+              </label>
+              {renderUploadAction()}
+            </div>
+          )
         }
         badge={t("workspaceBadge")}
         className="h-full min-h-0 xl:mx-0"
@@ -257,32 +410,32 @@ export function KnowledgePage() {
                     </div>
                   ) : null}
 
-                  <div className="flex flex-wrap gap-2">
-                    {TYPE_FILTER_VALUES.map((value) => (
-                      <Button
-                        key={value}
-                        onClick={() => setTypeFilter(value)}
-                        size="sm"
-                        type="button"
-                        variant={typeFilter === value ? "default" : "outline"}
-                      >
-                        {t(`typeFilter${value.charAt(0).toUpperCase()}${value.slice(1)}`)}
-                      </Button>
-                    ))}
-                    {STATUS_FILTER_VALUES.map((value) => (
-                      <Button
-                        key={value}
-                        onClick={() => setStatusFilter(value)}
-                        size="sm"
-                        type="button"
-                        variant={statusFilter === value ? "secondary" : "ghost"}
-                      >
-                        {value === "all"
-                          ? t("statusFilterAll")
-                          : t(`status${value.charAt(0).toUpperCase()}${value.slice(1)}`)}
-                      </Button>
-                    ))}
-                  </div>
+                  {isMobile ? null : (
+                    <div className="flex flex-wrap gap-2">
+                      {TYPE_FILTER_VALUES.map((value) => (
+                        <Button
+                          key={value}
+                          onClick={() => setTypeFilter(value)}
+                          size="sm"
+                          type="button"
+                          variant={typeFilter === value ? "default" : "outline"}
+                        >
+                          {getTypeFilterLabel(value, t)}
+                        </Button>
+                      ))}
+                      {STATUS_FILTER_VALUES.map((value) => (
+                        <Button
+                          key={value}
+                          onClick={() => setStatusFilter(value)}
+                          size="sm"
+                          type="button"
+                          variant={statusFilter === value ? "secondary" : "ghost"}
+                        >
+                          {getStatusFilterLabel(value, t)}
+                        </Button>
+                      ))}
+                    </div>
+                  )}
                 </section>
               ) : null}
               {!hasDocuments ? (
@@ -389,23 +542,19 @@ export function KnowledgePage() {
                     className="min-h-0 flex-1 basis-[17rem]"
                     documents={filteredDocuments}
                     onDelete={setPendingDeleteDocument}
-                    onPreviewDocument={(document) => {
-                      setSelectedDocumentId(document.id);
-                      setPreviewOpen(true);
-                    }}
+                    onPreviewDocument={openPreviewForDocument}
                     onReindex={(document) => void reindexDocument(document.document_id)}
-                    onSelectDocument={(document) => setSelectedDocumentId(document.id)}
+                    onSelectDocument={handleSelectDocument}
                     onShowVersions={(documentId) => void showVersions(documentId)}
                     selectedDocumentId={selectedDocumentId}
                   />
-                  <SelectedResourceBand
-                    document={selectedDocument}
-                    onPreviewDocument={(document) => {
-                      setSelectedDocumentId(document.id);
-                      setPreviewOpen(true);
-                    }}
-                    onShowVersions={(documentId) => void showVersions(documentId)}
-                  />
+                  {isMobile ? null : (
+                    <SelectedResourceBand
+                      document={selectedDocument}
+                      onPreviewDocument={openPreviewForDocument}
+                      onShowVersions={(documentId) => void showVersions(documentId)}
+                    />
+                  )}
                 </>
               )}
             </div>

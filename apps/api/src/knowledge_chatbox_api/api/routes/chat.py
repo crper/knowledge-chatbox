@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import cast
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Query, status
 from fastapi.responses import StreamingResponse
 
 from knowledge_chatbox_api.api.deps import CurrentUserDep, DbSessionDep, SettingsDep
@@ -21,6 +21,7 @@ from knowledge_chatbox_api.schemas.chat import (
     ChatProfileRead,
     ChatRunEventRead,
     ChatRunRead,
+    ChatSessionContextRead,
     ChatSessionRead,
     CreateChatMessageRequest,
     CreateChatSessionRequest,
@@ -92,6 +93,17 @@ def to_chat_message_read(
         reply_to_message_id=message.reply_to_message_id,
         sources_json=message.sources_json,
         created_at=message.created_at,
+    )
+
+
+def to_chat_session_context_read(input: dict) -> ChatSessionContextRead:
+    """把右栏 context 数据转换为响应结构。"""
+    return ChatSessionContextRead(
+        session_id=input["session_id"],
+        attachment_count=input["attachment_count"],
+        attachments=_build_chat_attachment_payloads(input["attachments"]) or [],
+        latest_assistant_message_id=input["latest_assistant_message_id"],
+        latest_assistant_sources=input["latest_assistant_sources"],
     )
 
 
@@ -213,10 +225,21 @@ def list_messages(
     session_id: int,
     session: DbSessionDep,
     current_user: CurrentUserDep,
+    before_id: int | None = Query(default=None, ge=1),
+    limit: int | None = Query(default=None, ge=1, le=200),
 ) -> Envelope[list[ChatMessageRead]]:
     """列出消息。"""
     service = ChatApplicationService(session, settings=None)
-    messages = service.list_messages(current_user, session_id)
+    messages = (
+        service.list_messages_window(
+            current_user,
+            session_id,
+            before_id=before_id,
+            limit=limit,
+        )
+        if limit is not None
+        else service.list_messages(current_user, session_id)
+    )
     attachments_by_message_id = service.chat_repository.list_attachments_for_message_ids(
         [message.id for message in messages]
     )
@@ -227,6 +250,18 @@ def list_messages(
         ],
         error=None,
     )
+
+
+@router.get("/sessions/{session_id}/context", response_model=Envelope[ChatSessionContextRead])
+def get_session_context(
+    session_id: int,
+    session: DbSessionDep,
+    current_user: CurrentUserDep,
+) -> Envelope[ChatSessionContextRead]:
+    """返回聊天右栏所需的紧凑上下文。"""
+    service = ChatApplicationService(session, settings=None)
+    context = service.get_session_context(current_user, session_id)
+    return Envelope(success=True, data=to_chat_session_context_read(context), error=None)
 
 
 @router.delete("/messages/{message_id}", response_model=Envelope[DeleteChatMessageResult])

@@ -90,14 +90,14 @@ vp build
 
 ### 主要页面
 
-| 页面   | 作用                                             | 主要代码入口                             |
-| ------ | ------------------------------------------------ | ---------------------------------------- |
-| 登录页 | 登录、主题/语言切换、登录前后偏好衔接            | `src/pages/auth/login-page.tsx`          |
-| 对话页 | 会话、消息、同步/流式问答、附件面板、图片 viewer | `src/pages/chat/chat-page.tsx`           |
-| 资源页 | 上传、资源列表、预览抽屉、版本详情、重建索引     | `src/pages/knowledge/knowledge-page.tsx` |
-| 设置页 | 提供商配置、系统提示词、偏好与账号安全           | `src/pages/settings/settings-page.tsx`   |
-| 用户页 | 管理员用户管理                                   | `src/pages/users/users-page.tsx`         |
-| 系统页 | 认证降级页与 `403` 页面                          | `src/pages/system/*`                     |
+| 页面   | 作用                                                                     | 主要代码入口                             |
+| ------ | ------------------------------------------------------------------------ | ---------------------------------------- |
+| 登录页 | 登录、主题/语言切换、登录前后偏好衔接                                    | `src/pages/auth/login-page.tsx`          |
+| 对话页 | 会话、分页消息窗口、同步/流式问答、附件面板、图片 viewer、右栏上下文摘要 | `src/pages/chat/chat-page.tsx`           |
+| 资源页 | 上传、资源列表、预览抽屉、版本详情、重建索引                             | `src/pages/knowledge/knowledge-page.tsx` |
+| 设置页 | 提供商配置、系统提示词、偏好与账号安全                                   | `src/pages/settings/settings-page.tsx`   |
+| 用户页 | 管理员用户管理                                                           | `src/pages/users/users-page.tsx`         |
+| 系统页 | 认证降级页与 `403` 页面                                                  | `src/pages/system/*`                     |
 
 ## 工程结构
 
@@ -158,14 +158,15 @@ apps/web/
 - 页面优先组合 `features/*` 的 hook 和组件，不在 page 里直接堆 query + mutation + 副作用
 - access token 当前只放在内存，不进 `localStorage`；前端会话状态单独放在 `lib/auth/session-store.ts`，用于区分 `bootstrapping / authenticated / anonymous / expired / degraded`
 - 顶层 `AppBootstrapGate` 会在路由渲染前尝试通过 `/api/auth/bootstrap` 恢复 refresh session；匿名态返回 `200 + authenticated=false`，不会把登录页首屏探测表现成控制台错误；若启动恢复失败且当前不是 `/login`，受保护页面会在“回登录页”和“认证降级页”之间做分流
+- 聊天主区当前默认读取分页 `messagesWindow`：先拿最近 80 条消息，继续向上滚动时再带 `before_id + limit` 取更早消息；右侧上下文栏通过独立 `context` 摘要 query 读取已去重附件和最近一次 assistant 引用
 - provider 设置页这类复杂表单，纯校验 helper 当前只返回 i18n key；具体文案由组件层按当前语言翻译，不在纯逻辑层硬编码中英文字符串
 - 主题先写本地 store；登录用户在设置中心或账户中枢切换时会同步 `/api/auth/preferences`，登录页匿名态先切的主题会在登录成功后补写到账号偏好
 - 最近访问的聊天会话 ID 会持久化到 `localStorage`；打开 `/chat` 时优先恢复该会话，恢复期间先保持加载态；若记录已失效则回退到当前列表第一项，没有会话时清空记录并保持空入口态
 - 聊天输入区的提交锁按会话隔离：只锁当前正在提交的会话；切到别的会话后，若该会话没有自己的提交任务，输入和发送保持可用
-- 聊天区附件上传和资源页上传共用同一套 document upload helper，拒绝原因、进度 patch 和失败文案保持一致；上传请求会优先携带 bearer token，遇到 `401` 会自动刷新并重试一次
+- 聊天区附件上传和资源页上传共用同一套 document upload helper，拒绝原因、进度 patch 和失败文案保持一致；聊天区待发送附件使用最多 2 个并发上传，但只有当本轮全部上传成功后才真正发起流式请求；上传请求会优先携带 bearer token，遇到 `401` 会自动刷新并重试一次
 - 聊天区待发送附件在进入 Zustand 前会按 `name + type + size + lastModified` 做本地去重；同一会话里重复选择、拖拽或粘贴同一文件时，不再重复追加
 - 图片附件真正发给模型前，不在前端长期保存 provider-ready 图片数据；后端会按 `document_revision_id` 重读原图并统一转成稳定 JPEG payload
-- `ChatMessageViewport` 负责长会话虚拟化、贴底与回底部语义
+- `ChatMessageViewport` 负责长会话虚拟化、贴底、向上加载更早消息与回底部语义
 - `features/chat/components/attachment-list.tsx` 与 `image-viewer-dialog.tsx` 负责聊天附件展示与图片查看
 - `components/shared/workspace-page.tsx` 和 `components/shared/data-table.tsx` 是标准工作区和资源列表的共享壳层
 

@@ -10,7 +10,9 @@ export const queryKeys = {
     me: ["auth", "me"] as const,
   },
   chat: {
+    context: (sessionId: number | null) => ["chat", "context", sessionId] as const,
     messages: (sessionId: number | null) => ["chat", "messages", sessionId] as const,
+    messagesWindow: (sessionId: number | null) => ["chat", "messages-window", sessionId] as const,
     profile: ["chat", "profile"] as const,
     sessions: ["chat", "sessions"] as const,
   },
