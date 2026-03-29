@@ -1087,6 +1087,60 @@ describe("chat workspace", () => {
     expect(messageWindowCalls).toHaveLength(1);
   });
 
+  it("does not refetch the current message window or context after a successful attachment send", async () => {
+    const fetchMock = buildAuthenticatedFetch({ messages: [] });
+
+    render(
+      <MemoryRouter initialEntries={["/chat/1"]}>
+        <AppProviders>
+          <AppRouter />
+        </AppProviders>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole("link", { name: "Session A" })).toBeInTheDocument();
+    expect(await screen.findByText("0 个附件")).toBeInTheDocument();
+
+    const attachInput = await screen.findByLabelText("附加资源", {
+      selector: 'input[type="file"]',
+    });
+    fireEvent.change(attachInput, {
+      target: { files: [new File(["hello"], "image.png", { type: "image/png" })] },
+    });
+
+    fireEvent.change(await screen.findByLabelText("消息输入"), {
+      target: { value: "带附件提问" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    await waitFor(() => {
+      expect(MockXMLHttpRequest.instances).toHaveLength(1);
+    });
+    MockXMLHttpRequest.instances[0]!.respond(
+      201,
+      JSON.stringify({
+        success: true,
+        data: buildUploadPayload({
+          name: "image.png",
+        }),
+        error: null,
+      }),
+    );
+
+    expect(await screen.findByText("streamed answer")).toBeInTheDocument();
+    expect(await screen.findByText("1 个附件")).toBeInTheDocument();
+
+    const messageWindowCalls = fetchMock.mock.calls.filter(
+      ([url]) => typeof url === "string" && url.includes("/api/chat/sessions/1/messages?limit=80"),
+    );
+    const contextCalls = fetchMock.mock.calls.filter(
+      ([url]) => typeof url === "string" && url.endsWith("/api/chat/sessions/1/context"),
+    );
+
+    expect(messageWindowCalls).toHaveLength(1);
+    expect(contextCalls).toHaveLength(1);
+  });
+
   it("marks the temporary assistant message as failed when the stream ends unexpectedly", async () => {
     buildAuthenticatedFetch({
       streamFrames: [
@@ -1370,6 +1424,13 @@ describe("chat workspace", () => {
             init.method === "DELETE",
         ),
       ).toBe(true);
+    });
+    await waitFor(() => {
+      const contextCalls = fetchMock.mock.calls.filter(
+        ([url]) => typeof url === "string" && url.endsWith("/api/chat/sessions/1/context"),
+      );
+
+      expect(contextCalls.length).toBeGreaterThan(1);
     });
   });
 

@@ -22,7 +22,12 @@ import { uploadDocument } from "@/features/knowledge/api/documents";
 import { detectSupportedUploadKind } from "@/features/knowledge/upload-file-types";
 import { queryKeys } from "@/lib/api/query-keys";
 import { getDocumentUploadRejectionMessage, runDocumentUpload } from "@/lib/document-upload";
-import { deleteChatMessage, type ChatMessageItem } from "../api/chat";
+import {
+  deleteChatMessage,
+  type ChatAttachmentItem as PersistedChatAttachmentItem,
+  type ChatMessageItem,
+  type ChatSessionContextItem,
+} from "../api/chat";
 import { startChatStream, type ChatStreamAttachmentInput } from "../api/chat-stream";
 import { useChatSessionSubmitController } from "../hooks/use-chat-session-submit-controller";
 import { useChatStreamStore } from "../store/chat-stream-store";
@@ -39,6 +44,33 @@ import {
 import { patchPagedChatMessagesCache } from "../utils/patch-paged-chat-messages";
 import { resolveSessionTitle } from "../utils/session-title";
 import { uploadQueuedChatAttachments } from "../utils/upload-chat-attachments";
+
+function toPersistedChatAttachments(
+  attachments: ChatStreamAttachmentInput[],
+): PersistedChatAttachmentItem[] {
+  return attachments.map((attachment) => ({
+    attachment_id: attachment.attachment_id,
+    archived_at: null,
+    name: attachment.name,
+    mime_type: attachment.mime_type,
+    resource_document_id: attachment.document_id ?? null,
+    resource_document_version_id: attachment.document_revision_id,
+    size_bytes: attachment.size_bytes,
+    type: attachment.type,
+  }));
+}
+
+function buildContextAttachmentKey(attachment: PersistedChatAttachmentItem) {
+  if (attachment.resource_document_id != null) {
+    return `document:${attachment.resource_document_id}`;
+  }
+
+  if (attachment.resource_document_version_id != null) {
+    return `version:${attachment.resource_document_version_id}`;
+  }
+
+  return `attachment:${attachment.attachment_id}`;
+}
 
 /**
  * 封装聊天工作区的数据与交互。
@@ -89,32 +121,96 @@ export function useChatWorkspace(activeSessionId: number | null) {
 
   const patchSessionContext = useCallback(
     ({
+      attachments,
       latestAssistantMessageId,
       latestAssistantSources,
       sessionId,
     }: {
-      latestAssistantMessageId: number;
-      latestAssistantSources: Array<Record<string, unknown>>;
+      attachments?: ChatSessionContextItem["attachments"];
+      latestAssistantMessageId?: number;
+      latestAssistantSources?: ChatSessionContextItem["latest_assistant_sources"];
       sessionId: number;
     }) => {
       let patched = false;
 
-      queryClient.setQueryData(queryKeys.chat.context(sessionId), (current) => {
-        if (!current || typeof current !== "object") {
-          return current;
-        }
+      queryClient.setQueryData<ChatSessionContextItem | null>(
+        queryKeys.chat.context(sessionId),
+        (current) => {
+          if (!current) {
+            return current;
+          }
 
-        patched = true;
-        return {
-          ...current,
-          latest_assistant_message_id: latestAssistantMessageId,
-          latest_assistant_sources: latestAssistantSources,
-        };
-      });
+          patched = true;
+          const nextAttachments =
+            attachments == null
+              ? current.attachments
+              : (() => {
+                  const attachmentMap = new Map<string, PersistedChatAttachmentItem>();
+                  for (const attachment of current.attachments ?? []) {
+                    attachmentMap.set(buildContextAttachmentKey(attachment), attachment);
+                  }
+                  for (const attachment of attachments) {
+                    attachmentMap.set(buildContextAttachmentKey(attachment), attachment);
+                  }
+                  return Array.from(attachmentMap.values());
+                })();
+
+          return {
+            ...current,
+            attachment_count: nextAttachments?.length ?? 0,
+            attachments: nextAttachments,
+            latest_assistant_message_id:
+              latestAssistantMessageId ?? current.latest_assistant_message_id,
+            latest_assistant_sources: latestAssistantSources ?? current.latest_assistant_sources,
+          };
+        },
+      );
 
       if (!patched) {
         void queryClient.invalidateQueries({ queryKey: queryKeys.chat.context(sessionId) });
       }
+    },
+    [queryClient],
+  );
+
+  const patchUserMessageAttachments = useCallback(
+    ({
+      attachments,
+      sessionId,
+      userMessageId,
+    }: {
+      attachments: PersistedChatAttachmentItem[];
+      sessionId: number;
+      userMessageId: number;
+    }) => {
+      let patched = false;
+
+      queryClient.setQueryData<InfiniteData<ChatMessageItem[], number | null>>(
+        queryKeys.chat.messagesWindow(sessionId),
+        (current) => {
+          if (!current || typeof current !== "object" || !("pages" in current)) {
+            return current;
+          }
+
+          const nextPages = current.pages.map((page) =>
+            page.map((message) => {
+              if (message.id !== userMessageId || message.role !== "user") {
+                return message;
+              }
+
+              patched = true;
+              return {
+                ...message,
+                attachments_json: attachments,
+              };
+            }),
+          );
+
+          return patched ? { ...current, pages: nextPages } : current;
+        },
+      );
+
+      return patched;
     },
     [queryClient],
   );
@@ -263,7 +359,8 @@ export function useChatWorkspace(activeSessionId: number | null) {
               if (currentRun != null) {
                 patchSessionContext({
                   latestAssistantMessageId: currentRun.assistantMessageId,
-                  latestAssistantSources: currentRun.sources,
+                  latestAssistantSources:
+                    currentRun.sources as ChatSessionContextItem["latest_assistant_sources"],
                   sessionId,
                 });
               }
@@ -339,7 +436,8 @@ export function useChatWorkspace(activeSessionId: number | null) {
               if (currentRun != null) {
                 patchSessionContext({
                   latestAssistantMessageId: currentRun.assistantMessageId,
-                  latestAssistantSources: currentRun.sources,
+                  latestAssistantSources:
+                    currentRun.sources as ChatSessionContextItem["latest_assistant_sources"],
                   sessionId,
                 });
               }
@@ -481,6 +579,7 @@ export function useChatWorkspace(activeSessionId: number | null) {
       }
 
       const serializedAttachments = serializeChatAttachments(persistedAttachments);
+      const persistedChatAttachments = toPersistedChatAttachments(serializedAttachments);
       if (!nextDraft.trim() && serializedAttachments.length === 0) {
         return;
       }
@@ -492,7 +591,20 @@ export function useChatWorkspace(activeSessionId: number | null) {
         content: nextDraft,
       });
       if (streamResult.userMessageId && serializedAttachments.length > 0) {
-        await queryClient.invalidateQueries({ queryKey: queryKeys.chat.messagesWindow(sessionId) });
+        const patched = patchUserMessageAttachments({
+          attachments: persistedChatAttachments,
+          sessionId,
+          userMessageId: streamResult.userMessageId,
+        });
+        patchSessionContext({
+          attachments: persistedChatAttachments,
+          sessionId,
+        });
+        if (!patched) {
+          await queryClient.invalidateQueries({
+            queryKey: queryKeys.chat.messagesWindow(sessionId),
+          });
+        }
         void queryClient.invalidateQueries({ queryKey: queryKeys.documents.list });
       }
     } catch {
@@ -666,6 +778,9 @@ export function useChatWorkspace(activeSessionId: number | null) {
       if (resolvedActiveSessionId !== null) {
         await queryClient.invalidateQueries({
           queryKey: queryKeys.chat.messagesWindow(resolvedActiveSessionId),
+        });
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.chat.context(resolvedActiveSessionId),
         });
       }
     },
