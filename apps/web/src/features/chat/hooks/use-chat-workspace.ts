@@ -24,119 +24,21 @@ import { queryKeys } from "@/lib/api/query-keys";
 import { getDocumentUploadRejectionMessage, runDocumentUpload } from "@/lib/document-upload";
 import { deleteChatMessage, type ChatMessageItem } from "../api/chat";
 import { startChatStream, type ChatStreamAttachmentInput } from "../api/chat-stream";
+import { useChatSessionSubmitController } from "../hooks/use-chat-session-submit-controller";
 import { useChatStreamStore } from "../store/chat-stream-store";
-import { useChatUiStore, type ChatAttachmentItem } from "../store/chat-ui-store";
+import { useChatUiStore } from "../store/chat-ui-store";
 import { buildDisplayMessages } from "../utils/build-display-messages";
+import {
+  buildLocalAttachmentFingerprint,
+  cloneChatAttachments,
+  collectLocalAttachmentFingerprints,
+  resolveSubmitErrorMessage,
+  serializeChatAttachments,
+  shouldResetComposerSnapshotForRetry,
+} from "../utils/chat-submit-helpers";
 import { patchPagedChatMessagesCache } from "../utils/patch-paged-chat-messages";
 import { resolveSessionTitle } from "../utils/session-title";
 import { uploadQueuedChatAttachments } from "../utils/upload-chat-attachments";
-
-function serializeChatAttachments(attachments: ReadyChatAttachment[]): ChatStreamAttachmentInput[] {
-  return attachments.map((attachment) => ({
-    attachment_id: attachment.id,
-    type: attachment.kind,
-    name: attachment.name,
-    mime_type: attachment.mimeType,
-    size_bytes: attachment.sizeBytes ?? attachment.file.size,
-    document_id: attachment.resourceDocumentId,
-    document_revision_id: attachment.resourceDocumentVersionId,
-  }));
-}
-
-function cloneChatAttachments(attachments: ChatAttachmentItem[]) {
-  return attachments.map((attachment) => ({ ...attachment }));
-}
-
-function buildLocalAttachmentFingerprint(file: File) {
-  return [file.name, file.type, file.size, file.lastModified].join("::");
-}
-
-function collectLocalAttachmentFingerprints(attachments: ChatAttachmentItem[]) {
-  return new Set(
-    attachments.flatMap((attachment) =>
-      attachment.file instanceof File ? [buildLocalAttachmentFingerprint(attachment.file)] : [],
-    ),
-  );
-}
-
-type ReadyChatAttachment = ChatAttachmentItem & {
-  file: File;
-  kind: "image" | "document";
-  mimeType: string;
-  resourceDocumentId: number;
-  resourceDocumentVersionId: number;
-  status: "uploaded";
-};
-
-function resolveSubmitErrorMessage(error: unknown, fallback: string) {
-  if (!(error instanceof Error)) {
-    return fallback;
-  }
-
-  const message = error.message.trim();
-  if (!message || message === "chat stream request failed") {
-    return fallback;
-  }
-
-  return message;
-}
-
-function toComposerAttachmentSignature(attachment: ChatAttachmentItem) {
-  return JSON.stringify({
-    attachmentId: attachment.id,
-    documentId: attachment.resourceDocumentId ?? null,
-    documentRevisionId: attachment.resourceDocumentVersionId ?? null,
-    kind: attachment.kind,
-    mimeType: attachment.mimeType ?? null,
-    name: attachment.name,
-    sizeBytes: attachment.sizeBytes ?? null,
-  });
-}
-
-function toMessageAttachmentSignature(
-  attachment: NonNullable<ChatMessageItem["attachments_json"]>[number],
-) {
-  return JSON.stringify({
-    attachmentId: attachment.attachment_id,
-    documentId: attachment.resource_document_id ?? null,
-    documentRevisionId: attachment.resource_document_version_id ?? null,
-    kind: attachment.type,
-    mimeType: attachment.mime_type,
-    name: attachment.name,
-    sizeBytes: attachment.size_bytes,
-  });
-}
-
-function shouldResetComposerSnapshotForRetry({
-  composerAttachments,
-  composerDraft,
-  retryAttachments,
-  retryContent,
-}: {
-  composerAttachments: ChatAttachmentItem[];
-  composerDraft: string;
-  retryAttachments: ChatMessageItem["attachments_json"];
-  retryContent: string;
-}) {
-  if (composerDraft.trim() !== retryContent.trim()) {
-    return false;
-  }
-
-  const normalizedComposerAttachments = composerAttachments
-    .map(toComposerAttachmentSignature)
-    .sort();
-  const normalizedRetryAttachments = (retryAttachments ?? [])
-    .map(toMessageAttachmentSignature)
-    .sort();
-
-  if (normalizedComposerAttachments.length !== normalizedRetryAttachments.length) {
-    return false;
-  }
-
-  return normalizedComposerAttachments.every(
-    (attachmentSignature, index) => attachmentSignature === normalizedRetryAttachments[index],
-  );
-}
 
 /**
  * 封装聊天工作区的数据与交互。
@@ -144,9 +46,7 @@ function shouldResetComposerSnapshotForRetry({
 export function useChatWorkspace(activeSessionId: number | null) {
   const { t } = useTranslation(["chat", "common"]);
   const queryClient = useQueryClient();
-  const submitPendingSessionIdsRef = useRef<Set<number>>(new Set());
   const currentSessionIdRef = useRef(activeSessionId);
-  const [submitPendingSessionIds, setSubmitPendingSessionIds] = useState<number[]>([]);
   const [scrollToLatestRequestKey, setScrollToLatestRequestKey] = useState(0);
   const attachmentsBySession = useChatUiStore((state) => state.attachmentsBySession);
   const addAttachment = useChatUiStore((state) => state.addAttachment);
@@ -167,6 +67,8 @@ export function useChatWorkspace(activeSessionId: number | null) {
   const markToastShown = useChatStreamStore((state) => state.markToastShown);
   const pruneRuns = useChatStreamStore((state) => state.pruneRuns);
   const removeRun = useChatStreamStore((state) => state.removeRun);
+  const { beginSessionSubmit, finishSessionSubmit, isSessionSubmitPending } =
+    useChatSessionSubmitController();
 
   const sessionsQuery = useQuery(chatSessionsQueryOptions());
   const sessions = Array.isArray(sessionsQuery.data) ? sessionsQuery.data : [];
@@ -490,29 +392,7 @@ export function useChatWorkspace(activeSessionId: number | null) {
       }),
     [resolvedActiveSessionId, messages, runsById],
   );
-  const submitPending =
-    resolvedActiveSessionId !== null && submitPendingSessionIds.includes(resolvedActiveSessionId);
-
-  const beginSessionSubmit = useCallback((sessionId: number) => {
-    if (submitPendingSessionIdsRef.current.has(sessionId)) {
-      return false;
-    }
-
-    submitPendingSessionIdsRef.current.add(sessionId);
-    setSubmitPendingSessionIds((current) =>
-      current.includes(sessionId) ? current : [...current, sessionId],
-    );
-    return true;
-  }, []);
-
-  const finishSessionSubmit = useCallback((sessionId: number) => {
-    if (!submitPendingSessionIdsRef.current.has(sessionId)) {
-      return;
-    }
-
-    submitPendingSessionIdsRef.current.delete(sessionId);
-    setSubmitPendingSessionIds((current) => current.filter((item) => item !== sessionId));
-  }, []);
+  const submitPending = isSessionSubmitPending(resolvedActiveSessionId);
 
   useEffect(() => {
     if (sessionsQuery.isPending || sessions.length === 0) {
