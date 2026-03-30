@@ -5,7 +5,14 @@
 import { mutationOptions, queryOptions, type QueryClient } from "@tanstack/react-query";
 
 import { queryKeys } from "@/lib/api/query-keys";
+import type { AppSettings } from "./settings";
 import { getSettings, testProviderConnection, updateSettings } from "./settings";
+
+const SETTINGS_POLL_INTERVAL_MS = 3000;
+
+function shouldPollSettings(enabled: boolean, settings: AppSettings | undefined) {
+  return enabled && settings?.index_rebuild_status === "running";
+}
 
 /**
  * 获取设置详情查询配置。
@@ -15,6 +22,10 @@ export function settingsDetailQueryOptions(enabled = true) {
     enabled,
     queryKey: queryKeys.settings.detail,
     queryFn: getSettings,
+    refetchInterval: (query) =>
+      shouldPollSettings(enabled, query.state.data as AppSettings | undefined)
+        ? SETTINGS_POLL_INTERVAL_MS
+        : false,
   });
 }
 

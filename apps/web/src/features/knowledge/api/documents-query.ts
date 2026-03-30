@@ -15,8 +15,18 @@ import {
 
 export type { KnowledgeDocument };
 
+const DOCUMENTS_POLL_INTERVAL_MS = 3000;
+
 async function invalidateDocuments(queryClient: QueryClient) {
   await queryClient.invalidateQueries({ queryKey: queryKeys.documents.list });
+}
+
+function hasPendingDocuments(documents: KnowledgeDocument[] | undefined) {
+  return (
+    documents?.some(
+      (document) => document.status === "processing" || document.status === "uploaded",
+    ) ?? false
+  );
 }
 
 /**
@@ -26,6 +36,10 @@ export function documentsListQueryOptions() {
   return queryOptions({
     queryKey: queryKeys.documents.list,
     queryFn: getDocuments,
+    refetchInterval: (query) =>
+      hasPendingDocuments(query.state.data as KnowledgeDocument[] | undefined)
+        ? DOCUMENTS_POLL_INTERVAL_MS
+        : false,
   });
 }
 
