@@ -54,6 +54,7 @@
 关键语义：
 
 - 列表返回逻辑 document 视角，并内嵌 `latest_revision`
+- `GET /api/documents` 当前支持服务端 `query / type / status` 过滤；资源页搜索与筛选直接复用这条列表接口，不再只靠前端本地过滤
 - 修订历史单独走 `/revisions`
 - 上传返回 `{ deduplicated, document, revision, latest_revision }`
 - 同名同 hash 仍会直接命中已有修订并返回 `200`

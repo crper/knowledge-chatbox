@@ -16,8 +16,23 @@ class DocumentQueryService:
         self.document_repository = DocumentRepository(session)
         self.space_repository = SpaceRepository(session)
 
-    def list_documents(self, actor) -> list[tuple[Document, DocumentRevision]]:
-        return self.document_repository.list_latest(space_ids=self._visible_space_ids(actor.id))
+    def list_documents(
+        self,
+        actor,
+        *,
+        ingest_status: str | None = None,
+        query: str | None = None,
+        type_filter: str | None = None,
+    ) -> list[tuple[Document, DocumentRevision]]:
+        normalized_query = (
+            query.strip().lower() if isinstance(query, str) and query.strip() else None
+        )
+        return self.document_repository.list_latest(
+            space_ids=self._visible_space_ids(actor.id),
+            search_query=normalized_query,
+            ingest_status=ingest_status,
+            type_filter=type_filter,
+        )
 
     def get_document(self, actor, document_id: int) -> Document | None:
         document = self.document_repository.get_document_entity(document_id)

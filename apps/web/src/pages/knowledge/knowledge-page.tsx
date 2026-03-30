@@ -46,9 +46,9 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import type {
   KnowledgeDocument,
+  KnowledgeDocumentListType,
   KnowledgeDocumentStatus,
 } from "@/features/knowledge/api/documents";
-import { getDocumentPreviewKind } from "@/features/knowledge/api/document-preview";
 import { DocumentPreviewSheet } from "@/features/knowledge/components/document-preview-sheet";
 import { ResourceDocumentList } from "@/features/knowledge/components/resource-document-list";
 import { SelectedResourceBand } from "@/features/knowledge/components/selected-resource-band";
@@ -58,7 +58,7 @@ import { VersionDrawer } from "@/features/knowledge/components/version-drawer";
 import { useIsMobile } from "@/lib/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 
-type ResourceTypeFilter = "all" | "document" | "image" | "markdown" | "pdf" | "text";
+type ResourceTypeFilter = "all" | KnowledgeDocumentListType;
 
 const TYPE_FILTER_VALUES: ResourceTypeFilter[] = [
   "all",
@@ -102,12 +102,21 @@ export function KnowledgePage() {
   const [typeFilter, setTypeFilter] = useState<ResourceTypeFilter>("all");
   const [statusFilter, setStatusFilter] = useState<"all" | KnowledgeDocumentStatus>("all");
   const deferredSearchValue = useDeferredValue(searchValue);
+  const documentFilters = useMemo(
+    () => ({
+      query: deferredSearchValue,
+      status: statusFilter === "all" ? undefined : statusFilter,
+      type: typeFilter === "all" ? undefined : typeFilter,
+    }),
+    [deferredSearchValue, statusFilter, typeFilter],
+  );
   const {
     canManageDocuments,
     cancelUpload,
     closeVersionDrawer,
     deleteDocument,
     documents,
+    documentsRefreshing,
     enqueueUploads,
     localUploadingCount,
     processingCount,
@@ -119,25 +128,8 @@ export function KnowledgePage() {
     uploadItems,
     versionDrawerOpen,
     versions,
-  } = useKnowledgeWorkspace();
-  const filteredDocuments = useMemo(() => {
-    const normalizedQuery = deferredSearchValue.trim().toLowerCase();
-    return documents.filter((document) => {
-      const matchesQuery =
-        normalizedQuery.length === 0 ||
-        [document.name, document.logical_name ?? "", document.file_type, document.status].some(
-          (value) => value.toLowerCase().includes(normalizedQuery),
-        );
-
-      const previewKind = getDocumentPreviewKind(document.file_type);
-      const normalizedTypeFilter =
-        previewKind === "unsupported" || previewKind === "docx" ? "document" : previewKind;
-      const matchesType = typeFilter === "all" || normalizedTypeFilter === typeFilter;
-      const matchesStatus = statusFilter === "all" || document.status === statusFilter;
-
-      return matchesQuery && matchesType && matchesStatus;
-    });
-  }, [deferredSearchValue, documents, statusFilter, typeFilter]);
+  } = useKnowledgeWorkspace(documentFilters);
+  const filteredDocuments = documents;
   const indexedCount = documents.filter((document) => document.status === "indexed").length;
   const hasDocuments = documents.length > 0;
   const activeFilterCount = Number(typeFilter !== "all") + Number(statusFilter !== "all");
@@ -407,6 +399,12 @@ export function KnowledgePage() {
                       <p className="text-ui-subtle text-muted-foreground">
                         {t("processingInlineHint")}
                       </p>
+                    </div>
+                  ) : null}
+                  {documentsRefreshing ? (
+                    <div className="flex items-center gap-2 px-1 text-ui-subtle text-muted-foreground">
+                      <Spinner aria-hidden="true" className="size-3.5" />
+                      <span>{t("searchRefreshingHint")}</span>
                     </div>
                   ) : null}
 

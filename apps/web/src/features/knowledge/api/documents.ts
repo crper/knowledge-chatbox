@@ -18,6 +18,12 @@ import {
 export const KNOWLEDGE_DOCUMENT_STATUSES = ["uploaded", "processing", "indexed", "failed"] as const;
 
 export type KnowledgeDocumentStatus = (typeof KNOWLEDGE_DOCUMENT_STATUSES)[number];
+export type KnowledgeDocumentListType = "document" | "image" | "markdown" | "pdf" | "text";
+export type KnowledgeDocumentListFilters = {
+  query?: string;
+  status?: KnowledgeDocumentStatus;
+  type?: KnowledgeDocumentListType;
+};
 
 export type KnowledgeDocument = {
   deduplicated?: boolean;
@@ -79,6 +85,18 @@ function toKnowledgeDocument(
   };
 }
 
+export function normalizeKnowledgeDocumentListFilters(
+  filters?: KnowledgeDocumentListFilters,
+): KnowledgeDocumentListFilters {
+  const normalizedQuery = filters?.query?.trim();
+
+  return {
+    query: normalizedQuery ? normalizedQuery : undefined,
+    status: filters?.status,
+    type: filters?.type,
+  };
+}
+
 function toKnowledgeDocumentVersion(revision: DocumentRevisionRead): KnowledgeDocument {
   return {
     id: revision.id,
@@ -105,9 +123,18 @@ function toKnowledgeDocumentVersion(revision: DocumentRevisionRead): KnowledgeDo
   };
 }
 
-export async function getDocuments() {
+export async function getDocuments(filters?: KnowledgeDocumentListFilters) {
+  const normalizedFilters = normalizeKnowledgeDocumentListFilters(filters);
   const documents = await openapiRequestRequired<DocumentSummaryRead[]>(
-    apiFetchClient.GET("/api/documents"),
+    apiFetchClient.GET("/api/documents", {
+      params: {
+        query: {
+          query: normalizedFilters.query,
+          status: normalizedFilters.status,
+          type: normalizedFilters.type,
+        },
+      },
+    }),
   );
   return documents.map((document) => toKnowledgeDocument(document, document.latest_revision));
 }

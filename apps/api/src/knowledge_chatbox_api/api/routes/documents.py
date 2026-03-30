@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, BackgroundTasks, File, Response, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, File, Query, Response, UploadFile, status
 from fastapi.responses import FileResponse
 
 from knowledge_chatbox_api.api.deps import CurrentUserDep, DbSessionDep, SettingsDep
@@ -34,6 +34,10 @@ from knowledge_chatbox_api.utils.files import save_upload_stream
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 UploadFileDep = Annotated[UploadFile, File(...)]
 logger = get_logger(__name__)
+DocumentListTypeFilter = Literal["document", "image", "markdown", "pdf", "text"]
+DocumentListStatusFilter = Literal["uploaded", "processing", "indexed", "failed"]
+DOCUMENT_TYPE_QUERY = Query(default=None, alias="type")
+DOCUMENT_STATUS_QUERY = Query(default=None, alias="status")
 
 
 def _document_not_found() -> DocumentNotFoundError:
@@ -104,10 +108,18 @@ def list_documents(
     session: DbSessionDep,
     _settings: SettingsDep,
     current_user: CurrentUserDep,
+    query: str | None = Query(default=None),
+    type_filter: DocumentListTypeFilter | None = DOCUMENT_TYPE_QUERY,
+    status_filter: DocumentListStatusFilter | None = DOCUMENT_STATUS_QUERY,
 ) -> Envelope[list[DocumentSummaryRead]]:
     """列出文档。"""
     service = DocumentQueryService(session)
-    documents = service.list_documents(current_user)
+    documents = service.list_documents(
+        current_user,
+        ingest_status=status_filter,
+        query=query,
+        type_filter=type_filter,
+    )
     return Envelope(
         success=True,
         data=[to_document_summary_read(document, revision) for document, revision in documents],

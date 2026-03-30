@@ -132,6 +132,35 @@ describe("documents api", () => {
     ]);
   });
 
+  it("passes search and filter params when loading the documents list", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      jsonResponse({
+        success: true,
+        data: [],
+        error: null,
+      }),
+    );
+
+    await getDocuments({
+      query: "guide",
+      status: "indexed",
+      type: "markdown",
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/api/documents?"),
+      expect.objectContaining({ credentials: "include" }),
+    );
+    const calledUrl = fetchMock.mock.calls[0]?.[0];
+    if (typeof calledUrl !== "string") {
+      throw new Error("expected the documents request url to be a string");
+    }
+    const params = new URL(calledUrl).searchParams;
+    expect(params.get("query")).toBe("guide");
+    expect(params.get("type")).toBe("markdown");
+    expect(params.get("status")).toBe("indexed");
+  });
+
   it("gets versions for one document", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       jsonResponse({

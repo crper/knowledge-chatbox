@@ -18,7 +18,7 @@ import {
   reindexDocumentMutationOptions,
   type KnowledgeDocument,
 } from "../api/documents-query";
-import { uploadDocument } from "../api/documents";
+import { uploadDocument, type KnowledgeDocumentListFilters } from "../api/documents";
 
 type KnowledgeUploadItem = {
   errorMessage?: string;
@@ -32,7 +32,7 @@ type KnowledgeUploadItem = {
 /**
  * 封装资源工作区的数据与交互。
  */
-export function useKnowledgeWorkspace() {
+export function useKnowledgeWorkspace(filters?: KnowledgeDocumentListFilters) {
   const { t } = useTranslation("knowledge");
   const queryClient = useQueryClient();
   const [versionDrawerOpen, setVersionDrawerOpen] = useState(false);
@@ -43,7 +43,7 @@ export function useKnowledgeWorkspace() {
   const canceledUploadIdsRef = useRef(new Set<string>());
 
   const currentUserQuery = useQuery(currentUserQueryOptions());
-  const documentsQuery = useQuery(documentsListQueryOptions());
+  const documentsQuery = useQuery(documentsListQueryOptions(filters));
 
   const deleteMutation = useMutation(deleteDocumentMutationOptions(queryClient));
   const reindexMutation = useMutation({
@@ -219,6 +219,7 @@ export function useKnowledgeWorkspace() {
     canManageDocuments: Boolean(currentUserQuery.data),
     deleteDocument: (documentId: number) => deleteMutation.mutateAsync(documentId),
     documents,
+    documentsRefreshing: documentsQuery.isFetching && documentsQuery.data !== undefined,
     cancelUpload,
     enqueueUploads,
     localUploadingCount: uploadItems.filter((item) => item.status === "uploading").length,

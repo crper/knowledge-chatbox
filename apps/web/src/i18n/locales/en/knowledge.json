@@ -36,6 +36,7 @@
   "filterStatusSectionTitle": "Processing State",
   "clearFiltersAction": "Clear Filters",
   "resultCount": "{{count}} results",
+  "searchRefreshingHint": "Refreshing results...",
   "rowLogicalNameFallback": "No logical name",
   "rowOpenMenuAction": "More actions for {{name}}",
   "rowUpdatedLabel": "Updated",

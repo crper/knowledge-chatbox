@@ -7,7 +7,21 @@ from sqlalchemy.engine import Row
 from sqlalchemy.orm import Session
 
 from knowledge_chatbox_api.models.document import Document, DocumentRevision
-from knowledge_chatbox_api.services.documents.constants import LISTABLE_DOCUMENT_STATUSES
+from knowledge_chatbox_api.services.documents.constants import (
+    DOCX_DOCUMENT_FILE_TYPES,
+    IMAGE_DOCUMENT_FILE_TYPES,
+    LISTABLE_DOCUMENT_STATUSES,
+    MARKDOWN_DOCUMENT_FILE_TYPES,
+    TEXT_DOCUMENT_FILE_TYPES,
+)
+
+DOCUMENT_TYPE_FILTERS = {
+    "document": tuple(DOCX_DOCUMENT_FILE_TYPES),
+    "image": tuple(IMAGE_DOCUMENT_FILE_TYPES),
+    "markdown": tuple(MARKDOWN_DOCUMENT_FILE_TYPES),
+    "pdf": ("pdf",),
+    "text": tuple(TEXT_DOCUMENT_FILE_TYPES),
+}
 
 
 class DocumentRepository:
@@ -58,6 +72,9 @@ class DocumentRepository:
         self,
         *,
         space_ids: set[int] | None = None,
+        search_query: str | None = None,
+        ingest_status: str | None = None,
+        type_filter: str | None = None,
     ) -> list[tuple[Document, DocumentRevision]]:
         """列出逻辑文档和最新修订。"""
         if space_ids is not None and not space_ids:
@@ -84,10 +101,31 @@ class DocumentRepository:
         )
         if space_ids is not None:
             statement = statement.where(Document.space_id.in_(space_ids))
+        if ingest_status is not None:
+            statement = statement.where(DocumentRevision.ingest_status == ingest_status)
+        if type_filter is not None:
+            statement = statement.where(self._build_type_filter_clause(type_filter))
+        if search_query is not None:
+            like_pattern = f"%{search_query.lower()}%"
+            statement = statement.where(
+                or_(
+                    Document.title.ilike(like_pattern),
+                    Document.logical_name.ilike(like_pattern),
+                    DocumentRevision.source_filename.ilike(like_pattern),
+                    DocumentRevision.file_type.ilike(like_pattern),
+                    DocumentRevision.ingest_status.ilike(like_pattern),
+                )
+            )
         rows: list[Row[tuple[Document, DocumentRevision]]] = list(
             self.session.execute(statement).all()
         )
         return [(document, revision) for document, revision in rows]
+
+    def _build_type_filter_clause(self, type_filter: str):
+        file_types = DOCUMENT_TYPE_FILTERS.get(type_filter)
+        if not file_types:
+            return DocumentRevision.file_type == type_filter
+        return DocumentRevision.file_type.in_(file_types)
 
     def get_latest_by_logical_name(
         self,

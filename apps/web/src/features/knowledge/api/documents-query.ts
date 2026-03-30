@@ -9,8 +9,10 @@ import {
   deleteDocument,
   getDocumentVersions,
   getDocuments,
+  normalizeKnowledgeDocumentListFilters,
   reindexDocument,
   type KnowledgeDocument,
+  type KnowledgeDocumentListFilters,
 } from "./documents";
 
 export type { KnowledgeDocument };
@@ -29,13 +31,25 @@ function hasPendingDocuments(documents: KnowledgeDocument[] | undefined) {
   );
 }
 
+function buildDocumentsListQueryKey(filters?: KnowledgeDocumentListFilters) {
+  const normalizedFilters = normalizeKnowledgeDocumentListFilters(filters);
+  return [
+    ...queryKeys.documents.list,
+    normalizedFilters.query ?? null,
+    normalizedFilters.type ?? null,
+    normalizedFilters.status ?? null,
+  ] as const;
+}
+
 /**
  * 获取资源列表查询配置。
  */
-export function documentsListQueryOptions() {
+export function documentsListQueryOptions(filters?: KnowledgeDocumentListFilters) {
+  const normalizedFilters = normalizeKnowledgeDocumentListFilters(filters);
   return queryOptions({
-    queryKey: queryKeys.documents.list,
-    queryFn: getDocuments,
+    queryKey: buildDocumentsListQueryKey(normalizedFilters),
+    queryFn: () => getDocuments(normalizedFilters),
+    placeholderData: (previousData) => previousData,
     refetchInterval: (query) =>
       hasPendingDocuments(query.state.data as KnowledgeDocument[] | undefined)
         ? DOCUMENTS_POLL_INTERVAL_MS

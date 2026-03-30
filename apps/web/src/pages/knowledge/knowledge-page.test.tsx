@@ -564,18 +564,65 @@ describe("KnowledgePage", () => {
     expect(screen.queryByText("当前资源")).not.toBeInTheDocument();
   });
 
-  it("filters resources locally and clears the selected summary band when the chosen resource is filtered out", async () => {
-    const fetchMock = buildFetchMock();
+  it("requests server-filtered resources and clears the selected summary band when the chosen resource disappears", async () => {
+    const fetchMock = vi.fn().mockImplementation((input: string) => {
+      if (input.endsWith("/api/auth/me")) {
+        return Promise.resolve(
+          jsonResponse({
+            success: true,
+            data: {
+              id: 1,
+              username: "admin",
+              role: "admin",
+              status: "active",
+              theme_preference: "system",
+            },
+            error: null,
+          }),
+        );
+      }
+
+      const url = new URL(input, "http://testserver");
+      const query = url.searchParams.get("query");
+      const documents =
+        query === "guide"
+          ? [
+              buildDocumentSummary({
+                id: 40,
+                revision_id: 4,
+                title: "guide.pdf",
+                version: 1,
+                status: "processing",
+                file_type: "pdf",
+              }),
+            ]
+          : [
+              buildDocumentSummary({
+                id: 20,
+                revision_id: 2,
+                title: "spec.md",
+                version: 2,
+                status: "indexed",
+              }),
+              buildDocumentSummary({
+                id: 40,
+                revision_id: 4,
+                title: "guide.pdf",
+                version: 1,
+                status: "processing",
+                file_type: "pdf",
+              }),
+            ];
+
+      return Promise.resolve(jsonResponse({ success: true, data: documents, error: null }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
 
     renderKnowledgePage();
 
     await screen.findAllByRole("button", { name: "查看版本" });
     fireEvent.click(screen.getByRole("button", { name: "spec.md" }));
     expect(await screen.findByText("当前资源")).toBeInTheDocument();
-
-    const documentListCallsBeforeSearch = fetchMock.mock.calls.filter(([url]) =>
-      endsWithApiPath(url, "/api/documents"),
-    ).length;
 
     fireEvent.change(screen.getByLabelText("搜索资源"), {
       target: { value: "guide" },
@@ -587,15 +634,69 @@ describe("KnowledgePage", () => {
     expect(screen.getAllByText("guide.pdf").length).toBeGreaterThan(0);
     expect(screen.queryByText("当前资源")).not.toBeInTheDocument();
 
-    const documentListCallsAfterSearch = fetchMock.mock.calls.filter(([url]) =>
-      endsWithApiPath(url, "/api/documents"),
-    ).length;
-    expect(documentListCallsAfterSearch).toBe(documentListCallsBeforeSearch);
+    const filteredCall = fetchMock.mock.calls.find(([url]) => {
+      const requestUrl = new URL(String(url), "http://testserver");
+      return (
+        requestUrl.pathname === "/api/documents" && requestUrl.searchParams.get("query") === "guide"
+      );
+    });
+    expect(filteredCall).toBeDefined();
   });
 
   it("moves type and status filters into a mobile sheet", async () => {
     mockMobileViewport();
-    buildFetchMock();
+    const fetchMock = vi.fn().mockImplementation((input: string) => {
+      if (input.endsWith("/api/auth/me")) {
+        return Promise.resolve(
+          jsonResponse({
+            success: true,
+            data: {
+              id: 1,
+              username: "admin",
+              role: "admin",
+              status: "active",
+              theme_preference: "system",
+            },
+            error: null,
+          }),
+        );
+      }
+
+      const url = new URL(input, "http://testserver");
+      const type = url.searchParams.get("type");
+      const documents =
+        type === "pdf"
+          ? [
+              buildDocumentSummary({
+                id: 40,
+                revision_id: 4,
+                title: "guide.pdf",
+                version: 1,
+                status: "processing",
+                file_type: "pdf",
+              }),
+            ]
+          : [
+              buildDocumentSummary({
+                id: 20,
+                revision_id: 2,
+                title: "spec.md",
+                version: 2,
+                status: "indexed",
+              }),
+              buildDocumentSummary({
+                id: 40,
+                revision_id: 4,
+                title: "guide.pdf",
+                version: 1,
+                status: "processing",
+                file_type: "pdf",
+              }),
+            ];
+
+      return Promise.resolve(jsonResponse({ success: true, data: documents, error: null }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
 
     renderKnowledgePage();
 
@@ -611,6 +712,14 @@ describe("KnowledgePage", () => {
       expect(screen.queryByText("spec.md")).not.toBeInTheDocument();
     });
     expect(screen.getAllByText("guide.pdf").length).toBeGreaterThan(0);
+
+    const filteredCall = fetchMock.mock.calls.find(([url]) => {
+      const requestUrl = new URL(String(url), "http://testserver");
+      return (
+        requestUrl.pathname === "/api/documents" && requestUrl.searchParams.get("type") === "pdf"
+      );
+    });
+    expect(filteredCall).toBeDefined();
   });
 
   it("renders document management actions for non-admin users", async () => {

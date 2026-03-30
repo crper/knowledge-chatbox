@@ -36,6 +36,7 @@
   "filterStatusSectionTitle": "处理状态",
   "clearFiltersAction": "清空筛选",
   "resultCount": "共 {{count}} 项",
+  "searchRefreshingHint": "正在更新筛选结果...",
   "rowLogicalNameFallback": "未设置逻辑名",
   "rowOpenMenuAction": "更多操作 {{name}}",
   "rowUpdatedLabel": "更新于",

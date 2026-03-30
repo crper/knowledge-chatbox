@@ -136,6 +136,36 @@ def test_upload_document_returns_existing_revision_for_duplicate_content(
     assert len(current_uploads - existing_uploads) == 1
 
 
+def test_list_documents_supports_query_type_and_status_filters(
+    api_client: TestClient,
+) -> None:
+    login_admin(api_client)
+
+    first_response = api_client.post(
+        "/api/documents/upload",
+        files={"file": ("note.txt", b"hello world", "text/plain")},
+    )
+    second_response = api_client.post(
+        "/api/documents/upload",
+        files={"file": ("guide.md", b"# Guide\n\nknowledge", "text/markdown")},
+    )
+
+    assert first_response.status_code == 201
+    assert second_response.status_code == 201
+
+    filtered_response = api_client.get(
+        "/api/documents",
+        params={"query": "guide", "type": "markdown", "status": "indexed"},
+    )
+
+    assert filtered_response.status_code == 200
+    payload = filtered_response.json()["data"]
+    assert len(payload) == 1
+    assert payload[0]["title"] == "guide.md"
+    assert payload[0]["latest_revision"]["file_type"] == "md"
+    assert payload[0]["latest_revision"]["ingest_status"] == "indexed"
+
+
 def test_reindex_document_returns_conflict_when_document_is_not_normalized(
     api_client: TestClient,
 ) -> None:
