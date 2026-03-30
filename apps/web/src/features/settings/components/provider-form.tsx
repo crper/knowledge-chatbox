@@ -335,15 +335,23 @@ export function ProviderForm({
     setDraft((current) => updater(current));
   };
 
+  const validateDraft = () => {
+    const validation = validateProviderSettingsView(draft);
+    if (!validation) {
+      return false;
+    }
+
+    setValidationResult(validation);
+    setErrorMessage(getFirstFormError([validation.form], t));
+    scrollToField(validation.firstInvalidField);
+    return true;
+  };
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     clearFeedback();
 
-    const validation = validateProviderSettingsView(draft);
-    if (validation) {
-      setValidationResult(validation);
-      setErrorMessage(getFirstFormError([validation.form], t));
-      scrollToField(validation.firstInvalidField);
+    if (validateDraft()) {
       return;
     }
 
@@ -368,11 +376,7 @@ export function ProviderForm({
   const handleTest = async () => {
     clearFeedback();
 
-    const validation = validateProviderSettingsView(draft);
-    if (validation) {
-      setValidationResult(validation);
-      setErrorMessage(getFirstFormError([validation.form], t));
-      scrollToField(validation.firstInvalidField);
+    if (validateDraft()) {
       return;
     }
 

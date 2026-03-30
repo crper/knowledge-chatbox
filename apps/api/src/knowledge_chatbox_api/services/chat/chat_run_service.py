@@ -374,8 +374,33 @@ class ChatRunService:
         failure_type: str,
         sources: list[dict[str, Any]] | None = None,
     ) -> tuple[int, dict]:
-        user_message.status = "failed"
-        user_message.error_message = error_message
+        return self._record_failed_run(
+            run=run,
+            assistant_message=assistant_message,
+            current_seq=current_seq,
+            error_message=error_message,
+            failure_type=failure_type,
+            session_id=session_id,
+            sources=sources,
+            user_message=user_message,
+        )
+
+    def _record_failed_run(
+        self,
+        *,
+        run,
+        assistant_message,
+        current_seq: int,
+        error_message: str,
+        failure_type: str,
+        session_id: int,
+        sources: list[dict[str, Any]] | None = None,
+        user_message=None,
+    ) -> tuple[int, dict]:
+        if user_message is not None:
+            user_message.status = "failed"
+            user_message.error_message = error_message
+
         self.persistence.fail_run(
             run,
             assistant_message,
@@ -476,28 +501,12 @@ class ChatRunService:
     ) -> None:
         if run.status not in {"pending", "running"}:
             return
-        self.persistence.fail_run(
-            run,
-            assistant_message,
-            STREAM_INTERRUPTED_ERROR_MESSAGE,
-            sources=sources,
-        )
-        logger.warning(
-            "chat_stream_run_failed",
-            run_id=run.id,
-            session_id=run.session_id,
-            response_provider=self._response_provider_name(),
-            response_model=self._response_model(),
-            failure_type="stream_interrupted",
+        self._record_failed_run(
+            run=run,
+            assistant_message=assistant_message,
+            current_seq=current_seq,
             error_message=STREAM_INTERRUPTED_ERROR_MESSAGE,
-        )
-        self._append_event(
-            run,
-            current_seq,
-            "run.failed",
-            {
-                "run_id": run.id,
-                "assistant_message_id": assistant_message.id,
-                "error_message": STREAM_INTERRUPTED_ERROR_MESSAGE,
-            },
+            failure_type="stream_interrupted",
+            session_id=run.session_id,
+            sources=sources,
         )

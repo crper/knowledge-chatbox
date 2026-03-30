@@ -91,6 +91,8 @@ export function useChatWorkspace(activeSessionId: number | null) {
   const setDraft = useChatUiStore((state) => state.setDraft);
 
   const runsById = useChatStreamStore((state) => state.runsById);
+  type StreamRun = (typeof runsById)[number];
+  type StreamRunTerminalStatus = "failed" | "succeeded";
   const startRun = useChatStreamStore((state) => state.startRun);
   const appendDelta = useChatStreamStore((state) => state.appendDelta);
   const addSource = useChatStreamStore((state) => state.addSource);
@@ -215,6 +217,101 @@ export function useChatWorkspace(activeSessionId: number | null) {
     [queryClient],
   );
 
+  const buildTerminalMessages = useCallback(
+    ({
+      errorMessage,
+      run,
+      status,
+    }: {
+      errorMessage: string | null;
+      run: StreamRun;
+      status: StreamRunTerminalStatus;
+    }): ChatMessageItem[] => {
+      const assistantMessage: ChatMessageItem = {
+        content: run.content,
+        error_message: errorMessage,
+        id: run.assistantMessageId,
+        reply_to_message_id: run.retryOfMessageId ?? run.userMessageId ?? null,
+        role: "assistant",
+        sources_json: run.sources as ChatMessageItem["sources_json"],
+        status,
+      };
+
+      if (run.userMessageId === null) {
+        return [assistantMessage];
+      }
+
+      return [
+        {
+          content: run.userContent,
+          ...(errorMessage ? { error_message: errorMessage } : {}),
+          id: run.userMessageId,
+          role: "user",
+          sources_json: [],
+          status,
+        },
+        assistantMessage,
+      ];
+    },
+    [],
+  );
+
+  const finalizeStreamRun = useCallback(
+    ({
+      errorMessage,
+      runId,
+      sessionId,
+      status,
+    }: {
+      errorMessage: string | null;
+      runId: number;
+      sessionId: number;
+      status: StreamRunTerminalStatus;
+    }) => {
+      const currentRun = useChatStreamStore.getState().runsById[runId];
+      const patched =
+        currentRun == null
+          ? false
+          : patchPagedChatMessagesCache({
+              appendIfMissing: buildTerminalMessages({
+                errorMessage,
+                run: currentRun,
+                status,
+              }),
+              assistantMessageId: currentRun.assistantMessageId,
+              patch: {
+                content: currentRun.content,
+                error_message: errorMessage,
+                sources_json: currentRun.sources as ChatMessageItem["sources_json"],
+                status,
+              },
+              queryClient,
+              sessionId,
+            });
+
+      if (currentRun != null) {
+        patchSessionContext({
+          latestAssistantMessageId: currentRun.assistantMessageId,
+          latestAssistantSources:
+            currentRun.sources as ChatSessionContextItem["latest_assistant_sources"],
+          sessionId,
+        });
+      }
+
+      const refreshPromise = patched
+        ? Promise.resolve()
+        : queryClient.invalidateQueries({
+            queryKey: queryKeys.chat.messagesWindow(sessionId),
+          });
+      void refreshPromise.then(() => {
+        if (status === "failed" || currentSessionIdRef.current === sessionId) {
+          pruneRuns([runId]);
+        }
+      });
+    },
+    [buildTerminalMessages, patchSessionContext, pruneRuns, queryClient],
+  );
+
   const sendMutation = useMutation({
     mutationFn: async ({
       attachments,
@@ -311,69 +408,11 @@ export function useChatWorkspace(activeSessionId: number | null) {
             if (event.event === "run.completed") {
               receivedTerminalRunEvent = true;
               completeRun(runId);
-              const currentRun = useChatStreamStore.getState().runsById[runId];
-              const patched =
-                currentRun != null
-                  ? patchPagedChatMessagesCache({
-                      appendIfMissing: currentRun.userMessageId
-                        ? [
-                            {
-                              content: currentRun.userContent,
-                              id: currentRun.userMessageId,
-                              role: "user",
-                              status: "succeeded",
-                              sources_json: [],
-                            },
-                            {
-                              content: currentRun.content,
-                              id: currentRun.assistantMessageId,
-                              reply_to_message_id:
-                                currentRun.retryOfMessageId ?? currentRun.userMessageId,
-                              role: "assistant",
-                              status: "succeeded",
-                              sources_json: currentRun.sources as ChatMessageItem["sources_json"],
-                            },
-                          ]
-                        : [
-                            {
-                              content: currentRun.content,
-                              id: currentRun.assistantMessageId,
-                              reply_to_message_id: currentRun.retryOfMessageId ?? null,
-                              role: "assistant",
-                              status: "succeeded",
-                              sources_json: currentRun.sources as ChatMessageItem["sources_json"],
-                            },
-                          ],
-                      assistantMessageId: currentRun.assistantMessageId,
-                      patch: {
-                        content: currentRun.content,
-                        error_message: null,
-                        sources_json: currentRun.sources as ChatMessageItem["sources_json"],
-                        status: "succeeded",
-                      },
-                      queryClient,
-                      sessionId,
-                    })
-                  : false;
-
-              if (currentRun != null) {
-                patchSessionContext({
-                  latestAssistantMessageId: currentRun.assistantMessageId,
-                  latestAssistantSources:
-                    currentRun.sources as ChatSessionContextItem["latest_assistant_sources"],
-                  sessionId,
-                });
-              }
-
-              const refreshPromise = patched
-                ? Promise.resolve()
-                : queryClient.invalidateQueries({
-                    queryKey: queryKeys.chat.messagesWindow(sessionId),
-                  });
-              void refreshPromise.then(() => {
-                if (currentSessionIdRef.current === sessionId) {
-                  pruneRuns([runId]);
-                }
+              finalizeStreamRun({
+                errorMessage: null,
+                runId,
+                sessionId,
+                status: "succeeded",
               });
               return;
             }
@@ -385,70 +424,11 @@ export function useChatWorkspace(activeSessionId: number | null) {
                   ? event.data.error_message
                   : t("assistantStreamingInterruptedError");
               failRun(runId, errorMessage);
-              const currentRun = useChatStreamStore.getState().runsById[runId];
-              const patched =
-                currentRun != null
-                  ? patchPagedChatMessagesCache({
-                      appendIfMissing: currentRun.userMessageId
-                        ? [
-                            {
-                              content: currentRun.userContent,
-                              error_message: errorMessage,
-                              id: currentRun.userMessageId,
-                              role: "user",
-                              status: "failed",
-                              sources_json: [],
-                            },
-                            {
-                              content: currentRun.content,
-                              error_message: errorMessage,
-                              id: currentRun.assistantMessageId,
-                              reply_to_message_id:
-                                currentRun.retryOfMessageId ?? currentRun.userMessageId,
-                              role: "assistant",
-                              status: "failed",
-                              sources_json: currentRun.sources as ChatMessageItem["sources_json"],
-                            },
-                          ]
-                        : [
-                            {
-                              content: currentRun.content,
-                              error_message: errorMessage,
-                              id: currentRun.assistantMessageId,
-                              reply_to_message_id: currentRun.retryOfMessageId ?? null,
-                              role: "assistant",
-                              status: "failed",
-                              sources_json: currentRun.sources as ChatMessageItem["sources_json"],
-                            },
-                          ],
-                      assistantMessageId: currentRun.assistantMessageId,
-                      patch: {
-                        content: currentRun.content,
-                        error_message: errorMessage,
-                        sources_json: currentRun.sources as ChatMessageItem["sources_json"],
-                        status: "failed",
-                      },
-                      queryClient,
-                      sessionId,
-                    })
-                  : false;
-
-              if (currentRun != null) {
-                patchSessionContext({
-                  latestAssistantMessageId: currentRun.assistantMessageId,
-                  latestAssistantSources:
-                    currentRun.sources as ChatSessionContextItem["latest_assistant_sources"],
-                  sessionId,
-                });
-              }
-
-              const refreshPromise = patched
-                ? Promise.resolve()
-                : queryClient.invalidateQueries({
-                    queryKey: queryKeys.chat.messagesWindow(sessionId),
-                  });
-              void refreshPromise.then(() => {
-                pruneRuns([runId]);
+              finalizeStreamRun({
+                errorMessage,
+                runId,
+                sessionId,
+                status: "failed",
               });
             }
           },

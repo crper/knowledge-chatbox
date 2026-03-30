@@ -50,6 +50,35 @@ def create_chat_session(migrated_db_session) -> ChatSession:
     return chat_session
 
 
+def build_chat_run_service(
+    migrated_db_session,
+    *,
+    response_adapter,
+    event_repository: ChatRunEventRepository | None = None,
+):
+    chat_repository = ChatRepository(migrated_db_session)
+    run_repository = ChatRunRepository(migrated_db_session)
+    active_event_repository = event_repository or ChatRunEventRepository(migrated_db_session)
+    service = ChatRunService(
+        session=migrated_db_session,
+        chat_repository=chat_repository,
+        chat_run_repository=run_repository,
+        chat_run_event_repository=active_event_repository,
+        retry_service=RetryService(chat_repository, migrated_db_session),
+        chroma_store=InMemoryChromaStore(),
+        response_adapter=response_adapter,
+        embedding_adapter=None,
+        settings=SimpleNamespace(
+            response_route={"provider": "openai", "model": "gpt-5.4"},
+            embedding_route={"provider": "openai", "model": "text-embedding-3-small"},
+            system_prompt=None,
+            active_index_generation=1,
+        ),
+        presenter=ChatStreamPresenter(),
+    )
+    return service, chat_repository, run_repository, active_event_repository
+
+
 def test_chat_run_supports_full_lifecycle_states(migrated_db_session) -> None:
     chat_session = create_chat_session(migrated_db_session)
     chat_run = ChatRun(
@@ -136,23 +165,9 @@ def test_chat_run_service_streams_runtime_events_and_persists_projection(
             yield SimpleNamespace(type="completed", usage={"output_tokens": 2})
 
     chat_session = create_chat_session(migrated_db_session)
-    chat_repository = ChatRepository(migrated_db_session)
-    service = ChatRunService(
-        session=migrated_db_session,
-        chat_repository=chat_repository,
-        chat_run_repository=ChatRunRepository(migrated_db_session),
-        chat_run_event_repository=ChatRunEventRepository(migrated_db_session),
-        retry_service=RetryService(chat_repository, migrated_db_session),
-        chroma_store=InMemoryChromaStore(),
+    service, chat_repository, _, event_repository = build_chat_run_service(
+        migrated_db_session,
         response_adapter=StreamingAdapterStub(),
-        embedding_adapter=None,
-        settings=SimpleNamespace(
-            response_route={"provider": "openai", "model": "gpt-5.4"},
-            embedding_route={"provider": "openai", "model": "text-embedding-3-small"},
-            system_prompt=None,
-            active_index_generation=1,
-        ),
-        presenter=ChatStreamPresenter(),
     )
 
     events = list(
@@ -165,9 +180,7 @@ def test_chat_run_service_streams_runtime_events_and_persists_projection(
 
     messages = chat_repository.list_messages(chat_session.id)
     assistant_message = next(message for message in messages if message.role == "assistant")
-    persisted_events = ChatRunEventRepository(migrated_db_session).list_for_run(
-        events[0]["data"]["run_id"]
-    )
+    persisted_events = event_repository.list_for_run(events[0]["data"]["run_id"])
 
     assert [event["event"] for event in events] == [
         "run.started",
@@ -197,24 +210,9 @@ def test_chat_run_service_marks_run_failed_when_stream_is_closed_early(
             yield SimpleNamespace(type="text_delta", delta=" response")
 
     chat_session = create_chat_session(migrated_db_session)
-    chat_repository = ChatRepository(migrated_db_session)
-    run_repository = ChatRunRepository(migrated_db_session)
-    service = ChatRunService(
-        session=migrated_db_session,
-        chat_repository=chat_repository,
-        chat_run_repository=run_repository,
-        chat_run_event_repository=ChatRunEventRepository(migrated_db_session),
-        retry_service=RetryService(chat_repository, migrated_db_session),
-        chroma_store=InMemoryChromaStore(),
+    service, chat_repository, run_repository, event_repository = build_chat_run_service(
+        migrated_db_session,
         response_adapter=HangingStreamingAdapterStub(),
-        embedding_adapter=None,
-        settings=SimpleNamespace(
-            response_route={"provider": "openai", "model": "gpt-5.4"},
-            embedding_route={"provider": "openai", "model": "text-embedding-3-small"},
-            system_prompt=None,
-            active_index_generation=1,
-        ),
-        presenter=ChatStreamPresenter(),
     )
 
     stream = service.stream_run(
@@ -237,7 +235,7 @@ def test_chat_run_service_marks_run_failed_when_stream_is_closed_early(
             client_request_id="req-stream-close-1",
         )
     )
-    persisted_events = ChatRunEventRepository(migrated_db_session).list_for_run(run_id)
+    persisted_events = event_repository.list_for_run(run_id)
 
     assert assistant_message.status == "failed"
     assert assistant_message.error_message == "本次生成连接中断，请重试。"
@@ -258,25 +256,9 @@ def test_chat_run_service_marks_run_failed_when_provider_stream_ends_without_com
             yield SimpleNamespace(type="text_delta", delta=" response")
 
     chat_session = create_chat_session(migrated_db_session)
-    chat_repository = ChatRepository(migrated_db_session)
-    run_repository = ChatRunRepository(migrated_db_session)
-    event_repository = ChatRunEventRepository(migrated_db_session)
-    service = ChatRunService(
-        session=migrated_db_session,
-        chat_repository=chat_repository,
-        chat_run_repository=run_repository,
-        chat_run_event_repository=event_repository,
-        retry_service=RetryService(chat_repository, migrated_db_session),
-        chroma_store=InMemoryChromaStore(),
+    service, chat_repository, run_repository, event_repository = build_chat_run_service(
+        migrated_db_session,
         response_adapter=HangingStreamingAdapterStub(),
-        embedding_adapter=None,
-        settings=SimpleNamespace(
-            response_route={"provider": "openai", "model": "gpt-5.4"},
-            embedding_route={"provider": "openai", "model": "text-embedding-3-small"},
-            system_prompt=None,
-            active_index_generation=1,
-        ),
-        presenter=ChatStreamPresenter(),
     )
 
     events = list(
@@ -335,25 +317,9 @@ def test_chat_run_service_keeps_retrieved_sources_when_provider_returns_error(
     monkeypatch.setattr(chat_run_service_module, "ChatService", FakeChatService)
 
     chat_session = create_chat_session(migrated_db_session)
-    chat_repository = ChatRepository(migrated_db_session)
-    run_repository = ChatRunRepository(migrated_db_session)
-    event_repository = ChatRunEventRepository(migrated_db_session)
-    service = ChatRunService(
-        session=migrated_db_session,
-        chat_repository=chat_repository,
-        chat_run_repository=run_repository,
-        chat_run_event_repository=event_repository,
-        retry_service=RetryService(chat_repository, migrated_db_session),
-        chroma_store=InMemoryChromaStore(),
+    service, chat_repository, run_repository, event_repository = build_chat_run_service(
+        migrated_db_session,
         response_adapter=ProviderErrorStreamingAdapterStub(),
-        embedding_adapter=None,
-        settings=SimpleNamespace(
-            response_route={"provider": "openai", "model": "gpt-5.4"},
-            embedding_route={"provider": "openai", "model": "text-embedding-3-small"},
-            system_prompt=None,
-            active_index_generation=1,
-        ),
-        presenter=ChatStreamPresenter(),
     )
 
     events = list(
@@ -430,24 +396,9 @@ def test_chat_run_service_keeps_retrieved_sources_when_stream_is_closed_after_so
     monkeypatch.setattr(chat_run_service_module, "ChatService", FakeChatService)
 
     chat_session = create_chat_session(migrated_db_session)
-    chat_repository = ChatRepository(migrated_db_session)
-    run_repository = ChatRunRepository(migrated_db_session)
-    service = ChatRunService(
-        session=migrated_db_session,
-        chat_repository=chat_repository,
-        chat_run_repository=run_repository,
-        chat_run_event_repository=ChatRunEventRepository(migrated_db_session),
-        retry_service=RetryService(chat_repository, migrated_db_session),
-        chroma_store=InMemoryChromaStore(),
+    service, chat_repository, run_repository, _ = build_chat_run_service(
+        migrated_db_session,
         response_adapter=ShouldNotReachProviderAdapterStub(),
-        embedding_adapter=None,
-        settings=SimpleNamespace(
-            response_route={"provider": "openai", "model": "gpt-5.4"},
-            embedding_route={"provider": "openai", "model": "text-embedding-3-small"},
-            system_prompt=None,
-            active_index_generation=1,
-        ),
-        presenter=ChatStreamPresenter(),
     )
 
     stream = service.stream_run(
@@ -501,24 +452,9 @@ def test_chat_stream_wrapper_closes_inner_run_stream_when_consumer_disconnects(
             )
 
     chat_session = create_chat_session(migrated_db_session)
-    chat_repository = ChatRepository(migrated_db_session)
-    run_repository = ChatRunRepository(migrated_db_session)
-    service = ChatRunService(
-        session=migrated_db_session,
-        chat_repository=chat_repository,
-        chat_run_repository=run_repository,
-        chat_run_event_repository=ChatRunEventRepository(migrated_db_session),
-        retry_service=RetryService(chat_repository, migrated_db_session),
-        chroma_store=InMemoryChromaStore(),
+    service, chat_repository, run_repository, _ = build_chat_run_service(
+        migrated_db_session,
         response_adapter=ShouldNotReachProviderAdapterStub(),
-        embedding_adapter=None,
-        settings=SimpleNamespace(
-            response_route={"provider": "openai", "model": "gpt-5.4"},
-            embedding_route={"provider": "openai", "model": "text-embedding-3-small"},
-            system_prompt=None,
-            active_index_generation=1,
-        ),
-        presenter=ChatStreamPresenter(),
     )
 
     stream = stream_presented_events(
@@ -563,24 +499,11 @@ def test_chat_run_service_assigns_event_seq_without_reloading_all_events(
             return super().list_for_run(run_id)
 
     chat_session = create_chat_session(migrated_db_session)
-    chat_repository = ChatRepository(migrated_db_session)
     event_repository = CountingRunEventRepository(migrated_db_session)
-    service = ChatRunService(
-        session=migrated_db_session,
-        chat_repository=chat_repository,
-        chat_run_repository=ChatRunRepository(migrated_db_session),
-        chat_run_event_repository=event_repository,
-        retry_service=RetryService(chat_repository, migrated_db_session),
-        chroma_store=InMemoryChromaStore(),
+    service, _, _, _ = build_chat_run_service(
+        migrated_db_session,
         response_adapter=StreamingAdapterStub(),
-        embedding_adapter=None,
-        settings=SimpleNamespace(
-            response_route={"provider": "openai", "model": "gpt-5.4"},
-            embedding_route={"provider": "openai", "model": "text-embedding-3-small"},
-            system_prompt=None,
-            active_index_generation=1,
-        ),
-        presenter=ChatStreamPresenter(),
+        event_repository=event_repository,
     )
 
     list(
@@ -605,23 +528,9 @@ def test_chat_run_service_batches_commit_for_many_text_deltas(
             yield SimpleNamespace(type="completed", usage={"output_tokens": 20})
 
     chat_session = create_chat_session(migrated_db_session)
-    chat_repository = ChatRepository(migrated_db_session)
-    service = ChatRunService(
-        session=migrated_db_session,
-        chat_repository=chat_repository,
-        chat_run_repository=ChatRunRepository(migrated_db_session),
-        chat_run_event_repository=ChatRunEventRepository(migrated_db_session),
-        retry_service=RetryService(chat_repository, migrated_db_session),
-        chroma_store=InMemoryChromaStore(),
+    service, _, _, _ = build_chat_run_service(
+        migrated_db_session,
         response_adapter=ManyDeltaStreamingAdapterStub(),
-        embedding_adapter=None,
-        settings=SimpleNamespace(
-            response_route={"provider": "openai", "model": "gpt-5.4"},
-            embedding_route={"provider": "openai", "model": "text-embedding-3-small"},
-            system_prompt=None,
-            active_index_generation=1,
-        ),
-        presenter=ChatStreamPresenter(),
     )
 
     original_commit = migrated_db_session.commit
