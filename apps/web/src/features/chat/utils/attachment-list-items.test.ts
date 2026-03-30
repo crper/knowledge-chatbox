@@ -2,8 +2,12 @@ import { i18n } from "@/i18n";
 import type { ChatAttachmentItem as ChatMessageAttachmentItem } from "../api/chat";
 import type { ChatAttachmentItem as ChatComposerAttachmentItem } from "../store/chat-ui-store";
 import {
+  buildAttachmentPreviewIndexes,
   buildChatAttachmentDescriptors,
+  buildChatAttachmentListItems,
+  buildChatImageViewerItems,
   buildComposerAttachmentListItems,
+  buildComposerImageViewerItems,
 } from "./attachment-list-items";
 
 describe("attachment-list-items", () => {
@@ -112,6 +116,13 @@ describe("attachment-list-items", () => {
       onRemove: vi.fn(),
     });
     const chatItems = buildChatAttachmentDescriptors(messageAttachments);
+    const composerViewerItems = buildComposerImageViewerItems(composerAttachments);
+    const chatViewerItems = buildChatImageViewerItems(chatItems);
+    const chatListItems = buildChatAttachmentListItems({
+      descriptors: chatItems,
+      onPreview: vi.fn(),
+    });
+    const previewIndexes = buildAttachmentPreviewIndexes(chatViewerItems);
 
     expect(composerItems).toHaveLength(2);
     expect(composerItems[0]).toMatchObject({
@@ -132,5 +143,29 @@ describe("attachment-list-items", () => {
       displayName: "夜航记录.pdf",
       previewable: false,
     });
+    expect(composerViewerItems).toMatchObject([
+      {
+        id: "local-image",
+        kind: "local",
+        mimeType: "image/png",
+        name: "image.png",
+      },
+    ]);
+    expect(chatViewerItems).toMatchObject([
+      {
+        displayName: "会话图片附件 1",
+        id: "remote-image",
+        kind: "remote",
+        mimeType: "image/png",
+        name: "e31c779fc7a14e68b23cf94c999b0a61.jpeg~tplv-a9rns2rl98-image_raw_b.png",
+        resourceDocumentVersionId: 11,
+      },
+    ]);
+    expect(chatListItems[0]?.onPreview).toBeTypeOf("function");
+    expect(chatListItems[1]).toMatchObject({
+      displayName: "夜航记录.pdf",
+      previewable: false,
+    });
+    expect(previewIndexes.get("remote-image")).toBe(0);
   });
 });

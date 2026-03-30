@@ -11,10 +11,14 @@ import { useIsMobile } from "@/lib/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { ChatMessageItem } from "../api/chat";
-import { buildChatAttachmentDescriptors } from "../utils/attachment-list-items";
-import { getDocumentFileUrl } from "../utils/document-file-url";
+import {
+  buildAttachmentPreviewIndexes,
+  buildChatAttachmentDescriptors,
+  buildChatAttachmentListItems,
+  buildChatImageViewerItems,
+} from "../utils/attachment-list-items";
 import { AttachmentList } from "./attachment-list";
-import { ImageViewerDialog, type ImageViewerItem } from "./image-viewer-dialog";
+import { ImageViewerDialog } from "./image-viewer-dialog";
 import { MarkdownMessage } from "./markdown-message";
 import { SourceList } from "./source-list";
 
@@ -98,42 +102,25 @@ export const MessageRow = memo(function MessageRow({
     () => buildChatAttachmentDescriptors(attachments),
     [attachments],
   );
-  const imageViewerItems = useMemo<ImageViewerItem[]>(
-    () =>
-      attachmentDescriptors
-        .filter((descriptor) => descriptor.kind === "image" && descriptor.previewable)
-        .map((descriptor) => ({
-          kind: "remote",
-          id: descriptor.id,
-          displayName: descriptor.displayName,
-          name: descriptor.attachment.name,
-          mimeType: descriptor.attachment.mime_type,
-          originalUrl: getDocumentFileUrl(descriptor.attachment.resource_document_version_id ?? 0),
-          resourceDocumentVersionId: descriptor.attachment.resource_document_version_id ?? 0,
-        })),
+  const imageViewerItems = useMemo(
+    () => buildChatImageViewerItems(attachmentDescriptors),
     [attachmentDescriptors],
   );
   const previewIndexes = useMemo(
-    () => new Map(imageViewerItems.map((item, index) => [item.id, index])),
+    () => buildAttachmentPreviewIndexes(imageViewerItems),
     [imageViewerItems],
   );
   const attachmentListItems = useMemo(
     () =>
-      attachmentDescriptors.map((descriptor) => ({
-        displayName: descriptor.displayName,
-        id: descriptor.id,
-        kind: descriptor.kind,
-        onPreview: descriptor.previewable
-          ? () => {
-              const nextIndex = previewIndexes.get(descriptor.id);
-              if (typeof nextIndex === "number") {
-                setViewerIndex(nextIndex);
-              }
-            }
-          : undefined,
-        previewable: descriptor.previewable,
-        rawName: descriptor.rawName,
-      })),
+      buildChatAttachmentListItems({
+        descriptors: attachmentDescriptors,
+        onPreview: (attachmentId) => {
+          const nextIndex = previewIndexes.get(attachmentId);
+          if (typeof nextIndex === "number") {
+            setViewerIndex(nextIndex);
+          }
+        },
+      }),
     [attachmentDescriptors, previewIndexes],
   );
   const roleLabel = isAssistantMessage ? assistantLabel : isUserMessage ? userLabel : systemLabel;

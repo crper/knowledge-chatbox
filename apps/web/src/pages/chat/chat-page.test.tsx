@@ -9,6 +9,8 @@ import { useChatUiStore } from "@/features/chat/store/chat-ui-store";
 import { useUiStore } from "@/lib/store/ui-store";
 import { AppProviders } from "@/providers/app-providers";
 import { AppRouter } from "@/router";
+import { buildChatSessionContext } from "@/test/chat";
+import { buildAppSettings, buildAppUser } from "@/test/fixtures/app";
 import { jsonResponse } from "@/test/http";
 import { mockMobileViewport } from "@/test/viewport";
 
@@ -196,42 +198,11 @@ function buildAuthenticatedFetch(options?: {
               : []),
           ]
         : []);
-    const attachments = (baseMessages as MockChatMessage[])
-      .flatMap((message) => message.attachments_json ?? [])
-      .reduce<MockChatAttachment[]>((result, attachment) => {
-        const key =
-          attachment.document_id != null
-            ? `document:${attachment.document_id}`
-            : attachment.document_revision_id != null
-              ? `version:${attachment.document_revision_id}`
-              : `attachment:${attachment.attachment_id}`;
-        const existingIndex = result.findIndex((item) => {
-          const itemKey =
-            item.document_id != null
-              ? `document:${item.document_id}`
-              : item.document_revision_id != null
-                ? `version:${item.document_revision_id}`
-                : `attachment:${item.attachment_id}`;
-          return itemKey === key;
-        });
-        if (existingIndex >= 0) {
-          result[existingIndex] = attachment;
-          return result;
-        }
-        result.push(attachment);
-        return result;
-      }, []);
-    const latestAssistantMessage = [...(baseMessages as MockChatMessage[])]
-      .reverse()
-      .find((message) => message.role === "assistant");
 
-    return {
-      session_id: sessionId,
-      attachment_count: attachments.length,
-      attachments,
-      latest_assistant_message_id: latestAssistantMessage?.id ?? null,
-      latest_assistant_sources: latestAssistantMessage?.sources_json ?? [],
-    };
+    return buildChatSessionContext(
+      sessionId,
+      baseMessages as Parameters<typeof buildChatSessionContext>[1],
+    );
   };
 
   const sessions = (
@@ -268,13 +239,7 @@ function buildAuthenticatedFetch(options?: {
             access_token: "fresh-token",
             expires_in: 900,
             token_type: "Bearer",
-            user: {
-              id: 1,
-              username: "admin",
-              role: "admin",
-              status: "active",
-              theme_preference: "system",
-            },
+            user: buildAppUser("admin"),
           },
           error: null,
         }),
@@ -299,13 +264,7 @@ function buildAuthenticatedFetch(options?: {
       return Promise.resolve(
         jsonResponse({
           success: true,
-          data: {
-            id: 1,
-            username: "admin",
-            role: "admin",
-            status: "active",
-            theme_preference: "system",
-          },
+          data: buildAppUser("admin"),
           error: null,
         }),
       );
@@ -315,47 +274,14 @@ function buildAuthenticatedFetch(options?: {
       return Promise.resolve(
         jsonResponse({
           success: true,
-          data: {
-            id: 1,
+          data: buildAppSettings({
             provider_profiles: {
-              openai: {
-                api_key: "********",
-                base_url: "https://api.openai.com/v1",
-                chat_model: "gpt-5.4",
-                embedding_model: "text-embedding-3-small",
-                vision_model: "gpt-5.4",
-              },
-              anthropic: {
-                api_key: null,
-                base_url: "https://api.anthropic.com",
-                chat_model: "claude-sonnet-4-5",
-                vision_model: "claude-sonnet-4-5",
-              },
-              voyage: {
-                api_key: null,
-                base_url: "https://api.voyageai.com/v1",
-                embedding_model: "voyage-3.5",
-              },
               ollama: {
-                api_key: null,
                 base_url: "http://host.docker.internal:11434",
-                chat_model: "qwen3.5:4b",
-                embedding_model: "nomic-embed-text",
-                vision_model: "qwen3.5:4b",
               },
             },
-            response_route: { provider: "openai", model: "gpt-5.4" },
-            embedding_route: { provider: "openai", model: "text-embedding-3-small" },
-            pending_embedding_route: null,
-            vision_route: { provider: "openai", model: "gpt-5.4" },
             system_prompt: "prompt",
-            provider_timeout_seconds: 60,
-            active_index_generation: 3,
-            building_index_generation: null,
-            index_rebuild_status: "idle",
-            rebuild_started: false,
-            reindex_required: false,
-          },
+          }),
           error: null,
         }),
       );

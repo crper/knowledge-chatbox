@@ -22,9 +22,13 @@ import { cn } from "@/lib/utils";
 import type { ChatReasoningMode } from "../api/chat";
 import type { ChatAttachmentItem, ChatSendShortcut } from "../store/chat-ui-store";
 import { hasSendableChatAttachments } from "../utils/chat-attachments";
-import { buildComposerAttachmentListItems } from "../utils/attachment-list-items";
+import {
+  buildAttachmentPreviewIndexes,
+  buildComposerAttachmentListItems,
+  buildComposerImageViewerItems,
+} from "../utils/attachment-list-items";
 import { AttachmentList } from "./attachment-list";
-import { ImageViewerDialog, type ImageViewerItem } from "./image-viewer-dialog";
+import { ImageViewerDialog } from "./image-viewer-dialog";
 
 type MessageInputProps = {
   activeModelActionLabel?: string | null;
@@ -116,27 +120,9 @@ export function MessageInput({
   const reasoningModeOnLabel = t("reasoningModeOnOption", { defaultValue: "开启" });
   const hasSendableAttachment = hasSendableChatAttachments(attachments);
   const canSubmit = (draft.trim().length > 0 || hasSendableAttachment) && !submitPending;
-  const imageAttachments = useMemo(
-    () =>
-      attachments.filter(
-        (attachment): attachment is ChatAttachmentItem & { file: File; kind: "image" } =>
-          attachment.kind === "image" && attachment.file instanceof File,
-      ),
-    [attachments],
-  );
-  const imageViewerItems = useMemo<ImageViewerItem[]>(
-    () =>
-      imageAttachments.map((attachment) => ({
-        kind: "local",
-        id: attachment.id,
-        name: attachment.name,
-        mimeType: attachment.mimeType ?? attachment.file.type ?? "image/png",
-        file: attachment.file,
-      })),
-    [imageAttachments],
-  );
+  const imageViewerItems = useMemo(() => buildComposerImageViewerItems(attachments), [attachments]);
   const previewIndexes = useMemo(
-    () => new Map(imageViewerItems.map((item, index) => [item.id, index])),
+    () => buildAttachmentPreviewIndexes(imageViewerItems),
     [imageViewerItems],
   );
   const attachmentListItems = useMemo(

@@ -126,10 +126,12 @@ export async function uploadQueuedChatAttachments({
     throw firstError;
   }
 
+  const readyAttachments = uploadedAttachments.filter(
+    (attachment): attachment is ReadyChatAttachment => attachment !== null,
+  );
+
   return {
-    uploadedAttachments: uploadedAttachments.filter(
-      (attachment): attachment is ReadyChatAttachment => attachment !== null,
-    ),
-    uploadedCount: uploadedAttachments.filter((attachment) => attachment !== null).length,
+    uploadedAttachments: readyAttachments,
+    uploadedCount: readyAttachments.length,
   };
 }

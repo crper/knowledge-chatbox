@@ -12,13 +12,14 @@ import { CardDescription, CardTitle } from "@/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { chatContextQueryOptions } from "@/features/chat/api/chat-query";
 import { AttachmentList } from "@/features/chat/components/attachment-list";
-import {
-  ImageViewerDialog,
-  type ImageViewerItem,
-} from "@/features/chat/components/image-viewer-dialog";
+import { ImageViewerDialog } from "@/features/chat/components/image-viewer-dialog";
 import { parseChatSessionId } from "@/features/chat/utils/chat-session-route";
-import { buildChatAttachmentDescriptors } from "@/features/chat/utils/attachment-list-items";
-import { getDocumentFileUrl } from "@/features/chat/utils/document-file-url";
+import {
+  buildAttachmentPreviewIndexes,
+  buildChatAttachmentDescriptors,
+  buildChatAttachmentListItems,
+  buildChatImageViewerItems,
+} from "@/features/chat/utils/attachment-list-items";
 import { groupChatSources } from "@/features/chat/utils/group-chat-sources";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -49,42 +50,25 @@ export function ChatResourcePanel({
     () => buildChatAttachmentDescriptors(attachments),
     [attachments],
   );
-  const imageViewerItems = useMemo<ImageViewerItem[]>(
-    () =>
-      attachmentDescriptors
-        .filter((descriptor) => descriptor.kind === "image" && descriptor.previewable)
-        .map((descriptor) => ({
-          kind: "remote",
-          id: descriptor.id,
-          displayName: descriptor.displayName,
-          name: descriptor.attachment.name,
-          mimeType: descriptor.attachment.mime_type,
-          originalUrl: getDocumentFileUrl(descriptor.attachment.resource_document_version_id ?? 0),
-          resourceDocumentVersionId: descriptor.attachment.resource_document_version_id ?? 0,
-        })),
+  const imageViewerItems = useMemo(
+    () => buildChatImageViewerItems(attachmentDescriptors),
     [attachmentDescriptors],
   );
   const previewIndexes = useMemo(
-    () => new Map(imageViewerItems.map((item, index) => [item.id, index])),
+    () => buildAttachmentPreviewIndexes(imageViewerItems),
     [imageViewerItems],
   );
   const attachmentListItems = useMemo(
     () =>
-      attachmentDescriptors.map((descriptor) => ({
-        displayName: descriptor.displayName,
-        id: descriptor.id,
-        kind: descriptor.kind,
-        onPreview: descriptor.previewable
-          ? () => {
-              const nextIndex = previewIndexes.get(descriptor.id);
-              if (typeof nextIndex === "number") {
-                setViewerIndex(nextIndex);
-              }
-            }
-          : undefined,
-        previewable: descriptor.previewable,
-        rawName: descriptor.rawName,
-      })),
+      buildChatAttachmentListItems({
+        descriptors: attachmentDescriptors,
+        onPreview: (attachmentId) => {
+          const nextIndex = previewIndexes.get(attachmentId);
+          if (typeof nextIndex === "number") {
+            setViewerIndex(nextIndex);
+          }
+        },
+      }),
     [attachmentDescriptors, previewIndexes],
   );
   const groupedSources = useMemo(

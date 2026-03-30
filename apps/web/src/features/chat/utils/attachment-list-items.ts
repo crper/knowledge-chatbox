@@ -3,8 +3,10 @@
  */
 
 import { i18n } from "@/i18n";
+import type { ImageViewerItem } from "../components/image-viewer-dialog";
 import type { ChatAttachmentItem as ChatMessageAttachmentItem } from "../api/chat";
 import type { ChatAttachmentItem as ChatComposerAttachmentItem } from "../store/chat-ui-store";
+import { getDocumentFileUrl } from "./document-file-url";
 
 const OPAQUE_IMAGE_NAME_RE =
   /^[a-f0-9]{24,}(?:[-_.][a-z0-9]+)*\.(png|jpe?g|webp)(?:[~._-][a-z0-9-]+)*$/;
@@ -67,6 +69,26 @@ export function buildComposerAttachmentListItems(input: {
   }));
 }
 
+export function buildComposerImageViewerItems(
+  attachments: ChatComposerAttachmentItem[],
+): ImageViewerItem[] {
+  return attachments.flatMap((attachment) => {
+    if (attachment.kind !== "image" || !(attachment.file instanceof File)) {
+      return [];
+    }
+
+    return [
+      {
+        kind: "local",
+        id: attachment.id,
+        name: attachment.name,
+        mimeType: attachment.mimeType ?? attachment.file.type ?? "image/png",
+        file: attachment.file,
+      },
+    ];
+  });
+}
+
 export function buildChatAttachmentDescriptors(
   attachments: ChatMessageAttachmentItem[],
 ): ChatAttachmentDescriptor[] {
@@ -95,4 +117,44 @@ export function buildChatAttachmentDescriptors(
       rawName: display.rawName,
     };
   });
+}
+
+export function buildChatAttachmentListItems(input: {
+  descriptors: ChatAttachmentDescriptor[];
+  onPreview?: (attachmentId: string) => void;
+}): AttachmentListItem[] {
+  return input.descriptors.map((descriptor) => ({
+    displayName: descriptor.displayName,
+    id: descriptor.id,
+    kind: descriptor.kind,
+    onPreview: descriptor.previewable ? () => input.onPreview?.(descriptor.id) : undefined,
+    previewable: descriptor.previewable,
+    rawName: descriptor.rawName,
+  }));
+}
+
+export function buildChatImageViewerItems(
+  descriptors: ChatAttachmentDescriptor[],
+): ImageViewerItem[] {
+  return descriptors.flatMap((descriptor) => {
+    if (descriptor.kind !== "image" || !descriptor.previewable) {
+      return [];
+    }
+
+    return [
+      {
+        kind: "remote",
+        id: descriptor.id,
+        displayName: descriptor.displayName,
+        name: descriptor.attachment.name,
+        mimeType: descriptor.attachment.mime_type,
+        originalUrl: getDocumentFileUrl(descriptor.attachment.resource_document_version_id ?? 0),
+        resourceDocumentVersionId: descriptor.attachment.resource_document_version_id ?? 0,
+      },
+    ];
+  });
+}
+
+export function buildAttachmentPreviewIndexes<TItem extends { id: string }>(items: TItem[]) {
+  return new Map(items.map((item, index) => [item.id, index]));
 }

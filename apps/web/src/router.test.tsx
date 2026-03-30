@@ -7,19 +7,13 @@ import { queryKeys } from "@/lib/api/query-keys";
 import { useSessionStore } from "@/lib/auth/session-store";
 import { AppProviders } from "@/providers/app-providers";
 import { AppRouter } from "@/router";
+import { buildChatSessionContext, cloneJson } from "@/test/chat";
+import type { ChatSourceItem } from "@/features/chat/api/chat";
 import { buildAppSettings, buildAppUser } from "@/test/fixtures/app";
 import { jsonResponse } from "@/test/http";
 import { mockDesktopViewport, mockMobileViewport } from "@/test/viewport";
 
 const LAST_VISITED_CHAT_SESSION_STORAGE_KEY = "knowledge-chatbox-last-chat-session-id";
-
-function cloneMockData<T>(value: T): T {
-  if (value === null || typeof value !== "object") {
-    return value;
-  }
-
-  return JSON.parse(JSON.stringify(value)) as T;
-}
 
 function QueryClientCapture({
   onReady,
@@ -37,7 +31,7 @@ function QueryClientCapture({
 
 function mockAuthResponse(data: unknown, ok = true, status = 200) {
   return vi.fn().mockImplementation((input: string) => {
-    const responseData = cloneMockData(data);
+    const responseData = cloneJson(data);
 
     if (input.endsWith("/api/auth/bootstrap")) {
       if (!ok && status === 401) {
@@ -158,7 +152,7 @@ function mockAuthenticatedChatWorkspaceResponse({
   messagesBySession?: Record<number, unknown[]>;
 } = {}) {
   const buildSessionContext = (sessionId: number) => {
-    const messages = cloneMockData(messagesBySession[sessionId] ?? []) as Array<{
+    const messages = cloneJson(messagesBySession[sessionId] ?? []) as Array<{
       attachments_json?: Array<{
         attachment_id?: string;
         type: string;
@@ -170,63 +164,12 @@ function mockAuthenticatedChatWorkspaceResponse({
       }> | null;
       id: number;
       role: string;
-      sources_json?: unknown[] | null;
+      sources_json?: ChatSourceItem[] | null;
     }>;
-    const attachments = (
-      messages.flatMap((message) => message.attachments_json ?? []) ?? []
-    ).reduce<
-      Array<{
-        attachment_id: string;
-        type: string;
-        name: string;
-        mime_type: string;
-        size_bytes: number;
-        document_id?: number | null;
-        document_revision_id?: number | null;
-      }>
-    >((result, attachment) => {
-      const normalizedAttachment = {
-        attachment_id: attachment.attachment_id ?? `${attachment.name}-attachment`,
-        type: attachment.type,
-        name: attachment.name,
-        mime_type: attachment.mime_type,
-        size_bytes: attachment.size_bytes ?? 1,
-        document_id: attachment.document_id ?? null,
-        document_revision_id: attachment.document_revision_id ?? null,
-      };
-      const key =
-        normalizedAttachment.document_id != null
-          ? `document:${normalizedAttachment.document_id}`
-          : normalizedAttachment.document_revision_id != null
-            ? `version:${normalizedAttachment.document_revision_id}`
-            : `attachment:${normalizedAttachment.attachment_id}`;
-      const index = result.findIndex((item) => {
-        const itemKey =
-          item.document_id != null
-            ? `document:${item.document_id}`
-            : item.document_revision_id != null
-              ? `version:${item.document_revision_id}`
-              : `attachment:${item.attachment_id}`;
-        return itemKey === key;
-      });
-      if (index >= 0) {
-        result[index] = normalizedAttachment;
-        return result;
-      }
-      result.push(normalizedAttachment);
-      return result;
-    }, []);
-    const latestAssistantMessage = [...messages]
-      .reverse()
-      .find((message) => message.role === "assistant");
-
-    return {
-      session_id: sessionId,
-      attachment_count: attachments.length,
-      attachments,
-      latest_assistant_message_id: latestAssistantMessage?.id ?? null,
-      latest_assistant_sources: latestAssistantMessage?.sources_json ?? [],
-    };
+    return buildChatSessionContext(
+      sessionId,
+      messages as Parameters<typeof buildChatSessionContext>[1],
+    );
   };
 
   return vi.fn().mockImplementation((input: string) => {
@@ -293,7 +236,7 @@ function mockAuthenticatedChatWorkspaceResponse({
       return Promise.resolve(
         jsonResponse({
           success: true,
-          data: cloneMockData(sessions),
+          data: cloneJson(sessions),
           error: null,
         }),
       );
@@ -327,7 +270,7 @@ function mockAuthenticatedChatWorkspaceResponse({
       const params = new URL(input, "http://testserver").searchParams;
       const limit = params.get("limit");
       const beforeId = params.get("before_id");
-      const messages = cloneMockData(messagesBySession[sessionId] ?? []) as Array<{ id: number }>;
+      const messages = cloneJson(messagesBySession[sessionId] ?? []) as Array<{ id: number }>;
       const filteredMessages =
         limit === null
           ? messages

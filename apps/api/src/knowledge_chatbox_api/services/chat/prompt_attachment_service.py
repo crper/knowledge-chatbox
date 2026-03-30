@@ -98,12 +98,8 @@ class PromptAttachmentService:
             active_space_id,
             error_message=IMAGE_ATTACHMENT_PROCESSING_ERROR_MESSAGE,
         )
-        source_path = Path(document_version.source_path)
-        if not source_path.exists():
-            raise ValueError(IMAGE_ATTACHMENT_PROCESSING_ERROR_MESSAGE)
-
         try:
-            data_base64 = self._encode_image_attachment(source_path)
+            data_base64 = self._encode_image_attachment(Path(document_version.source_path))
         except (OSError, UnidentifiedImageError, ValueError) as exc:
             raise ValueError(IMAGE_ATTACHMENT_PROCESSING_ERROR_MESSAGE) from exc
 
@@ -147,11 +143,8 @@ class PromptAttachmentService:
         for candidate_path in candidate_paths:
             if not isinstance(candidate_path, str) or not candidate_path:
                 continue
-            path = Path(candidate_path)
-            if not path.exists():
-                continue
             try:
-                content = path.read_text(encoding="utf-8").strip()
+                content = Path(candidate_path).read_text(encoding="utf-8").strip()
             except (OSError, UnicodeDecodeError):
                 continue
             if content:

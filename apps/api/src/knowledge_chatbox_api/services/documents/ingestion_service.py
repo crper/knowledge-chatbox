@@ -556,9 +556,10 @@ class IngestionService:
     def _remove_file(self, path: str | None) -> None:
         if not path:
             return
-        file_path = Path(path)
-        if file_path.exists():
-            file_path.unlink()
+        try:
+            Path(path).unlink()
+        except FileNotFoundError:
+            return
 
     def _derive_section_title(self, content: str) -> str | None:
         for line in content.splitlines():
