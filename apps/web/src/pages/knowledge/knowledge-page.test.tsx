@@ -703,7 +703,7 @@ describe("KnowledgePage", () => {
     await screen.findAllByRole("button", { name: "查看版本" });
     expect(screen.queryByRole("button", { name: "PDF" })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "筛选" }));
+    fireEvent.click(screen.getByRole("button", { name: /^筛选/ }));
 
     expect(await screen.findByText("资源筛选")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "PDF" }));

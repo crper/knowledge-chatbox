@@ -132,7 +132,10 @@ export function KnowledgePage() {
   const filteredDocuments = documents;
   const indexedCount = documents.filter((document) => document.status === "indexed").length;
   const hasDocuments = documents.length > 0;
-  const activeFilterCount = Number(typeFilter !== "all") + Number(statusFilter !== "all");
+  const hasSearchQuery = deferredSearchValue.trim().length > 0;
+  const activeFilterCount =
+    Number(hasSearchQuery) + Number(typeFilter !== "all") + Number(statusFilter !== "all");
+  const hasActiveFilters = activeFilterCount > 0;
   const selectedDocument = useMemo(
     () => documents.find((document) => document.id === selectedDocumentId) ?? null,
     [documents, selectedDocumentId],
@@ -348,18 +351,20 @@ export function KnowledgePage() {
           <>
             <WorkspaceMetricCard
               icon={FilesIcon}
-              label={t("summaryTotalLabel")}
+              label={t(hasActiveFilters ? "summaryCurrentTotalLabel" : "summaryTotalLabel")}
               value={t("summaryTotalValue", { count: documents.length })}
             />
             <WorkspaceMetricCard
               detail={localUploadingCount > 0 ? t("uploadPendingAction") : undefined}
               icon={UploadIcon}
-              label={t("summaryProcessingLabel")}
+              label={t(
+                hasActiveFilters ? "summaryCurrentProcessingLabel" : "summaryProcessingLabel",
+              )}
               value={t("summaryProcessingValue", { count: processingCount })}
             />
             <WorkspaceMetricCard
               icon={ScanSearchIcon}
-              label={t("summaryIndexedLabel")}
+              label={t(hasActiveFilters ? "summaryCurrentIndexedLabel" : "summaryIndexedLabel")}
               value={t("summaryIndexedValue", { count: indexedCount })}
             />
           </>
