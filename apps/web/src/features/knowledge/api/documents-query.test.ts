@@ -50,4 +50,17 @@ describe("documentsListQueryOptions", () => {
     ).toBe(false);
     expect(refetchInterval?.({ state: { data: undefined } })).toBe(false);
   });
+
+  it("keeps polling when hidden pending documents still exist outside the current filter", () => {
+    const options = documentsListQueryOptions({ status: "indexed" }, { keepPolling: true });
+    const refetchInterval = options.refetchInterval as
+      | ((query: { state: { data: KnowledgeDocument[] | undefined } }) => number | false)
+      | undefined;
+
+    expect(
+      refetchInterval?.({
+        state: { data: [buildDocument("indexed")] },
+      }),
+    ).toBe(3000);
+  });
 });

@@ -41,9 +41,26 @@ export function useKnowledgeWorkspace(filters?: KnowledgeDocumentListFilters) {
   const uploadQueueRef = useRef(Promise.resolve());
   const uploadControllersRef = useRef(new Map<string, AbortController>());
   const canceledUploadIdsRef = useRef(new Set<string>());
+  const normalizedQuery = filters?.query?.trim();
+  const hasActiveFilters =
+    Boolean(normalizedQuery) || filters?.status !== undefined || filters?.type !== undefined;
 
   const currentUserQuery = useQuery(currentUserQueryOptions());
-  const documentsQuery = useQuery(documentsListQueryOptions(filters));
+  const unfilteredDocumentsQuery = useQuery({
+    ...documentsListQueryOptions(),
+    enabled: hasActiveFilters,
+  });
+  const hasHiddenPendingDocuments =
+    hasActiveFilters &&
+    (unfilteredDocumentsQuery.data?.some(
+      (document) => document.status === "processing" || document.status === "uploaded",
+    ) ??
+      false);
+  const documentsQuery = useQuery(
+    documentsListQueryOptions(filters, {
+      keepPolling: hasHiddenPendingDocuments,
+    }),
+  );
 
   const deleteMutation = useMutation(deleteDocumentMutationOptions(queryClient));
   const reindexMutation = useMutation({

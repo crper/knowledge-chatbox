@@ -41,16 +41,24 @@ function buildDocumentsListQueryKey(filters?: KnowledgeDocumentListFilters) {
   ] as const;
 }
 
+type DocumentsListQueryOptionsInput = {
+  keepPolling?: boolean;
+};
+
 /**
  * 获取资源列表查询配置。
  */
-export function documentsListQueryOptions(filters?: KnowledgeDocumentListFilters) {
+export function documentsListQueryOptions(
+  filters?: KnowledgeDocumentListFilters,
+  options?: DocumentsListQueryOptionsInput,
+) {
   const normalizedFilters = normalizeKnowledgeDocumentListFilters(filters);
   return queryOptions({
     queryKey: buildDocumentsListQueryKey(normalizedFilters),
     queryFn: () => getDocuments(normalizedFilters),
     placeholderData: (previousData) => previousData,
     refetchInterval: (query) =>
+      options?.keepPolling ||
       hasPendingDocuments(query.state.data as KnowledgeDocument[] | undefined)
         ? DOCUMENTS_POLL_INTERVAL_MS
         : false,
