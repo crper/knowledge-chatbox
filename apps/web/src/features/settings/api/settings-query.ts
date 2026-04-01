@@ -41,6 +41,10 @@ export function updateSettingsMutationOptions(queryClient: QueryClient) {
         queryKey: queryKeys.settings.all,
         refetchType: "none",
       });
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.documents.uploadReadiness,
+        refetchType: "none",
+      });
       await queryClient.invalidateQueries({ queryKey: queryKeys.chat.profile });
     },
   });

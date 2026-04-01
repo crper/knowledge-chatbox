@@ -7,15 +7,17 @@ import { mutationOptions, queryOptions, type QueryClient } from "@tanstack/react
 import { queryKeys } from "@/lib/api/query-keys";
 import {
   deleteDocument,
+  getDocumentUploadReadiness,
   getDocumentVersions,
   getDocuments,
   normalizeKnowledgeDocumentListFilters,
   reindexDocument,
   type KnowledgeDocument,
   type KnowledgeDocumentListFilters,
+  type DocumentUploadReadiness,
 } from "./documents";
 
-export type { KnowledgeDocument };
+export type { DocumentUploadReadiness, KnowledgeDocument };
 
 const DOCUMENTS_POLL_INTERVAL_MS = 3000;
 
@@ -72,6 +74,16 @@ export function documentVersionsQueryOptions(documentId: number) {
   return queryOptions({
     queryKey: queryKeys.documents.versions(documentId),
     queryFn: () => getDocumentVersions(documentId),
+  });
+}
+
+/**
+ * 获取资源上传前置条件查询配置。
+ */
+export function documentUploadReadinessQueryOptions() {
+  return queryOptions({
+    queryKey: queryKeys.documents.uploadReadiness,
+    queryFn: getDocumentUploadReadiness,
   });
 }
 

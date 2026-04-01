@@ -26,18 +26,22 @@ flowchart TD
 
 ## 2. 文档上传
 
-1. 基于当前用户 personal `space` 创建或复用 `documents`
-2. 追加 `document_revisions`
-3. 文本文档（`txt / md / pdf / docx`）在请求内完成标准化与索引，直接进入 `indexed / failed`
-4. 图片文档（`png / jpg / jpeg / webp`）先返回 `processing`，再由后台任务补做标准化与索引
-5. 图片后台补全阶段读取当前 `vision` route
-6. 索引阶段读取当前 `embedding` route
-7. 若存在 pending embedding route，同时写入 building generation
+1. 资源页先读取 `GET /api/documents/upload-readiness`
+2. 若当前活动 `embedding_route` 缺配置，或索引重建中的 `pending_embedding_route` 缺配置，前端直接禁用上传入口
+3. `POST /api/documents/upload` 在真正落盘前再次校验同一套 readiness 规则，避免旧前端或直调 API 绕过门禁
+4. 基于当前用户 personal `space` 创建或复用 `documents`
+5. 追加 `document_revisions`
+6. 文本文档（`txt / md / pdf / docx`）在请求内完成标准化与索引，直接进入 `indexed / failed`
+7. 图片文档（`png / jpg / jpeg / webp`）先返回 `processing`，再由后台任务补做标准化与索引
+8. 图片后台补全阶段读取当前 `vision` route；如果 vision 不可用，标准化会退化成基础文件信息
+9. 索引阶段读取当前 `embedding` route
+10. 若存在 pending embedding route，同时写入 building generation
 
 关键观察点：
 
 - `document_revisions.ingest_status`
 - `document_revisions.error_message`
+- `GET /api/documents/upload-readiness` 的 `can_upload / image_fallback / blocking_reason`
 - Chroma generation 中的 `space_id / document_id / document_revision_id`
 - Web 侧上传 helper 会优先携带当前 access token；若第一次上传返回 `401`，前端会先走 `/api/auth/refresh`，刷新成功后自动重试一次
 

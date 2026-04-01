@@ -18,6 +18,7 @@ export const queryKeys = {
   },
   documents: {
     list: ["documents", "list"] as const,
+    uploadReadiness: ["documents", "upload-readiness"] as const,
     versions: (documentId: number) => ["documents", "versions", documentId] as const,
   },
   settings: {

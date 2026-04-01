@@ -3,6 +3,7 @@ import { jsonResponse } from "@/test/http";
 import {
   buildApiUrl,
   deleteDocument,
+  getDocumentUploadReadiness,
   getDocumentVersions,
   getDocuments,
   uploadDocument,
@@ -220,6 +221,31 @@ describe("documents api", () => {
     );
     expect(result).toHaveLength(2);
     expect(result[1]?.version).toBe(2);
+  });
+
+  it("gets document upload readiness", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      jsonResponse({
+        success: true,
+        data: {
+          can_upload: false,
+          image_fallback: false,
+          blocking_reason: "embedding_not_configured",
+        },
+        error: null,
+      }),
+    );
+
+    await expect(getDocumentUploadReadiness()).resolves.toEqual({
+      can_upload: false,
+      image_fallback: false,
+      blocking_reason: "embedding_not_configured",
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      apiPath("/api/documents/upload-readiness"),
+      expect.objectContaining({ credentials: "include" }),
+    );
   });
 
   it("uploads a document with progress callbacks and credentials", async () => {

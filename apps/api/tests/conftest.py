@@ -13,7 +13,9 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from knowledge_chatbox_api.api.deps import _build_rate_limit_service
 from knowledge_chatbox_api.core.config import get_settings
+from knowledge_chatbox_api.db.session import create_session_factory
 from knowledge_chatbox_api.main import create_app
+from knowledge_chatbox_api.services.settings.settings_service import SettingsService
 from knowledge_chatbox_api.utils.chroma import reset_chroma_store
 
 ALEMBIC_CONFIG_PATH = Path(__file__).resolve().parents[1] / "alembic.ini"
@@ -185,3 +187,17 @@ def api_client_https_cookie_insecure(
         base_url="https://testserver",
     ) as test_client:
         yield test_client
+
+
+@pytest.fixture()
+def configure_upload_provider() -> None:
+    session_factory = create_session_factory()
+    with session_factory() as session:
+        settings_record = SettingsService(session, get_settings()).get_or_create_settings_record()
+        provider_profiles = settings_record.provider_profiles.model_dump()
+        provider_profiles["openai"]["api_key"] = "test-openai-key"
+        settings_record.provider_profiles_json = provider_profiles
+        settings_record.pending_embedding_route_json = None
+        settings_record.index_rebuild_status = "idle"
+        settings_record.building_index_generation = None
+        session.commit()

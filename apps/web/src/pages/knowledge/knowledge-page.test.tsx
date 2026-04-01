@@ -169,7 +169,14 @@ function buildUploadPayload(overrides: Record<string, unknown> = {}) {
 
 function buildFetchMock(
   role: "admin" | "user" = "admin",
-  options?: { documents?: Array<Record<string, unknown>> },
+  options?: {
+    documents?: Array<Record<string, unknown>>;
+    readiness?: {
+      blocking_reason: "embedding_not_configured" | "pending_embedding_not_configured" | null;
+      can_upload: boolean;
+      image_fallback: boolean;
+    };
+  },
 ) {
   const documents = options?.documents?.map((document) => buildDocumentSummary(document)) ?? [
     buildDocumentSummary({
@@ -188,6 +195,11 @@ function buildFetchMock(
       file_type: "pdf",
     }),
   ];
+  const readiness = options?.readiness ?? {
+    blocking_reason: null,
+    can_upload: true,
+    image_fallback: false,
+  };
 
   const fetchMock = vi.fn().mockImplementation((input: string, init?: RequestInit) => {
     if (input.endsWith("/api/auth/me")) {
@@ -201,6 +213,16 @@ function buildFetchMock(
             status: "active",
             theme_preference: "system",
           },
+          error: null,
+        }),
+      );
+    }
+
+    if (input.endsWith("/api/documents/upload-readiness")) {
+      return Promise.resolve(
+        jsonResponse({
+          success: true,
+          data: readiness,
           error: null,
         }),
       );
@@ -287,6 +309,36 @@ describe("KnowledgePage", () => {
     expect(screen.getAllByText("1 项处理中").length).toBeGreaterThan(0);
     expect(screen.getByText("1 项已索引")).toBeInTheDocument();
     expect(screen.getByText("资源工作区")).toBeInTheDocument();
+  });
+
+  it("blocks uploads when indexing prerequisites are not ready", async () => {
+    buildFetchMock("admin", {
+      readiness: {
+        blocking_reason: "embedding_not_configured",
+        can_upload: false,
+        image_fallback: false,
+      },
+    });
+
+    renderKnowledgePage();
+
+    expect(await screen.findByText("上传前需要先配置检索 Provider。")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "上传资源" })).toBeDisabled();
+  });
+
+  it("shows an image fallback warning without blocking uploads", async () => {
+    buildFetchMock("admin", {
+      readiness: {
+        blocking_reason: null,
+        can_upload: true,
+        image_fallback: true,
+      },
+    });
+
+    renderKnowledgePage();
+
+    expect(await screen.findByText("图片会以基础信息入库，不做视觉解析。")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "上传资源" })).toBeEnabled();
   });
 
   it("keeps the preview drawer closed until the user explicitly opens it", async () => {

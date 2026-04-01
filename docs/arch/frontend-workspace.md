@@ -144,7 +144,7 @@
 | --- | --- |
 | `src/pages/auth/login-page.tsx` | 登录、语言切换、主题切换、入口说明；若登录前改了主题，登录成功后会同步账号偏好 |
 | `src/pages/chat/chat-page.tsx` | 会话、虚拟化消息视口、交错消息排版、同步/流式发送、统一折叠附件面板、图片 viewer、会话级思考模式；`/chat` 入口会优先恢复最近一次访问的会话并先保持加载态；当前 response provider 缺少必填配置时，composer 底部会切成“先配置 Ollama”入口，并在发送前给出国际化提示；当前轮有附件时会显式提示附件作用域 |
-| `src/pages/knowledge/knowledge-page.tsx` | 资源上传、宽轨道列表、预览抽屉、版本入口、重建索引 |
+| `src/pages/knowledge/knowledge-page.tsx` | 资源上传、upload readiness 门禁、宽轨道列表、预览抽屉、版本入口、重建索引 |
 | `src/pages/settings/settings-page.tsx` | 设置中心四个分组的主区内容 |
 | `src/pages/users/users-page.tsx` | 管理员用户管理页 |
 

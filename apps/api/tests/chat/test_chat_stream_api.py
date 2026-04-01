@@ -198,8 +198,10 @@ def test_chat_profile_api_exposes_response_route_to_authenticated_users(
 
 def test_chat_stream_api_passes_unified_image_attachments_to_provider(
     api_client: TestClient,
+    configure_upload_provider,
     monkeypatch,
 ) -> None:
+    del configure_upload_provider
     adapter = StreamingResponseAdapterStub()
     monkeypatch.setattr(
         "knowledge_chatbox_api.services.chat.chat_application_service.build_response_adapter_from_settings",

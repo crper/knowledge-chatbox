@@ -43,6 +43,7 @@
 ## 4. 资源接口
 
 - `GET /api/documents`
+- `GET /api/documents/upload-readiness`
 - `GET /api/documents/{document_id}`
 - `GET /api/documents/{document_id}/revisions`
 - `POST /api/documents/upload`
@@ -55,9 +56,13 @@
 
 - 列表返回逻辑 document 视角，并内嵌 `latest_revision`
 - `GET /api/documents` 当前支持服务端 `query / type / status` 过滤；资源页搜索与筛选直接复用这条列表接口，不再只靠前端本地过滤
+- `GET /api/documents/upload-readiness` 当前只返回资源上传所需的最小配置是否就绪；它不是 provider 实时探活接口
 - 修订历史单独走 `/revisions`
 - 上传返回 `{ deduplicated, document, revision, latest_revision }`
 - 同名同 hash 仍会直接命中已有修订并返回 `200`
+- 上传前会先校验当前 `embedding_route`；若活动 route 缺配置，返回 `409 embedding_not_configured`
+- 索引重建中若 `pending_embedding_route` 缺配置，也会阻断新上传并返回 `409 pending_embedding_not_configured`
+- `vision_route` 缺配置不会阻断图片上传；图片会退化成基础文件信息入库
 - `POST /api/documents/{document_id}/reindex` 会区分资源缺失与状态冲突：
   - 文档不存在：`404 document_not_found`
   - 文档尚未完成标准化：`409 document_not_normalized`

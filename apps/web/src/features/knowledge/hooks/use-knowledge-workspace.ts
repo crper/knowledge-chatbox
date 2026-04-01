@@ -13,6 +13,7 @@ import { queryKeys } from "@/lib/api/query-keys";
 import { getDocumentUploadRejectionMessage, runDocumentUpload } from "@/lib/document-upload";
 import {
   deleteDocumentMutationOptions,
+  documentUploadReadinessQueryOptions,
   documentVersionsQueryOptions,
   documentsListQueryOptions,
   reindexDocumentMutationOptions,
@@ -46,6 +47,7 @@ export function useKnowledgeWorkspace(filters?: KnowledgeDocumentListFilters) {
     Boolean(normalizedQuery) || filters?.status !== undefined || filters?.type !== undefined;
 
   const currentUserQuery = useQuery(currentUserQueryOptions());
+  const uploadReadinessQuery = useQuery(documentUploadReadinessQueryOptions());
   const unfilteredDocumentsQuery = useQuery({
     ...documentsListQueryOptions(),
     enabled: hasActiveFilters,
@@ -234,6 +236,7 @@ export function useKnowledgeWorkspace(filters?: KnowledgeDocumentListFilters) {
 
   return {
     canManageDocuments: Boolean(currentUserQuery.data),
+    canManageProviderSettings: currentUserQuery.data?.role === "admin",
     deleteDocument: (documentId: number) => deleteMutation.mutateAsync(documentId),
     documents,
     documentsRefreshing: documentsQuery.isFetching && documentsQuery.data !== undefined,
@@ -247,6 +250,8 @@ export function useKnowledgeWorkspace(filters?: KnowledgeDocumentListFilters) {
     reindexDocument: (documentId: number) => reindexMutation.mutateAsync(documentId),
     reindexPending: reindexMutation.isPending,
     showVersions,
+    uploadReadiness: uploadReadinessQuery.data,
+    uploadReadinessPending: uploadReadinessQuery.isPending,
     uploadItems,
     versionDrawerOpen,
     versions,

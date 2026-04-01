@@ -28,6 +28,14 @@ def login_admin(api_client: TestClient) -> None:
     )
     assert response.status_code == 200
 
+    def ensure_openai_key(provider_profiles, settings_record) -> None:
+        provider_profiles["openai"]["api_key"] = "test-openai-key"
+        settings_record.pending_embedding_route_json = None
+        settings_record.index_rebuild_status = "idle"
+        settings_record.building_index_generation = None
+
+    update_provider_profiles(ensure_openai_key)
+
 
 def build_png_bytes() -> bytes:
     buffer = BytesIO()
@@ -80,6 +88,16 @@ def get_active_generation() -> int:
         return settings_record.active_index_generation
 
 
+def update_provider_profiles(mutator) -> None:
+    session_factory = create_session_factory()
+    with session_factory() as session:
+        settings_record = SettingsService(session, get_settings()).get_or_create_settings_record()
+        provider_profiles = settings_record.provider_profiles.model_dump()
+        mutator(provider_profiles, settings_record)
+        settings_record.provider_profiles_json = provider_profiles
+        session.commit()
+
+
 def test_upload_document_indexes_active_generation(api_client: TestClient) -> None:
     login_admin(api_client)
     active_generation = get_active_generation()
@@ -94,6 +112,76 @@ def test_upload_document_indexes_active_generation(api_client: TestClient) -> No
     assert payload["revision"]["ingest_status"] == "indexed"
     assert payload["document"]["latest_revision"]["id"] == payload["revision"]["id"]
     assert count_lexical_rows(payload["revision"]["id"], generation=active_generation) > 0
+
+
+def test_upload_readiness_blocks_when_active_embedding_is_not_configured(
+    api_client: TestClient,
+) -> None:
+    login_admin(api_client)
+
+    def clear_openai_key(provider_profiles, _settings_record) -> None:
+        provider_profiles["openai"]["api_key"] = None
+
+    update_provider_profiles(clear_openai_key)
+
+    response = api_client.get("/api/documents/upload-readiness")
+
+    assert response.status_code == 200
+    assert response.json()["data"] == {
+        "blocking_reason": "embedding_not_configured",
+        "can_upload": False,
+        "image_fallback": False,
+    }
+
+
+def test_upload_readiness_marks_images_as_fallback_when_vision_is_not_configured(
+    api_client: TestClient,
+) -> None:
+    login_admin(api_client)
+
+    def route_vision_to_anthropic(provider_profiles, settings_record) -> None:
+        provider_profiles["anthropic"]["api_key"] = None
+        settings_record.vision_route_json = {
+            "provider": "anthropic",
+            "model": "claude-sonnet-4-5",
+        }
+
+    update_provider_profiles(route_vision_to_anthropic)
+
+    response = api_client.get("/api/documents/upload-readiness")
+
+    assert response.status_code == 200
+    assert response.json()["data"] == {
+        "blocking_reason": None,
+        "can_upload": True,
+        "image_fallback": True,
+    }
+
+
+def test_upload_readiness_blocks_when_pending_embedding_is_not_configured(
+    api_client: TestClient,
+) -> None:
+    login_admin(api_client)
+
+    def break_pending_voyage(provider_profiles, settings_record) -> None:
+        provider_profiles["voyage"]["api_key"] = None
+        settings_record.pending_embedding_route_json = {
+            "provider": "voyage",
+            "model": "voyage-3.5",
+        }
+        settings_record.index_rebuild_status = INDEX_REBUILD_STATUS_RUNNING
+        settings_record.building_index_generation = settings_record.active_index_generation + 1
+
+    update_provider_profiles(break_pending_voyage)
+
+    response = api_client.get("/api/documents/upload-readiness")
+
+    assert response.status_code == 200
+    assert response.json()["data"] == {
+        "blocking_reason": "pending_embedding_not_configured",
+        "can_upload": False,
+        "image_fallback": False,
+    }
 
 
 def test_upload_document_writes_to_building_generation_when_rebuild_running(
@@ -130,6 +218,31 @@ def test_upload_document_writes_to_building_generation_when_rebuild_running(
     assert store.list_by_document_id(revision_id, generation=building_generation)
     assert count_lexical_rows(revision_id, generation=active_generation) > 0
     assert count_lexical_rows(revision_id, generation=building_generation) > 0
+
+
+def test_upload_document_returns_conflict_before_saving_file_when_embedding_is_not_configured(
+    api_client: TestClient,
+) -> None:
+    login_admin(api_client)
+    upload_dir = get_settings().upload_dir
+    existing_uploads = (
+        {path.name for path in upload_dir.iterdir()} if upload_dir.exists() else set()
+    )
+
+    def clear_openai_key(provider_profiles, _settings_record) -> None:
+        provider_profiles["openai"]["api_key"] = None
+
+    update_provider_profiles(clear_openai_key)
+
+    response = api_client.post(
+        "/api/documents/upload",
+        files={"file": ("note.txt", b"hello world", "text/plain")},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "embedding_not_configured"
+    current_uploads = {path.name for path in upload_dir.iterdir()} if upload_dir.exists() else set()
+    assert current_uploads == existing_uploads
 
 
 def test_upload_document_returns_existing_revision_for_duplicate_content(

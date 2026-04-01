@@ -53,3 +53,11 @@ class DocumentUploadRead(BaseModel):
     document: DocumentSummaryRead
     revision: DocumentRevisionRead
     latest_revision: DocumentRevisionRead
+
+
+class DocumentUploadReadinessRead(BaseModel):
+    """描述资源上传前置条件是否满足。"""
+
+    can_upload: bool
+    image_fallback: bool
+    blocking_reason: str | None

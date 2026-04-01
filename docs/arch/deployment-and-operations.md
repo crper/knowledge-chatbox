@@ -35,7 +35,10 @@
 - API 启动后默认暴露 `/docs`、`/redoc`、`/openapi.json`；它们与前端契约生成共用同一份 FastAPI OpenAPI 真相源
 - 认证当前使用 `PyJWT` 短期 access token + HttpOnly refresh cookie；refresh cookie 默认按请求 scheme 自动决定是否带 `Secure`，若部署在 HTTPS 反向代理后且应用层拿不到 `https` scheme，则需要显式配置 `SESSION_COOKIE_SECURE=true`；本地和容器环境都需要提供稳定的 `JWT_SECRET_KEY`；前端启动期会通过 `/api/auth/bootstrap` 恢复 refresh session，普通请求、资源上传与 SSE 流式聊天里的 `401` 续期仍走 `/api/auth/refresh`
 - 资源上传当前会先按块落到 `data/uploads`，同时增量计算 `content_hash` 和 `file_size`；因此即使 `web` 容器把 `client_max_body_size` 放宽到 `2g`，API 进程也不会再把整份文件一次性读进内存
+- 资源页会先读取 `GET /api/documents/upload-readiness` 判断上传前置条件；这条接口只判断当前配置形状是否允许进入上传链路，不做 provider 实时探活
 - 图片上传当前会先返回 `processing`，再由 API 进程内后台任务补做 vision 标准化与索引；Docker 单机模式依赖 SQLite 状态和启动恢复来兜住容器重启中断
+- 活动 `embedding_route` 缺配置，或索引重建中的 `pending_embedding_route` 缺配置时，上传会在落盘前直接返回 `409`，避免把大文件先写进宿主机再失败
+- `vision_route` 缺配置不会阻断图片上传；图片会退化成基础文件信息入库
 - 浏览器内的布局、虚拟列表、抽屉、附件面板、账户菜单、会话恢复、标题兜底和设置文案收敛，都是纯前端运行时行为；它们不新增环境变量、容器、副进程或本地运维步骤，具体语义统一看 [frontend-workspace.md](./frontend-workspace.md)
 - 聊天主区当前默认先读取最近一段消息窗口，继续向上滚动时再请求更早消息；右侧上下文栏走独立会话摘要接口；流式完成或失败时优先 patch 当前窗口与摘要，而不是默认整段消息重拉。这些都是前端运行时行为，不新增额外部署动作，但排查长会话体感问题时需要按这条链路理解
 - 聊天附件在服务端侧的图片重读、标准化文本拼接、多附件逐个检索后合并等行为，属于 API 运行时输入整形与召回策略；它们同样不新增额外运维动作，具体链路统一看 [runtime-flows.md](./runtime-flows.md)

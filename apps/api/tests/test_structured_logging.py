@@ -78,8 +78,10 @@ def stub_document_index_embedding(monkeypatch) -> None:
 
 def test_sync_chat_logs_prompt_and_response_summary(
     api_client: TestClient,
+    configure_upload_provider,
     monkeypatch,
 ) -> None:
+    del configure_upload_provider
     chat_logger = LoggerSpy()
     stub_document_index_embedding(monkeypatch)
     monkeypatch.setattr(
@@ -145,8 +147,10 @@ def test_sync_chat_logs_prompt_and_response_summary(
 
 def test_sync_chat_logs_lexical_retrieval_strategy_when_embedding_generation_fails(
     api_client: TestClient,
+    configure_upload_provider,
     monkeypatch,
 ) -> None:
+    del configure_upload_provider
     chat_logger = LoggerSpy()
     stub_document_index_embedding(monkeypatch)
     monkeypatch.setattr(
@@ -300,8 +304,10 @@ def test_sync_chat_logs_failure_summary(
 
 def test_document_upload_logs_completed_sync_ingestion(
     api_client: TestClient,
+    configure_upload_provider,
     monkeypatch,
 ) -> None:
+    del configure_upload_provider
     ingestion_logger = LoggerSpy()
     stub_document_index_embedding(monkeypatch)
     monkeypatch.setattr(IngestionService, "logger", ingestion_logger)
@@ -330,8 +336,10 @@ def test_document_upload_logs_completed_sync_ingestion(
 
 def test_document_background_ingestion_logs_structured_failure(
     api_client: TestClient,
+    configure_upload_provider,
     monkeypatch,
 ) -> None:
+    del configure_upload_provider
     ingestion_logger = LoggerSpy()
     monkeypatch.setattr(IngestionService, "logger", ingestion_logger)
     monkeypatch.setattr(

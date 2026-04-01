@@ -92,8 +92,10 @@ def comparable_message_fields(message: dict) -> dict:
 
 def test_sync_and_stream_chat_produce_equivalent_successful_messages_and_sources(
     api_client: TestClient,
+    configure_upload_provider,
     monkeypatch,
 ) -> None:
+    del configure_upload_provider
     stub_document_index_embedding(monkeypatch)
     monkeypatch.setattr(
         "knowledge_chatbox_api.services.chat.chat_application_service.build_response_adapter_from_settings",
