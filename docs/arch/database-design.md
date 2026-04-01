@@ -1,11 +1,11 @@
 # 数据库设计
 
-这份文档只描述 SQLite 里的业务真相源。当前实现已经从旧的 `workspace + knowledge_base + mount` 模型收敛到单一 `space` 边界，并把 provider 设置收敛到 `app_settings` 的强类型 JSON 字段。
+这份文档描述 SQLite 里的业务真相源，以及与之同库维护的轻量 `FTS5` 词法候选兜底索引。当前实现已经从旧的 `workspace + knowledge_base + mount` 模型收敛到单一 `space` 边界，并把 provider 设置收敛到 `app_settings` 的强类型 JSON 字段。
 
 ## 1. 设计原则
 
-- SQLite 仍是唯一业务真相源
-- Chroma 只保存可重建的 chunk / embedding 派生数据
+- SQLite 仍是唯一业务真相源，同时同库维护可重建的 `FTS5` 词法候选兜底索引
+- Chroma 只保存可重建的 chunk / embedding 向量检索派生数据
 - 原始文件和标准化文件仍直接落本地目录
 - 当前 V1 只支持每用户一个 personal `space`
 - 会话内容和运行态分离：`chat_messages` 面向 UI，`chat_runs + chat_run_events` 面向执行与回放
@@ -36,6 +36,12 @@
 | `chat_message_attachments` | 消息附件元数据，归档到 `document_revision_id` |
 | `chat_runs` | 一次执行记录 |
 | `chat_run_events` | append-only 事件日志，用于 SSE 重放与排障 |
+
+### 检索派生
+
+| 表 / 虚表 | 作用 |
+| --- | --- |
+| `retrieval_chunks_fts` | SQLite `FTS5` 词法候选兜底索引，按 `generation + document_revision_id + chunk_id` 维护 |
 
 ### 设置
 
@@ -109,7 +115,8 @@ erDiagram
 
 补充：
 
-- 检索索引本身不在 SQLite 真相源里，SQLite 只记录 generation、route 和文档修订归属
+- 向量检索索引本身不在 SQLite 真相源里，Chroma 负责这一层
+- SQLite 同库维护 `retrieval_chunks_fts` 这类词法候选兜底索引；它是派生数据，不是业务真相源
 - 前端消费的 settings / chat / documents 形状，可能是基于这些表再做过聚合或投影
 
 ## 7. 代码入口

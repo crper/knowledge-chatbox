@@ -5,8 +5,10 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
 from PIL import Image
 
+from knowledge_chatbox_api.core.config import get_settings
 from knowledge_chatbox_api.models.auth import User
 from knowledge_chatbox_api.models.document import Document, DocumentRevision
 from knowledge_chatbox_api.repositories.chat_repository import ChatRepository
@@ -14,6 +16,7 @@ from knowledge_chatbox_api.repositories.space_repository import SpaceRepository
 from knowledge_chatbox_api.services.chat.chat_service import ChatService
 from knowledge_chatbox_api.services.documents.chunking_service import ChunkingService
 from knowledge_chatbox_api.services.documents.indexing_service import IndexingService
+from knowledge_chatbox_api.services.settings.settings_service import SettingsService
 from knowledge_chatbox_api.utils.chroma import InMemoryChromaStore
 
 
@@ -412,6 +415,87 @@ def test_chat_service_falls_back_to_text_search_when_embedding_generation_fails(
     assert response_adapter.response_calls
 
 
+def test_chat_service_falls_back_to_lexical_index_when_vector_results_are_empty(
+    migrated_db_session,
+) -> None:
+    _, chat_session, repository = create_user_and_session(migrated_db_session)
+    response_adapter = ResponseAdapterStub()
+    embedding_adapter = EmbeddingAdapterStub()
+    document_version = create_document_version(migrated_db_session, chat_session.user_id)
+
+    class EmptyVectorChromaStore:
+        def upsert(self, records, *, embeddings=None, generation=1):
+            del records, embeddings, generation
+
+        def list_by_document_id(self, document_id: int, *, generation: int = 1):
+            del document_id, generation
+            return []
+
+        def delete_by_document_id(self, document_id: int, *, generation: int = 1):
+            del document_id, generation
+
+        def clear_generation(self, generation: int):
+            del generation
+
+        def query(self, query_text, *, query_embedding=None, **kwargs):
+            del query_text, query_embedding, kwargs
+            return []
+
+    chroma_store = EmptyVectorChromaStore()
+    settings = get_settings()
+    settings_record = SettingsService(migrated_db_session, settings).get_or_create_settings_record()
+    indexing_service = IndexingService(
+        session=migrated_db_session,
+        chunking_service=ChunkingService(),
+        chroma_store=chroma_store,
+        embedding_provider=embedding_adapter,
+        settings=settings_record,
+    )
+    indexing_service.index_document(
+        document_version,
+        "OpenAI provider setup guide.\n\nEmbedding model tips.",
+        section_title="Guide",
+    )
+    embedding_adapter.embed_calls.clear()
+
+    service = ChatService(
+        session=migrated_db_session,
+        chat_repository=repository,
+        chroma_store=chroma_store,
+        response_adapter=response_adapter,
+        embedding_adapter=embedding_adapter,
+        settings=type(
+            "SettingsStub",
+            (),
+            {
+                "active_index_generation": 1,
+                "system_prompt": None,
+                "provider_profiles": {},
+                "embedding_route": {"provider": "openai", "model": "text-embedding-3-small"},
+            },
+        )(),
+    )
+
+    result = service.answer_question(chat_session.id, "How do I set up OpenAI?")
+
+    assert embedding_adapter.embed_calls == [["How do I set up OpenAI?"]]
+    assert result["answer"] == "answer from provider"
+    assert len(result["sources"]) == 1
+    assert result["sources"][0]["document_id"] == document_version.document_id
+    assert result["sources"][0]["document_revision_id"] == document_version.id
+    assert result["sources"][0]["document_name"] == "guide.md"
+    assert result["sources"][0]["chunk_id"] == f"{document_version.id}:0"
+    assert result["sources"][0]["snippet"] == "OpenAI provider setup guide."
+    assert result["sources"][0]["page_number"] is None
+    assert result["sources"][0]["section_title"] == "Guide"
+    assert result["sources"][0]["score"] == pytest.approx(
+        result["sources"][0]["score"],
+        rel=0.0,
+        abs=10.0,
+    )
+    assert response_adapter.response_calls
+
+
 def test_chat_service_limits_retrieval_to_current_attachment_revisions(
     migrated_db_session,
 ) -> None:
@@ -617,6 +701,96 @@ def test_chat_service_queries_each_attachment_revision_when_multiple_documents_a
     assert {source["document_revision_id"] for source in result["sources"]} == {
         dominant_document_version.id,
         secondary_document_version.id,
+    }
+
+
+def test_chat_service_uses_lexical_fallback_for_each_attachment_when_vector_is_empty(
+    migrated_db_session,
+) -> None:
+    _, chat_session, repository = create_user_and_session(migrated_db_session)
+    response_adapter = ResponseAdapterStub()
+    embedding_adapter = EmbeddingAdapterStub()
+
+    class EmptyVectorChromaStore:
+        def upsert(self, records, *, embeddings=None, generation=1):
+            del records, embeddings, generation
+
+        def list_by_document_id(self, document_id: int, *, generation: int = 1):
+            del document_id, generation
+            return []
+
+        def delete_by_document_id(self, document_id: int, *, generation: int = 1):
+            del document_id, generation
+
+        def clear_generation(self, generation: int):
+            del generation
+
+        def query(self, query_text, *, query_embedding=None, **kwargs):
+            del query_text, query_embedding, kwargs
+            return []
+
+    chroma_store = EmptyVectorChromaStore()
+    settings = get_settings()
+    settings_record = SettingsService(migrated_db_session, settings).get_or_create_settings_record()
+    indexing_service = IndexingService(
+        session=migrated_db_session,
+        chunking_service=ChunkingService(max_chunk_length=80, overlap=0),
+        chroma_store=chroma_store,
+        embedding_provider=embedding_adapter,
+        settings=settings_record,
+    )
+    first_document_version = create_document_version(
+        migrated_db_session,
+        chat_session.user_id,
+        file_name="alpha.md",
+    )
+    second_document_version = create_document_version(
+        migrated_db_session,
+        chat_session.user_id,
+        file_name="beta.md",
+    )
+    indexing_service.index_document(
+        first_document_version,
+        "poem alpha river stanza",
+        section_title="Alpha",
+    )
+    indexing_service.index_document(
+        second_document_version,
+        "poem beta harbor stanza",
+        section_title="Beta",
+    )
+    embedding_adapter.embed_calls.clear()
+
+    service = ChatService(
+        session=migrated_db_session,
+        chat_repository=repository,
+        chroma_store=chroma_store,
+        response_adapter=response_adapter,
+        embedding_adapter=embedding_adapter,
+        settings=type(
+            "SettingsStub",
+            (),
+            {
+                "active_index_generation": 1,
+                "system_prompt": None,
+                "provider_profiles": {},
+                "embedding_route": {"provider": "openai", "model": "text-embedding-3-small"},
+            },
+        )(),
+    )
+
+    result = service.answer_question(
+        chat_session.id,
+        "poem",
+        attachments=[
+            build_document_attachment(first_document_version, attachment_id="att-1"),
+            build_document_attachment(second_document_version, attachment_id="att-2"),
+        ],
+    )
+
+    assert {source["document_revision_id"] for source in result["sources"]} == {
+        first_document_version.id,
+        second_document_version.id,
     }
 
 

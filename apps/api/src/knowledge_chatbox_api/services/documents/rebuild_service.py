@@ -9,6 +9,7 @@ from sqlalchemy import and_, or_, select
 from knowledge_chatbox_api.core.logging import get_logger
 from knowledge_chatbox_api.models.document import Document, DocumentRevision
 from knowledge_chatbox_api.providers.factory import build_embedding_adapter
+from knowledge_chatbox_api.repositories.retrieval_chunk_repository import RetrievalChunkRepository
 from knowledge_chatbox_api.schemas.settings import ProviderRuntimeSettings
 from knowledge_chatbox_api.services.documents.chunking_service import ChunkingService
 from knowledge_chatbox_api.services.documents.constants import derive_section_title
@@ -33,6 +34,7 @@ class RebuildService:
         self.settings_service = SettingsService(session, settings)
         self.chunking_service = ChunkingService()
         self.chroma_store = get_chroma_store()
+        self.retrieval_chunk_repository = RetrievalChunkRepository(session)
 
     def rebuild_building_generation(self, target_generation: int) -> int:
         rebuild_logger = logger.bind(target_generation=target_generation)
@@ -60,6 +62,7 @@ class RebuildService:
         )
         try:
             self.chroma_store.clear_generation(target_generation)
+            self.retrieval_chunk_repository.clear_generation(target_generation)
         except Exception:
             self._mark_rebuild_failed(target_generation)
             return 0

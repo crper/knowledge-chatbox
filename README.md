@@ -2,7 +2,7 @@
 
 > 本地优先的知识工作台
 
-把“上传资料、标准化、索引、问答、来源回看、系统配置、用户管理”收进同一套单机工作流。前端使用 React + Vite+，后端使用 FastAPI；SQLite 保存业务真相，Chroma 保存检索派生索引，原始文件和标准化结果直接落在本地目录。
+把“上传资料、标准化、索引、问答、来源回看、系统配置、用户管理”收进同一套单机工作流。前端使用 React + Vite+，后端使用 FastAPI；SQLite 保存业务真相与 `FTS5` 词法兜底索引，Chroma 保存向量检索派生索引，原始文件和标准化结果直接落在本地目录。
 
 [快速开始](#快速开始) • [文档入口](#文档入口) • [开发入口](#开发入口) • [Docker 单机部署](#docker-单机部署) • [参与贡献](#参与贡献)
 
@@ -21,13 +21,14 @@
 | 📚 多格式资料入库 | 已支持 | `txt / md / pdf / docx / png / jpg / jpeg / webp` |
 | 🌊 流式问答 | 已支持 | 同步问答、SSE 流式输出、失败重试、活动 run 查询；长会话主区默认只加载最近一段消息窗口 |
 | 🧾 来源引用回看 | 已支持 | 回答内容带来源片段；右侧上下文栏走独立会话摘要接口，不再依赖整段消息重拉 |
+| 🔎 检索兜底 | 已支持 | `Chroma` 向量召回优先，`SQLite FTS5` 负责词法候选兜底 |
 | 🧠 三路模型路由 | 已支持 | `response / embedding / vision` 独立配置与切换 |
 | 🔌 多 Provider | 已支持 | `OpenAI / Anthropic / Voyage / Ollama` |
 | 🌐 中英双语 | 已支持 | 前端内置 `zh-CN / en` 文案与切换能力 |
 | 🌓 主题切换 | 已支持 | `light / dark / system` 三种主题偏好 |
 | 🔐 角色与设置中心 | 已支持 | `admin / user` 两类角色，带设置中心和用户管理 |
 | 🐳 单机部署 | 已支持 | 开发态可直跑，稳定运行走 Docker Compose |
-| 🗂️ 本地优先存储 | 已支持 | SQLite、Chroma、上传文件和标准化结果都落本地目录 |
+| 🗂️ 本地优先存储 | 已支持 | SQLite（含 `FTS5` 词法兜底索引）、Chroma、上传文件和标准化结果都落本地目录 |
 | 🪶 依赖克制 | 已支持 | V1 不引入 Redis、Celery、对象存储等非必需基础设施 |
 
 ## 演示 Demo
@@ -192,7 +193,7 @@ knowledge-chatbox/
     uploads/           # 原始上传文件
     normalized/        # 标准化后的文本 / Markdown
     chroma/            # Chroma 向量索引数据
-    sqlite/            # SQLite 数据文件
+    sqlite/            # SQLite 业务数据与 FTS5 词法兜底索引
   scripts/
     docker-deploy.sh
   reset-local-data.sh

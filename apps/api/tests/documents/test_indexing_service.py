@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from sqlalchemy import text
 
 from knowledge_chatbox_api.core.config import get_settings
 from knowledge_chatbox_api.models.auth import User
@@ -122,6 +123,17 @@ def test_rebuild_service_promotes_pending_embedding_route(
     assert refreshed.active_index_generation == active_generation + 1
     assert refreshed.building_index_generation is None
     assert refreshed.index_rebuild_status == "idle"
+    lexical_rows = migrated_db_session.execute(
+        text(
+            """
+            SELECT COUNT(*)
+            FROM retrieval_chunks_fts
+            WHERE generation = :generation
+            """
+        ),
+        {"generation": target_generation},
+    ).scalar_one()
+    assert lexical_rows > 0
 
 
 def test_rebuild_service_marks_failed_when_pending_embedding_route_missing(
@@ -171,3 +183,56 @@ def test_indexing_service_raises_when_embedding_generation_fails(
 
     with pytest.raises(DocumentNotNormalizedError, match="embedding generation failed"):
         indexing_service.index_document(document_version, "# Title\n\ncontent for rebuild")
+
+
+def test_indexing_service_persists_and_deletes_lexical_chunks_by_generation(
+    migrated_db_session,
+) -> None:
+    class EmbeddingAdapterStub:
+        def embed(self, texts: list[str], settings) -> list[list[float]]:
+            del settings
+            return [[0.1, 0.2, 0.3] for _ in texts]
+
+    settings = get_settings()
+    service = SettingsService(migrated_db_session, settings)
+    settings_record = service.get_or_create_settings_record()
+    document_version = create_document(migrated_db_session)
+    indexing_service = IndexingService(
+        session=migrated_db_session,
+        chunking_service=ChunkingService(),
+        chroma_store=InMemoryChromaStore(),
+        embedding_provider=EmbeddingAdapterStub(),
+        settings=settings_record,
+    )
+
+    indexing_service.index_document(
+        document_version,
+        "# Title\n\ncontent for rebuild",
+        generation=3,
+        section_title="Title",
+    )
+
+    lexical_rows = migrated_db_session.execute(
+        text(
+            "SELECT chunk_id, generation, document_revision_id, document_id, space_id, "
+            "section_title "
+            "FROM retrieval_chunks_fts WHERE generation = 3"
+        )
+    ).fetchall()
+
+    assert len(lexical_rows) == 2
+    assert {row.chunk_id for row in lexical_rows} == {
+        f"{document_version.id}:0",
+        f"{document_version.id}:1",
+    }
+    assert {row.document_revision_id for row in lexical_rows} == {document_version.id}
+    assert {row.document_id for row in lexical_rows} == {document_version.document_id}
+    assert {row.generation for row in lexical_rows} == {3}
+    assert {row.section_title for row in lexical_rows} == {"Title"}
+
+    indexing_service.delete_document_chunks(document_version, generation=3)
+
+    remaining = migrated_db_session.execute(
+        text("SELECT COUNT(*) FROM retrieval_chunks_fts WHERE generation = 3")
+    ).scalar_one()
+    assert remaining == 0

@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from time import perf_counter
 from typing import Any
 
 from sqlalchemy import and_, or_, select
@@ -10,6 +11,7 @@ from sqlalchemy import and_, or_, select
 from knowledge_chatbox_api.core.logging import get_logger
 from knowledge_chatbox_api.models.document import Document, DocumentRevision
 from knowledge_chatbox_api.repositories.document_repository import DocumentRepository
+from knowledge_chatbox_api.repositories.retrieval_chunk_repository import RetrievalChunkRepository
 from knowledge_chatbox_api.utils.chroma import (
     _normalize_match_text,
     _quoted_phrases,
@@ -68,11 +70,22 @@ logger = get_logger(__name__)
 
 
 @dataclass(frozen=True)
+class RetrievalDiagnostics:
+    """Structured retrieval diagnostics for prompt assembly logging."""
+
+    strategy: str = "none"
+    latency_ms: int = 0
+    candidate_count: int = 0
+    attachment_revision_scope_count: int = 0
+
+
+@dataclass(frozen=True)
 class RetrievedContext:
     """Structured retrieval result for prompt assembly."""
 
     context_sections: list[str]
     sources: list[dict[str, Any]]
+    diagnostics: RetrievalDiagnostics = field(default_factory=RetrievalDiagnostics)
 
 
 class RetrievalService:
@@ -91,6 +104,7 @@ class RetrievalService:
         self.embedding_adapter = embedding_adapter
         self.settings = settings
         self.document_repository = DocumentRepository(session)
+        self.retrieval_chunk_repository = RetrievalChunkRepository(session)
 
     def retrieve_context(
         self,
@@ -99,18 +113,38 @@ class RetrievalService:
         active_space_id: int | None,
         attachments: list[dict[str, Any]] | None = None,
     ) -> RetrievedContext:
+        started_at = perf_counter()
         normalized_query = query_text.strip()
         attachment_revision_ids = sorted(self._collect_attachment_revision_ids(attachments))
         where_filter = self._build_retrieval_where_filter(active_space_id, attachments)
+        attachment_revision_scope_count = len(attachment_revision_ids)
 
         if not self._should_retrieve_knowledge(normalized_query, attachments=attachments):
-            return RetrievedContext(context_sections=[], sources=[])
+            return RetrievedContext(
+                context_sections=[],
+                sources=[],
+                diagnostics=self._build_diagnostics(
+                    strategy="none",
+                    started_at=started_at,
+                    candidate_count=0,
+                    attachment_revision_scope_count=attachment_revision_scope_count,
+                ),
+            )
         if not self._has_retrievable_documents(active_space_id):
-            return RetrievedContext(context_sections=[], sources=[])
+            return RetrievedContext(
+                context_sections=[],
+                sources=[],
+                diagnostics=self._build_diagnostics(
+                    strategy="none",
+                    started_at=started_at,
+                    candidate_count=0,
+                    attachment_revision_scope_count=attachment_revision_scope_count,
+                ),
+            )
 
         generation = getattr(self.settings, "active_index_generation", 1)
         query_embedding = self._embed_query_or_none(normalized_query)
-        retrieved_chunks = self._query_retrieved_chunks(
+        vector_chunks = self._query_retrieved_chunks(
             normalized_query,
             active_space_id=active_space_id,
             attachment_revision_ids=attachment_revision_ids,
@@ -118,13 +152,58 @@ class RetrievalService:
             query_embedding=query_embedding,
             where_filter=where_filter,
         )
-        retrieved_chunks = [
+        vector_candidate_count = len(vector_chunks)
+        relevant_vector_chunks = [
             record
-            for record in retrieved_chunks
+            for record in vector_chunks
             if self._is_relevant_retrieval_hit(record, normalized_query)
         ]
+        if relevant_vector_chunks:
+            return self._build_retrieved_context(
+                relevant_vector_chunks,
+                active_space_id,
+                diagnostics=self._build_diagnostics(
+                    strategy="vector",
+                    started_at=started_at,
+                    candidate_count=vector_candidate_count,
+                    attachment_revision_scope_count=attachment_revision_scope_count,
+                ),
+            )
 
-        return self._build_retrieved_context(retrieved_chunks, active_space_id)
+        lexical_chunks = self._query_lexical_chunks(
+            normalized_query,
+            active_space_id=active_space_id,
+            attachment_revision_ids=attachment_revision_ids,
+            generation=generation,
+        )
+        lexical_candidate_count = len(lexical_chunks)
+        relevant_lexical_chunks = [
+            record
+            for record in lexical_chunks
+            if self._is_relevant_retrieval_hit(record, normalized_query)
+        ]
+        if relevant_lexical_chunks:
+            return self._build_retrieved_context(
+                relevant_lexical_chunks,
+                active_space_id,
+                diagnostics=self._build_diagnostics(
+                    strategy="lexical",
+                    started_at=started_at,
+                    candidate_count=lexical_candidate_count,
+                    attachment_revision_scope_count=attachment_revision_scope_count,
+                ),
+            )
+
+        return RetrievedContext(
+            context_sections=[],
+            sources=[],
+            diagnostics=self._build_diagnostics(
+                strategy="none",
+                started_at=started_at,
+                candidate_count=0,
+                attachment_revision_scope_count=attachment_revision_scope_count,
+            ),
+        )
 
     def _has_retrievable_documents(self, space_id: int | None) -> bool:
         if space_id is None:
@@ -153,6 +232,8 @@ class RetrievalService:
         self,
         retrieved_chunks: list[dict[str, Any]],
         active_space_id: int | None,
+        *,
+        diagnostics: RetrievalDiagnostics,
     ) -> RetrievedContext:
         versions_by_id, documents_by_id = self._load_retrieved_document_context(retrieved_chunks)
         context_sections: list[str] = []
@@ -212,7 +293,27 @@ class RetrievalService:
                 }
             )
 
-        return RetrievedContext(context_sections=context_sections, sources=sources)
+        return RetrievedContext(
+            context_sections=context_sections,
+            sources=sources,
+            diagnostics=diagnostics,
+        )
+
+    def _build_diagnostics(
+        self,
+        *,
+        strategy: str,
+        started_at: float,
+        candidate_count: int,
+        attachment_revision_scope_count: int,
+    ) -> RetrievalDiagnostics:
+        latency_ms = max(int(round((perf_counter() - started_at) * 1000)), 0)
+        return RetrievalDiagnostics(
+            strategy=strategy,
+            latency_ms=latency_ms,
+            candidate_count=candidate_count,
+            attachment_revision_scope_count=attachment_revision_scope_count,
+        )
 
     def _load_retrieved_document_context(
         self,
@@ -338,6 +439,41 @@ class RetrievalService:
                 top_k=1,
                 generation=generation,
                 where=revision_where_filter,
+            )
+            for record in records:
+                chunk_id = str(record.get("id", ""))
+                if chunk_id in seen_chunk_ids:
+                    continue
+                seen_chunk_ids.add(chunk_id)
+                retrieved_chunks.append(record)
+        return retrieved_chunks
+
+    def _query_lexical_chunks(
+        self,
+        query_text: str,
+        *,
+        active_space_id: int | None,
+        attachment_revision_ids: list[int],
+        generation: int,
+    ) -> list[dict[str, Any]]:
+        if len(attachment_revision_ids) <= 1:
+            return self.retrieval_chunk_repository.query(
+                query_text,
+                generation=generation,
+                top_k=3,
+                space_id=active_space_id,
+                document_revision_ids=attachment_revision_ids or None,
+            )
+
+        retrieved_chunks: list[dict[str, Any]] = []
+        seen_chunk_ids: set[str] = set()
+        for revision_id in attachment_revision_ids:
+            records = self.retrieval_chunk_repository.query(
+                query_text,
+                generation=generation,
+                top_k=1,
+                space_id=active_space_id,
+                document_revision_ids=[revision_id],
             )
             for record in records:
                 chunk_id = str(record.get("id", ""))

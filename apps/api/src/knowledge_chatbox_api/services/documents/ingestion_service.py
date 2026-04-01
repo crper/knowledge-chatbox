@@ -72,7 +72,6 @@ class IngestionService:
         self.versioning_service = VersioningService(session, app_settings)
         self._chunking_service = ChunkingService()
         self._chroma_store = get_chroma_store()
-        self._indexing_service: IndexingService | None = None
 
     logger = get_logger(__name__)
 
@@ -168,7 +167,7 @@ class IngestionService:
                     self._delete_document_chunks_for_targets(
                         document_version,
                         indexing_targets,
-                        indexing_service=self._get_indexing_service(indexing_targets[0].settings),
+                        indexing_service=self._build_indexing_service(indexing_targets[0].settings),
                     )
                 self._remove_file(document_version.origin_path)
             else:
@@ -260,7 +259,7 @@ class IngestionService:
         content = Path(document_version.normalized_path).read_text(encoding="utf-8")
         settings_record = self.settings_service.get_or_create_settings_record()
         indexing_targets = self._build_indexing_targets(settings_record)
-        indexing_service = self._get_indexing_service(settings_record)
+        indexing_service = self._build_indexing_service(settings_record)
         snapshots = self._snapshot_document_chunks(
             document_version,
             indexing_targets,
@@ -268,7 +267,7 @@ class IngestionService:
         )
         try:
             for target in indexing_targets:
-                self._get_indexing_service(target.settings).index_document(
+                self._build_indexing_service(target.settings).index_document(
                     document_version,
                     content,
                     generation=target.generation,
@@ -291,7 +290,7 @@ class IngestionService:
         versions = self.document_repository.list_versions(document.id)
         settings_record = self.settings_service.get_or_create_settings_record()
         indexing_targets = self._build_indexing_targets(settings_record)
-        indexing_service = self._get_indexing_service(settings_record)
+        indexing_service = self._build_indexing_service(settings_record)
         snapshots = self._snapshot_versions_chunks(
             versions,
             indexing_targets,
@@ -358,7 +357,7 @@ class IngestionService:
         settings_record = self.settings_service.get_or_create_settings_record()
         indexing_targets = self._build_indexing_targets(settings_record)
         for target in indexing_targets:
-            self._get_indexing_service(target.settings).index_document(
+            self._build_indexing_service(target.settings).index_document(
                 document_version,
                 normalized.content,
                 generation=target.generation,
@@ -367,24 +366,14 @@ class IngestionService:
         self._set_revision_indexed(document_version)
         return normalized.normalized_path, indexing_targets
 
-    def _get_indexing_service(self, settings_record) -> IndexingService:
-        indexing_service = self._indexing_service
-        if indexing_service is None:
-            indexing_service = IndexingService(
-                session=self.session,
-                chunking_service=self._chunking_service,
-                chroma_store=self._chroma_store,
-                embedding_provider=build_embedding_adapter(settings_record.embedding_route),
-                settings=settings_record,
-            )
-            self._indexing_service = indexing_service
-            return indexing_service
-
-        indexing_service.embedding_provider = build_embedding_adapter(
-            settings_record.embedding_route
+    def _build_indexing_service(self, settings_record) -> IndexingService:
+        return IndexingService(
+            session=self.session,
+            chunking_service=self._chunking_service,
+            chroma_store=self._chroma_store,
+            embedding_provider=build_embedding_adapter(settings_record.embedding_route),
+            settings=settings_record,
         )
-        indexing_service.settings = settings_record
-        return indexing_service
 
     def _build_indexing_targets(self, settings_record) -> list[IndexingTarget]:
         targets = [
@@ -448,7 +437,7 @@ class IngestionService:
         self._delete_document_chunks_for_targets(
             document_version,
             targets,
-            indexing_service=self._get_indexing_service(targets[0].settings),
+            indexing_service=self._build_indexing_service(targets[0].settings),
         )
 
     def _set_revision_indexed(self, document_version: DocumentRevision) -> None:

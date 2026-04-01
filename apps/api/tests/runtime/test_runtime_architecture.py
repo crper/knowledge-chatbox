@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+from knowledge_chatbox_api.core.config import get_settings
 from knowledge_chatbox_api.models.auth import User
 from knowledge_chatbox_api.repositories.chat_repository import ChatRepository
 from knowledge_chatbox_api.repositories.chat_run_event_repository import ChatRunEventRepository
@@ -9,6 +10,7 @@ from knowledge_chatbox_api.repositories.chat_run_repository import ChatRunReposi
 from knowledge_chatbox_api.services.chat.chat_run_service import ChatRunService
 from knowledge_chatbox_api.services.chat.chat_stream_presenter import ChatStreamPresenter
 from knowledge_chatbox_api.services.chat.retry_service import RetryService
+from knowledge_chatbox_api.services.documents.ingestion_service import IngestionService
 from knowledge_chatbox_api.utils.chroma import InMemoryChromaStore
 
 
@@ -101,3 +103,38 @@ def test_chat_run_service_persists_runtime_events_and_updates_message_projection
     ]
     assert assistant_message.content == "hello world"
     assert assistant_message.status == "succeeded"
+
+
+def test_ingestion_service_builds_fresh_indexing_service_per_target_settings(
+    migrated_db_session,
+    monkeypatch,
+) -> None:
+    build_calls: list[str] = []
+
+    def build_embedding_adapter_stub(route):
+        model = route["model"] if isinstance(route, dict) else route.model
+        build_calls.append(model)
+        return SimpleNamespace(model=model)
+
+    monkeypatch.setattr(
+        "knowledge_chatbox_api.services.documents.ingestion_service.build_embedding_adapter",
+        build_embedding_adapter_stub,
+    )
+
+    service = IngestionService(migrated_db_session, get_settings())
+    first_settings = SimpleNamespace(
+        embedding_route={"provider": "openai", "model": "text-embedding-3-small"}
+    )
+    second_settings = SimpleNamespace(
+        embedding_route={"provider": "openai", "model": "text-embedding-3-large"}
+    )
+
+    first_indexing_service = service._build_indexing_service(first_settings)
+    second_indexing_service = service._build_indexing_service(second_settings)
+
+    assert first_indexing_service is not second_indexing_service
+    assert first_indexing_service.settings is first_settings
+    assert second_indexing_service.settings is second_settings
+    assert first_indexing_service.embedding_provider.model == "text-embedding-3-small"
+    assert second_indexing_service.embedding_provider.model == "text-embedding-3-large"
+    assert build_calls == ["text-embedding-3-small", "text-embedding-3-large"]

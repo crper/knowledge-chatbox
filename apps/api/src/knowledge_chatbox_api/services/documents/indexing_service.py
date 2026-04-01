@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from knowledge_chatbox_api.core.logging import get_logger
 from knowledge_chatbox_api.models.document import Document
+from knowledge_chatbox_api.repositories.retrieval_chunk_repository import RetrievalChunkRepository
 from knowledge_chatbox_api.services.documents.chunking_service import Chunk, ChunkingService
 from knowledge_chatbox_api.services.documents.errors import DocumentNotNormalizedError
 from knowledge_chatbox_api.utils.chroma import ChunkStore
@@ -27,6 +28,7 @@ class IndexingService:
         self.session = session
         self.chunking_service = chunking_service
         self.chroma_store = chroma_store
+        self.retrieval_chunk_repository = RetrievalChunkRepository(session)
         self.embedding_provider = embedding_provider
         self.settings = settings
         self.default_generation = (
@@ -94,6 +96,20 @@ class IndexingService:
             embeddings=embeddings,
             generation=target_generation,
         )
+        self.retrieval_chunk_repository.upsert_records(
+            [
+                {
+                    "id": chunk.chunk_id,
+                    "document_id": logical_document_id,
+                    "document_revision_id": document_version.id,
+                    "space_id": space_id,
+                    "text": chunk.text,
+                    "metadata": chunk.metadata,
+                }
+                for chunk in chunks
+            ],
+            generation=target_generation,
+        )
         document_version.chunk_count = len(chunks)
         return chunks
 
@@ -101,6 +117,10 @@ class IndexingService:
         """Drop all indexed chunks for one document version without committing."""
         target_generation = self._resolve_generation(generation)
         self.chroma_store.delete_by_document_id(
+            document_version.id,
+            generation=target_generation,
+        )
+        self.retrieval_chunk_repository.delete_by_document_id(
             document_version.id,
             generation=target_generation,
         )

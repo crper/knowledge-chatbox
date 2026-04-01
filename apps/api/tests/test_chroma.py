@@ -66,7 +66,7 @@ def test_persistent_chroma_store_reranks_vector_candidates_without_collection_wi
     ]
 
 
-def test_persistent_chroma_store_keeps_text_only_fallback_when_embedding_is_missing() -> None:
+def test_persistent_chroma_store_returns_no_candidates_when_embedding_is_missing() -> None:
     collection = FakeCollection()
     store = build_store(collection)
 
@@ -78,15 +78,8 @@ def test_persistent_chroma_store_keeps_text_only_fallback_when_embedding_is_miss
         where={"knowledge_base_id": {"$in": [9]}},
     )
 
-    assert [record["id"] for record in result] == ["fallback-1"]
-    assert collection.get_calls == [
-        {
-            "include": ["documents", "metadatas"],
-            "limit": 4,
-            "where": {"knowledge_base_id": {"$in": [9]}},
-            "where_document": {"$contains": "OpenAI setup"},
-        }
-    ]
+    assert result == []
+    assert collection.get_calls == []
 
 
 def test_persistent_chroma_store_normalizes_compound_where_filters() -> None:

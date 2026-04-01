@@ -93,7 +93,7 @@ flowchart TD
 - 若本轮消息带文档附件，检索会进一步限域到当前附件对应的 `document_revision_id`
 - 多文档附件检索会按附件逐个召回后再合并，减少单个文档吃满全局 `top_k`
 - 当两类条件同时存在时，后端会先归一化成 Chroma 兼容的复合过滤表达式；避免 `InMemoryChromaStore` 与持久化 Chroma 在真实流式链路上出现语义漂移
-- 若当前轮 query embedding 生成失败，本轮会降级到 Chroma 本地轻量词法匹配；不会退回整代索引的全量词法扫描
+- 若向量命中不足或当前轮 query embedding 生成失败，本轮会降级到 SQLite `FTS5` 词法候选兜底，再做轻量重排；不会退回整代索引的全量词法扫描
 - 纯图片泛化看图请求默认跳过 retrieval
 - 无附件时，问答仍会继续查询当前用户 personal `space` 里已入库的历史知识
 - Web 主区默认通过 `/api/chat/sessions/{id}/messages?limit=80` 先读取最近一段消息窗口，继续向上滚动时再带 `before_id + limit` 请求更早消息

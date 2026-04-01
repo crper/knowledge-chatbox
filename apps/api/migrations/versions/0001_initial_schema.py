@@ -146,6 +146,21 @@ def upgrade() -> None:
         ["document_id", "revision_no"],
         unique=False,
     )
+    op.execute(
+        """
+        CREATE VIRTUAL TABLE retrieval_chunks_fts USING fts5(
+            generation UNINDEXED,
+            chunk_id UNINDEXED,
+            document_revision_id UNINDEXED,
+            document_id UNINDEXED,
+            space_id UNINDEXED,
+            page_number UNINDEXED,
+            section_title,
+            content,
+            tokenize='unicode61'
+        )
+        """
+    )
 
     op.create_table(
         "chat_sessions",
@@ -378,6 +393,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    op.execute("DROP TABLE IF EXISTS retrieval_chunks_fts")
     for table_name in (
         "app_settings",
         "chat_message_attachments",

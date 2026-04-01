@@ -91,6 +91,7 @@ class ChatService:
             active_space_id=active_space_id,
             attachments=attachments,
         )
+        retrieval_diagnostics = retrieved_context.diagnostics
 
         prompt_messages: list[dict[str, Any]] = []
         system_prompt = self._system_prompt_content()
@@ -120,6 +121,10 @@ class ChatService:
             session_id=session_id,
             attachment_count=len(attachments or []),
             retrieved_source_count=len(retrieved_context.sources),
+            retrieval_strategy=retrieval_diagnostics.strategy,
+            retrieval_latency_ms=retrieval_diagnostics.latency_ms,
+            retrieval_candidate_count=retrieval_diagnostics.candidate_count,
+            attachment_revision_scope_count=retrieval_diagnostics.attachment_revision_scope_count,
             response_provider=self._response_provider_name(),
             response_model=self._response_model(),
         )

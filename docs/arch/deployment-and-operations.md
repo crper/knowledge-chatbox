@@ -30,7 +30,7 @@
 - API 子命令：`apps/api` 下用 `uv run -m uvicorn ...`
 - `just setup` 是非破坏性的依赖同步入口；它会执行 `apps/api` 下的 `uv sync --all-groups` 和 `apps/web` 下的 `vp install`
 - 如果你要的是“本地像生产一样稳定跑起来”，请直接看下方 Docker Compose 部分，不要继续用 `vp dev` 或 `uvicorn --reload`
-- 数据：统一落在仓库根目录 `data/`
+- 数据：统一落在仓库根目录 `data/`；其中 SQLite 文件除了业务真相源，也承载 `FTS5` 词法兜底索引
 - OpenAPI 契约校验当前是严格门禁：`just web-check` / `vp run api:check` 如果发现 `apps/web/openapi/schema.json` 或 `src/lib/api/generated/schema.d.ts` 漂移会直接失败；标准修复入口是 `cd apps/web && vp run api:generate`
 - API 启动后默认暴露 `/docs`、`/redoc`、`/openapi.json`；它们与前端契约生成共用同一份 FastAPI OpenAPI 真相源
 - 认证当前使用 `PyJWT` 短期 access token + HttpOnly refresh cookie；refresh cookie 默认按请求 scheme 自动决定是否带 `Secure`，若部署在 HTTPS 反向代理后且应用层拿不到 `https` scheme，则需要显式配置 `SESSION_COOKIE_SECURE=true`；本地和容器环境都需要提供稳定的 `JWT_SECRET_KEY`；前端启动期会通过 `/api/auth/bootstrap` 恢复 refresh session，普通请求、资源上传与 SSE 流式聊天里的 `401` 续期仍走 `/api/auth/refresh`
@@ -93,6 +93,7 @@ flowchart LR
 - 默认 Ollama bootstrap 当前对齐为 `qwen3.5:4b` 作为 chat / vision 模板值，避免设置页首屏和连接测试看到的默认模型不一致
 - API 响应头默认附带 `X-Request-ID`，日志里同样会输出 `request_id`
 - SQLite 连接默认开启 `WAL` 和 `busy_timeout=30000`，降低流式事件写入与标准页面读取并发时直接触发锁错误的概率
+- 文档索引当前拆成两层：`Chroma` 保存向量索引，SQLite 同库保存 `FTS5` 词法候选兜底索引；重置本地 SQLite 文件会一并清掉这部分派生数据
 - 数据目录全部 bind mount 到宿主机，容器重建后数据仍在
 - 同名资源如果内容哈希未变化，API 会直接返回当前版本；因此 `data/uploads` 和 `data/normalized` 的增长更接近“真实内容变更”而不是“重复点击上传”
 - 上传在标准化或索引阶段失败时，会清理本次新落盘的源文件与标准化副产物，避免宿主机目录被失败重试慢慢堆满
