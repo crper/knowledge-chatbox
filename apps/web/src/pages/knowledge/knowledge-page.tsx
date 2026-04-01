@@ -150,7 +150,8 @@ export function KnowledgePage() {
     typeFilter === "all" ? null : getTypeFilterLabel(typeFilter, t),
     statusFilter === "all" ? null : getStatusFilterLabel(statusFilter, t),
   ].filter(Boolean) as string[];
-  const uploadBlocked = uploadReadinessPending || uploadReadiness?.can_upload === false;
+  const uploadReadinessChecking = uploadReadinessPending && uploadReadiness === undefined;
+  const uploadBlocked = uploadReadiness?.can_upload === false;
   const imageUploadFallback = !uploadBlocked && uploadReadiness?.image_fallback === true;
 
   useEffect(() => {
@@ -189,6 +190,15 @@ export function KnowledgePage() {
   const renderUploadReadinessAlert = () => {
     if (!canManageDocuments) {
       return null;
+    }
+
+    if (uploadReadinessChecking) {
+      return (
+        <Alert className="rounded-[1.15rem] border-border/60 bg-background/60">
+          <AlertTitle>{t("uploadCheckingTitle")}</AlertTitle>
+          <AlertDescription>{t("uploadCheckingDescription")}</AlertDescription>
+        </Alert>
+      );
     }
 
     if (uploadBlocked) {
@@ -257,7 +267,7 @@ export function KnowledgePage() {
                 isDragReject && "border-destructive/24 bg-destructive/12 text-destructive",
                 isDragActive && "shadow-[0_14px_28px_-18px_hsl(var(--primary)/0.44)]",
               )}
-              disabled={uploadBlocked}
+              disabled={uploadBlocked || uploadReadinessChecking}
               onClick={open}
               type="button"
               variant={isDragReject ? "destructive" : "default"}
@@ -568,7 +578,11 @@ export function KnowledgePage() {
                                   : t("dropzoneHint")}
                             </p>
                           </div>
-                          <Button disabled={uploadBlocked} onClick={open} type="button">
+                          <Button
+                            disabled={uploadBlocked || uploadReadinessChecking}
+                            onClick={open}
+                            type="button"
+                          >
                             <UploadIcon data-icon="inline-start" />
                             {t("uploadAction")}
                           </Button>

@@ -3,6 +3,8 @@
   "pageDescription": "Manage local resources, versions, and indexing status.",
   "workspaceBadge": "Resource Workspace",
   "uploadAction": "Upload Resource",
+  "uploadCheckingDescription": "Checking the current upload requirements. Please wait.",
+  "uploadCheckingTitle": "Checking upload readiness",
   "uploadBlockedAction": "Open Provider Settings",
   "uploadBlockedDescription": "Configure the retrieval provider before uploading.",
   "uploadBlockedTitle": "Uploads are temporarily unavailable",

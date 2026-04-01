@@ -170,6 +170,7 @@ function buildUploadPayload(overrides: Record<string, unknown> = {}) {
 function buildFetchMock(
   role: "admin" | "user" = "admin",
   options?: {
+    delayReadiness?: boolean;
     documents?: Array<Record<string, unknown>>;
     readiness?: {
       blocking_reason: "embedding_not_configured" | "pending_embedding_not_configured" | null;
@@ -219,6 +220,9 @@ function buildFetchMock(
     }
 
     if (input.endsWith("/api/documents/upload-readiness")) {
+      if (options?.delayReadiness) {
+        return new Promise(() => {});
+      }
       return Promise.resolve(
         jsonResponse({
           success: true,
@@ -323,6 +327,16 @@ describe("KnowledgePage", () => {
     renderKnowledgePage();
 
     expect(await screen.findByText("上传前需要先配置检索 Provider。")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "上传资源" })).toBeDisabled();
+  });
+
+  it("shows a neutral loading notice while upload readiness is still being checked", async () => {
+    buildFetchMock("admin", { delayReadiness: true });
+
+    renderKnowledgePage();
+
+    expect(await screen.findByText("正在检查当前上传条件，请稍等。")).toBeInTheDocument();
+    expect(screen.queryByText("上传前需要先配置检索 Provider。")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "上传资源" })).toBeDisabled();
   });
 

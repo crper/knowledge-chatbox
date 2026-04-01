@@ -3,6 +3,8 @@
   "pageDescription": "管理本地资源、版本和索引状态。",
   "workspaceBadge": "资源工作区",
   "uploadAction": "上传资源",
+  "uploadCheckingDescription": "正在检查当前上传条件，请稍等。",
+  "uploadCheckingTitle": "检查上传条件中",
   "uploadBlockedAction": "前往 Provider 设置",
   "uploadBlockedDescription": "上传前需要先配置检索 Provider。",
   "uploadBlockedTitle": "当前暂时不能上传资源",
