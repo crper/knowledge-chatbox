@@ -1,0 +1,275 @@
+/**
+ * @file 聊天流式生命周期 Hook 模块。
+ */
+
+import { useCallback } from "react";
+import { useMutation, useQueryClient, type InfiniteData } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
+
+import { queryKeys } from "@/lib/api/query-keys";
+import type { ChatMessageItem, ChatSessionContextItem, ChatSourceItem } from "../api/chat";
+import { startChatStream, type ChatStreamAttachmentInput } from "../api/chat-stream";
+import { useChatStreamStore } from "../store/chat-stream-store";
+import { patchPagedChatMessagesCache } from "../utils/patch-paged-chat-messages";
+import { resolveSubmitErrorMessage } from "../utils/chat-submit-helpers";
+
+type StreamRunTerminalStatus = "failed" | "succeeded";
+
+type UseChatStreamLifecycleParams = {
+  currentSessionIdRef: React.RefObject<number | null>;
+  patchSessionContext: (input: {
+    attachments?: ChatSessionContextItem["attachments"];
+    latestAssistantMessageId?: number;
+    latestAssistantSources?: ChatSessionContextItem["latest_assistant_sources"];
+    sessionId: number;
+  }) => void;
+};
+
+export function useChatStreamLifecycle({
+  currentSessionIdRef,
+  patchSessionContext,
+}: UseChatStreamLifecycleParams) {
+  const { t } = useTranslation(["chat", "common"]);
+  const queryClient = useQueryClient();
+  const startRun = useChatStreamStore((state) => state.startRun);
+  const appendDelta = useChatStreamStore((state) => state.appendDelta);
+  const addSource = useChatStreamStore((state) => state.addSource);
+  const completeRun = useChatStreamStore((state) => state.completeRun);
+  const failRun = useChatStreamStore((state) => state.failRun);
+  const pruneRuns = useChatStreamStore((state) => state.pruneRuns);
+
+  const buildTerminalMessages = useCallback(
+    ({
+      errorMessage,
+      run,
+      status,
+    }: {
+      errorMessage: string | null;
+      run: ReturnType<typeof useChatStreamStore.getState>["runsById"][number];
+      status: StreamRunTerminalStatus;
+    }): ChatMessageItem[] => {
+      const assistantMessage: ChatMessageItem = {
+        content: run.content,
+        error_message: errorMessage,
+        id: run.assistantMessageId,
+        reply_to_message_id: run.retryOfMessageId ?? run.userMessageId ?? null,
+        role: "assistant",
+        sources_json: run.sources as ChatMessageItem["sources_json"],
+        status,
+      };
+
+      if (run.userMessageId === null) {
+        return [assistantMessage];
+      }
+
+      return [
+        {
+          content: run.userContent,
+          ...(errorMessage ? { error_message: errorMessage } : {}),
+          id: run.userMessageId,
+          role: "user",
+          sources_json: [],
+          status,
+        },
+        assistantMessage,
+      ];
+    },
+    [],
+  );
+
+  const finalizeStreamRun = useCallback(
+    ({
+      errorMessage,
+      runId,
+      sessionId,
+      status,
+    }: {
+      errorMessage: string | null;
+      runId: number;
+      sessionId: number;
+      status: StreamRunTerminalStatus;
+    }) => {
+      const currentRun = useChatStreamStore.getState().runsById[runId];
+      const patched =
+        currentRun == null
+          ? false
+          : patchPagedChatMessagesCache({
+              appendIfMissing: buildTerminalMessages({
+                errorMessage,
+                run: currentRun,
+                status,
+              }),
+              assistantMessageId: currentRun.assistantMessageId,
+              patch: {
+                content: currentRun.content,
+                error_message: errorMessage,
+                sources_json: currentRun.sources as ChatMessageItem["sources_json"],
+                status,
+              },
+              queryClient,
+              sessionId,
+            });
+
+      if (currentRun != null) {
+        patchSessionContext({
+          latestAssistantMessageId: currentRun.assistantMessageId,
+          latestAssistantSources:
+            currentRun.sources as ChatSessionContextItem["latest_assistant_sources"],
+          sessionId,
+        });
+      }
+
+      const refreshPromise = patched
+        ? Promise.resolve()
+        : queryClient.invalidateQueries({
+            queryKey: queryKeys.chat.messagesWindow(sessionId),
+          });
+      void refreshPromise.then(() => {
+        if (status === "failed" || currentSessionIdRef.current === sessionId) {
+          pruneRuns([runId]);
+        }
+      });
+    },
+    [buildTerminalMessages, currentSessionIdRef, patchSessionContext, pruneRuns, queryClient],
+  );
+
+  const sendMutation = useMutation({
+    mutationFn: async ({
+      attachments,
+      content,
+      retryOfMessageId,
+      sessionId,
+    }: {
+      attachments?: ChatStreamAttachmentInput[];
+      content: string;
+      retryOfMessageId?: number;
+      sessionId: number;
+    }) => {
+      let activeRunId: number | null = null;
+      let receivedTerminalRunEvent = false;
+
+      try {
+        return await startChatStream({
+          sessionId,
+          body: {
+            attachments,
+            content,
+            client_request_id: crypto.randomUUID(),
+            retry_of_message_id: retryOfMessageId,
+          },
+          onEvent: (event) => {
+            const runId = Number(event.data.run_id ?? 0);
+
+            if (event.event === "run.started") {
+              activeRunId = runId;
+              const userMessageId =
+                typeof event.data.user_message_id === "number" ? event.data.user_message_id : null;
+              startRun({
+                runId,
+                sessionId: Number(event.data.session_id ?? sessionId),
+                assistantMessageId: Number(event.data.assistant_message_id ?? 0),
+                retryOfMessageId: retryOfMessageId ?? null,
+                userMessageId,
+                userContent: content,
+              });
+
+              if (userMessageId !== null) {
+                queryClient.setQueryData<InfiniteData<ChatMessageItem[], number | null>>(
+                  queryKeys.chat.messagesWindow(sessionId),
+                  (current) => {
+                    if (!current || typeof current !== "object" || !("pages" in current)) {
+                      return current;
+                    }
+
+                    const knownIds = new Set(
+                      current.pages.flatMap((page: ChatMessageItem[]) =>
+                        page.map((message) => message.id),
+                      ),
+                    );
+                    if (knownIds.has(userMessageId)) {
+                      return current;
+                    }
+
+                    const nextLastPage = [
+                      ...(current.pages.at(-1) ?? []),
+                      {
+                        content,
+                        id: userMessageId,
+                        role: "user",
+                        status: "succeeded",
+                        sources_json: [],
+                      } satisfies ChatMessageItem,
+                    ];
+
+                    return {
+                      ...current,
+                      pages: [...current.pages.slice(0, -1), nextLastPage],
+                    };
+                  },
+                );
+              }
+              return;
+            }
+
+            if (event.event === "part.text.delta" || event.event === "message.delta") {
+              appendDelta(runId, typeof event.data.delta === "string" ? event.data.delta : "");
+              return;
+            }
+
+            if (event.event === "part.source" && event.data.source) {
+              addSource(runId, event.data.source as Record<string, unknown>);
+              return;
+            }
+
+            if (event.event === "sources.final" && Array.isArray(event.data.sources)) {
+              for (const source of event.data.sources) {
+                addSource(runId, source as ChatSourceItem as Record<string, unknown>);
+              }
+              return;
+            }
+
+            if (event.event === "run.completed") {
+              receivedTerminalRunEvent = true;
+              completeRun(runId);
+              finalizeStreamRun({
+                errorMessage: null,
+                runId,
+                sessionId,
+                status: "succeeded",
+              });
+              return;
+            }
+
+            if (event.event === "run.failed") {
+              receivedTerminalRunEvent = true;
+              const errorMessage =
+                typeof event.data.error_message === "string"
+                  ? event.data.error_message
+                  : t("assistantStreamingInterruptedError");
+              failRun(runId, errorMessage);
+              finalizeStreamRun({
+                errorMessage,
+                runId,
+                sessionId,
+                status: "failed",
+              });
+            }
+          },
+        });
+      } catch (error) {
+        if (activeRunId !== null && !receivedTerminalRunEvent) {
+          failRun(activeRunId, t("assistantStreamingInterruptedError"));
+        } else {
+          toast.error(resolveSubmitErrorMessage(error, t("messageSendFailedToast")));
+        }
+
+        throw error;
+      }
+    },
+  });
+
+  return {
+    sendMutation,
+  };
+}

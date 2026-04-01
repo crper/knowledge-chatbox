@@ -166,6 +166,7 @@ export function ChatPage() {
 
   const shouldShowResolvingState =
     (!sessionIdParam && !isSessionsReady) ||
+    (!sessionIdParam && isSessionsReady && sessions.length > 0 && activeSessionId === null) ||
     (Boolean(sessionIdParam) &&
       (routeSessionId === null || !isSessionsReady || activeSessionId === null));
   const shouldShowPendingEmptyState = submitPending && !hasMessages;
