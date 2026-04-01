@@ -11,8 +11,8 @@ from knowledge_chatbox_api.services.chat.prompt_attachment_service import (
     PromptAttachmentService,
 )
 from knowledge_chatbox_api.services.chat.retrieval_service import RetrievalService
+from knowledge_chatbox_api.services.settings.runtime_settings import parse_runtime_settings
 from knowledge_chatbox_api.utils.embedding_cache import CachedEmbeddingProvider
-from knowledge_chatbox_api.utils.settings_helpers import get_response_route_info
 
 PROMPT_HISTORY_MESSAGE_LIMIT = 4
 logger = get_logger(__name__)
@@ -31,9 +31,10 @@ class ChatService:
         embedding_adapter,
         settings,
     ) -> None:
+        runtime_settings = parse_runtime_settings(settings)
         self.chat_repository = chat_repository
         self.response_adapter = response_adapter
-        self.settings = settings
+        self.settings = runtime_settings
         raw_adapter = embedding_adapter or self._get_embedding_adapter()
         self.embedding_adapter = CachedEmbeddingProvider(raw_adapter)
         self.prompt_attachment_service = PromptAttachmentService(session)
@@ -41,7 +42,7 @@ class ChatService:
             session=session,
             chroma_store=chroma_store,
             embedding_adapter=self.embedding_adapter,
-            settings=settings,
+            settings=runtime_settings,
         )
 
     def answer_question(
@@ -135,9 +136,7 @@ class ChatService:
         return build_embedding_adapter_from_settings(self.settings)
 
     def _response_provider_name(self) -> str:
-        provider, _, _ = get_response_route_info(self.settings)
-        return provider
+        return self.settings.response_route.provider
 
     def _response_model(self) -> str:
-        _, model, _ = get_response_route_info(self.settings)
-        return model
+        return self.settings.response_route.model

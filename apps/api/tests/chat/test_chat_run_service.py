@@ -14,6 +14,7 @@ from knowledge_chatbox_api.services.chat import chat_run_service as chat_run_ser
 from knowledge_chatbox_api.services.chat.chat_run_service import ChatRunService
 from knowledge_chatbox_api.services.chat.chat_stream_presenter import ChatStreamPresenter
 from knowledge_chatbox_api.services.chat.retry_service import RetryService
+from knowledge_chatbox_api.services.settings.runtime_settings import parse_runtime_settings
 from knowledge_chatbox_api.utils.chroma import InMemoryChromaStore
 
 
@@ -258,10 +259,12 @@ def test_chat_run_service_reads_reasoning_mode_from_dict_settings(
         migrated_db_session,
         response_adapter=StreamingAdapterStub(),
     )
-    service.settings = {
-        "response_route": {"provider": "openai", "model": "gpt-5.4"},
-        "reasoning_mode": "on",
-    }
+    service.settings = parse_runtime_settings(
+        {
+            "response_route": {"provider": "openai", "model": "gpt-5.4"},
+            "reasoning_mode": "on",
+        }
+    )
 
     assert service._response_provider_name() == "openai"
     assert service._response_model() == "gpt-5.4"

@@ -13,10 +13,7 @@ from knowledge_chatbox_api.providers.factory import (
 )
 from knowledge_chatbox_api.providers.health import run_parallel_checks
 from knowledge_chatbox_api.schemas.common import Envelope
-from knowledge_chatbox_api.schemas.settings import (
-    CapabilityHealthRead,
-    build_provider_runtime_settings,
-)
+from knowledge_chatbox_api.schemas.settings import CapabilityHealthRead
 from knowledge_chatbox_api.services.settings.settings_service import SettingsService
 from knowledge_chatbox_api.utils.settings_helpers import to_capability_health
 
@@ -45,8 +42,8 @@ def capability_health(
     current_user: AdminUserDep,
 ) -> Envelope[CapabilityHealthData]:
     del current_user
-    settings_record = SettingsService(session, settings).get_or_create_settings_record()
-    runtime_settings = build_provider_runtime_settings(settings_record)
+    service = SettingsService(session, settings)
+    runtime_settings = service.get_runtime_settings()
     results = run_parallel_checks(
         {
             "response": lambda: build_response_adapter_from_settings(runtime_settings).health_check(
@@ -63,9 +60,9 @@ def capability_health(
     return Envelope(
         success=True,
         data=CapabilityHealthData(
-            response=to_capability_health(results["response"], settings_record.response_route),
-            embedding=to_capability_health(results["embedding"], settings_record.embedding_route),
-            vision=to_capability_health(results["vision"], settings_record.vision_route),
+            response=to_capability_health(results["response"], runtime_settings.response_route),
+            embedding=to_capability_health(results["embedding"], runtime_settings.embedding_route),
+            vision=to_capability_health(results["vision"], runtime_settings.vision_route),
         ),
         error=None,
     )

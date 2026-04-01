@@ -15,9 +15,11 @@ from knowledge_chatbox_api.models.settings import (
     AppSettings,
 )
 from knowledge_chatbox_api.repositories.settings_repository import SettingsRepository
+from knowledge_chatbox_api.schemas._validators import ReasoningModeLiteral
 from knowledge_chatbox_api.schemas.settings import (
     EmbeddingRouteConfig,
     ProviderProfiles,
+    ProviderRuntimeSettings,
     ResponseRouteConfig,
     SettingsRead,
     UpdateSettingsRequest,
@@ -33,6 +35,7 @@ from knowledge_chatbox_api.schemas.settings import (
 )
 from knowledge_chatbox_api.services.auth.auth_service import ValidationError
 from knowledge_chatbox_api.services.auth.user_service import AuthorizationError
+from knowledge_chatbox_api.services.settings.runtime_settings import build_runtime_settings
 
 DEFAULT_SYSTEM_PROMPT = (
     "你是 Knowledge Chatbox 的知识工作台助手。\n"
@@ -80,6 +83,48 @@ class SettingsService:
     def get_or_create_settings(self) -> SettingsRead:
         settings_record = self.get_or_create_settings_record()
         return self._to_read(settings_record)
+
+    def get_runtime_settings(
+        self,
+        *,
+        reasoning_mode: ReasoningModeLiteral = "default",
+    ) -> ProviderRuntimeSettings:
+        """返回当前生效设置对应的统一 runtime settings。"""
+        settings_record = self.get_or_create_settings_record()
+        return build_runtime_settings(settings_record, reasoning_mode=reasoning_mode)
+
+    def build_runtime_settings(
+        self,
+        settings_source,
+        *,
+        embedding_route: EmbeddingRouteConfig | dict[str, Any] | None = None,
+        reasoning_mode: ReasoningModeLiteral = "default",
+    ) -> ProviderRuntimeSettings:
+        """从 settings-like 对象构造统一 runtime settings。"""
+        return build_runtime_settings(
+            settings_source,
+            embedding_route=embedding_route,
+            reasoning_mode=reasoning_mode,
+        )
+
+    def build_test_settings_bundle(
+        self,
+        actor: User,
+        payload: UpdateSettingsRequest | Mapping[str, Any],
+        *,
+        reasoning_mode: ReasoningModeLiteral = "default",
+    ) -> tuple[SettingsRead, ProviderRuntimeSettings]:
+        """返回测试连接所需的 draft read model 与 runtime settings。"""
+        draft = self.build_test_settings(actor, payload)
+        embedding_route = draft.pending_embedding_route or draft.embedding_route
+        return (
+            draft,
+            self.build_runtime_settings(
+                draft,
+                embedding_route=embedding_route,
+                reasoning_mode=reasoning_mode,
+            ),
+        )
 
     def get_or_create_settings_record(self) -> AppSettings:
         settings_record = self.repository.get()

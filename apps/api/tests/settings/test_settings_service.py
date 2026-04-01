@@ -26,6 +26,10 @@ from knowledge_chatbox_api.schemas.settings import (
     parse_response_route,
     parse_vision_route,
 )
+from knowledge_chatbox_api.services.settings.runtime_settings import (
+    ProviderRuntimeSettings,
+    parse_runtime_settings,
+)
 from knowledge_chatbox_api.services.settings.settings_service import (
     DEFAULT_SYSTEM_PROMPT,
     MASKED_SECRET_VALUE,
@@ -211,6 +215,46 @@ def test_settings_schema_helpers_reject_invalid_route_payloads() -> None:
 
     with pytest.raises(PydanticValidationError):
         parse_vision_route({"provider": "voyage", "model": "voyage-3.5"})
+
+
+def test_parse_runtime_settings_accepts_attribute_and_mapping_inputs(migrated_db_session) -> None:
+    service = create_settings_service(migrated_db_session)
+    settings_record = service.get_or_create_settings_record()
+
+    from_record = parse_runtime_settings(settings_record)
+    from_mapping = parse_runtime_settings(
+        {
+            "provider_profiles": settings_record.provider_profiles.model_dump(),
+            "response_route": settings_record.response_route.model_dump(),
+            "embedding_route": settings_record.embedding_route.model_dump(),
+            "vision_route": settings_record.vision_route.model_dump(),
+            "system_prompt": settings_record.system_prompt,
+            "provider_timeout_seconds": settings_record.provider_timeout_seconds,
+            "active_index_generation": settings_record.active_index_generation,
+            "reasoning_mode": "on",
+        }
+    )
+
+    assert isinstance(from_record, ProviderRuntimeSettings)
+    assert from_record.response_route.provider == "openai"
+    assert isinstance(from_mapping, ProviderRuntimeSettings)
+    assert from_mapping.reasoning_mode == "on"
+
+
+def test_settings_service_builds_test_settings_bundle(migrated_db_session) -> None:
+    admin = seed_admin(migrated_db_session)
+    service = create_settings_service(migrated_db_session)
+
+    draft, runtime_settings = service.build_test_settings_bundle(
+        admin,
+        UpdateSettingsRequest(
+            embedding_route=EmbeddingRouteConfig(provider="voyage", model="voyage-3.5")
+        ),
+    )
+
+    assert draft.pending_embedding_route is not None
+    assert runtime_settings.embedding_route.provider == "voyage"
+    assert runtime_settings.embedding_route.model == "voyage-3.5"
 
 
 def test_settings_service_masks_secret_fields_in_read_model(migrated_db_session) -> None:

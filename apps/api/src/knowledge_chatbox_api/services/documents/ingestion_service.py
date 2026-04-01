@@ -16,7 +16,6 @@ from knowledge_chatbox_api.providers.factory import (
 from knowledge_chatbox_api.repositories.document_repository import DocumentRepository
 from knowledge_chatbox_api.schemas.settings import (
     ProviderRuntimeSettings,
-    build_provider_runtime_settings,
 )
 from knowledge_chatbox_api.services.documents.chunking_service import ChunkingService
 from knowledge_chatbox_api.services.documents.constants import (
@@ -34,6 +33,7 @@ from knowledge_chatbox_api.services.documents.indexing_service import IndexingSe
 from knowledge_chatbox_api.services.documents.normalization_service import NormalizationService
 from knowledge_chatbox_api.services.documents.query_service import DocumentQueryService
 from knowledge_chatbox_api.services.documents.versioning_service import VersioningService
+from knowledge_chatbox_api.services.settings.runtime_settings import build_runtime_settings
 from knowledge_chatbox_api.services.settings.settings_service import (
     INDEX_REBUILD_STATUS_RUNNING,
     SettingsService,
@@ -413,7 +413,7 @@ class IngestionService:
         *,
         use_pending: bool,
     ) -> ProviderRuntimeSettings:
-        return build_provider_runtime_settings(
+        return build_runtime_settings(
             settings_record,
             embedding_route=(
                 settings_record.pending_embedding_route

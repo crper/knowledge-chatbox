@@ -9,7 +9,7 @@ from knowledge_chatbox_api.core.logging import get_logger
 from knowledge_chatbox_api.services.chat.attachment_metadata import build_attachment_metadata
 from knowledge_chatbox_api.services.chat.chat_persistence_service import ChatPersistenceService
 from knowledge_chatbox_api.services.chat.chat_service import ChatService
-from knowledge_chatbox_api.utils.settings_helpers import get_response_route_info
+from knowledge_chatbox_api.services.settings.runtime_settings import parse_runtime_settings
 
 STREAM_INTERRUPTED_ERROR_MESSAGE = "本次生成连接中断，请重试。"
 PROVIDER_STREAM_ENDED_EARLY_ERROR_MESSAGE = "provider stream ended before completion"
@@ -47,7 +47,7 @@ class ChatRunService:
         self.chroma_store = chroma_store
         self.response_adapter = response_adapter
         self.embedding_adapter = embedding_adapter
-        self.settings = settings
+        self.settings = parse_runtime_settings(settings)
         self.presenter = presenter
         self.persistence = ChatPersistenceService(session)
 
@@ -473,16 +473,13 @@ class ChatRunService:
             yield self.presenter.event(event.event_type, event.payload_json)
 
     def _response_provider_name(self) -> str:
-        provider, _, _ = get_response_route_info(self.settings)
-        return provider
+        return self.settings.response_route.provider
 
     def _response_model(self) -> str:
-        _, model, _ = get_response_route_info(self.settings)
-        return model
+        return self.settings.response_route.model
 
     def _reasoning_mode(self) -> str:
-        _, _, reasoning_mode = get_response_route_info(self.settings)
-        return reasoning_mode
+        return self.settings.reasoning_mode
 
     def _fail_interrupted_run(
         self,

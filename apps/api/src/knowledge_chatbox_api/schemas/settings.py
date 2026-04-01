@@ -112,6 +112,17 @@ class SettingsRead(BaseModel):
     reindex_required: bool = False
 
 
+class UpdateSettingsRequest(BaseModel):
+    """描述更新设置请求。"""
+
+    provider_profiles: ProviderProfiles | None = None
+    response_route: ResponseRouteConfig | None = None
+    embedding_route: EmbeddingRouteConfig | None = None
+    vision_route: VisionRouteConfig | None = None
+    system_prompt: str | None = None
+    provider_timeout_seconds: PositiveInt | None = None
+
+
 class ProviderRuntimeSettings(BaseModel):
     """Provider 适配器运行时所需的最小强类型设置。"""
 
@@ -125,17 +136,6 @@ class ProviderRuntimeSettings(BaseModel):
     provider_timeout_seconds: PositiveInt
     active_index_generation: PositiveInt | None = None
     reasoning_mode: ReasoningModeLiteral = "default"
-
-
-class UpdateSettingsRequest(BaseModel):
-    """描述更新设置请求。"""
-
-    provider_profiles: ProviderProfiles | None = None
-    response_route: ResponseRouteConfig | None = None
-    embedding_route: EmbeddingRouteConfig | None = None
-    vision_route: VisionRouteConfig | None = None
-    system_prompt: str | None = None
-    provider_timeout_seconds: PositiveInt | None = None
 
 
 class ProviderRuntimeSettingsSource(Protocol):
@@ -161,7 +161,6 @@ class ProviderRuntimeSettingsSource(Protocol):
 
     @property
     def active_index_generation(self) -> PositiveInt | None: ...
-
 
 _PROVIDER_PROFILES_ADAPTER = TypeAdapter(ProviderProfiles)
 _RESPONSE_ROUTE_ADAPTER = TypeAdapter(ResponseRouteConfig)

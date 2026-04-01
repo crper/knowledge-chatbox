@@ -158,6 +158,7 @@
 
 - `apps/api/src/knowledge_chatbox_api/models/settings.py`
 - `apps/api/src/knowledge_chatbox_api/schemas/settings.py`
+- `apps/api/src/knowledge_chatbox_api/services/settings/runtime_settings.py`
 - `apps/api/src/knowledge_chatbox_api/services/settings/settings_service.py`
 - `apps/api/src/knowledge_chatbox_api/api/routes/settings.py`
 - `apps/api/src/knowledge_chatbox_api/services/documents/rebuild_service.py`

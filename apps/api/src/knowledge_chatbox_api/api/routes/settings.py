@@ -17,7 +17,6 @@ from knowledge_chatbox_api.schemas.settings import (
     ProviderConnectionTestRead,
     SettingsRead,
     UpdateSettingsRequest,
-    build_provider_runtime_settings,
 )
 from knowledge_chatbox_api.services.settings.settings_service import SettingsService
 from knowledge_chatbox_api.tasks import document_jobs
@@ -77,12 +76,8 @@ def test_routes(
     payload: UpdateSettingsRequest = DEFAULT_TEST_ROUTES_PAYLOAD,
 ) -> Envelope[ProviderConnectionTestRead]:
     service = SettingsService(session, settings)
-    draft = service.build_test_settings(current_user, payload)
-    embedding_route = draft.pending_embedding_route or draft.embedding_route
-    draft_runtime_settings = build_provider_runtime_settings(
-        draft,
-        embedding_route=embedding_route,
-    )
+    draft, draft_runtime_settings = service.build_test_settings_bundle(current_user, payload)
+    embedding_route = draft_runtime_settings.embedding_route
     results = run_parallel_checks(
         {
             "response": lambda: build_response_adapter(draft.response_route).health_check(
@@ -99,9 +94,12 @@ def test_routes(
     return Envelope(
         success=True,
         data=ProviderConnectionTestRead(
-            response=to_capability_health(results["response"], draft.response_route),
+            response=to_capability_health(
+                results["response"],
+                draft_runtime_settings.response_route,
+            ),
             embedding=to_capability_health(results["embedding"], embedding_route),
-            vision=to_capability_health(results["vision"], draft.vision_route),
+            vision=to_capability_health(results["vision"], draft_runtime_settings.vision_route),
         ),
         error=None,
     )

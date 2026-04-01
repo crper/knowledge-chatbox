@@ -9,13 +9,11 @@ from sqlalchemy import and_, or_, select
 from knowledge_chatbox_api.core.logging import get_logger
 from knowledge_chatbox_api.models.document import Document, DocumentRevision
 from knowledge_chatbox_api.providers.factory import build_embedding_adapter
-from knowledge_chatbox_api.schemas.settings import (
-    ProviderRuntimeSettings,
-    build_provider_runtime_settings,
-)
+from knowledge_chatbox_api.schemas.settings import ProviderRuntimeSettings
 from knowledge_chatbox_api.services.documents.chunking_service import ChunkingService
 from knowledge_chatbox_api.services.documents.constants import derive_section_title
 from knowledge_chatbox_api.services.documents.indexing_service import IndexingService
+from knowledge_chatbox_api.services.settings.runtime_settings import build_runtime_settings
 from knowledge_chatbox_api.services.settings.settings_service import (
     INDEX_REBUILD_STATUS_IDLE,
     INDEX_REBUILD_STATUS_RUNNING,
@@ -140,7 +138,7 @@ class RebuildService:
         *,
         use_pending: bool,
     ) -> ProviderRuntimeSettings:
-        return build_provider_runtime_settings(
+        return build_runtime_settings(
             settings_record,
             embedding_route=(
                 settings_record.pending_embedding_route
