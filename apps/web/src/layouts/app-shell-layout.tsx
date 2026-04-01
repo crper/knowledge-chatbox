@@ -179,8 +179,8 @@ export function AppShellLayout({ user }: { user: AppUser }) {
     return (
       <main className="min-h-[100dvh] bg-background/95 px-4 py-4 text-foreground">
         {isMobile ? (
-          <div className="flex min-h-[calc(100dvh-2rem)] flex-col gap-3">
-            <div className="surface-liquid flex items-center justify-between rounded-[1.25rem] p-1.5">
+          <div className="flex min-h-[calc(100dvh-2rem)] flex-col gap-2.5 sm:gap-3">
+            <div className="surface-liquid grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-[1.25rem] p-1.5">
               <Sheet onOpenChange={setIsMobileNavigationOpen} open={isMobileNavigationOpen}>
                 <SheetTrigger asChild>
                   <Button aria-label={t("mobileSessionsAction")} size="icon-sm" variant="ghost">
@@ -215,7 +215,7 @@ export function AppShellLayout({ user }: { user: AppUser }) {
                 </SheetContent>
               </Sheet>
 
-              <div className="min-w-0 px-2 text-center">
+              <div className="min-w-0 px-1 text-center">
                 <p className="truncate text-sm font-medium text-foreground">
                   {t(getWorkspaceLabelKey(location.pathname), { ns: "common" })}
                 </p>
@@ -243,7 +243,7 @@ export function AppShellLayout({ user }: { user: AppUser }) {
               </Sheet>
             </div>
 
-            <div className="surface-liquid flex h-[calc(100dvh-6rem)] min-h-[calc(100dvh-6rem)] min-w-0 flex-col overflow-hidden rounded-[1.5rem]">
+            <div className="surface-liquid flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-[1.5rem]">
               <Outlet />
             </div>
           </div>
@@ -339,8 +339,8 @@ export function AppShellLayout({ user }: { user: AppUser }) {
   return (
     <main className="min-h-[100dvh] bg-background/95 px-4 py-4 text-foreground">
       {isMobile ? (
-        <div className="flex min-h-[calc(100dvh-2rem)] flex-col gap-3">
-          <div className="surface-liquid flex items-center justify-between rounded-[1.25rem] p-1.5">
+        <div className="flex min-h-[calc(100dvh-2rem)] flex-col gap-2.5 sm:gap-3">
+          <div className="surface-liquid grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-[1.25rem] p-1.5">
             <Sheet onOpenChange={setIsMobileNavigationOpen} open={isMobileNavigationOpen}>
               <SheetTrigger asChild>
                 <Button
@@ -376,16 +376,16 @@ export function AppShellLayout({ user }: { user: AppUser }) {
               </SheetContent>
             </Sheet>
 
-            <div className="min-w-0 px-2 text-center">
+            <div className="min-w-0 px-1 text-center">
               <p className="truncate text-sm font-medium text-foreground">
                 {t(getWorkspaceLabelKey(location.pathname), { ns: "common" })}
               </p>
             </div>
 
-            <div className="size-8 shrink-0" />
+            <div className="size-11 shrink-0" />
           </div>
 
-          <div className="surface-liquid flex min-h-[calc(100dvh-6rem)] min-w-0 flex-col rounded-[1.5rem]">
+          <div className="surface-liquid flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-[1.5rem]">
             <Outlet />
           </div>
         </div>

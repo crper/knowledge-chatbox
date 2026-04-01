@@ -778,6 +778,13 @@ describe("KnowledgePage", () => {
       expect(screen.queryByText("spec.md")).not.toBeInTheDocument();
     });
     expect(screen.getAllByText("guide.pdf").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "清空筛选" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "清空筛选" }));
+
+    await waitFor(() => {
+      expect(screen.getAllByText("spec.md").length).toBeGreaterThan(0);
+    });
 
     const filteredCall = fetchMock.mock.calls.find(([url]) => {
       const requestUrl = new URL(String(url), "http://testserver");
@@ -786,6 +793,12 @@ describe("KnowledgePage", () => {
       );
     });
     expect(filteredCall).toBeDefined();
+
+    const clearedCall = fetchMock.mock.calls.findLast(([url]) => {
+      const requestUrl = new URL(String(url), "http://testserver");
+      return requestUrl.pathname === "/api/documents" && !requestUrl.searchParams.get("type");
+    });
+    expect(clearedCall).toBeDefined();
   });
 
   it("renders document management actions for non-admin users", async () => {

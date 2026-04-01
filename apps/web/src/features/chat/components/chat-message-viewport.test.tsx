@@ -99,6 +99,7 @@ describe("ChatMessageViewport", () => {
   it("keeps extra gutter and rail padding so the scrollbar does not sit on top of messages", async () => {
     renderViewport(buildMessages(12));
 
+    expect(await screen.findByTestId("chat-message-viewport-root")).toHaveClass("flex-1");
     expect(await screen.findByTestId("chat-message-viewport-scroll")).toHaveAttribute(
       "data-scroll-padding",
       "comfortable",

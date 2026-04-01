@@ -204,11 +204,11 @@ export const ChatMessageViewport = memo(function ChatMessageViewport({
   }, [isLoadingOlderMessages, messages.length, scrollElement]);
 
   return (
-    <div className="relative h-full min-h-0">
+    <div className="relative flex min-h-0 flex-1 flex-col" data-testid="chat-message-viewport-root">
       <Virtuoso
         alignToBottom={true}
         atBottomThreshold={BOTTOM_THRESHOLD}
-        className="h-full min-h-0 px-2 pr-4 pb-4 sm:px-3 sm:pr-5 sm:pb-5 [scrollbar-gutter:stable_both-edges]"
+        className="min-h-0 flex-1 px-2 pr-4 pb-4 sm:px-3 sm:pr-5 sm:pb-5 [scrollbar-gutter:stable_both-edges]"
         components={{ Scroller: ChatViewportScroller }}
         computeItemKey={(index, message) => message?.id ?? `probe-message-${index}`}
         data={messages}

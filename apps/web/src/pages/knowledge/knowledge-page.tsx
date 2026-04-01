@@ -289,7 +289,7 @@ export function KnowledgePage() {
     <Sheet onOpenChange={setMobileFiltersOpen} open={mobileFiltersOpen}>
       <SheetTrigger asChild>
         <Button
-          className="flex-1 sm:flex-none"
+          className="w-full sm:flex-none"
           type="button"
           variant={activeFilterCount > 0 ? "secondary" : "outline"}
         >
@@ -375,17 +375,20 @@ export function KnowledgePage() {
                   value={searchValue}
                 />
               </label>
-              <div className="flex w-full flex-wrap gap-2">
+              <div className="grid w-full grid-cols-2 gap-2.5">
                 {mobileFilterSheet}
                 {renderUploadAction(true)}
               </div>
-              {activeFilterBadges.length > 0 ? (
-                <div className="flex flex-wrap gap-2">
+              {hasActiveFilters ? (
+                <div className="flex flex-wrap items-center gap-2">
                   {activeFilterBadges.map((label) => (
                     <Badge className="rounded-full px-3 py-1" key={label} variant="outline">
                       {label}
                     </Badge>
                   ))}
+                  <Button onClick={clearFilters} size="sm" type="button" variant="ghost">
+                    {t("clearFiltersAction")}
+                  </Button>
                 </div>
               ) : null}
             </div>
