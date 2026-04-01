@@ -2,15 +2,21 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from knowledge_chatbox_api.core.config import get_settings
 from knowledge_chatbox_api.models.auth import User
 from knowledge_chatbox_api.models.document import Document, DocumentRevision
 from knowledge_chatbox_api.models.space import Space
+from knowledge_chatbox_api.services.documents.chunking_service import ChunkingService
+from knowledge_chatbox_api.services.documents.errors import DocumentNotNormalizedError
+from knowledge_chatbox_api.services.documents.indexing_service import IndexingService
 from knowledge_chatbox_api.services.documents.rebuild_service import RebuildService
 from knowledge_chatbox_api.services.settings.settings_service import (
     INDEX_REBUILD_STATUS_RUNNING,
     SettingsService,
 )
+from knowledge_chatbox_api.utils.chroma import InMemoryChromaStore
 
 
 def create_admin(migrated_db_session) -> User:
@@ -71,8 +77,13 @@ def create_document(migrated_db_session) -> DocumentRevision:
 
 
 def test_rebuild_service_promotes_pending_embedding_route(
-    migrated_db_session, tmp_path: Path
+    migrated_db_session, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    class EmbeddingAdapterStub:
+        def embed(self, texts: list[str], provider_settings) -> list[list[float]]:
+            del provider_settings
+            return [[0.1, 0.2, 0.3] for _ in texts]
+
     settings = get_settings()
     service = SettingsService(migrated_db_session, settings)
     settings_record = service.get_or_create_settings_record()
@@ -92,6 +103,10 @@ def test_rebuild_service_promotes_pending_embedding_route(
     document_version.normalized_path = str(normalized_path)
     migrated_db_session.commit()
 
+    monkeypatch.setattr(
+        "knowledge_chatbox_api.services.documents.rebuild_service.build_embedding_adapter",
+        lambda route: EmbeddingAdapterStub(),
+    )
     rebuild = RebuildService(migrated_db_session, settings)
     processed = rebuild.rebuild_building_generation(target_generation)
 
@@ -132,3 +147,27 @@ def test_rebuild_service_marks_failed_when_pending_embedding_route_missing(
     assert refreshed.active_index_generation == active_generation
     assert refreshed.building_index_generation == target_generation
     assert refreshed.index_rebuild_status == "failed"
+
+
+def test_indexing_service_raises_when_embedding_generation_fails(
+    migrated_db_session,
+) -> None:
+    class FailingEmbeddingAdapter:
+        def embed(self, texts: list[str], settings) -> list[list[float]]:
+            del texts, settings
+            raise RuntimeError("embedding backend unavailable")
+
+    settings = get_settings()
+    service = SettingsService(migrated_db_session, settings)
+    settings_record = service.get_or_create_settings_record()
+    document_version = create_document(migrated_db_session)
+    indexing_service = IndexingService(
+        session=migrated_db_session,
+        chunking_service=ChunkingService(),
+        chroma_store=InMemoryChromaStore(),
+        embedding_provider=FailingEmbeddingAdapter(),
+        settings=settings_record,
+    )
+
+    with pytest.raises(DocumentNotNormalizedError, match="embedding generation failed"):
+        indexing_service.index_document(document_version, "# Title\n\ncontent for rebuild")

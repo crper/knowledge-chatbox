@@ -9,6 +9,7 @@ from knowledge_chatbox_api.core.logging import get_logger
 from knowledge_chatbox_api.services.chat.attachment_metadata import build_attachment_metadata
 from knowledge_chatbox_api.services.chat.chat_persistence_service import ChatPersistenceService
 from knowledge_chatbox_api.services.chat.chat_service import ChatService
+from knowledge_chatbox_api.utils.settings_helpers import get_response_route_info
 
 STREAM_INTERRUPTED_ERROR_MESSAGE = "本次生成连接中断，请重试。"
 PROVIDER_STREAM_ENDED_EARLY_ERROR_MESSAGE = "provider stream ended before completion"
@@ -19,12 +20,6 @@ def _event_attr(event: Any, name: str, default=None):
     if isinstance(event, dict):
         return event.get(name, default)
     return getattr(event, name, default)
-
-
-def _settings_attr(value: Any, name: str, default=None):
-    if isinstance(value, dict):
-        return value.get(name, default)
-    return getattr(value, name, default)
 
 
 class ChatRunService:
@@ -478,18 +473,16 @@ class ChatRunService:
             yield self.presenter.event(event.event_type, event.payload_json)
 
     def _response_provider_name(self) -> str:
-        route = getattr(self.settings, "response_route", None)
-        provider = _settings_attr(route, "provider", "openai")
-        return provider if isinstance(provider, str) else "openai"
+        provider, _, _ = get_response_route_info(self.settings)
+        return provider
 
     def _response_model(self) -> str:
-        route = getattr(self.settings, "response_route", None)
-        model = _settings_attr(route, "model", "unknown")
-        return model if isinstance(model, str) else "unknown"
+        _, model, _ = get_response_route_info(self.settings)
+        return model
 
     def _reasoning_mode(self) -> str:
-        mode = getattr(self.settings, "reasoning_mode", "default")
-        return mode if isinstance(mode, str) else "default"
+        _, _, reasoning_mode = get_response_route_info(self.settings)
+        return reasoning_mode
 
     def _fail_interrupted_run(
         self,

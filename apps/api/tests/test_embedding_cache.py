@@ -167,6 +167,36 @@ class TestCachedEmbeddingProvider:
         assert result == {"healthy": True}
         mock_provider.health_check.assert_called_once_with(settings)
 
+    def test_embed_raises_when_provider_returns_wrong_embedding_count(self):
+        """测试 provider 返回数量不匹配时抛出明确错误。"""
+        mock_provider = MagicMock()
+        mock_provider.embed.return_value = [[0.1, 0.2]]
+
+        cache = InMemoryEmbeddingCache()
+        provider = CachedEmbeddingProvider(mock_provider, cache)
+        settings = MagicMock()
+
+        try:
+            provider.embed(["a", "b"], settings)
+            raise AssertionError("Expected ValueError to be raised")
+        except ValueError as exc:
+            assert "1 embeddings for 2 texts" in str(exc)
+
+    def test_embed_raises_when_provider_returns_none_embedding(self):
+        """测试 provider 返回 None embedding 时抛出明确错误。"""
+        mock_provider = MagicMock()
+        mock_provider.embed.return_value = [None]
+
+        cache = InMemoryEmbeddingCache()
+        provider = CachedEmbeddingProvider(mock_provider, cache)
+        settings = MagicMock()
+
+        try:
+            provider.embed(["a"], settings)
+            raise AssertionError("Expected ValueError to be raised")
+        except ValueError as exc:
+            assert "returned None" in str(exc)
+
     def test_clear_cache(self):
         """测试清空缓存。"""
         mock_provider = MagicMock()

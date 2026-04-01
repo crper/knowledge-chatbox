@@ -173,13 +173,20 @@ class CachedEmbeddingProvider:
         # 批量计算缺失的 embedding
         if missing_texts:
             computed_embeddings = self._provider.embed(missing_texts, settings)
+            if len(computed_embeddings) != len(missing_indices):
+                raise ValueError(
+                    "Embedding provider returned "
+                    f"{len(computed_embeddings)} embeddings for {len(missing_indices)} texts."
+                )
             for idx, text_idx in enumerate(missing_indices):
                 embedding = computed_embeddings[idx]
+                if embedding is None:
+                    raise ValueError(f"Embedding provider returned None for text index {text_idx}.")
                 results[text_idx] = embedding
                 # 存入缓存
                 self._cache.set(texts[text_idx], embedding)
 
-        return [r for r in results if r is not None]
+        return [r for r in results]  # type: ignore[misc]
 
     def health_check(self, settings) -> Any:
         """透传到底层 provider 的健康检查。"""

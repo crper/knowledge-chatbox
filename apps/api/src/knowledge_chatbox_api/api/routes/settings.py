@@ -6,7 +6,6 @@ from fastapi import APIRouter, BackgroundTasks, Body
 
 from knowledge_chatbox_api.api.deps import AdminUserDep, DbSessionDep, SettingsDep
 from knowledge_chatbox_api.api.error_responses import ADMIN_ROUTE_ERROR_RESPONSES
-from knowledge_chatbox_api.providers.base import ProviderHealthResult
 from knowledge_chatbox_api.providers.factory import (
     build_embedding_adapter,
     build_response_adapter,
@@ -15,34 +14,17 @@ from knowledge_chatbox_api.providers.factory import (
 from knowledge_chatbox_api.providers.health import run_parallel_checks
 from knowledge_chatbox_api.schemas.common import Envelope
 from knowledge_chatbox_api.schemas.settings import (
-    CapabilityHealthRead,
-    EmbeddingRouteConfig,
     ProviderConnectionTestRead,
-    ResponseRouteConfig,
     SettingsRead,
     UpdateSettingsRequest,
-    VisionRouteConfig,
     build_provider_runtime_settings,
 )
 from knowledge_chatbox_api.services.settings.settings_service import SettingsService
 from knowledge_chatbox_api.tasks import document_jobs
+from knowledge_chatbox_api.utils.settings_helpers import to_capability_health
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 DEFAULT_TEST_ROUTES_PAYLOAD = Body(default_factory=UpdateSettingsRequest)
-
-
-def _to_capability_health(
-    result: ProviderHealthResult,
-    route: ResponseRouteConfig | EmbeddingRouteConfig | VisionRouteConfig,
-) -> CapabilityHealthRead:
-    """把 provider 健康检查结果映射为 API 响应。"""
-    return CapabilityHealthRead(
-        provider=route.provider,
-        model=route.model,
-        healthy=result.healthy,
-        message=result.message,
-        latency_ms=result.latency_ms,
-    )
 
 
 @router.get(
@@ -117,9 +99,9 @@ def test_routes(
     return Envelope(
         success=True,
         data=ProviderConnectionTestRead(
-            response=_to_capability_health(results["response"], draft.response_route),
-            embedding=_to_capability_health(results["embedding"], embedding_route),
-            vision=_to_capability_health(results["vision"], draft.vision_route),
+            response=to_capability_health(results["response"], draft.response_route),
+            embedding=to_capability_health(results["embedding"], embedding_route),
+            vision=to_capability_health(results["vision"], draft.vision_route),
         ),
         error=None,
     )

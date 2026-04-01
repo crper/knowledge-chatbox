@@ -246,6 +246,28 @@ def test_chat_run_service_marks_run_failed_when_stream_is_closed_early(
     assert replayed_events[-1]["event"] == "run.failed"
 
 
+def test_chat_run_service_reads_reasoning_mode_from_dict_settings(
+    migrated_db_session,
+) -> None:
+    class StreamingAdapterStub:
+        def stream_response(self, messages, settings):
+            del messages, settings
+            yield SimpleNamespace(type="completed", usage={"output_tokens": 0})
+
+    service, _, _, _ = build_chat_run_service(
+        migrated_db_session,
+        response_adapter=StreamingAdapterStub(),
+    )
+    service.settings = {
+        "response_route": {"provider": "openai", "model": "gpt-5.4"},
+        "reasoning_mode": "on",
+    }
+
+    assert service._response_provider_name() == "openai"
+    assert service._response_model() == "gpt-5.4"
+    assert service._reasoning_mode() == "on"
+
+
 def test_chat_run_service_marks_run_failed_when_provider_stream_ends_without_completed(
     migrated_db_session,
 ) -> None:

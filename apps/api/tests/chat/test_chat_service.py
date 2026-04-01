@@ -258,6 +258,35 @@ def test_chat_service_uses_recent_history_query_for_prompt_assembly() -> None:
     ]
 
 
+def test_chat_service_reads_reasoning_mode_from_dict_settings() -> None:
+    repository = type(
+        "RepositoryStub",
+        (),
+        {
+            "list_recent_messages": lambda self, session_id, *, limit: [],
+            "get_session": lambda self, session_id: SimpleNamespace(space_id=1),
+        },
+    )()
+    service = ChatService(
+        session=None,
+        chat_repository=repository,
+        chroma_store=InMemoryChromaStore(),
+        response_adapter=ResponseAdapterStub(),
+        embedding_adapter=EmbeddingAdapterStub(),
+        settings={
+            "response_route": {"provider": "anthropic", "model": "claude-sonnet-4-20250514"},
+            "reasoning_mode": "on",
+            "active_index_generation": 1,
+            "system_prompt": None,
+            "provider_profiles": {},
+            "embedding_route": {"provider": "openai", "model": "text-embedding-3-small"},
+        },
+    )
+
+    assert service._response_provider_name() == "anthropic"
+    assert service._response_model() == "claude-sonnet-4-20250514"
+
+
 def test_chat_service_uses_embedding_adapter_for_query_and_returns_sources(
     migrated_db_session,
 ) -> None:

@@ -90,7 +90,8 @@ class AuthService:
             existing_admin = (
                 self.session.query(User).filter(User.role == "admin").order_by(User.id).first()
             )
-            assert existing_admin is not None
+            if existing_admin is None:
+                raise ConflictError("No admin user exists in the system.")
             return existing_admin
 
         admin = User(
@@ -209,7 +210,8 @@ class AuthService:
     def refresh_access_token(self, token: str | None) -> tuple[str, str]:
         """刷新 access token，并轮换 refresh session。"""
         user = self.get_current_user(token)
-        assert token is not None
+        if token is None:
+            raise UnauthorizedError("Authentication required.")
         self.auth_session_repository.revoke_by_token_hash(hash_session_token(token))
         refresh_token = self._create_refresh_session(user)
         self.session.commit()

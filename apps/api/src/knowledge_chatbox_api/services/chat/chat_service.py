@@ -12,6 +12,7 @@ from knowledge_chatbox_api.services.chat.prompt_attachment_service import (
 )
 from knowledge_chatbox_api.services.chat.retrieval_service import RetrievalService
 from knowledge_chatbox_api.utils.embedding_cache import CachedEmbeddingProvider
+from knowledge_chatbox_api.utils.settings_helpers import get_response_route_info
 
 PROMPT_HISTORY_MESSAGE_LIMIT = 4
 logger = get_logger(__name__)
@@ -134,17 +135,9 @@ class ChatService:
         return build_embedding_adapter_from_settings(self.settings)
 
     def _response_provider_name(self) -> str:
-        route = getattr(self.settings, "response_route", None)
-        if isinstance(route, dict):
-            provider = route.get("provider", "openai")
-            return provider if isinstance(provider, str) else "openai"
-        provider = getattr(route, "provider", "openai")
-        return provider if isinstance(provider, str) else "openai"
+        provider, _, _ = get_response_route_info(self.settings)
+        return provider
 
     def _response_model(self) -> str:
-        route = getattr(self.settings, "response_route", None)
-        if isinstance(route, dict):
-            model = route.get("model", "unknown")
-            return model if isinstance(model, str) else "unknown"
-        model = getattr(route, "model", "unknown")
-        return model if isinstance(model, str) else "unknown"
+        _, model, _ = get_response_route_info(self.settings)
+        return model

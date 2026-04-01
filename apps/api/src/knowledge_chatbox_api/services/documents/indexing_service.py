@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+from knowledge_chatbox_api.core.logging import get_logger
 from knowledge_chatbox_api.models.document import Document
 from knowledge_chatbox_api.services.documents.chunking_service import Chunk, ChunkingService
+from knowledge_chatbox_api.services.documents.errors import DocumentNotNormalizedError
 from knowledge_chatbox_api.utils.chroma import ChunkStore
+
+logger = get_logger(__name__)
 
 
 class IndexingService:
@@ -67,8 +71,14 @@ class IndexingService:
                 [chunk.text for chunk in chunks],
                 self.settings,
             )
-        except Exception:  # noqa: BLE001
-            embeddings = None
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "document_indexing_embedding_failed",
+                document_version_id=document_version.id,
+                exception_type=type(exc).__name__,
+                chunk_count=len(chunks),
+            )
+            raise DocumentNotNormalizedError("Document embedding generation failed.") from exc
         self.chroma_store.upsert(
             [
                 {

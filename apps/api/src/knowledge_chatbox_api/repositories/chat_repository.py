@@ -281,10 +281,5 @@ class ChatRepository:
         self.session.execute(delete(ChatMessage).where(ChatMessage.id == message_id))
 
     def delete_sessions_by_user_id(self, user_id: int) -> None:
-        """删除SessionsBy用户Id。"""
-        session_ids = list(
-            self.session.scalars(select(ChatSession.id).where(ChatSession.user_id == user_id)).all()
-        )
-        if not session_ids:
-            return
-        self.session.execute(delete(ChatSession).where(ChatSession.id.in_(session_ids)))
+        """删除指定用户的所有会话。"""
+        self.session.execute(delete(ChatSession).where(ChatSession.user_id == user_id))

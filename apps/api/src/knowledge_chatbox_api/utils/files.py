@@ -8,6 +8,10 @@ from pathlib import Path
 from typing import Protocol
 from uuid import uuid4
 
+from knowledge_chatbox_api.core.logging import get_logger
+
+logger = get_logger(__name__)
+
 
 @dataclass(frozen=True)
 class PersistedUpload:
@@ -67,6 +71,12 @@ async def save_upload_stream(
                 hasher.update(chunk)
                 file_size += len(chunk)
     except Exception:
+        logger.warning(
+            "upload_stream_write_failed",
+            original_name=original_name,
+            output_path=str(output_path),
+            bytes_written=file_size,
+        )  # type: ignore[call-arg]
         output_path.unlink(missing_ok=True)
         raise
 

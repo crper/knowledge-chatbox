@@ -23,6 +23,7 @@ from knowledge_chatbox_api.services.documents.constants import (
     CONTENT_TYPE_TO_FILE_TYPE,
     IMAGE_DOCUMENT_FILE_TYPES,
     SUPPORTED_DOCUMENT_FILE_TYPES,
+    derive_section_title,
 )
 from knowledge_chatbox_api.services.documents.errors import (
     DocumentNotFoundError,
@@ -271,7 +272,7 @@ class IngestionService:
                     document_version,
                     content,
                     generation=target.generation,
-                    section_title=self._derive_section_title(content),
+                    section_title=derive_section_title(content),
                 )
             self._commit_revision_indexed(document_version)
             return document_version
@@ -361,7 +362,7 @@ class IngestionService:
                 document_version,
                 normalized.content,
                 generation=target.generation,
-                section_title=self._derive_section_title(normalized.content),
+                section_title=derive_section_title(normalized.content),
             )
         self._set_revision_indexed(document_version)
         return normalized.normalized_path, indexing_targets
@@ -560,13 +561,3 @@ class IngestionService:
             Path(path).unlink()
         except FileNotFoundError:
             return
-
-    def _derive_section_title(self, content: str) -> str | None:
-        for line in content.splitlines():
-            stripped = line.strip()
-            if not stripped:
-                continue
-            if stripped.startswith("#"):
-                return stripped.lstrip("#").strip() or None
-            return stripped[:120]
-        return None

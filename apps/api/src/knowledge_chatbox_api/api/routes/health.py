@@ -6,7 +6,6 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 from knowledge_chatbox_api.api.deps import AdminUserDep, DbSessionDep, SettingsDep
-from knowledge_chatbox_api.providers.base import ProviderHealthResult
 from knowledge_chatbox_api.providers.factory import (
     build_embedding_adapter_from_settings,
     build_response_adapter_from_settings,
@@ -16,12 +15,10 @@ from knowledge_chatbox_api.providers.health import run_parallel_checks
 from knowledge_chatbox_api.schemas.common import Envelope
 from knowledge_chatbox_api.schemas.settings import (
     CapabilityHealthRead,
-    EmbeddingRouteConfig,
-    ResponseRouteConfig,
-    VisionRouteConfig,
     build_provider_runtime_settings,
 )
 from knowledge_chatbox_api.services.settings.settings_service import SettingsService
+from knowledge_chatbox_api.utils.settings_helpers import to_capability_health
 
 router = APIRouter(tags=["health"])
 
@@ -34,20 +31,6 @@ class CapabilityHealthData(BaseModel):
     response: CapabilityHealthRead
     embedding: CapabilityHealthRead
     vision: CapabilityHealthRead
-
-
-def _to_capability_health(
-    result: ProviderHealthResult,
-    route: ResponseRouteConfig | EmbeddingRouteConfig | VisionRouteConfig,
-) -> CapabilityHealthRead:
-    """把 provider 健康检查结果映射为 API 响应。"""
-    return CapabilityHealthRead(
-        provider=route.provider,
-        model=route.model,
-        healthy=result.healthy,
-        message=result.message,
-        latency_ms=result.latency_ms,
-    )
 
 
 @router.get("/api/health", response_model=Envelope[HealthData])
@@ -80,9 +63,9 @@ def capability_health(
     return Envelope(
         success=True,
         data=CapabilityHealthData(
-            response=_to_capability_health(results["response"], settings_record.response_route),
-            embedding=_to_capability_health(results["embedding"], settings_record.embedding_route),
-            vision=_to_capability_health(results["vision"], settings_record.vision_route),
+            response=to_capability_health(results["response"], settings_record.response_route),
+            embedding=to_capability_health(results["embedding"], settings_record.embedding_route),
+            vision=to_capability_health(results["vision"], settings_record.vision_route),
         ),
         error=None,
     )

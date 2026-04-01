@@ -492,6 +492,40 @@ class PersistentChromaStore:
                     metadata[f"{METADATA_PREFIX}{key}"] = value
         return metadata
 
+    def _build_record_from_metadata(
+        self,
+        record_id: str,
+        text: str,
+        metadata: dict,
+        *,
+        embedding: list | None = None,
+        score: float | None = None,
+    ) -> dict[str, Any]:
+        """从 Chroma metadata 构建统一格式的 record dict。"""
+        record: dict[str, Any] = {
+            "id": record_id,
+            "document_id": int(metadata["document_id"]),
+            "document_revision_id": int(
+                metadata.get("document_revision_id", metadata["document_id"])
+            ),
+            "space_id": int(metadata["space_id"])
+            if "space_id" in metadata
+            else int(metadata["knowledge_base_id"])
+            if "knowledge_base_id" in metadata
+            else None,
+            "text": text or "",
+            "metadata": {
+                key.removeprefix(METADATA_PREFIX): value
+                for key, value in metadata.items()
+                if key.startswith(METADATA_PREFIX)
+            },
+        }
+        if embedding is not None:
+            record["embedding"] = list(embedding)
+        if score is not None:
+            record["score"] = score
+        return record
+
     def _deserialize_records(self, result: Any) -> list[dict[str, Any]]:
         ids = list(result.get("ids") or [])
         documents = list(result.get("documents") or [])
@@ -502,27 +536,15 @@ class PersistentChromaStore:
 
         for index, record_id in enumerate(ids):
             metadata = metadatas[index] or {}
-            record = {
-                "id": record_id,
-                "document_id": int(metadata["document_id"]),
-                "document_revision_id": int(
-                    metadata.get("document_revision_id", metadata["document_id"])
-                ),
-                "space_id": int(metadata["space_id"])
-                if "space_id" in metadata
-                else int(metadata["knowledge_base_id"])
-                if "knowledge_base_id" in metadata
-                else None,
-                "text": documents[index] or "",
-                "metadata": {
-                    key.removeprefix(METADATA_PREFIX): value
-                    for key, value in metadata.items()
-                    if key.startswith(METADATA_PREFIX)
-                },
-            }
-            if index < len(embeddings) and embeddings[index] is not None:
-                record["embedding"] = list(embeddings[index])
-            records.append(record)
+            embedding = embeddings[index] if index < len(embeddings) else None
+            records.append(
+                self._build_record_from_metadata(
+                    record_id,
+                    documents[index],
+                    metadata,
+                    embedding=embedding,
+                )
+            )
 
         return records
 
@@ -538,25 +560,12 @@ class PersistentChromaStore:
             distance = distances[index] if index < len(distances) else None
             score = 1.0 - float(distance) if distance is not None else 0.0
             records.append(
-                {
-                    "id": record_id,
-                    "document_id": int(metadata["document_id"]),
-                    "document_revision_id": int(
-                        metadata.get("document_revision_id", metadata["document_id"])
-                    ),
-                    "space_id": int(metadata["space_id"])
-                    if "space_id" in metadata
-                    else int(metadata["knowledge_base_id"])
-                    if "knowledge_base_id" in metadata
-                    else None,
-                    "text": documents[index] or "",
-                    "metadata": {
-                        key.removeprefix(METADATA_PREFIX): value
-                        for key, value in metadata.items()
-                        if key.startswith(METADATA_PREFIX)
-                    },
-                    "score": score,
-                }
+                self._build_record_from_metadata(
+                    record_id,
+                    documents[index],
+                    metadata,
+                    score=score,
+                )
             )
 
         return records

@@ -14,6 +14,7 @@ from knowledge_chatbox_api.schemas.settings import (
     build_provider_runtime_settings,
 )
 from knowledge_chatbox_api.services.documents.chunking_service import ChunkingService
+from knowledge_chatbox_api.services.documents.constants import derive_section_title
 from knowledge_chatbox_api.services.documents.indexing_service import IndexingService
 from knowledge_chatbox_api.services.settings.settings_service import (
     INDEX_REBUILD_STATUS_IDLE,
@@ -77,7 +78,7 @@ class RebuildService:
                     version,
                     content,
                     generation=target_generation,
-                    section_title=self._derive_section_title(content),
+                    section_title=derive_section_title(content),
                 )
                 self.session.commit()
                 processed += 1
@@ -147,16 +148,6 @@ class RebuildService:
                 else settings_record.embedding_route
             ),
         )
-
-    def _derive_section_title(self, content: str) -> str | None:
-        for line in content.splitlines():
-            stripped = line.strip()
-            if not stripped:
-                continue
-            if stripped.startswith("#"):
-                return stripped.lstrip("#").strip() or None
-            return stripped[:120]
-        return None
 
     def _mark_rebuild_failed(self, target_generation: int) -> None:
         latest_settings = self.settings_service.get_or_create_settings_record()

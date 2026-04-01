@@ -28,3 +28,15 @@ CONTENT_TYPE_TO_FILE_TYPE = {
     "image/jpeg": "jpg",
     "image/webp": "webp",
 }
+
+
+def derive_section_title(content: str) -> str | None:
+    """从文档内容首行提取章节标题。"""
+    for line in content.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("#"):
+            return stripped.lstrip("#").strip() or None
+        return stripped[:120]
+    return None
