@@ -11,9 +11,11 @@ import {
   SlidersHorizontalIcon,
   UploadIcon,
 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 import { FileDropzone } from "@/components/upload/file-dropzone";
 import { WorkspaceMetricCard, WorkspacePage } from "@/components/shared/workspace-page";
+import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -92,6 +94,7 @@ function getStatusFilterLabel(value: "all" | KnowledgeDocumentStatus, t: (key: s
 export function KnowledgePage() {
   const { t } = useTranslation("knowledge");
   const isMobile = useIsMobile();
+  const navigate = useNavigate();
   const [pendingDeleteDocument, setPendingDeleteDocument] = useState<KnowledgeDocument | null>(
     null,
   );
@@ -112,6 +115,7 @@ export function KnowledgePage() {
   );
   const {
     canManageDocuments,
+    canManageProviderSettings,
     cancelUpload,
     closeVersionDrawer,
     deleteDocument,
@@ -125,6 +129,8 @@ export function KnowledgePage() {
     reindexDocument,
     retryUpload,
     showVersions,
+    uploadReadiness,
+    uploadReadinessPending,
     uploadItems,
     versionDrawerOpen,
     versions,
@@ -144,6 +150,22 @@ export function KnowledgePage() {
     typeFilter === "all" ? null : getTypeFilterLabel(typeFilter, t),
     statusFilter === "all" ? null : getStatusFilterLabel(statusFilter, t),
   ].filter(Boolean) as string[];
+  const uploadReadinessChecking = uploadReadinessPending && uploadReadiness === undefined;
+  const uploadBlocked = uploadReadiness?.can_upload === false;
+  const imageUploadFallback = !uploadBlocked && uploadReadiness?.image_fallback === true;
+  const mobileSummaryBadges = (
+    <div className="flex flex-wrap items-center gap-2">
+      <Badge className="rounded-full px-3 py-1" variant="outline">
+        {t("summaryTotalValue", { count: documents.length })}
+      </Badge>
+      <Badge className="rounded-full px-3 py-1" variant="outline">
+        {t("summaryProcessingValue", { count: processingCount })}
+      </Badge>
+      <Badge className="rounded-full px-3 py-1" variant="outline">
+        {t("summaryIndexedValue", { count: indexedCount })}
+      </Badge>
+    </div>
+  );
 
   useEffect(() => {
     if (selectedDocumentId === null) {
@@ -178,13 +200,67 @@ export function KnowledgePage() {
     setStatusFilter("all");
   };
 
+  const renderUploadReadinessAlert = () => {
+    if (!canManageDocuments) {
+      return null;
+    }
+
+    if (uploadReadinessChecking) {
+      return (
+        <Alert className="rounded-[1.15rem] border-border/60 bg-background/60">
+          <AlertTitle>{t("uploadCheckingTitle")}</AlertTitle>
+          <AlertDescription>{t("uploadCheckingDescription")}</AlertDescription>
+        </Alert>
+      );
+    }
+
+    if (uploadBlocked) {
+      return (
+        <Alert
+          className="rounded-[1.15rem] border-destructive/30 bg-destructive/5"
+          variant="destructive"
+        >
+          <AlertTitle>{t("uploadBlockedTitle")}</AlertTitle>
+          <AlertDescription>{t("uploadBlockedDescription")}</AlertDescription>
+          {canManageProviderSettings ? (
+            <AlertAction>
+              <Button
+                onClick={() => navigate("/settings?section=providers")}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                {t("uploadBlockedAction")}
+              </Button>
+            </AlertAction>
+          ) : null}
+        </Alert>
+      );
+    }
+
+    if (imageUploadFallback) {
+      return (
+        <Alert className="rounded-[1.15rem] border-border/60 bg-background/60">
+          <AlertTitle>{t("uploadFallbackTitle")}</AlertTitle>
+          <AlertDescription>{t("uploadFallbackDescription")}</AlertDescription>
+        </Alert>
+      );
+    }
+
+    return null;
+  };
+
   const renderUploadAction = (fullWidth = false) => {
     if (!canManageDocuments) {
       return null;
     }
 
     return (
-      <FileDropzone onFilesAccepted={enqueueUploads} onFilesRejected={rejectFiles}>
+      <FileDropzone
+        disabled={uploadBlocked}
+        onFilesAccepted={enqueueUploads}
+        onFilesRejected={rejectFiles}
+      >
         {({ getInputProps, getRootProps, isDragAccept, isDragActive, isDragReject, open }) => (
           <div
             {...getRootProps({
@@ -204,6 +280,7 @@ export function KnowledgePage() {
                 isDragReject && "border-destructive/24 bg-destructive/12 text-destructive",
                 isDragActive && "shadow-[0_14px_28px_-18px_hsl(var(--primary)/0.44)]",
               )}
+              disabled={uploadBlocked || uploadReadinessChecking}
               onClick={open}
               type="button"
               variant={isDragReject ? "destructive" : "default"}
@@ -225,7 +302,7 @@ export function KnowledgePage() {
     <Sheet onOpenChange={setMobileFiltersOpen} open={mobileFiltersOpen}>
       <SheetTrigger asChild>
         <Button
-          className="flex-1 sm:flex-none"
+          className="w-full sm:flex-none"
           type="button"
           variant={activeFilterCount > 0 ? "secondary" : "outline"}
         >
@@ -311,17 +388,20 @@ export function KnowledgePage() {
                   value={searchValue}
                 />
               </label>
-              <div className="flex w-full flex-wrap gap-2">
+              <div className="grid w-full grid-cols-2 gap-2.5">
                 {mobileFilterSheet}
                 {renderUploadAction(true)}
               </div>
-              {activeFilterBadges.length > 0 ? (
-                <div className="flex flex-wrap gap-2">
+              {hasActiveFilters ? (
+                <div className="flex flex-wrap items-center gap-2">
                   {activeFilterBadges.map((label) => (
                     <Badge className="rounded-full px-3 py-1" key={label} variant="outline">
                       {label}
                     </Badge>
                   ))}
+                  <Button onClick={clearFilters} size="sm" type="button" variant="ghost">
+                    {t("clearFiltersAction")}
+                  </Button>
                 </div>
               ) : null}
             </div>
@@ -348,26 +428,28 @@ export function KnowledgePage() {
         headerClassName="gap-4"
         layoutClassName="min-h-0 flex-1"
         metrics={
-          <>
-            <WorkspaceMetricCard
-              icon={FilesIcon}
-              label={t(hasActiveFilters ? "summaryCurrentTotalLabel" : "summaryTotalLabel")}
-              value={t("summaryTotalValue", { count: documents.length })}
-            />
-            <WorkspaceMetricCard
-              detail={localUploadingCount > 0 ? t("uploadPendingAction") : undefined}
-              icon={UploadIcon}
-              label={t(
-                hasActiveFilters ? "summaryCurrentProcessingLabel" : "summaryProcessingLabel",
-              )}
-              value={t("summaryProcessingValue", { count: processingCount })}
-            />
-            <WorkspaceMetricCard
-              icon={ScanSearchIcon}
-              label={t(hasActiveFilters ? "summaryCurrentIndexedLabel" : "summaryIndexedLabel")}
-              value={t("summaryIndexedValue", { count: indexedCount })}
-            />
-          </>
+          isMobile ? null : (
+            <>
+              <WorkspaceMetricCard
+                icon={FilesIcon}
+                label={t(hasActiveFilters ? "summaryCurrentTotalLabel" : "summaryTotalLabel")}
+                value={t("summaryTotalValue", { count: documents.length })}
+              />
+              <WorkspaceMetricCard
+                detail={localUploadingCount > 0 ? t("uploadPendingAction") : undefined}
+                icon={UploadIcon}
+                label={t(
+                  hasActiveFilters ? "summaryCurrentProcessingLabel" : "summaryProcessingLabel",
+                )}
+                value={t("summaryProcessingValue", { count: processingCount })}
+              />
+              <WorkspaceMetricCard
+                icon={ScanSearchIcon}
+                label={t(hasActiveFilters ? "summaryCurrentIndexedLabel" : "summaryIndexedLabel")}
+                value={t("summaryIndexedValue", { count: indexedCount })}
+              />
+            </>
+          )
         }
         metricsClassName="xl:grid-cols-[minmax(0,1.15fr)_repeat(2,minmax(0,1fr))]"
         main={
@@ -377,6 +459,7 @@ export function KnowledgePage() {
             data-testid="knowledge-main-surface"
           >
             <div className="flex min-h-0 flex-1 flex-col gap-4 xl:pr-2">
+              {renderUploadReadinessAlert()}
               {uploadItems.length > 0 ? (
                 <UploadQueueSummary
                   items={uploadItems}
@@ -398,6 +481,8 @@ export function KnowledgePage() {
                       {t("resultCount", { count: filteredDocuments.length })}
                     </Badge>
                   </div>
+
+                  {isMobile ? mobileSummaryBadges : null}
 
                   {processingCount > 0 ? (
                     <div className="surface-outline rounded-[0.95rem] px-3 py-2">
@@ -443,7 +528,11 @@ export function KnowledgePage() {
               ) : null}
               {!hasDocuments ? (
                 canManageDocuments ? (
-                  <FileDropzone onFilesAccepted={enqueueUploads} onFilesRejected={rejectFiles}>
+                  <FileDropzone
+                    disabled={uploadBlocked}
+                    onFilesAccepted={enqueueUploads}
+                    onFilesRejected={rejectFiles}
+                  >
                     {({
                       getInputProps,
                       getRootProps,
@@ -509,7 +598,11 @@ export function KnowledgePage() {
                                   : t("dropzoneHint")}
                             </p>
                           </div>
-                          <Button onClick={open} type="button">
+                          <Button
+                            disabled={uploadBlocked || uploadReadinessChecking}
+                            onClick={open}
+                            type="button"
+                          >
                             <UploadIcon data-icon="inline-start" />
                             {t("uploadAction")}
                           </Button>

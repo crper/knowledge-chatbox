@@ -7,23 +7,29 @@ import { mutationOptions, queryOptions, type QueryClient } from "@tanstack/react
 import { queryKeys } from "@/lib/api/query-keys";
 import {
   deleteDocument,
+  getDocumentListSummary,
+  getDocumentUploadReadiness,
   getDocumentVersions,
   getDocuments,
   normalizeKnowledgeDocumentListFilters,
+  type DocumentListSummary,
   reindexDocument,
   type KnowledgeDocument,
   type KnowledgeDocumentListFilters,
+  type DocumentUploadReadiness,
 } from "./documents";
 
-export type { KnowledgeDocument };
+export type { DocumentListSummary, DocumentUploadReadiness, KnowledgeDocument };
 
 const DOCUMENTS_POLL_INTERVAL_MS = 3000;
+const DOCUMENTS_SUMMARY_POLL_INTERVAL_MS = 3000;
 
-async function invalidateDocuments(queryClient: QueryClient) {
+export async function invalidateDocuments(queryClient: QueryClient) {
   await queryClient.invalidateQueries({ queryKey: queryKeys.documents.list });
+  await queryClient.invalidateQueries({ queryKey: queryKeys.documents.summary });
 }
 
-function hasPendingDocuments(documents: KnowledgeDocument[] | undefined) {
+export function hasPendingDocuments(documents: KnowledgeDocument[] | undefined) {
   return (
     documents?.some(
       (document) => document.status === "processing" || document.status === "uploaded",
@@ -72,6 +78,30 @@ export function documentVersionsQueryOptions(documentId: number) {
   return queryOptions({
     queryKey: queryKeys.documents.versions(documentId),
     queryFn: () => getDocumentVersions(documentId),
+  });
+}
+
+/**
+ * 获取资源上传前置条件查询配置。
+ */
+export function documentUploadReadinessQueryOptions() {
+  return queryOptions({
+    queryKey: queryKeys.documents.uploadReadiness,
+    queryFn: getDocumentUploadReadiness,
+  });
+}
+
+/**
+ * 获取资源列表轻量摘要查询配置。
+ */
+export function documentListSummaryQueryOptions() {
+  return queryOptions({
+    queryKey: queryKeys.documents.summary,
+    queryFn: getDocumentListSummary,
+    refetchInterval: (query) =>
+      (query.state.data as DocumentListSummary | undefined)?.pending_count
+        ? DOCUMENTS_SUMMARY_POLL_INTERVAL_MS
+        : false,
   });
 }
 

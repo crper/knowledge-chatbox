@@ -2,7 +2,7 @@
 
 > 本地优先的知识工作台
 
-把“上传资料、标准化、索引、问答、来源回看、系统配置、用户管理”收进同一套单机工作流。前端使用 React + Vite+，后端使用 FastAPI；SQLite 保存业务真相，Chroma 保存检索派生索引，原始文件和标准化结果直接落在本地目录。
+把“上传资料、标准化、索引、问答、来源回看、系统配置、用户管理”收进同一套单机工作流。前端使用 React + Vite+，后端使用 FastAPI；SQLite 保存业务真相与 `FTS5` 词法兜底索引，Chroma 保存向量检索派生索引，原始文件和标准化结果直接落在本地目录。
 
 [快速开始](#快速开始) • [文档入口](#文档入口) • [开发入口](#开发入口) • [Docker 单机部署](#docker-单机部署) • [参与贡献](#参与贡献)
 
@@ -21,13 +21,14 @@
 | 📚 多格式资料入库 | 已支持 | `txt / md / pdf / docx / png / jpg / jpeg / webp` |
 | 🌊 流式问答 | 已支持 | 同步问答、SSE 流式输出、失败重试、活动 run 查询；长会话主区默认只加载最近一段消息窗口 |
 | 🧾 来源引用回看 | 已支持 | 回答内容带来源片段；右侧上下文栏走独立会话摘要接口，不再依赖整段消息重拉 |
+| 🔎 检索兜底 | 已支持 | `Chroma` 向量召回优先，`SQLite FTS5` 负责词法候选兜底 |
 | 🧠 三路模型路由 | 已支持 | `response / embedding / vision` 独立配置与切换 |
 | 🔌 多 Provider | 已支持 | `OpenAI / Anthropic / Voyage / Ollama` |
 | 🌐 中英双语 | 已支持 | 前端内置 `zh-CN / en` 文案与切换能力 |
 | 🌓 主题切换 | 已支持 | `light / dark / system` 三种主题偏好 |
 | 🔐 角色与设置中心 | 已支持 | `admin / user` 两类角色，带设置中心和用户管理 |
 | 🐳 单机部署 | 已支持 | 开发态可直跑，稳定运行走 Docker Compose |
-| 🗂️ 本地优先存储 | 已支持 | SQLite、Chroma、上传文件和标准化结果都落本地目录 |
+| 🗂️ 本地优先存储 | 已支持 | SQLite（含 `FTS5` 词法兜底索引）、Chroma、上传文件和标准化结果都落本地目录 |
 | 🪶 依赖克制 | 已支持 | V1 不引入 Redis、Celery、对象存储等非必需基础设施 |
 
 ## 演示 Demo
@@ -49,6 +50,8 @@ just dev
 
 - 这条路径是仓库唯一官方开发主线
 - `apps/web/README.md` 和 `apps/api/README.md` 只补充各自包内命令，不再重复定义仓库级启动流程
+- `just dev` 启动后会在终端统一打印 Web / API 的访问地址；若覆盖了 `API_PORT` / `WEB_PORT`，这里显示的链接也会同步变化
+- 前端开发态默认建议把 `VITE_API_BASE_URL` 留空，统一走同源 `/api`；`vp dev` 会通过 Vite proxy 转发到本机 API
 - 如果你只想先理解接手顺序和提交前要求，再看 [CONTRIBUTING.md](./CONTRIBUTING.md)
 
 ### 1. 准备本地工具
@@ -66,6 +69,7 @@ just dev
 - `just` 负责仓库级命令入口
 - `uv` 负责后端依赖与 Python 运行
 - `vp` 负责前端 Vite+ 工具链；如果本机还没有，可先看官方安装文档：[viteplus.dev/guide/install](https://viteplus.dev/guide/install)
+- 前端运行时版本以 [apps/web/.node-version](./apps/web/.node-version) 为准；当前仓库固定为 `24.14.1`，避免 `vp` 每次按 `lts` 远端解析时受外网波动影响
 - `just` 和 `uv` 如果本机尚未安装，请先按各自官方文档完成安装
 
 ### 2. 初始化环境
@@ -101,17 +105,19 @@ just setup
 | 首次安装依赖 | `just setup` | 同步后端虚拟环境和前端依赖 |
 | 看仓库入口 | `just --list` | 查看当前保留的高频命令 |
 | 手动执行数据库迁移 | `just api-migrate` | 只补齐本地 API schema，不启动服务 |
-| 本地开发 | `just dev` | 依赖已安装后启动前后端 |
+| 本地开发 | `just dev` | 依赖已安装后启动前后端，并打印访问地址 |
 | 检查仓库表面约束 | `just repo-check` | 校验 README / 包级 README 和 `justfile` 的关键入口是否保持一致 |
 | 只跑后端 | `just api-dev` | FastAPI 开发态 |
 | 只跑前端 | `just web-dev` | Web 开发态 |
 | 检查与测试 | `just test` | 先跑 `repo-check`，再执行前后端检查与测试 |
-| 重置本地数据 | `just reset-dev` | 清空数据、同步依赖并重新拉起 |
+| 重置本地数据 | `just reset-dev` | 清空数据、同步依赖、重新拉起，并打印访问地址 |
 | 单机部署 | `just docker-up` | Docker Compose 运行 |
 
 `just reset-dev` 会清空本地数据，只适合“环境已经乱掉，需要一键回到干净状态”的场景，不作为首次启动入口。
 
 ### 5. 打开服务
+
+执行 `just dev` 或 `just reset-dev` 后，终端会打印以下默认地址：
 
 - Web: `http://localhost:3000`
 - API health: `http://localhost:8000/api/health`
@@ -157,7 +163,9 @@ just docker-down
 - `just docker-check` 只做 Compose 和 `.env` 静态校验，不要求 Docker daemon 已启动
 - Docker 单机模式里，`web` 容器会把同源 `/api` 反代到 `api` 服务，避免 refresh cookie / 文件预览落到跨源链路
 - Docker 单机模式里，`web` 容器的 Nginx 已把单次请求体上限放宽到 `2GB`，避免大 PDF 被默认 `413 Payload Too Large` 提前拦截；API 侧上传链路也会先按块落盘并增量计算哈希，避免把整份文件一次性读进 Python 内存
+- 资源页进入上传流程前会先读取 `upload-readiness`：如果当前检索 provider 还没满足最小配置，前端会直接禁用上传入口，而不是等文件传完再报错
 - 文本文档上传当前仍在请求内完成标准化与索引；图片上传会先返回 `processing`，随后由后台任务补做 vision 标准化与索引
+- 如果当前 vision provider 不可用，图片仍可入库，但会退化成仅保留基础文件信息
 - `just docker-up` 默认复用当前镜像；首次启动、改了 Dockerfile / lockfile，或改了前端构建期 API 地址时，先执行 `just docker-build`
 
 更细的容器拓扑、部署脚本、副作用和重置 runbook 见 [docs/arch/deployment-and-operations.md](./docs/arch/deployment-and-operations.md)。
@@ -192,7 +200,7 @@ knowledge-chatbox/
     uploads/           # 原始上传文件
     normalized/        # 标准化后的文本 / Markdown
     chroma/            # Chroma 向量索引数据
-    sqlite/            # SQLite 数据文件
+    sqlite/            # SQLite 业务数据与 FTS5 词法兜底索引
   scripts/
     docker-deploy.sh
   reset-local-data.sh

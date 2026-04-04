@@ -23,19 +23,25 @@
 
 - 首次 clone 或依赖刚更新时，先执行：`just init-env` -> `just setup`
 - 依赖已安装后的推荐入口：仓库根目录 `just dev`
+- `just dev` / `just reset-dev` 会把当前 `API_PORT / WEB_PORT` 传给共享开发脚本，并在终端打印 Web、API health、docs、redoc 和 OpenAPI 地址
+- 前端 `vp` 当前通过 `apps/web/.node-version` 固定到 `24.14.1`；这样 `vp dev / check / test / build` 会优先直接使用本地已安装版本，而不是每次都先走远端 `lts` 解析
 - 只需要手动补齐本地数据库 schema 时，优先使用仓库根目录 `just api-migrate`
 - 后端本地静态检查入口：仓库根目录 `just api-check`，内部会执行 `ruff check`、`ruff format --check` 和 `basedpyright`
 - 仓库表面入口检查：仓库根目录 `just repo-check`，用于校验 README / 包级 README 和 `justfile` 的关键入口约束
 - Web 子命令：`apps/web` 下用 `vp dev`
+- 浏览器开发态默认优先走同源 `/api`：如果 `.env` 里的 `VITE_API_BASE_URL` 为空，或仍是本机 `http://localhost:8000 / http://127.0.0.1:8000` 这类本地地址，前端会优先收口到同源 `/api`，再由 Vite proxy 转发到本机 API
 - API 子命令：`apps/api` 下用 `uv run -m uvicorn ...`
 - `just setup` 是非破坏性的依赖同步入口；它会执行 `apps/api` 下的 `uv sync --all-groups` 和 `apps/web` 下的 `vp install`
 - 如果你要的是“本地像生产一样稳定跑起来”，请直接看下方 Docker Compose 部分，不要继续用 `vp dev` 或 `uvicorn --reload`
-- 数据：统一落在仓库根目录 `data/`
+- 数据：统一落在仓库根目录 `data/`；其中 SQLite 文件除了业务真相源，也承载 `FTS5` 词法兜底索引
 - OpenAPI 契约校验当前是严格门禁：`just web-check` / `vp run api:check` 如果发现 `apps/web/openapi/schema.json` 或 `src/lib/api/generated/schema.d.ts` 漂移会直接失败；标准修复入口是 `cd apps/web && vp run api:generate`
 - API 启动后默认暴露 `/docs`、`/redoc`、`/openapi.json`；它们与前端契约生成共用同一份 FastAPI OpenAPI 真相源
 - 认证当前使用 `PyJWT` 短期 access token + HttpOnly refresh cookie；refresh cookie 默认按请求 scheme 自动决定是否带 `Secure`，若部署在 HTTPS 反向代理后且应用层拿不到 `https` scheme，则需要显式配置 `SESSION_COOKIE_SECURE=true`；本地和容器环境都需要提供稳定的 `JWT_SECRET_KEY`；前端启动期会通过 `/api/auth/bootstrap` 恢复 refresh session，普通请求、资源上传与 SSE 流式聊天里的 `401` 续期仍走 `/api/auth/refresh`
 - 资源上传当前会先按块落到 `data/uploads`，同时增量计算 `content_hash` 和 `file_size`；因此即使 `web` 容器把 `client_max_body_size` 放宽到 `2g`，API 进程也不会再把整份文件一次性读进内存
+- 资源页会先读取 `GET /api/documents/upload-readiness` 判断上传前置条件；这条接口只判断当前配置形状是否允许进入上传链路，不做 provider 实时探活
 - 图片上传当前会先返回 `processing`，再由 API 进程内后台任务补做 vision 标准化与索引；Docker 单机模式依赖 SQLite 状态和启动恢复来兜住容器重启中断
+- 活动 `embedding_route` 缺配置，或索引重建中的 `pending_embedding_route` 缺配置时，上传会在落盘前直接返回 `409`，避免把大文件先写进宿主机再失败
+- `vision_route` 缺配置不会阻断图片上传；图片会退化成基础文件信息入库
 - 浏览器内的布局、虚拟列表、抽屉、附件面板、账户菜单、会话恢复、标题兜底和设置文案收敛，都是纯前端运行时行为；它们不新增环境变量、容器、副进程或本地运维步骤，具体语义统一看 [frontend-workspace.md](./frontend-workspace.md)
 - 聊天主区当前默认先读取最近一段消息窗口，继续向上滚动时再请求更早消息；右侧上下文栏走独立会话摘要接口；流式完成或失败时优先 patch 当前窗口与摘要，而不是默认整段消息重拉。这些都是前端运行时行为，不新增额外部署动作，但排查长会话体感问题时需要按这条链路理解
 - 聊天附件在服务端侧的图片重读、标准化文本拼接、多附件逐个检索后合并等行为，属于 API 运行时输入整形与召回策略；它们同样不新增额外运维动作，具体链路统一看 [runtime-flows.md](./runtime-flows.md)
@@ -93,6 +99,7 @@ flowchart LR
 - 默认 Ollama bootstrap 当前对齐为 `qwen3.5:4b` 作为 chat / vision 模板值，避免设置页首屏和连接测试看到的默认模型不一致
 - API 响应头默认附带 `X-Request-ID`，日志里同样会输出 `request_id`
 - SQLite 连接默认开启 `WAL` 和 `busy_timeout=30000`，降低流式事件写入与标准页面读取并发时直接触发锁错误的概率
+- 文档索引当前拆成两层：`Chroma` 保存向量索引，SQLite 同库保存 `FTS5` 词法候选兜底索引；重置本地 SQLite 文件会一并清掉这部分派生数据
 - 数据目录全部 bind mount 到宿主机，容器重建后数据仍在
 - 同名资源如果内容哈希未变化，API 会直接返回当前版本；因此 `data/uploads` 和 `data/normalized` 的增长更接近“真实内容变更”而不是“重复点击上传”
 - 上传在标准化或索引阶段失败时，会清理本次新落盘的源文件与标准化副产物，避免宿主机目录被失败重试慢慢堆满
@@ -217,7 +224,7 @@ COMPOSE_FILE=/abs/path/docker-compose.yml scripts/docker-deploy.sh check
 - 删除 SQLite 文件
 - 默认重新执行 `uv run python -m alembic upgrade head`
 - 如果只需要补装依赖，不需要执行它；直接用 `just setup`
-- `just reset-dev` 还会补做 `uv sync --all-groups`、`vp install`，最后拉起前后端开发态脚本
+- `just reset-dev` 还会补做 `uv sync --all-groups`、`vp install`，最后拉起前后端开发态脚本，并打印与 `just dev` 相同的访问地址
 
 ### 安全措施
 

@@ -4,7 +4,6 @@ import json
 from types import SimpleNamespace
 
 import httpx
-from ollama import ResponseError
 from pytest_httpx import HTTPXMock
 
 from knowledge_chatbox_api.providers.anthropic_provider import AnthropicResponseAdapter
@@ -15,10 +14,10 @@ from knowledge_chatbox_api.providers.ollama_provider import (
 )
 from knowledge_chatbox_api.providers.openai_provider import OpenAIResponseAdapter
 from knowledge_chatbox_api.providers.voyage_provider import VoyageEmbeddingAdapter
-from knowledge_chatbox_api.schemas.settings import ProviderRuntimeSettings
+from knowledge_chatbox_api.services.settings.runtime_settings import parse_runtime_settings
 
 
-def build_runtime_settings(**overrides) -> ProviderRuntimeSettings:
+def make_runtime_settings(**overrides):
     payload = {
         "provider_profiles": {
             "openai": {
@@ -44,7 +43,7 @@ def build_runtime_settings(**overrides) -> ProviderRuntimeSettings:
         "reasoning_mode": "default",
     }
     payload.update(overrides)
-    return ProviderRuntimeSettings.model_validate(payload)
+    return parse_runtime_settings(payload)
 
 
 def test_openai_response_adapter_streams_response_events() -> None:
@@ -79,7 +78,7 @@ def test_openai_response_adapter_streams_response_events() -> None:
             self.responses = FakeResponses()
 
     adapter = OpenAIResponseAdapter(client_factory=lambda **kwargs: FakeClient())
-    settings = build_runtime_settings()
+    settings = make_runtime_settings()
 
     events = list(adapter.stream_response([{"role": "user", "content": "hello"}], settings))
 
@@ -110,7 +109,7 @@ def test_anthropic_response_adapter_streams_messages_events() -> None:
             )
 
     adapter = AnthropicResponseAdapter(client_factory=FakeClient)
-    settings = build_runtime_settings(
+    settings = make_runtime_settings(
         response_route={"provider": "anthropic", "model": "claude-sonnet-4-5"},
     )
 
@@ -135,7 +134,7 @@ def test_ollama_response_adapter_streams_json_lines() -> None:
             )
 
     adapter = OllamaResponseAdapter(client_factory=FakeClient)
-    settings = build_runtime_settings(
+    settings = make_runtime_settings(
         response_route={"provider": "ollama", "model": "qwen3.5:4b"},
     )
 
@@ -162,7 +161,7 @@ def test_voyage_embedding_adapter_calls_embeddings_api(httpx_mock: HTTPXMock) ->
     )
 
     adapter = VoyageEmbeddingAdapter()
-    settings = build_runtime_settings(
+    settings = make_runtime_settings(
         embedding_route={"provider": "voyage", "model": "voyage-3.5"},
         provider_timeout_seconds=30,
     )
@@ -180,7 +179,7 @@ def test_ollama_embedding_adapter_uses_embed_api(httpx_mock: HTTPXMock) -> None:
     )
 
     adapter = OllamaEmbeddingAdapter()
-    settings = build_runtime_settings(
+    settings = make_runtime_settings(
         embedding_route={"provider": "ollama", "model": "nomic-embed-text"},
         provider_timeout_seconds=30,
     )
@@ -211,7 +210,7 @@ def test_openai_response_health_check_accepts_model_list_only_gateways() -> None
             self.responses = FakeResponses()
 
     adapter = OpenAIResponseAdapter(client_factory=lambda **kwargs: FakeClient())
-    settings = build_runtime_settings()
+    settings = make_runtime_settings()
 
     result = adapter.health_check(settings)
 
@@ -240,7 +239,7 @@ def test_openai_response_health_check_rejects_invalid_api_key() -> None:
             self.responses = FakeResponses()
 
     adapter = OpenAIResponseAdapter(client_factory=lambda **kwargs: FakeClient())
-    settings = build_runtime_settings()
+    settings = make_runtime_settings()
 
     result = adapter.health_check(settings)
 
@@ -270,7 +269,7 @@ def test_openai_response_health_check_rejects_missing_model_from_list() -> None:
             self.responses = FakeResponses()
 
     adapter = OpenAIResponseAdapter(client_factory=lambda **kwargs: FakeClient())
-    settings = build_runtime_settings()
+    settings = make_runtime_settings()
 
     result = adapter.health_check(settings)
 
@@ -286,13 +285,13 @@ def test_ollama_response_health_check_prefers_show_over_chat() -> None:
 
         def show(self, model: str):
             assert model == "qwen3.5:4b"
-            return {"model": model}
+            return {"model": model, "capabilities": ["completion"]}
 
         def chat(self, **kwargs):
             raise AssertionError("chat should not be used for quick Ollama response checks")
 
     adapter = OllamaResponseAdapter(client_factory=FakeClient)
-    settings = build_runtime_settings(
+    settings = make_runtime_settings(
         response_route={"provider": "ollama", "model": "qwen3.5:4b"},
     )
 
@@ -301,17 +300,67 @@ def test_ollama_response_health_check_prefers_show_over_chat() -> None:
     assert result.healthy is True
 
 
-def test_ollama_response_health_check_marks_bad_gateway_as_base_url_unreachable() -> None:
+def test_ollama_embedding_health_check_prefers_show_over_embed() -> None:
+    class FakeClient:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        def show(self, model: str):
+            assert model == "nomic-embed-text"
+            return {"model": model, "capabilities": ["embedding"]}
+
+        def embed(self, **kwargs):
+            raise AssertionError("embed should not be used for quick Ollama embedding checks")
+
+    adapter = OllamaEmbeddingAdapter(client_factory=FakeClient)
+    settings = make_runtime_settings(
+        embedding_route={"provider": "ollama", "model": "nomic-embed-text"},
+    )
+
+    result = adapter.health_check(settings)
+
+    assert result.healthy is True
+
+
+def test_ollama_embedding_health_check_rejects_models_without_embedding_capability() -> None:
     class FakeClient:
         def __init__(self, **kwargs):
             self.kwargs = kwargs
 
         def show(self, model: str):
             assert model == "qwen3.5:4b"
-            raise ResponseError("Bad Gateway", 502)
+            return {"model": model, "capabilities": ["completion"]}
+
+    adapter = OllamaEmbeddingAdapter(client_factory=FakeClient)
+    settings = make_runtime_settings(
+        embedding_route={"provider": "ollama", "model": "qwen3.5:4b"},
+    )
+
+    result = adapter.health_check(settings)
+
+    assert result.healthy is False
+    assert (
+        result.message
+        == "Ollama model qwen3.5:4b does not support required capabilities: embedding."
+    )
+
+
+def test_ollama_response_health_check_marks_bad_gateway_as_base_url_unreachable() -> None:
+    class FakeOllamaResponseError(Exception):
+        def __init__(self, message: str, status_code: int) -> None:
+            super().__init__(message)
+            self.status_code = status_code
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        def show(self, model: str):
+            assert model == "qwen3.5:4b"
+            raise FakeOllamaResponseError("Bad Gateway", 502)
 
     adapter = OllamaResponseAdapter(client_factory=FakeClient)
-    settings = build_runtime_settings(
+    settings = make_runtime_settings(
         response_route={"provider": "ollama", "model": "qwen3.5:4b"},
         provider_profiles={
             "ollama": {
@@ -337,16 +386,36 @@ def test_ollama_vision_health_check_prefers_show_over_chat() -> None:
 
         def show(self, model: str):
             assert model == "qwen3.5:4b"
-            return {"model": model}
+            return {"model": model, "capabilities": ["completion", "vision"]}
 
         def chat(self, **kwargs):
             raise AssertionError("chat should not be used for quick Ollama vision checks")
 
     adapter = OllamaVisionAdapter(client_factory=FakeClient)
-    settings = build_runtime_settings(
+    settings = make_runtime_settings(
         vision_route={"provider": "ollama", "model": "qwen3.5:4b"},
     )
 
     result = adapter.health_check(settings)
 
     assert result.healthy is True
+
+
+def test_ollama_vision_health_check_rejects_models_without_vision_capability() -> None:
+    class FakeClient:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        def show(self, model: str):
+            assert model == "qwen3:4b"
+            return {"model": model, "capabilities": ["completion"]}
+
+    adapter = OllamaVisionAdapter(client_factory=FakeClient)
+    settings = make_runtime_settings(
+        vision_route={"provider": "ollama", "model": "qwen3:4b"},
+    )
+
+    result = adapter.health_check(settings)
+
+    assert result.healthy is False
+    assert result.message == "Ollama model qwen3:4b does not support required capabilities: vision."

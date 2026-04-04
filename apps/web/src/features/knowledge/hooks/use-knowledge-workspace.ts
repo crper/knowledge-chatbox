@@ -2,7 +2,7 @@
  * @file 资源相关 Hook 模块。
  */
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { FileRejection } from "react-dropzone";
 import { useTranslation } from "react-i18next";
@@ -13,8 +13,12 @@ import { queryKeys } from "@/lib/api/query-keys";
 import { getDocumentUploadRejectionMessage, runDocumentUpload } from "@/lib/document-upload";
 import {
   deleteDocumentMutationOptions,
+  documentListSummaryQueryOptions,
+  documentUploadReadinessQueryOptions,
   documentVersionsQueryOptions,
   documentsListQueryOptions,
+  hasPendingDocuments,
+  invalidateDocuments,
   reindexDocumentMutationOptions,
   type KnowledgeDocument,
 } from "../api/documents-query";
@@ -41,32 +45,37 @@ export function useKnowledgeWorkspace(filters?: KnowledgeDocumentListFilters) {
   const uploadQueueRef = useRef(Promise.resolve());
   const uploadControllersRef = useRef(new Map<string, AbortController>());
   const canceledUploadIdsRef = useRef(new Set<string>());
+  const queuedRetryUploadIdsRef = useRef(new Set<string>());
   const normalizedQuery = filters?.query?.trim();
   const hasActiveFilters =
     Boolean(normalizedQuery) || filters?.status !== undefined || filters?.type !== undefined;
 
   const currentUserQuery = useQuery(currentUserQueryOptions());
-  const unfilteredDocumentsQuery = useQuery({
-    ...documentsListQueryOptions(),
-    enabled: hasActiveFilters,
+  const uploadReadinessQuery = useQuery(documentUploadReadinessQueryOptions());
+  const documentsQuery = useQuery(documentsListQueryOptions(filters));
+  const documents = documentsQuery.data ?? [];
+  const hasVisiblePendingDocuments = hasPendingDocuments(documents);
+  const pendingSummaryQuery = useQuery({
+    ...documentListSummaryQueryOptions(),
+    enabled: hasActiveFilters && !hasVisiblePendingDocuments,
   });
   const hasHiddenPendingDocuments =
     hasActiveFilters &&
-    (unfilteredDocumentsQuery.data?.some(
-      (document) => document.status === "processing" || document.status === "uploaded",
-    ) ??
-      false);
-  const documentsQuery = useQuery(
-    documentsListQueryOptions(filters, {
-      keepPolling: hasHiddenPendingDocuments,
-    }),
-  );
+    !hasVisiblePendingDocuments &&
+    (pendingSummaryQuery.data?.pending_count ?? 0) > 0;
+
+  useEffect(() => {
+    if (!hasHiddenPendingDocuments) {
+      return;
+    }
+    void queryClient.invalidateQueries({ queryKey: queryKeys.documents.list });
+  }, [hasHiddenPendingDocuments, pendingSummaryQuery.dataUpdatedAt, queryClient]);
 
   const deleteMutation = useMutation(deleteDocumentMutationOptions(queryClient));
   const reindexMutation = useMutation({
     ...reindexDocumentMutationOptions(queryClient),
     onSuccess: async (document) => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.documents.list });
+      await invalidateDocuments(queryClient);
       toast.success(t("reindexSuccessToast", { name: document.name }));
     },
     onError: (error) => {
@@ -110,7 +119,7 @@ export function useKnowledgeWorkspace(filters?: KnowledgeDocumentListFilters) {
           signal: controller.signal,
           upload: uploadDocument,
         });
-        await queryClient.invalidateQueries({ queryKey: queryKeys.documents.list });
+        await invalidateDocuments(queryClient);
         removeUploadItem(uploadId);
         toast.success(
           document.deduplicated
@@ -137,6 +146,7 @@ export function useKnowledgeWorkspace(filters?: KnowledgeDocumentListFilters) {
       } finally {
         uploadControllersRef.current.delete(uploadId);
         canceledUploadIdsRef.current.delete(uploadId);
+        queuedRetryUploadIdsRef.current.delete(uploadId);
       }
     },
     [isUploadAbortError, queryClient, removeUploadItem, t, updateUploadItem],
@@ -195,15 +205,21 @@ export function useKnowledgeWorkspace(filters?: KnowledgeDocumentListFilters) {
   const retryUpload = useCallback(
     (uploadId: string) => {
       const target = uploadItems.find((item) => item.id === uploadId);
-      if (!target) {
+      if (!target || target.status !== "failed" || queuedRetryUploadIdsRef.current.has(uploadId)) {
         return;
       }
 
+      queuedRetryUploadIdsRef.current.add(uploadId);
+      updateUploadItem(uploadId, {
+        errorMessage: undefined,
+        progress: 0,
+        status: "uploading",
+      });
       uploadQueueRef.current = uploadQueueRef.current.then(async () => {
         await uploadOneFile(uploadId, target.file);
       });
     },
-    [uploadItems, uploadOneFile],
+    [updateUploadItem, uploadItems, uploadOneFile],
   );
 
   const removeUpload = useCallback(
@@ -230,10 +246,9 @@ export function useKnowledgeWorkspace(filters?: KnowledgeDocumentListFilters) {
     setVersionDrawerOpen(true);
   };
 
-  const documents = documentsQuery.data ?? [];
-
   return {
     canManageDocuments: Boolean(currentUserQuery.data),
+    canManageProviderSettings: currentUserQuery.data?.role === "admin",
     deleteDocument: (documentId: number) => deleteMutation.mutateAsync(documentId),
     documents,
     documentsRefreshing: documentsQuery.isFetching && documentsQuery.data !== undefined,
@@ -247,6 +262,8 @@ export function useKnowledgeWorkspace(filters?: KnowledgeDocumentListFilters) {
     reindexDocument: (documentId: number) => reindexMutation.mutateAsync(documentId),
     reindexPending: reindexMutation.isPending,
     showVersions,
+    uploadReadiness: uploadReadinessQuery.data,
+    uploadReadinessPending: uploadReadinessQuery.isPending,
     uploadItems,
     versionDrawerOpen,
     versions,

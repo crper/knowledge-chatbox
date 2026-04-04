@@ -188,6 +188,27 @@ describe("MessageInput", () => {
     expect(onSubmit).toHaveBeenCalledTimes(1);
   });
 
+  it("blurs the textarea when the action rail is pressed", () => {
+    render(
+      <MessageInput
+        activeModelLabel="Ollama / qwen3.5:4b"
+        draft="hello"
+        onChange={() => {}}
+        onSubmit={() => {}}
+        reasoningModeVisible={true}
+        sendShortcut="enter"
+      />,
+    );
+
+    const input = screen.getByLabelText("消息输入");
+    input.focus();
+    expect(input).toHaveFocus();
+
+    fireEvent.pointerDown(screen.getByTestId("message-input-actions"));
+
+    expect(input).not.toHaveFocus();
+  });
+
   it("does not submit while the user is composing with IME", () => {
     const onSubmit = vi.fn();
 

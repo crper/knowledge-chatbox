@@ -63,3 +63,19 @@ class DocumentUploadFailedError(DocumentError):
     status_code = 500
     code = "document_upload_failed"
     default_message = "Document upload failed."
+
+
+class EmbeddingNotConfiguredError(DocumentError):
+    """当前活动 embedding route 尚未满足上传所需的最小配置。"""
+
+    status_code = 409
+    code = "embedding_not_configured"
+    default_message = "Document upload requires a configured embedding provider."
+
+
+class PendingEmbeddingNotConfiguredError(DocumentError):
+    """索引切换中的 pending embedding route 尚未满足上传所需的最小配置。"""
+
+    status_code = 409
+    code = "pending_embedding_not_configured"
+    default_message = "Document upload requires the pending embedding provider to be configured."

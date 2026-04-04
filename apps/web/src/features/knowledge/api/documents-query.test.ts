@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import type { KnowledgeDocument } from "./documents";
-import { documentsListQueryOptions } from "./documents-query";
+import { documentListSummaryQueryOptions, documentsListQueryOptions } from "./documents-query";
 
 function buildDocument(status: KnowledgeDocument["status"]): KnowledgeDocument {
   return {
@@ -62,5 +62,15 @@ describe("documentsListQueryOptions", () => {
         state: { data: [buildDocument("indexed")] },
       }),
     ).toBe(3000);
+  });
+
+  it("polls the lightweight summary while hidden pending documents remain", () => {
+    const options = documentListSummaryQueryOptions();
+    const refetchInterval = options.refetchInterval as
+      | ((query: { state: { data: { pending_count: number } | undefined } }) => number | false)
+      | undefined;
+
+    expect(refetchInterval?.({ state: { data: { pending_count: 1 } } })).toBe(3000);
+    expect(refetchInterval?.({ state: { data: { pending_count: 0 } } })).toBe(false);
   });
 });

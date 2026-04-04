@@ -424,41 +424,6 @@ class PersistentChromaStore:
             if vector_records:
                 return vector_records[:top_k]
 
-        if query_text:
-            candidate_limit = max(top_k * VECTOR_RERANK_CANDIDATE_MULTIPLIER, top_k)
-            fallback_terms = _text_fallback_where_document_terms(query_text)
-            if fallback_terms:
-                primary_terms = set(_raw_quoted_phrases(query_text))
-                stripped_query = query_text.strip()
-                if 2 <= len(stripped_query) <= 120:
-                    primary_terms.add(stripped_query)
-                records_by_id: dict[str, dict[str, Any]] = {}
-                for term in fallback_terms:
-                    filtered_result = collection.get(
-                        include=["documents", "metadatas"],
-                        limit=candidate_limit,
-                        where=chroma_where,
-                        where_document={"$contains": term},
-                    )
-                    for record in self._deserialize_records(filtered_result):
-                        records_by_id.setdefault(record["id"], record)
-                    if len(records_by_id) >= top_k and term in primary_terms:
-                        break
-                    if len(records_by_id) >= candidate_limit:
-                        break
-                if records_by_id:
-                    return _score_records(list(records_by_id.values()), query_text, top_k=top_k)
-
-            fallback_result = collection.get(
-                include=["documents", "metadatas"],
-                where=chroma_where,
-            )
-            return _score_records(
-                self._deserialize_records(fallback_result),
-                query_text,
-                top_k=top_k,
-            )
-
         return []
 
     def clear(self) -> None:

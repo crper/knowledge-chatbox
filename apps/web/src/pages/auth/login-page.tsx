@@ -29,21 +29,16 @@ import { queryKeys } from "@/lib/api/query-keys";
 import { getApiErrorMessage } from "@/lib/api/client";
 import { login, updatePreferences } from "@/features/auth/api/auth";
 import { LoginForm } from "@/features/auth/components/login-form";
-import { markSessionAuthenticated } from "@/lib/auth/session-manager";
+import { setAuthenticatedSession } from "@/lib/auth/session-manager";
 import { useSessionStore } from "@/lib/auth/session-store";
 import { BrandMark } from "@/components/shared/brand-mark";
 import { LanguageToggle } from "@/features/settings/components/language-toggle";
 import { ThemeToggle } from "@/features/settings/components/theme-toggle";
-import { THEME_SYNC_ON_LOGIN_STORAGE_KEY, type ThemeMode } from "@/lib/config/constants";
-
-function readPendingThemeSync(): ThemeMode | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  const value = window.sessionStorage.getItem(THEME_SYNC_ON_LOGIN_STORAGE_KEY);
-  return value === "light" || value === "dark" || value === "system" ? value : null;
-}
+import {
+  clearPendingThemeSync,
+  resolvePendingThemeSync,
+  writePendingThemeSync,
+} from "@/lib/config/theme-sync-storage";
 
 /**
  * 渲染登录页面。
@@ -95,16 +90,29 @@ export function LoginPage() {
     setLoginError(null);
     try {
       const authenticatedUser = await login(input);
-      const pendingTheme = readPendingThemeSync();
-      const nextUser =
-        pendingTheme === null || authenticatedUser.user.theme_preference === pendingTheme
-          ? authenticatedUser.user
-          : await updatePreferences({ themePreference: pendingTheme });
-      if (pendingTheme === null || nextUser.theme_preference === pendingTheme) {
-        window.sessionStorage.removeItem(THEME_SYNC_ON_LOGIN_STORAGE_KEY);
+      const pendingThemeSync = resolvePendingThemeSync(authenticatedUser.user.theme_preference);
+      const nextUser = pendingThemeSync.shouldClearPendingTheme
+        ? authenticatedUser.user
+        : {
+            ...authenticatedUser.user,
+            theme_preference: pendingThemeSync.resolvedTheme,
+          };
+
+      if (pendingThemeSync.shouldClearPendingTheme) {
+        clearPendingThemeSync();
+      } else {
+        void updatePreferences({ themePreference: pendingThemeSync.resolvedTheme })
+          .then((updatedUser) => {
+            queryClient.setQueryData(queryKeys.auth.me, updatedUser);
+            if (updatedUser.theme_preference === pendingThemeSync.pendingTheme) {
+              clearPendingThemeSync();
+            }
+          })
+          .catch(() => {
+            // Keep the pending theme marker so the next session can retry syncing.
+          });
       }
-      queryClient.setQueryData(queryKeys.auth.me, nextUser);
-      markSessionAuthenticated();
+      await setAuthenticatedSession(queryClient, nextUser);
       const nextPath = redirectTo ?? "/chat";
       clearRedirectTo();
       void navigate(nextPath, { replace: true });
@@ -124,7 +132,7 @@ export function LoginPage() {
           <ThemeToggle
             compact
             onChange={(nextTheme) => {
-              window.sessionStorage.setItem(THEME_SYNC_ON_LOGIN_STORAGE_KEY, nextTheme);
+              writePendingThemeSync(nextTheme);
             }}
           />
         </div>

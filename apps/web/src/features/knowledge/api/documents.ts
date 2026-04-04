@@ -51,8 +51,20 @@ export type KnowledgeDocument = {
 };
 
 type DocumentSummaryRead = components["schemas"]["DocumentSummaryRead"];
+type DocumentListSummaryRead = components["schemas"]["DocumentListSummaryRead"];
 type DocumentRevisionRead = components["schemas"]["DocumentRevisionRead"];
+type DocumentUploadReadinessRead = components["schemas"]["DocumentUploadReadinessRead"];
 type DocumentUploadRead = components["schemas"]["DocumentUploadRead"];
+
+export type DocumentUploadReadiness = {
+  blocking_reason: "embedding_not_configured" | "pending_embedding_not_configured" | null;
+  can_upload: boolean;
+  image_fallback: boolean;
+};
+
+export type DocumentListSummary = {
+  pending_count: number;
+};
 
 function toKnowledgeDocument(
   document: DocumentSummaryRead,
@@ -146,6 +158,26 @@ export async function getDocumentVersions(documentId: number) {
     }),
   );
   return revisions.map((revision) => toKnowledgeDocumentVersion(revision));
+}
+
+export async function getDocumentUploadReadiness() {
+  const readiness = await openapiRequestRequired<DocumentUploadReadinessRead>(
+    apiFetchClient.GET("/api/documents/upload-readiness"),
+  );
+  return {
+    blocking_reason: readiness.blocking_reason as DocumentUploadReadiness["blocking_reason"],
+    can_upload: readiness.can_upload,
+    image_fallback: readiness.image_fallback,
+  } satisfies DocumentUploadReadiness;
+}
+
+export async function getDocumentListSummary() {
+  const summary = await openapiRequestRequired<DocumentListSummaryRead>(
+    apiFetchClient.GET("/api/documents/summary"),
+  );
+  return {
+    pending_count: summary.pending_count,
+  } satisfies DocumentListSummary;
 }
 
 export function buildApiUrl(path: string, apiBaseUrl: string = env.apiBaseUrl) {

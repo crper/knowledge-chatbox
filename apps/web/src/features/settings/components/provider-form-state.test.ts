@@ -1,4 +1,9 @@
-import { buildProviderSettingsView, validateProviderSettingsView } from "./provider-form-state";
+import {
+  buildProviderSettingsView,
+  toSettingsPayload,
+  updatePrimaryProvider,
+  validateProviderSettingsView,
+} from "./provider-form-state";
 import type { AppSettings } from "../api/settings";
 
 function buildSettings(overrides: Partial<AppSettings> = {}): AppSettings {
@@ -169,7 +174,6 @@ describe("provider-form-state validation", () => {
     expect(
       validateProviderSettingsView({
         ...view,
-        retrievalEmbeddingModel: "",
         retrievalOverrideEnabled: false,
       }),
     ).toBeUndefined();
@@ -177,14 +181,63 @@ describe("provider-form-state validation", () => {
     expect(
       validateProviderSettingsView({
         ...view,
-        retrievalEmbeddingModel: "",
         retrievalOverrideEnabled: true,
+        retrievalProvider: "voyage",
+        providerProfiles: {
+          ...view.providerProfiles,
+          voyage: {
+            ...view.providerProfiles.voyage,
+            embedding_model: "",
+          },
+        },
       }),
     ).toMatchObject({
       fields: {
         retrievalEmbeddingModel: { i18nKey: "retrievalEmbeddingModelRequiredError" },
       },
       firstInvalidField: "retrievalEmbeddingModel",
+    });
+  });
+
+  it("derives payload routes from provider profiles instead of mirrored draft fields", () => {
+    const view = buildProviderSettingsView(
+      buildSettings({
+        pending_embedding_route: { provider: "voyage", model: "voyage-3.5" },
+      }),
+    );
+
+    const payload = toSettingsPayload({
+      ...view,
+      providerProfiles: {
+        ...view.providerProfiles,
+        openai: {
+          ...view.providerProfiles.openai,
+          chat_model: "gpt-5.4-mini",
+          vision_model: "gpt-5.4-vision",
+        },
+        voyage: {
+          ...view.providerProfiles.voyage,
+          embedding_model: "voyage-3.5-lite",
+        },
+      },
+    });
+
+    expect(payload).toMatchObject({
+      response_route: { provider: "openai", model: "gpt-5.4-mini" },
+      embedding_route: { provider: "voyage", model: "voyage-3.5-lite" },
+      vision_route: { provider: "openai", model: "gpt-5.4-vision" },
+    });
+  });
+
+  it("switches the default embedding provider when the primary provider changes", () => {
+    const nextView = updatePrimaryProvider(buildProviderSettingsView(buildSettings()), "anthropic");
+
+    expect(nextView.primaryProvider).toBe("anthropic");
+    expect(nextView.retrievalProvider).toBe("voyage");
+    expect(toSettingsPayload(nextView)).toMatchObject({
+      response_route: { provider: "anthropic", model: "claude-sonnet-4-5" },
+      embedding_route: { provider: "voyage", model: "voyage-3.5" },
+      vision_route: { provider: "anthropic", model: "claude-sonnet-4-5" },
     });
   });
 });

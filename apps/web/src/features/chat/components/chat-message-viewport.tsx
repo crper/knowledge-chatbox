@@ -12,7 +12,7 @@ import {
   useState,
   type ComponentProps,
 } from "react";
-import { Virtuoso, type FollowOutput, type VirtuosoHandle } from "react-virtuoso";
+import { Virtuoso, type FollowOutput, type ListProps, type VirtuosoHandle } from "react-virtuoso";
 
 import { useIsMobile } from "@/lib/hooks/use-mobile";
 import type { ChatMessageItem } from "../api/chat";
@@ -39,6 +39,29 @@ const ChatViewportScroller = forwardRef<HTMLDivElement, ComponentProps<"div">>(
     return <div data-scroll-padding="comfortable" ref={ref} {...props} />;
   },
 );
+
+const ChatViewportList = forwardRef<HTMLDivElement, ListProps>(function ChatViewportList(
+  { children, style, "data-testid": testId },
+  ref,
+) {
+  return (
+    <div
+      data-chat-viewport-list="bounded"
+      data-testid={testId}
+      ref={ref}
+      style={{
+        ...style,
+        width: "100%",
+        minWidth: 0,
+        maxWidth: "100%",
+        overflowX: "clip",
+        overflowY: "visible",
+      }}
+    >
+      {children}
+    </div>
+  );
+});
 
 function renderProbeMessageRow() {
   return <div aria-hidden="true" className="h-[220px] opacity-0 pointer-events-none" />;
@@ -204,12 +227,12 @@ export const ChatMessageViewport = memo(function ChatMessageViewport({
   }, [isLoadingOlderMessages, messages.length, scrollElement]);
 
   return (
-    <div className="relative h-full min-h-0">
+    <div className="relative flex min-h-0 flex-1 flex-col" data-testid="chat-message-viewport-root">
       <Virtuoso
         alignToBottom={true}
         atBottomThreshold={BOTTOM_THRESHOLD}
-        className="h-full min-h-0 px-2 pr-4 pb-4 sm:px-3 sm:pr-5 sm:pb-5 [scrollbar-gutter:stable_both-edges]"
-        components={{ Scroller: ChatViewportScroller }}
+        className="min-h-0 flex-1 overflow-x-hidden px-2 pr-4 pb-4 sm:px-3 sm:pr-5 sm:pb-5 [scrollbar-gutter:stable_both-edges]"
+        components={{ List: ChatViewportList, Scroller: ChatViewportScroller }}
         computeItemKey={(index, message) => message?.id ?? `probe-message-${index}`}
         data={messages}
         data-testid="chat-message-viewport-scroll"

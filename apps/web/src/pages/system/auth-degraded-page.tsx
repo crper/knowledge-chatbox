@@ -3,18 +3,30 @@
  */
 
 import { useTranslation } from "react-i18next";
-import { Link } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
+import { markSessionAnonymous } from "@/lib/auth/session-manager";
+
+const LOGIN_PATH = "/login";
 
 type AuthDegradedPageProps = {
+  onBackToLogin?: () => void;
   onRetry?: () => void;
 };
+
+export function redirectToLoginPage() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  // Recover via a fresh document request so we don't stay trapped in a degraded SPA tree.
+  window.location.replace(LOGIN_PATH);
+}
 
 /**
  * 渲染认证服务降级页面。
  */
-export function AuthDegradedPage({ onRetry }: AuthDegradedPageProps) {
+export function AuthDegradedPage({ onBackToLogin, onRetry }: AuthDegradedPageProps) {
   const { t } = useTranslation("common");
 
   return (
@@ -31,8 +43,20 @@ export function AuthDegradedPage({ onRetry }: AuthDegradedPageProps) {
           <Button onClick={onRetry} type="button">
             {t("retryAction")}
           </Button>
-          <Button asChild variant="outline">
-            <Link to="/login">{t("backToLoginAction")}</Link>
+          <Button
+            onClick={() => {
+              markSessionAnonymous();
+              if (onBackToLogin) {
+                onBackToLogin();
+                return;
+              }
+
+              redirectToLoginPage();
+            }}
+            type="button"
+            variant="outline"
+          >
+            {t("backToLoginAction")}
           </Button>
         </div>
       </section>

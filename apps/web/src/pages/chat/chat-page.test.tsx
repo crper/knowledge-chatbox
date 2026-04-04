@@ -4,12 +4,14 @@ import { i18n } from "@/i18n";
 import { toast } from "sonner";
 
 import type { ChatMessageItem } from "@/features/chat/api/chat";
+import { CHAT_STREAM_EVENT } from "@/features/chat/api/chat-stream-events";
 import { useChatStreamStore } from "@/features/chat/store/chat-stream-store";
 import { useChatUiStore } from "@/features/chat/store/chat-ui-store";
 import { useUiStore } from "@/lib/store/ui-store";
 import { AppProviders } from "@/providers/app-providers";
 import { AppRouter } from "@/router";
 import { buildChatSessionContext } from "@/test/chat";
+import { createChatStreamFrame, getChatStreamEventPayload } from "@/test/chat-stream";
 import { buildAppSettings, buildAppUser } from "@/test/fixtures/app";
 import { jsonResponse } from "@/test/http";
 import { mockMobileViewport } from "@/test/viewport";
@@ -375,26 +377,36 @@ function buildAuthenticatedFetch(options?: {
       const frames = streamFramesQueue?.shift() ??
         options?.streamFramesBySession?.[sessionId] ??
         options?.streamFrames ?? [
-          `event: run.started\ndata: {"run_id":${sessionId * 10 + 5},"session_id":${sessionId},"user_message_id":${sessionId * 10 + 3},"assistant_message_id":${sessionId * 10 + 4}}\n\n`,
-          `event: message.delta\ndata: {"run_id":${sessionId * 10 + 5},"assistant_message_id":${sessionId * 10 + 4},"delta":"streamed answer"}\n\n`,
-          `event: sources.final\ndata: {"run_id":${sessionId * 10 + 5},"assistant_message_id":${sessionId * 10 + 4},"sources":[]}\n\n`,
-          `event: run.completed\ndata: {"run_id":${sessionId * 10 + 5},"session_id":${sessionId},"assistant_message_id":${sessionId * 10 + 4}}\n\n`,
-          "event: done\ndata: {}\n\n",
+          createChatStreamFrame(CHAT_STREAM_EVENT.runStarted, {
+            run_id: sessionId * 10 + 5,
+            session_id: sessionId,
+            user_message_id: sessionId * 10 + 3,
+            assistant_message_id: sessionId * 10 + 4,
+          }),
+          createChatStreamFrame(CHAT_STREAM_EVENT.legacyMessageDelta, {
+            run_id: sessionId * 10 + 5,
+            assistant_message_id: sessionId * 10 + 4,
+            delta: "streamed answer",
+          }),
+          createChatStreamFrame(CHAT_STREAM_EVENT.legacySourcesFinal, {
+            run_id: sessionId * 10 + 5,
+            assistant_message_id: sessionId * 10 + 4,
+            sources: [],
+          }),
+          createChatStreamFrame(CHAT_STREAM_EVENT.runCompleted, {
+            run_id: sessionId * 10 + 5,
+            session_id: sessionId,
+            assistant_message_id: sessionId * 10 + 4,
+          }),
+          createChatStreamFrame(CHAT_STREAM_EVENT.done, {}),
         ];
-      const runStartedFrame = frames.find((frame) => frame.startsWith("event: run.started"));
-      const runFailedFrame = frames.find((frame) => frame.startsWith("event: run.failed"));
-      const startedPayload = runStartedFrame
-        ? (JSON.parse(runStartedFrame.split("data: ")[1]!.trim()) as {
-            assistant_message_id?: number;
-            user_message_id?: number;
-          })
-        : {};
-      const failedPayload = runFailedFrame
-        ? (JSON.parse(runFailedFrame.split("data: ")[1]!.trim()) as {
-            assistant_message_id?: number;
-            error_message?: string;
-          })
-        : null;
+      const startedPayload =
+        getChatStreamEventPayload(frames, CHAT_STREAM_EVENT.runStarted) ??
+        ({} as {
+          assistant_message_id?: number;
+          user_message_id?: number;
+        });
+      const failedPayload = getChatStreamEventPayload(frames, CHAT_STREAM_EVENT.runFailed);
       streamedUserMessage = {
         attachments_json: payload.attachments,
         content: payload.content ?? "",
@@ -756,7 +768,7 @@ describe("chat workspace", () => {
   });
 
   it("renders a guided empty-session canvas after creating a new session", async () => {
-    const fetchMock = buildAuthenticatedFetch();
+    buildAuthenticatedFetch();
 
     render(
       <MemoryRouter initialEntries={["/chat/1"]}>
@@ -773,13 +785,36 @@ describe("chat workspace", () => {
     expect(screen.queryByText("1. 准备资料")).not.toBeInTheDocument();
     expect(screen.queryByText("2. 提出具体问题")).not.toBeInTheDocument();
     expect(screen.queryByText("3. 对照引用")).not.toBeInTheDocument();
+  });
 
-    const createSessionCall = fetchMock.mock.calls.find(
-      ([url, init]) =>
-        typeof url === "string" && url.endsWith("/api/chat/sessions") && init?.method === "POST",
+  it("creates a new session without immediately refetching the session list", async () => {
+    const fetchMock = buildAuthenticatedFetch();
+
+    render(
+      <MemoryRouter initialEntries={["/chat/1"]}>
+        <AppProviders>
+          <AppRouter />
+        </AppProviders>
+      </MemoryRouter>,
     );
 
-    expect(createSessionCall).toBeDefined();
+    fireEvent.click(await screen.findByRole("button", { name: "新建会话" }));
+
+    let createSessionCall: (typeof fetchMock.mock.calls)[number] | undefined;
+    await waitFor(() => {
+      createSessionCall = fetchMock.mock.calls.find(
+        ([url, init]) =>
+          typeof url === "string" && url.endsWith("/api/chat/sessions") && init?.method === "POST",
+      );
+      expect(createSessionCall).toBeDefined();
+    });
+    const sessionListCalls = fetchMock.mock.calls.filter(
+      ([url, init]) =>
+        typeof url === "string" &&
+        url.endsWith("/api/chat/sessions") &&
+        (init?.method === undefined || init.method === "GET"),
+    );
+    expect(sessionListCalls).toHaveLength(1);
     expect(JSON.parse(String(createSessionCall?.[1]?.body))).toMatchObject({ title: null });
   });
 
@@ -1070,8 +1105,16 @@ describe("chat workspace", () => {
   it("marks the temporary assistant message as failed when the stream ends unexpectedly", async () => {
     buildAuthenticatedFetch({
       streamFrames: [
-        'event: run.started\ndata: {"run_id":5,"session_id":1,"assistant_message_id":4}\n\n',
-        'event: message.delta\ndata: {"run_id":5,"assistant_message_id":4,"delta":"作为"}\n\n',
+        createChatStreamFrame(CHAT_STREAM_EVENT.runStarted, {
+          run_id: 5,
+          session_id: 1,
+          assistant_message_id: 4,
+        }),
+        createChatStreamFrame(CHAT_STREAM_EVENT.legacyMessageDelta, {
+          run_id: 5,
+          assistant_message_id: 4,
+          delta: "作为",
+        }),
       ],
     });
 
@@ -1137,8 +1180,17 @@ describe("chat workspace", () => {
     const fetchMock = buildAuthenticatedFetch({
       messages: [],
       streamFrames: [
-        'event: run.started\ndata: {"run_id":5,"session_id":1,"user_message_id":3,"assistant_message_id":4}\n\n',
-        'event: message.delta\ndata: {"run_id":5,"assistant_message_id":4,"delta":"作为"}\n\n',
+        createChatStreamFrame(CHAT_STREAM_EVENT.runStarted, {
+          run_id: 5,
+          session_id: 1,
+          user_message_id: 3,
+          assistant_message_id: 4,
+        }),
+        createChatStreamFrame(CHAT_STREAM_EVENT.legacyMessageDelta, {
+          run_id: 5,
+          assistant_message_id: 4,
+          delta: "作为",
+        }),
       ],
     });
 
@@ -1473,8 +1525,18 @@ describe("chat workspace", () => {
   it("restores the composer snapshot when streaming fails after attachments upload", async () => {
     buildAuthenticatedFetch({
       streamFrames: [
-        'event: run.started\ndata: {"run_id":5,"session_id":1,"user_message_id":3,"assistant_message_id":4}\n\n',
-        'event: run.failed\ndata: {"run_id":5,"session_id":1,"assistant_message_id":4,"error_message":"provider unavailable"}\n\n',
+        createChatStreamFrame(CHAT_STREAM_EVENT.runStarted, {
+          run_id: 5,
+          session_id: 1,
+          user_message_id: 3,
+          assistant_message_id: 4,
+        }),
+        createChatStreamFrame(CHAT_STREAM_EVENT.runFailed, {
+          run_id: 5,
+          session_id: 1,
+          assistant_message_id: 4,
+          error_message: "provider unavailable",
+        }),
       ],
     });
 

@@ -33,12 +33,16 @@ from knowledge_chatbox_api.schemas.common import Envelope
 from knowledge_chatbox_api.services.chat.chat_application_service import (
     ChatApplicationService,
 )
+from knowledge_chatbox_api.services.chat.stream_events import StreamEventEnvelope
 from knowledge_chatbox_api.services.settings.settings_service import SettingsService
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
 
-def stream_presented_events(events, presenter):
+def stream_presented_events(
+    events: Iterable[StreamEventEnvelope],
+    presenter,
+):
     """把聊天事件转换成 SSE，并确保外层关闭时内层流也会关闭。"""
     try:
         for event in events:

@@ -2,7 +2,7 @@
  * @file 聊天相关界面组件模块。
  */
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { ClipboardEvent, FormEvent, KeyboardEvent } from "react";
 import { LoaderCircleIcon, PaperclipIcon, SendHorizontalIcon } from "lucide-react";
 import type { FileRejection } from "react-dropzone";
@@ -53,7 +53,7 @@ const PASTED_FILE_NAME_FALLBACK = "pasted-image";
 const composerControlSurfaceClassName =
   "border border-border/68 bg-input/72 shadow-[0_8px_18px_-18px_hsl(var(--shadow-color)/0.2)] transition-[background-color,border-color,box-shadow,color] dark:bg-input/84";
 const composerTouchControlClassName =
-  "min-h-11 focus-visible:border-ring focus-visible:bg-input focus-visible:ring-3 focus-visible:ring-ring/42 md:min-h-9";
+  "min-h-[2.625rem] focus-visible:border-ring focus-visible:bg-input focus-visible:ring-3 focus-visible:ring-ring/42 md:min-h-9";
 
 function getPastedFileExtension(file: File) {
   const mimeType = file.type.toLowerCase();
@@ -114,11 +114,15 @@ export function MessageInput({
 }: MessageInputProps) {
   const { t } = useTranslation("chat");
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const reasoningModeLabel = t("reasoningModeLabel", { defaultValue: "思考模式" });
   const reasoningModeDefaultLabel = t("reasoningModeDefaultOption", { defaultValue: "默认" });
   const reasoningModeOffLabel = t("reasoningModeOffOption", { defaultValue: "关闭" });
   const reasoningModeOnLabel = t("reasoningModeOnOption", { defaultValue: "开启" });
   const hasSendableAttachment = hasSendableChatAttachments(attachments);
+  const hasContextControls = Boolean(
+    activeModelActionLabel || activeModelLabel || reasoningModeVisible,
+  );
   const canSubmit = (draft.trim().length > 0 || hasSendableAttachment) && !submitPending;
   const imageViewerItems = useMemo(() => buildComposerImageViewerItems(attachments), [attachments]);
   const previewIndexes = useMemo(
@@ -189,6 +193,16 @@ export function MessageInput({
     onAttachFiles?.(files);
   };
 
+  const blurTextareaIfFocused = useCallback(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    if (document.activeElement === textareaRef.current) {
+      textareaRef.current?.blur();
+    }
+  }, []);
+
   function renderAttachmentStatus(attachment: ChatAttachmentItem) {
     if (attachment.status === "uploading") {
       return `${t("attachmentUploadingStatus")} ${attachment.progress ?? 0}%`;
@@ -209,14 +223,14 @@ export function MessageInput({
       onFilesRejected={onRejectFiles}
     >
       {({ getInputProps, getRootProps, isDragAccept, isDragActive, isDragReject, open }) => (
-        <form className="space-y-3" onSubmit={handleSubmit}>
+        <form className="space-y-2.5" onSubmit={handleSubmit}>
           <label className="sr-only" htmlFor="chat-message">
             {t("messageInputLabel")}
           </label>
           <div
             {...getRootProps({
               className: cn(
-                "surface-liquid rounded-[1.75rem] p-3.5 transition-colors",
+                "surface-liquid rounded-[1.5rem] p-2.5 transition-colors sm:rounded-[1.7rem] sm:p-3",
                 isDragActive && "border-primary/35 bg-primary/8",
                 isDragAccept && "border-primary/45 bg-primary/9",
                 isDragReject && "border-destructive/40 bg-destructive/10",
@@ -272,94 +286,92 @@ export function MessageInput({
             >
               <Textarea
                 aria-label={t("messageInputLabel")}
-                className="text-ui-body min-h-28 resize-none border-0 bg-transparent shadow-none placeholder:text-ui-caption placeholder:text-muted-foreground/85 focus-visible:ring-0"
+                className="text-ui-body min-h-20 resize-none border-0 bg-transparent px-2 py-1.5 shadow-none placeholder:text-[0.92rem] placeholder:leading-7 placeholder:text-muted-foreground/85 focus-visible:ring-0 sm:min-h-24 sm:px-2.5 sm:py-2 sm:placeholder:text-ui-caption"
                 disabled={submitPending}
                 id="chat-message"
                 onChange={(event) => onChange(event.target.value)}
                 onKeyDown={handleKeyDown}
                 onPaste={handlePaste}
                 placeholder={t("messageInputPlaceholder")}
+                ref={textareaRef}
                 value={draft}
               />
             </div>
             <div
-              className="mt-3 flex items-center justify-between gap-3 border-t border-border/60 pt-3"
+              className="mt-2.5 grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-2 gap-y-1.5 border-t border-border/60 pt-2.5 sm:mt-3 sm:gap-x-2.5 sm:gap-y-2 sm:pt-3"
               data-testid="message-input-actions"
+              onPointerDownCapture={blurTextareaIfFocused}
             >
-              <div className="min-w-0 flex flex-1 items-center gap-2.5">
-                <Button
-                  aria-label={t("attachResourceAction")}
-                  className={cn(
-                    composerControlSurfaceClassName,
-                    composerTouchControlClassName,
-                    "size-11 rounded-full border-border/60 hover:bg-background/36 md:size-9",
-                  )}
-                  disabled={submitPending}
-                  onClick={open}
-                  size="icon-sm"
-                  type="button"
-                  variant="outline"
-                >
-                  <PaperclipIcon className="size-4 md:size-3.5" />
-                </Button>
-                {activeModelLabel || reasoningModeVisible ? (
-                  <div className="min-w-0 flex items-center gap-2 overflow-hidden">
-                    {activeModelActionLabel ? (
-                      <button
+              <Button
+                aria-label={t("attachResourceAction")}
+                className={cn(
+                  composerControlSurfaceClassName,
+                  composerTouchControlClassName,
+                  "col-start-1 row-start-1 size-[2.625rem] self-start rounded-full border-border/60 hover:bg-background/36 md:size-9",
+                )}
+                disabled={submitPending}
+                onClick={open}
+                size="icon-sm"
+                type="button"
+                variant="outline"
+              >
+                <PaperclipIcon className="size-4 md:size-3.5" />
+              </Button>
+              {hasContextControls ? (
+                <div className="col-start-2 row-start-1 grid min-w-0 gap-2 sm:flex sm:min-w-0 sm:flex-1 sm:flex-row sm:items-center sm:gap-2">
+                  {activeModelActionLabel ? (
+                    <button
+                      className={cn(
+                        composerControlSurfaceClassName,
+                        composerTouchControlClassName,
+                        "flex w-full min-w-0 cursor-pointer select-none items-center rounded-[1rem] px-2.5 py-1.5 text-[0.74rem] text-foreground hover:bg-background/34 hover:text-foreground sm:max-w-[min(48vw,20rem)] sm:px-3 sm:py-2 sm:text-[0.82rem]",
+                      )}
+                      onClick={onActiveModelAction}
+                      title={activeModelActionLabel}
+                      type="button"
+                    >
+                      <span className="truncate">{activeModelActionLabel}</span>
+                    </button>
+                  ) : activeModelLabel ? (
+                    <div
+                      className={cn(
+                        composerControlSurfaceClassName,
+                        composerTouchControlClassName,
+                        "flex w-full min-w-0 select-none items-center rounded-[1rem] px-2.5 py-1.5 text-[0.74rem] text-foreground sm:max-w-[min(48vw,20rem)] sm:px-3 sm:py-2 sm:text-[0.82rem]",
+                      )}
+                      title={activeModelLabel}
+                    >
+                      <span className="truncate">{activeModelLabel}</span>
+                    </div>
+                  ) : null}
+                  {reasoningModeVisible ? (
+                    <Select
+                      disabled={submitPending}
+                      onValueChange={(value) => onReasoningModeChange?.(value as ChatReasoningMode)}
+                      value={reasoningMode}
+                    >
+                      <SelectTrigger
+                        aria-label={reasoningModeLabel}
                         className={cn(
                           composerControlSurfaceClassName,
                           composerTouchControlClassName,
-                          "flex max-w-[min(48vw,20rem)] min-w-0 cursor-pointer select-none items-center rounded-[1.1rem] px-3 py-2 text-[0.76rem] text-foreground hover:bg-background/34 hover:text-foreground sm:text-[0.82rem]",
+                          "w-full min-w-0 rounded-[1rem] px-2.5 text-[0.74rem] sm:min-w-28 sm:w-auto sm:px-3 sm:text-[0.8rem]",
                         )}
-                        onClick={onActiveModelAction}
-                        title={activeModelActionLabel}
-                        type="button"
                       >
-                        <span className="truncate">{activeModelActionLabel}</span>
-                      </button>
-                    ) : activeModelLabel ? (
-                      <div
-                        className={cn(
-                          composerControlSurfaceClassName,
-                          composerTouchControlClassName,
-                          "flex max-w-[min(48vw,20rem)] min-w-0 select-none items-center rounded-[1.1rem] px-3 py-2 text-[0.76rem] text-foreground sm:text-[0.82rem]",
-                        )}
-                        title={activeModelLabel}
-                      >
-                        <span className="truncate">{activeModelLabel}</span>
-                      </div>
-                    ) : null}
-                    {reasoningModeVisible ? (
-                      <Select
-                        disabled={submitPending}
-                        onValueChange={(value) =>
-                          onReasoningModeChange?.(value as ChatReasoningMode)
-                        }
-                        value={reasoningMode}
-                      >
-                        <SelectTrigger
-                          aria-label={reasoningModeLabel}
-                          className={cn(
-                            composerControlSurfaceClassName,
-                            composerTouchControlClassName,
-                            "min-w-28 rounded-[1rem] px-3 text-[0.76rem] sm:min-w-22 sm:text-[0.8rem]",
-                          )}
-                        >
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="default">{reasoningModeDefaultLabel}</SelectItem>
-                          <SelectItem value="off">{reasoningModeOffLabel}</SelectItem>
-                          <SelectItem value="on">{reasoningModeOnLabel}</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    ) : null}
-                  </div>
-                ) : null}
-              </div>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="default">{reasoningModeDefaultLabel}</SelectItem>
+                        <SelectItem value="off">{reasoningModeOffLabel}</SelectItem>
+                        <SelectItem value="on">{reasoningModeOnLabel}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  ) : null}
+                </div>
+              ) : null}
               <Button
                 aria-label={submitPending ? t("sendingAction") : t("sendAction")}
-                className="size-11 rounded-full"
+                className="col-start-3 row-start-1 size-[2.625rem] self-start rounded-full md:size-9"
                 disabled={!canSubmit}
                 size="icon"
                 type="submit"

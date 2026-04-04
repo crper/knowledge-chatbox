@@ -26,18 +26,23 @@ flowchart TD
 
 ## 2. 文档上传
 
-1. 基于当前用户 personal `space` 创建或复用 `documents`
-2. 追加 `document_revisions`
-3. 文本文档（`txt / md / pdf / docx`）在请求内完成标准化与索引，直接进入 `indexed / failed`
-4. 图片文档（`png / jpg / jpeg / webp`）先返回 `processing`，再由后台任务补做标准化与索引
-5. 图片后台补全阶段读取当前 `vision` route
-6. 索引阶段读取当前 `embedding` route
-7. 若存在 pending embedding route，同时写入 building generation
+1. 资源页先读取 `GET /api/documents/upload-readiness`
+2. 若当前活动 `embedding_route` 缺配置，或索引重建中的 `pending_embedding_route` 缺配置，前端直接禁用上传入口
+3. `POST /api/documents/upload` 在真正落盘前再次校验同一套 readiness 规则，避免旧前端或直调 API 绕过门禁
+4. 基于当前用户 personal `space` 创建或复用 `documents`
+5. 追加 `document_revisions`
+6. 文本文档（`txt / md / pdf / docx`）在请求内完成标准化与索引，直接进入 `indexed / failed`
+7. 图片文档（`png / jpg / jpeg / webp`）先返回 `processing`，再由后台任务补做标准化与索引
+8. 图片后台补全阶段读取当前 `vision` route；如果 vision 不可用，标准化会退化成基础文件信息
+9. 索引阶段读取当前 `embedding` route
+10. 若存在 pending embedding route，同时写入 building generation
 
 关键观察点：
 
 - `document_revisions.ingest_status`
 - `document_revisions.error_message`
+- `GET /api/documents/upload-readiness` 的 `can_upload / image_fallback / blocking_reason`
+- 资源页筛选态下的 `GET /api/documents/summary`，只返回 `pending_count`，用于判断当前筛选外是否仍有 pending 文档需要继续驱动列表刷新
 - Chroma generation 中的 `space_id / document_id / document_revision_id`
 - Web 侧上传 helper 会优先携带当前 access token；若第一次上传返回 `401`，前端会先走 `/api/auth/refresh`，刷新成功后自动重试一次
 
@@ -91,9 +96,9 @@ flowchart TD
 
 - 检索范围默认按当前会话 `space_id` 过滤
 - 若本轮消息带文档附件，检索会进一步限域到当前附件对应的 `document_revision_id`
-- 多文档附件检索会按附件逐个召回后再合并，减少单个文档吃满全局 `top_k`
+- 多文档附件检索当前会先按附件集合做一次批量限域召回，再按 `document_revision_id` 在内存里做轮转式公平选取，减少单个文档吃满全局 `top_k`，也避免附件数增多时把检索请求线性放大
 - 当两类条件同时存在时，后端会先归一化成 Chroma 兼容的复合过滤表达式；避免 `InMemoryChromaStore` 与持久化 Chroma 在真实流式链路上出现语义漂移
-- 若当前轮 query embedding 生成失败，本轮会降级到 Chroma 本地轻量词法匹配；不会退回整代索引的全量词法扫描
+- 若向量命中不足或当前轮 query embedding 生成失败，本轮会降级到 SQLite `FTS5` 词法候选兜底，再做轻量重排；不会退回整代索引的全量词法扫描
 - 纯图片泛化看图请求默认跳过 retrieval
 - 无附件时，问答仍会继续查询当前用户 personal `space` 里已入库的历史知识
 - Web 主区默认通过 `/api/chat/sessions/{id}/messages?limit=80` 先读取最近一段消息窗口，继续向上滚动时再带 `before_id + limit` 请求更早消息
@@ -101,6 +106,7 @@ flowchart TD
 - 受保护读取接口在鉴权阶段保持纯读，不再为 session 心跳同步写 `auth_sessions.last_seen_at`；避免流式回答持有 SQLite 写事务时，把 `/api/auth/me`、`/api/settings` 这类并发页面读取锁成 `database is locked`
 - 流式 assistant projection 和 `chat_run_events` 当前按短批次提交；目标是让整段回答进行中，仍能继续处理会话改名、新建会话这类并发写请求，而不是一直等到流结束才释放 SQLite 写锁
 - Web 侧流式完成或失败时，当前会优先 patch 已加载消息窗口和会话摘要；只有 patch miss 时才回退到对应 query 的失效刷新
+- 文档重建或删除失败时，后端补偿路径不再通过 Chroma 回读整份 chunk + embedding 快照，而是改为从 `normalized_path` 重新构建索引，避免失败路径把大文档向量整体拉进 Python 内存
 - 图片不可解码或 provider 仍拒绝处理时，后端先收敛成稳定语义，不把 provider 原始格式报错直接暴露为长期契约
 
 关键入口：

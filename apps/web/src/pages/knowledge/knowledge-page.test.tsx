@@ -169,7 +169,15 @@ function buildUploadPayload(overrides: Record<string, unknown> = {}) {
 
 function buildFetchMock(
   role: "admin" | "user" = "admin",
-  options?: { documents?: Array<Record<string, unknown>> },
+  options?: {
+    delayReadiness?: boolean;
+    documents?: Array<Record<string, unknown>>;
+    readiness?: {
+      blocking_reason: "embedding_not_configured" | "pending_embedding_not_configured" | null;
+      can_upload: boolean;
+      image_fallback: boolean;
+    };
+  },
 ) {
   const documents = options?.documents?.map((document) => buildDocumentSummary(document)) ?? [
     buildDocumentSummary({
@@ -188,6 +196,11 @@ function buildFetchMock(
       file_type: "pdf",
     }),
   ];
+  const readiness = options?.readiness ?? {
+    blocking_reason: null,
+    can_upload: true,
+    image_fallback: false,
+  };
 
   const fetchMock = vi.fn().mockImplementation((input: string, init?: RequestInit) => {
     if (input.endsWith("/api/auth/me")) {
@@ -201,6 +214,19 @@ function buildFetchMock(
             status: "active",
             theme_preference: "system",
           },
+          error: null,
+        }),
+      );
+    }
+
+    if (input.endsWith("/api/documents/upload-readiness")) {
+      if (options?.delayReadiness) {
+        return new Promise(() => {});
+      }
+      return Promise.resolve(
+        jsonResponse({
+          success: true,
+          data: readiness,
           error: null,
         }),
       );
@@ -287,6 +313,61 @@ describe("KnowledgePage", () => {
     expect(screen.getAllByText("1 项处理中").length).toBeGreaterThan(0);
     expect(screen.getByText("1 项已索引")).toBeInTheDocument();
     expect(screen.getByText("资源工作区")).toBeInTheDocument();
+  });
+
+  it("uses compact inline summary badges on mobile instead of the desktop metric cards", async () => {
+    mockMobileViewport();
+    buildFetchMock();
+
+    renderKnowledgePage();
+
+    expect(await screen.findByText("资源列表")).toBeInTheDocument();
+    expect(screen.queryByText("资源总数")).not.toBeInTheDocument();
+    expect(screen.queryByText("处理中资源")).not.toBeInTheDocument();
+    expect(screen.queryByText("已索引资源")).not.toBeInTheDocument();
+    expect(screen.getByText("2 项资源")).toBeInTheDocument();
+    expect(screen.getAllByText("1 项处理中").length).toBeGreaterThan(0);
+    expect(screen.getByText("1 项已索引")).toBeInTheDocument();
+  });
+
+  it("blocks uploads when indexing prerequisites are not ready", async () => {
+    buildFetchMock("admin", {
+      readiness: {
+        blocking_reason: "embedding_not_configured",
+        can_upload: false,
+        image_fallback: false,
+      },
+    });
+
+    renderKnowledgePage();
+
+    expect(await screen.findByText("上传前需要先配置检索 Provider。")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "上传资源" })).toBeDisabled();
+  });
+
+  it("shows a neutral loading notice while upload readiness is still being checked", async () => {
+    buildFetchMock("admin", { delayReadiness: true });
+
+    renderKnowledgePage();
+
+    expect(await screen.findByText("正在检查当前上传条件，请稍等。")).toBeInTheDocument();
+    expect(screen.queryByText("上传前需要先配置检索 Provider。")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "上传资源" })).toBeDisabled();
+  });
+
+  it("shows an image fallback warning without blocking uploads", async () => {
+    buildFetchMock("admin", {
+      readiness: {
+        blocking_reason: null,
+        can_upload: true,
+        image_fallback: true,
+      },
+    });
+
+    renderKnowledgePage();
+
+    expect(await screen.findByText("图片会以基础信息入库，不做视觉解析。")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "上传资源" })).toBeEnabled();
   });
 
   it("keeps the preview drawer closed until the user explicitly opens it", async () => {
@@ -525,6 +606,72 @@ describe("KnowledgePage", () => {
     expect(sonnerMocks.success).toHaveBeenCalledWith("资源 draft.md 无变化，已跳过上传");
   });
 
+  it("ignores repeated retry clicks for the same failed upload", async () => {
+    buildFetchMock();
+
+    renderKnowledgePage();
+
+    const input = (
+      await screen.findAllByLabelText("上传资源", {
+        selector: 'input[type="file"]',
+      })
+    )[0]!;
+    fireEvent.change(input, {
+      target: {
+        files: [new File(["hello"], "draft.md", { type: "text/markdown" })],
+      },
+    });
+
+    await waitFor(() => {
+      expect(MockXMLHttpRequest.instances).toHaveLength(1);
+    });
+    await act(async () => {
+      MockXMLHttpRequest.instances[0]!.respond(
+        500,
+        JSON.stringify({
+          success: false,
+          error: {
+            message: "网络中断",
+          },
+        }),
+        "Internal Server Error",
+      );
+    });
+
+    const retryButton = await screen.findByRole("button", { name: "重试上传" });
+    fireEvent.click(retryButton);
+    fireEvent.click(retryButton);
+
+    await waitFor(() => {
+      expect(MockXMLHttpRequest.instances).toHaveLength(2);
+    });
+
+    await act(async () => {
+      MockXMLHttpRequest.instances[1]!.respond(
+        201,
+        JSON.stringify({
+          success: true,
+          data: buildUploadPayload({
+            document_id: 18,
+            id: 9,
+            name: "draft.md",
+            version: 1,
+            status: "indexed",
+          }),
+          error: null,
+        }),
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText("draft.md")).not.toBeInTheDocument();
+      expect(screen.queryByText("上传队列")).not.toBeInTheDocument();
+    });
+    expect(MockXMLHttpRequest.instances).toHaveLength(2);
+  });
+
   it("opens the preview drawer when the preview action is clicked", async () => {
     buildFetchMock();
 
@@ -712,6 +859,13 @@ describe("KnowledgePage", () => {
       expect(screen.queryByText("spec.md")).not.toBeInTheDocument();
     });
     expect(screen.getAllByText("guide.pdf").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "清空筛选" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "清空筛选" }));
+
+    await waitFor(() => {
+      expect(screen.getAllByText("spec.md").length).toBeGreaterThan(0);
+    });
 
     const filteredCall = fetchMock.mock.calls.find(([url]) => {
       const requestUrl = new URL(String(url), "http://testserver");
@@ -720,6 +874,12 @@ describe("KnowledgePage", () => {
       );
     });
     expect(filteredCall).toBeDefined();
+
+    const clearedCall = fetchMock.mock.calls.findLast(([url]) => {
+      const requestUrl = new URL(String(url), "http://testserver");
+      return requestUrl.pathname === "/api/documents" && !requestUrl.searchParams.get("type");
+    });
+    expect(clearedCall).toBeDefined();
   });
 
   it("renders document management actions for non-admin users", async () => {

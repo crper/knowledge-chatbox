@@ -4,10 +4,14 @@ import { useQueryClient } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 
 import { queryKeys } from "@/lib/api/query-keys";
+import type { AppUser } from "@/lib/api/client";
 import { useSessionStore } from "@/lib/auth/session-store";
+import { setAccessToken } from "@/lib/auth/token-store";
+import { THEME_SYNC_ON_LOGIN_STORAGE_KEY } from "@/lib/config/constants";
 import { AppProviders } from "@/providers/app-providers";
 import { AppRouter } from "@/router";
 import { buildChatSessionContext, cloneJson } from "@/test/chat";
+import { createAuthFetchMock, type FetchHandler } from "@/test/auth";
 import type { ChatSourceItem } from "@/features/chat/api/chat";
 import { buildAppSettings, buildAppUser } from "@/test/fixtures/app";
 import { jsonResponse } from "@/test/http";
@@ -30,117 +34,37 @@ function QueryClientCapture({
 }
 
 function mockAuthResponse(data: unknown, ok = true, status = 200) {
-  return vi.fn().mockImplementation((input: string) => {
-    const responseData = cloneJson(data);
-
-    if (input.endsWith("/api/auth/bootstrap")) {
-      if (!ok && status === 401) {
+  const responseData = cloneJson(data);
+  const extraHandlers: FetchHandler[] = [
+    (input) => {
+      if (input.endsWith("/api/chat/sessions")) {
         return Promise.resolve(
           jsonResponse({
             success: true,
-            data: {
-              authenticated: false,
-              access_token: null,
-              expires_in: null,
-              token_type: "Bearer",
-              user: null,
-            },
+            data: [{ id: 1, title: "Session A", reasoning_mode: "default" }],
             error: null,
           }),
         );
       }
 
-      return Promise.resolve(
-        jsonResponse({
-          success: true,
-          data: {
-            authenticated: true,
-            access_token: "refreshed-token",
-            expires_in: 900,
-            token_type: "Bearer",
-            user: responseData,
-          },
-          error: null,
-        }),
-      );
-    }
-
-    if (input.endsWith("/api/auth/refresh")) {
-      if (!ok && status === 401) {
+      if (input.endsWith("/api/chat/profile")) {
         return Promise.resolve(
-          jsonResponse(
-            {
-              success: false,
-              data: null,
-              error: { code: "unauthorized", message: "Authentication required." },
-            },
-            { status: 401, statusText: "Unauthorized" },
-          ),
+          jsonResponse({
+            success: true,
+            data: { provider: "openai", model: "gpt-5.4" },
+            error: null,
+          }),
         );
       }
 
-      return Promise.resolve(
-        jsonResponse({
-          success: true,
-          data: {
-            access_token: "refreshed-token",
-            expires_in: 900,
-            token_type: "Bearer",
-          },
-          error: null,
-        }),
-      );
-    }
+      return undefined;
+    },
+  ];
 
-    if (input.endsWith("/api/auth/me")) {
-      return Promise.resolve(
-        jsonResponse(
-          { success: ok, data: responseData, error: ok ? null : { code: "unauthorized" } },
-          { status },
-        ),
-      );
-    }
-
-    if (input.endsWith("/api/settings")) {
-      return Promise.resolve(
-        jsonResponse({
-          success: true,
-          data: buildAppSettings({
-            provider_profiles: {
-              openai: {
-                api_key: "",
-              },
-              ollama: {
-                base_url: "http://localhost:11434",
-              },
-            },
-          }),
-          error: null,
-        }),
-      );
-    }
-
-    if (input.endsWith("/api/chat/sessions")) {
-      return Promise.resolve(
-        jsonResponse({
-          success: true,
-          data: [{ id: 1, title: "Session A", reasoning_mode: "default" }],
-          error: null,
-        }),
-      );
-    }
-
-    if (input.endsWith("/api/chat/profile")) {
-      return Promise.resolve(
-        jsonResponse({
-          success: true,
-          data: { provider: "openai", model: "gpt-5.4" },
-          error: null,
-        }),
-      );
-    }
-
-    return Promise.resolve(jsonResponse({ success: true, data: [], error: null }));
+  return createAuthFetchMock({
+    user: ok ? ((responseData ?? null) as AppUser | null) : null,
+    status,
+    extraHandlers,
   });
 }
 
@@ -293,6 +217,8 @@ function mockAuthenticatedChatWorkspaceResponse({
 describe("AppRouter", () => {
   beforeEach(() => {
     localStorage.clear();
+    sessionStorage.clear();
+    setAccessToken(null);
     document.documentElement.className = "";
     useSessionStore.getState().reset();
     mockDesktopViewport();
@@ -594,6 +520,28 @@ describe("AppRouter", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockImplementation((input: string) => {
+        if (input.endsWith("/api/auth/bootstrap")) {
+          return Promise.resolve(
+            jsonResponse({
+              success: true,
+              data: {
+                authenticated: true,
+                access_token: "refreshed-token",
+                expires_in: 900,
+                token_type: "Bearer",
+                user: {
+                  id: 1,
+                  username: "admin",
+                  role: "admin",
+                  status: "active",
+                  theme_preference: "system",
+                },
+              },
+              error: null,
+            }),
+          );
+        }
+
         if (input.endsWith("/api/auth/refresh")) {
           return Promise.resolve(
             jsonResponse({
@@ -967,6 +915,85 @@ describe("AppRouter", () => {
       expect(document.documentElement).not.toHaveClass("dark");
       expect(window.localStorage.getItem("knowledge-chatbox-theme")).toBe("light");
       expect(document.documentElement.dataset.theme).toBeUndefined();
+    });
+  });
+
+  it("does not reapply a stale pending login theme after the user changes theme in the workspace", async () => {
+    sessionStorage.setItem(THEME_SYNC_ON_LOGIN_STORAGE_KEY, "dark");
+    const fetchMock = createAuthFetchMock({
+      user: buildAppUser("admin", { theme_preference: "system" }),
+      extraHandlers: [
+        (input, init) => {
+          if (input.endsWith("/api/auth/preferences")) {
+            const requestBody: { theme_preference: "light" | "dark" | "system" } =
+              typeof init?.body === "string"
+                ? (JSON.parse(init.body) as { theme_preference: "light" | "dark" | "system" })
+                : { theme_preference: "light" };
+
+            return Promise.resolve(
+              jsonResponse({
+                success: true,
+                data: buildAppUser("admin", {
+                  theme_preference: requestBody.theme_preference,
+                }),
+                error: null,
+              }),
+            );
+          }
+
+          if (input.endsWith("/api/chat/sessions")) {
+            return Promise.resolve(
+              jsonResponse({
+                success: true,
+                data: [{ id: 1, title: "Session A", reasoning_mode: "default" }],
+                error: null,
+              }),
+            );
+          }
+
+          if (input.endsWith("/api/chat/profile")) {
+            return Promise.resolve(
+              jsonResponse({
+                success: true,
+                data: { configured: true, provider: "openai", model: "gpt-5.4" },
+                error: null,
+              }),
+            );
+          }
+
+          return undefined;
+        },
+      ],
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={["/chat"]}>
+        <AppProviders>
+          <AppRouter />
+        </AppProviders>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(document.documentElement).toHaveClass("dark");
+    });
+
+    fireEvent.pointerDown(await screen.findByRole("button", { name: "打开账户菜单" }));
+    fireEvent.click(await screen.findByRole("menuitemradio", { name: "浅色" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringMatching(/\/api\/auth\/preferences$/),
+        expect.objectContaining({
+          body: JSON.stringify({ theme_preference: "light" }),
+          method: "PATCH",
+        }),
+      );
+    });
+    await waitFor(() => {
+      expect(document.documentElement).not.toHaveClass("dark");
+      expect(window.localStorage.getItem("knowledge-chatbox-theme")).toBe("light");
     });
   });
 });

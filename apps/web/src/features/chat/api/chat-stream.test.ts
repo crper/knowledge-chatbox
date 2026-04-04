@@ -1,25 +1,14 @@
 import { getAccessToken, setAccessToken } from "@/lib/auth/token-store";
+import {
+  createChatStreamFrame,
+  createChatStreamResponse,
+  createRawChatStreamFrame,
+} from "@/test/chat-stream";
 import { startChatStream } from "./chat-stream";
+import { CHAT_STREAM_EVENT, type ChatStreamEvent } from "./chat-stream-events";
 
 function apiPath(path: string) {
   return expect.stringMatching(new RegExp(`${path.replaceAll("/", "\\/")}$`));
-}
-
-function createStreamResponse(chunks: Array<string | Uint8Array>) {
-  const encoder = new TextEncoder();
-  const stream = new ReadableStream({
-    start(controller) {
-      for (const chunk of chunks) {
-        controller.enqueue(typeof chunk === "string" ? encoder.encode(chunk) : chunk);
-      }
-      controller.close();
-    },
-  });
-
-  return {
-    ok: true,
-    body: stream,
-  };
 }
 
 describe("chat stream api", () => {
@@ -28,20 +17,32 @@ describe("chat stream api", () => {
   });
 
   it("posts to the streaming endpoint and parses SSE-style events", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(
-        createStreamResponse([
-          'event: run.started\ndata: {"run_id":1,"assistant_message_id":11}\n\n',
-          'event: message.delta\ndata: {"run_id":1,"assistant_message_id":11,"delta":"hello "}\n\n',
-          'event: message.delta\ndata: {"run_id":1,"assistant_message_id":11,"delta":"world"}\n\n',
-          'event: run.completed\ndata: {"run_id":1,"assistant_message_id":11}\n\n',
-          "event: done\ndata: {}\n\n",
-        ]),
-      );
+    const fetchMock = vi.fn().mockResolvedValue(
+      createChatStreamResponse([
+        createChatStreamFrame(CHAT_STREAM_EVENT.runStarted, {
+          run_id: 1,
+          assistant_message_id: 11,
+        }),
+        createChatStreamFrame(CHAT_STREAM_EVENT.legacyMessageDelta, {
+          run_id: 1,
+          assistant_message_id: 11,
+          delta: "hello ",
+        }),
+        createChatStreamFrame(CHAT_STREAM_EVENT.legacyMessageDelta, {
+          run_id: 1,
+          assistant_message_id: 11,
+          delta: "world",
+        }),
+        createChatStreamFrame(CHAT_STREAM_EVENT.runCompleted, {
+          run_id: 1,
+          assistant_message_id: 11,
+        }),
+        createChatStreamFrame(CHAT_STREAM_EVENT.done, {}),
+      ]),
+    );
     vi.stubGlobal("fetch", fetchMock);
 
-    const events: Array<{ event: string; data: Record<string, unknown> }> = [];
+    const events: ChatStreamEvent[] = [];
 
     await startChatStream({
       sessionId: 7,
@@ -57,26 +58,33 @@ describe("chat stream api", () => {
       expect.objectContaining({ method: "POST", credentials: "include" }),
     );
     expect(events.map((event) => event.event)).toEqual([
-      "run.started",
-      "message.delta",
-      "message.delta",
-      "run.completed",
-      "done",
+      CHAT_STREAM_EVENT.runStarted,
+      CHAT_STREAM_EVENT.legacyMessageDelta,
+      CHAT_STREAM_EVENT.legacyMessageDelta,
+      CHAT_STREAM_EVENT.runCompleted,
+      CHAT_STREAM_EVENT.done,
     ]);
-    expect(events[1]?.data.delta).toBe("hello ");
-    expect(events[2]?.data.delta).toBe("world");
+    expect(events[1]).toMatchObject({
+      event: CHAT_STREAM_EVENT.legacyMessageDelta,
+      data: { delta: "hello " },
+    });
+    expect(events[2]).toMatchObject({
+      event: CHAT_STREAM_EVENT.legacyMessageDelta,
+      data: { delta: "world" },
+    });
   });
 
   it("attaches the bearer token when streaming with an authenticated session", async () => {
     setAccessToken("stream-token");
 
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(
-        createStreamResponse([
-          'event: run.completed\ndata: {"run_id":1,"assistant_message_id":11}\n\n',
-        ]),
-      );
+    const fetchMock = vi.fn().mockResolvedValue(
+      createChatStreamResponse([
+        createChatStreamFrame(CHAT_STREAM_EVENT.runCompleted, {
+          run_id: 1,
+          assistant_message_id: 11,
+        }),
+      ]),
+    );
     vi.stubGlobal("fetch", fetchMock);
 
     await startChatStream({
@@ -128,8 +136,11 @@ describe("chat stream api", () => {
       }
 
       return Promise.resolve(
-        createStreamResponse([
-          'event: run.completed\ndata: {"run_id":1,"assistant_message_id":11}\n\n',
+        createChatStreamResponse([
+          createChatStreamFrame(CHAT_STREAM_EVENT.runCompleted, {
+            run_id: 1,
+            assistant_message_id: 11,
+          }),
         ]),
       );
     });
@@ -158,15 +169,23 @@ describe("chat stream api", () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValue(
-        createStreamResponse([
-          'event: run.started\ndata: {"run_id":1,"assistant_message_id":11,"user_message_id":9}\n',
-          "\n",
-          'event: run.failed\ndata: {"run_id":1,"error_message":"provider failed"}',
+        createChatStreamResponse([
+          createRawChatStreamFrame(
+            CHAT_STREAM_EVENT.runStarted,
+            ['{"run_id":1,"assistant_message_id":11,"user_message_id":9}'],
+            { trailingBlankLine: false },
+          ),
+          "\n\n",
+          createRawChatStreamFrame(
+            CHAT_STREAM_EVENT.runFailed,
+            ['{"run_id":1,"error_message":"provider failed"}'],
+            { trailingBlankLine: false },
+          ),
         ]),
       );
     vi.stubGlobal("fetch", fetchMock);
 
-    const events: Array<{ event: string; data: Record<string, unknown> }> = [];
+    const events: ChatStreamEvent[] = [];
 
     await expect(
       startChatStream({
@@ -179,28 +198,35 @@ describe("chat stream api", () => {
       }),
     ).rejects.toThrow("provider failed");
 
-    expect(events.map((event) => event.event)).toEqual(["run.started", "run.failed"]);
+    expect(events.map((event) => event.event)).toEqual([
+      CHAT_STREAM_EVENT.runStarted,
+      CHAT_STREAM_EVENT.runFailed,
+    ]);
   });
 
   it("supports events whose JSON payload spans multiple data lines", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValue(
-        createStreamResponse([
+        createChatStreamResponse([
           [
-            "event: message.delta",
+            `event: ${CHAT_STREAM_EVENT.legacyMessageDelta}`,
             'data: {"run_id":1,',
             'data: "assistant_message_id":11,',
             'data: "delta":"hello"}',
             "",
-            'event: run.completed\ndata: {"run_id":1,"assistant_message_id":11}',
+            createRawChatStreamFrame(
+              CHAT_STREAM_EVENT.runCompleted,
+              ['{"run_id":1,"assistant_message_id":11}'],
+              { trailingBlankLine: false },
+            ),
             "",
           ].join("\n"),
         ]),
       );
     vi.stubGlobal("fetch", fetchMock);
 
-    const events: Array<{ event: string; data: Record<string, unknown> }> = [];
+    const events: ChatStreamEvent[] = [];
 
     await startChatStream({
       sessionId: 7,
@@ -213,19 +239,27 @@ describe("chat stream api", () => {
 
     expect(events).toHaveLength(2);
     expect(events[0]).toMatchObject({
-      event: "message.delta",
+      event: CHAT_STREAM_EVENT.legacyMessageDelta,
       data: { assistant_message_id: 11, delta: "hello", run_id: 1 },
     });
-    expect(events[1]?.event).toBe("run.completed");
+    expect(events[1]?.event).toBe(CHAT_STREAM_EVENT.runCompleted);
   });
 
   it("flushes trailing decoder bytes when a multibyte delta is split across chunks", async () => {
     const encoder = new TextEncoder();
     const frame = encoder.encode(
       [
-        'event: message.delta\ndata: {"run_id":1,"assistant_message_id":11,"delta":"你"}',
+        createRawChatStreamFrame(
+          CHAT_STREAM_EVENT.legacyMessageDelta,
+          ['{"run_id":1,"assistant_message_id":11,"delta":"你"}'],
+          { trailingBlankLine: false },
+        ),
         "",
-        'event: run.completed\ndata: {"run_id":1,"assistant_message_id":11}',
+        createRawChatStreamFrame(
+          CHAT_STREAM_EVENT.runCompleted,
+          ['{"run_id":1,"assistant_message_id":11}'],
+          { trailingBlankLine: false },
+        ),
         "",
       ].join("\n"),
     );
@@ -233,11 +267,11 @@ describe("chat stream api", () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValue(
-        createStreamResponse([frame.slice(0, splitIndex), frame.slice(splitIndex)]),
+        createChatStreamResponse([frame.slice(0, splitIndex), frame.slice(splitIndex)]),
       );
     vi.stubGlobal("fetch", fetchMock);
 
-    const events: Array<{ event: string; data: Record<string, unknown> }> = [];
+    const events: ChatStreamEvent[] = [];
 
     await startChatStream({
       sessionId: 7,
@@ -249,20 +283,23 @@ describe("chat stream api", () => {
     });
 
     expect(events).toHaveLength(2);
-    expect(events[0]?.data.delta).toBe("你");
-    expect(events[1]?.event).toBe("run.completed");
+    expect(events[0]).toMatchObject({
+      event: CHAT_STREAM_EVENT.legacyMessageDelta,
+      data: { delta: "你" },
+    });
+    expect(events[1]?.event).toBe(CHAT_STREAM_EVENT.runCompleted);
   });
 
   it("parses events when the stream starts with a BOM and uses CRLF separators", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValue(
-        createStreamResponse([
+        createChatStreamResponse([
           [
-            "\uFEFFevent: part.text.delta",
+            `\uFEFFevent: ${CHAT_STREAM_EVENT.partTextDelta}`,
             'data: {"run_id":1,"assistant_message_id":11,"delta":"hello"}',
             "",
-            "event: run.completed",
+            `event: ${CHAT_STREAM_EVENT.runCompleted}`,
             'data: {"run_id":1,"assistant_message_id":11}',
             "",
           ].join("\r\n"),
@@ -270,7 +307,7 @@ describe("chat stream api", () => {
       );
     vi.stubGlobal("fetch", fetchMock);
 
-    const events: Array<{ event: string; data: Record<string, unknown> }> = [];
+    const events: ChatStreamEvent[] = [];
 
     await startChatStream({
       sessionId: 7,
@@ -287,24 +324,29 @@ describe("chat stream api", () => {
         data: { assistant_message_id: 11, delta: "hello", run_id: 1 },
       },
       {
-        event: "run.completed",
+        event: CHAT_STREAM_EVENT.runCompleted,
         data: { assistant_message_id: 11, run_id: 1 },
       },
     ]);
   });
 
   it("rejects when the stream ends before a terminal run event arrives", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(
-        createStreamResponse([
-          'event: run.started\ndata: {"run_id":1,"assistant_message_id":11}\n\n',
-          'event: message.delta\ndata: {"run_id":1,"assistant_message_id":11,"delta":"partial"}\n\n',
-        ]),
-      );
+    const fetchMock = vi.fn().mockResolvedValue(
+      createChatStreamResponse([
+        createChatStreamFrame(CHAT_STREAM_EVENT.runStarted, {
+          run_id: 1,
+          assistant_message_id: 11,
+        }),
+        createChatStreamFrame(CHAT_STREAM_EVENT.legacyMessageDelta, {
+          run_id: 1,
+          assistant_message_id: 11,
+          delta: "partial",
+        }),
+      ]),
+    );
     vi.stubGlobal("fetch", fetchMock);
 
-    const events: Array<{ event: string; data: Record<string, unknown> }> = [];
+    const events: ChatStreamEvent[] = [];
 
     await expect(
       startChatStream({
@@ -317,7 +359,32 @@ describe("chat stream api", () => {
       }),
     ).rejects.toThrow("chat stream terminated unexpectedly");
 
-    expect(events.map((event) => event.event)).toEqual(["run.started", "message.delta"]);
+    expect(events.map((event) => event.event)).toEqual([
+      CHAT_STREAM_EVENT.runStarted,
+      CHAT_STREAM_EVENT.legacyMessageDelta,
+    ]);
+  });
+
+  it("fails fast when the backend sends an unknown event name", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          createChatStreamResponse([createRawChatStreamFrame("mystery.event", ['{"run_id":1}'])]),
+        ),
+    );
+
+    await expect(
+      startChatStream({
+        sessionId: 7,
+        body: {
+          content: "hello",
+          client_request_id: "req-stream-unknown-event",
+        },
+        onEvent: () => {},
+      }),
+    ).rejects.toThrow("unknown chat stream event: mystery.event");
   });
 
   it("surfaces the backend error message when the stream request is rejected before SSE starts", async () => {

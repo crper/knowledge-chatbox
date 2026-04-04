@@ -49,6 +49,14 @@ export function getUserFacingErrorMessage(detail: ErrorDetail, response: Respons
     return translateCommonErrorMessage("apiErrorInvalidCredentials");
   }
 
+  if (detail.code === "embedding_not_configured") {
+    return translateCommonErrorMessage("apiErrorEmbeddingNotConfigured");
+  }
+
+  if (detail.code === "pending_embedding_not_configured") {
+    return translateCommonErrorMessage("apiErrorPendingEmbeddingNotConfigured");
+  }
+
   if (detail.code === "unauthorized" || response.status === 401) {
     return translateCommonErrorMessage("apiErrorUnauthorized");
   }

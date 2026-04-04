@@ -53,3 +53,17 @@ class DocumentUploadRead(BaseModel):
     document: DocumentSummaryRead
     revision: DocumentRevisionRead
     latest_revision: DocumentRevisionRead
+
+
+class DocumentUploadReadinessRead(BaseModel):
+    """描述资源上传前置条件是否满足。"""
+
+    can_upload: bool
+    image_fallback: bool
+    blocking_reason: str | None
+
+
+class DocumentListSummaryRead(BaseModel):
+    """描述资源列表的轻量摘要。"""
+
+    pending_count: int

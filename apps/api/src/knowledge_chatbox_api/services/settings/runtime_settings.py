@@ -27,32 +27,50 @@ def _settings_attr(value: Any, name: str, default: Any = None) -> Any:
     return getattr(value, name, default)
 
 
+def _runtime_settings_payload(
+    value: Any,
+    *,
+    embedding_route: EmbeddingRouteConfig | dict[str, Any] | None = None,
+    reasoning_mode: ReasoningModeLiteral | None = None,
+) -> dict[str, Any]:
+    payload = {
+        "provider_profiles": parse_provider_profiles(
+            _settings_attr(value, "provider_profiles", {})
+        ),
+        "response_route": parse_response_route(
+            _settings_attr(value, "response_route", DEFAULT_RESPONSE_ROUTE)
+        ),
+        "embedding_route": parse_embedding_route(
+            embedding_route
+            if embedding_route is not None
+            else _settings_attr(value, "embedding_route", DEFAULT_EMBEDDING_ROUTE)
+        ),
+        "vision_route": parse_vision_route(
+            _settings_attr(value, "vision_route", DEFAULT_VISION_ROUTE)
+        ),
+        "system_prompt": _settings_attr(value, "system_prompt", None),
+        "provider_timeout_seconds": _settings_attr(
+            value,
+            "provider_timeout_seconds",
+            DEFAULT_PROVIDER_TIMEOUT_SECONDS,
+        ),
+        "active_index_generation": _settings_attr(value, "active_index_generation", None),
+    }
+    if reasoning_mode is not None:
+        payload["reasoning_mode"] = reasoning_mode
+    return payload
+
+
 def parse_runtime_settings(value: object) -> ProviderRuntimeSettings:
     """收紧任意 runtime settings 输入为统一强类型模型。"""
     try:
         return parse_provider_runtime_settings(value)
     except Exception:
         return ProviderRuntimeSettings(
-            provider_profiles=parse_provider_profiles(
-                _settings_attr(value, "provider_profiles", {})
-            ),
-            response_route=parse_response_route(
-                _settings_attr(value, "response_route", DEFAULT_RESPONSE_ROUTE)
-            ),
-            embedding_route=parse_embedding_route(
-                _settings_attr(value, "embedding_route", DEFAULT_EMBEDDING_ROUTE)
-            ),
-            vision_route=parse_vision_route(
-                _settings_attr(value, "vision_route", DEFAULT_VISION_ROUTE)
-            ),
-            system_prompt=_settings_attr(value, "system_prompt", None),
-            provider_timeout_seconds=_settings_attr(
+            **_runtime_settings_payload(
                 value,
-                "provider_timeout_seconds",
-                DEFAULT_PROVIDER_TIMEOUT_SECONDS,
-            ),
-            active_index_generation=_settings_attr(value, "active_index_generation", None),
-            reasoning_mode=_settings_attr(value, "reasoning_mode", "default"),
+                reasoning_mode=_settings_attr(value, "reasoning_mode", "default"),
+            )
         )
 
 
@@ -64,26 +82,9 @@ def build_runtime_settings(
 ) -> ProviderRuntimeSettings:
     """从 settings-like 对象构造 provider 运行时所需的统一配置。"""
     return ProviderRuntimeSettings(
-        provider_profiles=parse_provider_profiles(
-            _settings_attr(settings_source, "provider_profiles", {})
-        ),
-        response_route=parse_response_route(
-            _settings_attr(settings_source, "response_route", DEFAULT_RESPONSE_ROUTE)
-        ),
-        embedding_route=parse_embedding_route(
-            embedding_route
-            if embedding_route is not None
-            else _settings_attr(settings_source, "embedding_route", DEFAULT_EMBEDDING_ROUTE)
-        ),
-        vision_route=parse_vision_route(
-            _settings_attr(settings_source, "vision_route", DEFAULT_VISION_ROUTE)
-        ),
-        system_prompt=_settings_attr(settings_source, "system_prompt", None),
-        provider_timeout_seconds=_settings_attr(
+        **_runtime_settings_payload(
             settings_source,
-            "provider_timeout_seconds",
-            DEFAULT_PROVIDER_TIMEOUT_SECONDS,
-        ),
-        active_index_generation=_settings_attr(settings_source, "active_index_generation", None),
-        reasoning_mode=reasoning_mode,
+            embedding_route=embedding_route,
+            reasoning_mode=reasoning_mode,
+        )
     )

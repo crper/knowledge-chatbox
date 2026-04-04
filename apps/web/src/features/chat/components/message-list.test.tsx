@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import { fireEvent } from "@testing-library/react";
 
 import { mockDesktopViewport, mockMobileViewport } from "@/test/viewport";
@@ -213,6 +213,36 @@ describe("MessageList", () => {
     expect(screen.getByTestId("chat-message-row-4")).toHaveAttribute(
       "data-message-layout",
       "stacked",
+    );
+  });
+
+  it("marks assistant rich content bubbles as width-managed to prevent horizontal overflow", async () => {
+    render(
+      <MessageList
+        messages={[
+          {
+            id: 6,
+            role: "assistant",
+            content: "![流程图](https://example.com/wide-diagram.png)",
+            status: "succeeded",
+            attachments_json: [],
+            sources_json: [],
+          },
+        ]}
+        onRetry={vi.fn()}
+      />,
+    );
+
+    const bubble = screen.getByTestId("chat-message-bubble-6");
+    const markdownBody = screen.getByTestId("chat-markdown-body");
+
+    expect(bubble).toHaveAttribute("data-message-bubble-width", "adaptive");
+    expect(markdownBody).toHaveAttribute("data-message-overflow", "managed");
+    await waitFor(
+      () => {
+        expect(bubble.querySelector('[data-streamdown="image-wrapper"]')).not.toBeNull();
+      },
+      { timeout: 4000 },
     );
   });
 

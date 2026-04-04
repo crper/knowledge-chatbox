@@ -6,6 +6,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from knowledge_chatbox_api.models.chat import ChatRunEvent
+from knowledge_chatbox_api.services.chat.stream_events import (
+    StreamEventName,
+    StreamEventPayload,
+)
 
 
 class ChatRunEventRepository:
@@ -19,8 +23,8 @@ class ChatRunEventRepository:
         *,
         run_id: int,
         seq: int,
-        event_type: str,
-        payload_json: dict,
+        event_type: StreamEventName,
+        payload_json: StreamEventPayload,
         flush: bool = True,
     ) -> ChatRunEvent:
         event = ChatRunEvent(

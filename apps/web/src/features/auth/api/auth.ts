@@ -78,9 +78,7 @@ export async function login(input: { username: string; password: string }) {
  * 刷新 access token。
  */
 export async function refreshSession() {
-  const accessToken = await requestAccessTokenRefresh();
-  setAccessToken(accessToken);
-  return accessToken;
+  return requestAccessTokenRefresh();
 }
 
 /**

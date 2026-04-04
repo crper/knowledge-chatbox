@@ -90,6 +90,23 @@
 - `configured` 用于前端判断当前 response provider 是否已经具备最小可发送条件
 - 目前判断规则保持克制：`OpenAI / Anthropic` 要求存在 `api_key`，`Ollama` 要求存在 `base_url`
 
+### `GET /api/documents/upload-readiness`
+
+当前返回：
+
+- `can_upload`
+- `image_fallback`
+- `blocking_reason`
+
+说明：
+
+- 这条接口只判断“资源上传所需的最小配置是否就绪”，不是 provider 实时健康检查
+- `can_upload=false` 只由检索链路缺配置触发：
+  - 当前活动 `embedding_route` 缺少最小配置时，返回 `embedding_not_configured`
+  - `index_rebuild_status=running` 且 `pending_embedding_route` 缺少最小配置时，返回 `pending_embedding_not_configured`
+- `vision_route` 缺配置不会阻断上传；这时 `image_fallback=true`，前端应提示“图片会以基础信息入库，不做视觉解析”
+- 资源页会在进入上传流程前先读这条接口；设置页保存成功后，前端会主动失效并刷新这条 query
+
 ### `GET /api/settings`
 
 当前返回扁平结构，核心字段包括：

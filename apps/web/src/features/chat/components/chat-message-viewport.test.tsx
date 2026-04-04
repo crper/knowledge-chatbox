@@ -11,6 +11,7 @@ vi.mock("react-virtuoso", async () => {
 
   const Virtuoso = React.forwardRef(function MockVirtuoso(
     {
+      className,
       components,
       data = [],
       initialItemCount,
@@ -19,7 +20,11 @@ vi.mock("react-virtuoso", async () => {
       scrollerRef,
       "data-testid": testId,
     }: {
-      components?: { Scroller?: React.ComponentType<React.ComponentProps<"div">> };
+      className?: string;
+      components?: {
+        List?: React.ComponentType<React.ComponentProps<"div">>;
+        Scroller?: React.ComponentType<React.ComponentProps<"div">>;
+      };
       data?: ChatMessageItem[];
       initialItemCount?: number;
       itemContent?: (index: number, item?: ChatMessageItem) => React.ReactNode;
@@ -43,6 +48,7 @@ vi.mock("react-virtuoso", async () => {
     }, [scrollerRef]);
 
     const Scroller = components?.Scroller ?? "div";
+    const List = components?.List ?? "div";
     const renderCount = Math.max(data.length, initialItemCount ?? 0);
     const items = Array.from({ length: renderCount }, (_, index) =>
       itemContent?.(index, data[index]),
@@ -53,13 +59,15 @@ vi.mock("react-virtuoso", async () => {
     }
 
     return (
-      <Scroller data-testid={testId} ref={elementRef}>
+      <Scroller className={className} data-testid={testId} ref={elementRef}>
         <button onClick={startReached} type="button">
           mock-load-older
         </button>
-        {items.map((item, index) => (
-          <div key={data[index]?.id ?? `probe-message-${index}`}>{item}</div>
-        ))}
+        <List data-testid="virtuoso-item-list">
+          {items.map((item, index) => (
+            <div key={data[index]?.id ?? `probe-message-${index}`}>{item}</div>
+          ))}
+        </List>
       </Scroller>
     );
   });
@@ -99,14 +107,30 @@ describe("ChatMessageViewport", () => {
   it("keeps extra gutter and rail padding so the scrollbar does not sit on top of messages", async () => {
     renderViewport(buildMessages(12));
 
-    expect(await screen.findByTestId("chat-message-viewport-scroll")).toHaveAttribute(
-      "data-scroll-padding",
-      "comfortable",
-    );
+    expect(await screen.findByTestId("chat-message-viewport-root")).toHaveClass("flex-1");
+    const scroller = await screen.findByTestId("chat-message-viewport-scroll");
+    expect(scroller).toHaveAttribute("data-scroll-padding", "comfortable");
+    expect(scroller).toHaveClass("overflow-x-hidden");
+    expect(scroller).not.toHaveClass("overflow-hidden");
     expect(screen.getAllByTestId("chat-message-virtual-item")[0]).toHaveAttribute(
       "data-message-rail",
       "comfortable",
     );
+  });
+
+  it("bounds the internal virtuoso item list width without hiding vertical flow", async () => {
+    renderViewport(buildMessages(12));
+
+    const list = await screen.findByTestId("virtuoso-item-list");
+
+    expect(list).toHaveAttribute("data-chat-viewport-list", "bounded");
+    expect(list).toHaveStyle({
+      width: "100%",
+      maxWidth: "100%",
+      minWidth: "0",
+      overflowX: "clip",
+      overflowY: "visible",
+    });
   });
 
   it("renders a short message list without producing empty probe rows", async () => {

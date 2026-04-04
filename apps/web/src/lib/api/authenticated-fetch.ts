@@ -5,7 +5,7 @@
 import { ApiRequestError } from "@/lib/api/client";
 import { markSessionExpired } from "@/lib/auth/session-manager";
 import { useSessionStore } from "@/lib/auth/session-store";
-import { clearAccessToken, getAccessToken, setAccessToken } from "@/lib/auth/token-store";
+import { getAccessToken, setAccessToken } from "@/lib/auth/token-store";
 import { env } from "@/lib/config/env";
 import { extractErrorDetail, getUserFacingErrorMessage } from "./error-response";
 
@@ -121,7 +121,6 @@ export async function authenticatedFetch(input: string, init: RequestInit = {}) 
       headers.set("Authorization", `Bearer ${nextAccessToken}`);
       response = await send();
     } catch {
-      clearAccessToken();
       markSessionExpired();
     }
   }

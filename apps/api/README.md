@@ -114,7 +114,7 @@ apps/api/
 | --- | --- | --- |
 | `/api/auth` | 登录态、登录、刷新 access token、登出、改密 | `api/routes/auth.py` |
 | `/api/users` | 管理员用户管理 | `api/routes/users.py` |
-| `/api/documents` | 资源上传、列表、版本、重建索引、下载文件 | `api/routes/documents.py` |
+| `/api/documents` | 资源上传前置条件、上传、列表、版本、重建索引、下载文件 | `api/routes/documents.py` |
 | `/api/chat` | 会话、分页消息读取、会话上下文摘要、同步问答、流式问答、活动 run | `api/routes/chat.py` |
 | `/api/settings` | 系统 provider 配置、系统提示词、连接测试 | `api/routes/settings.py` |
 | `/api/health` | 基础健康检查 | `api/routes/health.py` |
@@ -159,7 +159,10 @@ uv run -m uvicorn knowledge_chatbox_api.main:app --reload --host 0.0.0.0 --port 
 - API 启动后默认暴露 `/docs`、`/redoc`、`/openapi.json`；它们与 `scripts/export_openapi.py` 共用同一份 FastAPI OpenAPI 真相源
 - 数据默认落在 `data/uploads`、`data/normalized`、`data/sqlite`、`data/chroma`
 - `/api/documents/upload` 当前会先把上传内容按块落到 `data/uploads`，同时增量计算 `content_hash` 和 `file_size`；命中重复内容时会复用现有修订，并清理本次临时源文件
+- `/api/documents/upload-readiness` 会返回资源上传所需的最小配置是否就绪；它不是 provider 实时健康检查，只判断当前 settings 形状是否允许进入上传链路
+- `/api/documents/upload` 现在会在落盘前先校验 upload readiness：活动 `embedding_route` 缺配置时直接返回 `409 embedding_not_configured`；索引重建中若 `pending_embedding_route` 缺配置，则返回 `409 pending_embedding_not_configured`
 - 文本文档（`txt / md / pdf / docx`）当前仍在请求内完成标准化与索引；图片（`png / jpg / jpeg / webp`）会先返回 `processing`，再由后台任务补做 vision 标准化与索引
+- `vision_route` 缺配置时不会阻断图片上传；图片会退化成仅保留基础信息的标准化结果
 - SQLite 连接默认开启 `WAL` 和 `busy_timeout=30000`；API 响应头与日志都带 `X-Request-ID` / `request_id`
 - 当前认证是“`PyJWT` 短期 access token + 服务端 refresh session”混合模式；受保护接口、资源上传和 SSE 流式聊天都优先接受 `Authorization: Bearer <token>`；same-origin Web 部署仍使用相对 `/api/*` 路径，不依赖绝对 API origin
 - 启动期会话恢复与业务请求续期当前已分开：前者走 `/api/auth/bootstrap`，匿名态返回 `200 + authenticated=false`；后者仍通过 `/api/auth/refresh` 轮换 refresh session 并续发 access token
@@ -171,8 +174,10 @@ uv run -m uvicorn knowledge_chatbox_api.main:app --reload --host 0.0.0.0 --port 
 - `/api/auth/me`、`/api/settings` 这类受保护读取接口在鉴权阶段保持纯读，避免长时间流式写入把标准页面读取锁成 `500 database is locked`
 - 流式问答的 assistant projection 与 run event 当前按短批次提交，避免整段回答长期持有 SQLite 写事务，把会话改名、新建会话这类并发写操作一起锁住
 - 文档相关稳定错误码：
+  - `409 embedding_not_configured`
   - `404 document_not_found`
   - `409 document_not_normalized`
+  - `409 pending_embedding_not_configured`
   - `500 document_upload_failed`
 - 聊天检索、附件限域、多附件合并、OpenClaw 归一匹配和 Chroma `where` 归一化等更细语义，统一以 [docs/arch/system-overview.md](../../docs/arch/system-overview.md) 和 [docs/arch/runtime-flows.md](../../docs/arch/runtime-flows.md) 为准
 

@@ -7,14 +7,18 @@ import { parseServerSentEvents, type ServerSentEvent } from "parse-sse";
 import { authenticatedFetch } from "@/lib/api/authenticated-fetch";
 import { extractErrorDetail, getUserFacingErrorMessage } from "@/lib/api/error-response";
 import { env } from "@/lib/config/env";
+import {
+  CHAT_STREAM_EVENT,
+  isChatStreamEventName,
+  type ChatStreamEventMap,
+  type ChatStreamEventName,
+  type ChatStreamEvent,
+} from "./chat-stream-events";
 
 /**
  * 描述聊天流式事件的数据结构。
  */
-export type ChatStreamEvent = {
-  event: string;
-  data: Record<string, unknown>;
-};
+export type { ChatStreamEvent } from "./chat-stream-events";
 
 /**
  * 描述聊天流式附件输入的数据结构。
@@ -56,7 +60,10 @@ function consumeEvent(
   state: ParsedChatStreamState,
   onEvent: StartChatStreamInput["onEvent"],
 ) {
-  if (event.event === "run.started" && typeof event.data.user_message_id === "number") {
+  if (
+    event.event === CHAT_STREAM_EVENT.runStarted &&
+    typeof event.data.user_message_id === "number"
+  ) {
     state.userMessageId = event.data.user_message_id;
   }
 
@@ -65,14 +72,17 @@ function consumeEvent(
   }
 
   if (
-    event.event === "run.failed" &&
+    event.event === CHAT_STREAM_EVENT.runFailed &&
     typeof event.data.error_message === "string" &&
     event.data.error_message
   ) {
     state.failedMessage = event.data.error_message;
   }
 
-  if (event.event === "run.completed" || event.event === "run.failed") {
+  if (
+    event.event === CHAT_STREAM_EVENT.runCompleted ||
+    event.event === CHAT_STREAM_EVENT.runFailed
+  ) {
     state.hasTerminalRunEvent = true;
   }
 
@@ -80,10 +90,21 @@ function consumeEvent(
 }
 
 function toChatStreamEvent(event: ServerSentEvent): ChatStreamEvent {
-  return {
-    event: event.type,
-    data: JSON.parse(event.data) as Record<string, unknown>,
-  };
+  if (!isChatStreamEventName(event.type)) {
+    throw new Error(`unknown chat stream event: ${event.type}`);
+  }
+
+  return createChatStreamEvent(
+    event.type,
+    JSON.parse(event.data) as ChatStreamEventMap[typeof event.type],
+  );
+}
+
+function createChatStreamEvent<TEventName extends ChatStreamEventName>(
+  event: TEventName,
+  data: ChatStreamEventMap[TEventName],
+): Extract<ChatStreamEvent, { event: TEventName }> {
+  return { event, data } as Extract<ChatStreamEvent, { event: TEventName }>;
 }
 
 export async function startChatStream({ sessionId, body, onEvent }: StartChatStreamInput) {

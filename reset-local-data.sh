@@ -124,6 +124,14 @@ reset_file() {
   rm -f -- "$path"
 }
 
+reset_sqlite_file() {
+  local path="$1"
+  local label="$2"
+
+  reset_file "$path" "$label"
+  rm -f -- "${path}-wal" "${path}-shm"
+}
+
 require_command() {
   command -v "$1" >/dev/null 2>&1 || die "缺少命令：$1"
 }
@@ -205,7 +213,7 @@ log "清空向量索引目录：$CHROMA_PATH_PATH"
 reset_directory "$CHROMA_PATH_PATH" "CHROMA_PATH"
 
 log "删除 SQLite 文件：$SQLITE_PATH_PATH"
-reset_file "$SQLITE_PATH_PATH" "SQLITE_PATH"
+reset_sqlite_file "$SQLITE_PATH_PATH" "SQLITE_PATH"
 
 if ! $SKIP_MIGRATE; then
   log "重新执行 Alembic migration"

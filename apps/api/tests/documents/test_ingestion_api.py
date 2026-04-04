@@ -7,17 +7,21 @@ from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
+from sqlalchemy import text
 
 from knowledge_chatbox_api.core.config import get_settings
 from knowledge_chatbox_api.db.session import create_session_factory
 from knowledge_chatbox_api.repositories.document_repository import DocumentRepository
+from knowledge_chatbox_api.services.documents.chunking_service import ChunkingService
+from knowledge_chatbox_api.services.documents.indexing_service import IndexingService
 from knowledge_chatbox_api.services.documents.ingestion_service import IngestionService
+from knowledge_chatbox_api.utils.document_types import derive_section_title
 from knowledge_chatbox_api.services.settings.settings_service import (
     INDEX_REBUILD_STATUS_RUNNING,
     SettingsService,
 )
 from knowledge_chatbox_api.tasks import document_jobs
-from knowledge_chatbox_api.utils.chroma import get_chroma_store
+from knowledge_chatbox_api.utils.chroma import InMemoryChromaStore, get_chroma_store
 
 
 def login_admin(api_client: TestClient) -> None:
@@ -26,6 +30,14 @@ def login_admin(api_client: TestClient) -> None:
         json={"username": "admin", "password": "admin123456"},
     )
     assert response.status_code == 200
+
+    def ensure_openai_key(provider_profiles, settings_record) -> None:
+        provider_profiles["openai"]["api_key"] = "test-openai-key"
+        settings_record.pending_embedding_route_json = None
+        settings_record.index_rebuild_status = "idle"
+        settings_record.building_index_generation = None
+
+    update_provider_profiles(ensure_openai_key)
 
 
 def build_png_bytes() -> bytes:
@@ -39,8 +51,100 @@ def write_normalized_fixture(path: Path, content: str = "normalized image conten
     path.write_text(content, encoding="utf-8")
 
 
+class EmbeddingAdapterStub:
+    def embed(self, texts: list[str], settings) -> list[list[float]]:
+        del settings
+        return [[0.1, 0.2, 0.3] for _ in texts]
+
+
+class NoSnapshotChromaStore(InMemoryChromaStore):
+    def __init__(self) -> None:
+        super().__init__()
+        self.fail_next_upsert = False
+
+    def list_by_document_id(self, document_id: int, *, generation: int = 1):
+        del document_id, generation
+        raise AssertionError("snapshot reads should not happen in rollback paths")
+
+    def upsert(self, records, *, embeddings=None, generation=1):
+        if self.fail_next_upsert:
+            self.fail_next_upsert = False
+            raise RuntimeError("simulated chroma failure")
+        return super().upsert(records, embeddings=embeddings, generation=generation)
+
+
+@pytest.fixture(autouse=True)
+def stub_document_index_embedding(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "knowledge_chatbox_api.services.documents.ingestion_service.build_embedding_adapter",
+        lambda _route: EmbeddingAdapterStub(),
+    )
+
+
+def count_lexical_rows(revision_id: int, *, generation: int) -> int:
+    session_factory = create_session_factory()
+    with session_factory() as session:
+        return session.execute(
+            text(
+                """
+                SELECT COUNT(*)
+                FROM retrieval_chunks_fts
+                WHERE document_revision_id = :document_revision_id
+                  AND generation = :generation
+                """
+            ),
+            {
+                "document_revision_id": revision_id,
+                "generation": generation,
+            },
+        ).scalar_one()
+
+
+def get_active_generation() -> int:
+    session_factory = create_session_factory()
+    with session_factory() as session:
+        settings_record = SettingsService(session, get_settings()).get_or_create_settings_record()
+        return settings_record.active_index_generation
+
+
+def update_provider_profiles(mutator) -> None:
+    session_factory = create_session_factory()
+    with session_factory() as session:
+        settings_record = SettingsService(session, get_settings()).get_or_create_settings_record()
+        provider_profiles = settings_record.provider_profiles.model_dump()
+        mutator(provider_profiles, settings_record)
+        settings_record.provider_profiles_json = provider_profiles
+        session.commit()
+
+
+def seed_in_memory_store_for_revision(
+    session,
+    store: InMemoryChromaStore,
+    revision_id: int,
+) -> None:
+    settings_record = SettingsService(session, get_settings()).get_or_create_settings_record()
+    revision = DocumentRepository(session).get_by_id(revision_id)
+    assert revision is not None
+    assert revision.normalized_path is not None
+    content = Path(revision.normalized_path).read_text(encoding="utf-8")
+    IndexingService(
+        session=session,
+        chunking_service=ChunkingService(),
+        chroma_store=store,
+        embedding_provider=EmbeddingAdapterStub(),
+        settings=settings_record,
+    ).index_document(
+        revision,
+        content,
+        generation=settings_record.active_index_generation,
+        section_title=derive_section_title(content),
+    )
+    session.commit()
+
+
 def test_upload_document_indexes_active_generation(api_client: TestClient) -> None:
     login_admin(api_client)
+    active_generation = get_active_generation()
 
     response = api_client.post(
         "/api/documents/upload",
@@ -51,6 +155,105 @@ def test_upload_document_indexes_active_generation(api_client: TestClient) -> No
     payload = response.json()["data"]
     assert payload["revision"]["ingest_status"] == "indexed"
     assert payload["document"]["latest_revision"]["id"] == payload["revision"]["id"]
+    assert count_lexical_rows(payload["revision"]["id"], generation=active_generation) > 0
+
+
+def test_upload_readiness_blocks_when_active_embedding_is_not_configured(
+    api_client: TestClient,
+) -> None:
+    login_admin(api_client)
+
+    def clear_openai_key(provider_profiles, _settings_record) -> None:
+        provider_profiles["openai"]["api_key"] = None
+
+    update_provider_profiles(clear_openai_key)
+
+    response = api_client.get("/api/documents/upload-readiness")
+
+    assert response.status_code == 200
+    assert response.json()["data"] == {
+        "blocking_reason": "embedding_not_configured",
+        "can_upload": False,
+        "image_fallback": False,
+    }
+
+
+def test_upload_readiness_marks_images_as_fallback_when_vision_is_not_configured(
+    api_client: TestClient,
+) -> None:
+    login_admin(api_client)
+
+    def route_vision_to_anthropic(provider_profiles, settings_record) -> None:
+        provider_profiles["anthropic"]["api_key"] = None
+        settings_record.vision_route_json = {
+            "provider": "anthropic",
+            "model": "claude-sonnet-4-5",
+        }
+
+    update_provider_profiles(route_vision_to_anthropic)
+
+    response = api_client.get("/api/documents/upload-readiness")
+
+    assert response.status_code == 200
+    assert response.json()["data"] == {
+        "blocking_reason": None,
+        "can_upload": True,
+        "image_fallback": True,
+    }
+
+
+def test_upload_readiness_blocks_when_pending_embedding_is_not_configured(
+    api_client: TestClient,
+) -> None:
+    login_admin(api_client)
+
+    def break_pending_voyage(provider_profiles, settings_record) -> None:
+        provider_profiles["voyage"]["api_key"] = None
+        settings_record.pending_embedding_route_json = {
+            "provider": "voyage",
+            "model": "voyage-3.5",
+        }
+        settings_record.index_rebuild_status = INDEX_REBUILD_STATUS_RUNNING
+        settings_record.building_index_generation = settings_record.active_index_generation + 1
+
+    update_provider_profiles(break_pending_voyage)
+
+    response = api_client.get("/api/documents/upload-readiness")
+
+    assert response.status_code == 200
+    assert response.json()["data"] == {
+        "blocking_reason": "pending_embedding_not_configured",
+        "can_upload": False,
+        "image_fallback": False,
+    }
+
+
+def test_documents_summary_counts_latest_pending_documents(
+    api_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    login_admin(api_client)
+    monkeypatch.setattr(
+        "knowledge_chatbox_api.api.routes.documents.document_jobs.complete_document_ingestion",
+        lambda *_args, **_kwargs: False,
+    )
+
+    settled_response = api_client.post(
+        "/api/documents/upload",
+        files={"file": ("settled.txt", b"hello world", "text/plain")},
+    )
+    pending_response = api_client.post(
+        "/api/documents/upload",
+        files={"file": ("pending.png", build_png_bytes(), "image/png")},
+    )
+    summary_response = api_client.get("/api/documents/summary")
+
+    assert settled_response.status_code == 201
+    assert pending_response.status_code == 202
+    assert summary_response.status_code == 200
+    assert summary_response.json()["data"] == {
+        "pending_count": 1,
+    }
 
 
 def test_upload_document_writes_to_building_generation_when_rebuild_running(
@@ -85,6 +288,33 @@ def test_upload_document_writes_to_building_generation_when_rebuild_running(
     store = get_chroma_store()
     assert store.list_by_document_id(revision_id, generation=active_generation)
     assert store.list_by_document_id(revision_id, generation=building_generation)
+    assert count_lexical_rows(revision_id, generation=active_generation) > 0
+    assert count_lexical_rows(revision_id, generation=building_generation) > 0
+
+
+def test_upload_document_returns_conflict_before_saving_file_when_embedding_is_not_configured(
+    api_client: TestClient,
+) -> None:
+    login_admin(api_client)
+    upload_dir = get_settings().upload_dir
+    existing_uploads = (
+        {path.name for path in upload_dir.iterdir()} if upload_dir.exists() else set()
+    )
+
+    def clear_openai_key(provider_profiles, _settings_record) -> None:
+        provider_profiles["openai"]["api_key"] = None
+
+    update_provider_profiles(clear_openai_key)
+
+    response = api_client.post(
+        "/api/documents/upload",
+        files={"file": ("note.txt", b"hello world", "text/plain")},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "embedding_not_configured"
+    current_uploads = {path.name for path in upload_dir.iterdir()} if upload_dir.exists() else set()
+    assert current_uploads == existing_uploads
 
 
 def test_upload_document_returns_existing_revision_for_duplicate_content(
@@ -194,6 +424,142 @@ def test_reindex_document_returns_conflict_when_document_is_not_normalized(
         "message": "Document has not been normalized yet.",
         "details": None,
     }
+
+
+def test_reindex_document_rebuilds_lexical_index_rows(
+    api_client: TestClient,
+) -> None:
+    login_admin(api_client)
+    active_generation = get_active_generation()
+
+    upload_response = api_client.post(
+        "/api/documents/upload",
+        files={"file": ("note.txt", b"hello world", "text/plain")},
+    )
+    assert upload_response.status_code == 201
+    payload = upload_response.json()["data"]
+    revision_id = payload["revision"]["id"]
+    document_id = payload["document"]["id"]
+
+    assert count_lexical_rows(revision_id, generation=active_generation) > 0
+
+    session_factory = create_session_factory()
+    with session_factory() as session:
+        session.execute(
+            text(
+                """
+                DELETE FROM retrieval_chunks_fts
+                WHERE document_revision_id = :document_revision_id
+                  AND generation = :generation
+                """
+            ),
+            {
+                "document_revision_id": revision_id,
+                "generation": active_generation,
+            },
+        )
+        session.commit()
+
+    assert count_lexical_rows(revision_id, generation=active_generation) == 0
+
+    reindex_response = api_client.post(f"/api/documents/{document_id}/reindex")
+
+    assert reindex_response.status_code == 200
+    assert count_lexical_rows(revision_id, generation=active_generation) > 0
+
+
+def test_delete_document_clears_lexical_index_rows(
+    api_client: TestClient,
+) -> None:
+    login_admin(api_client)
+    active_generation = get_active_generation()
+
+    upload_response = api_client.post(
+        "/api/documents/upload",
+        files={"file": ("note.txt", b"hello world", "text/plain")},
+    )
+    assert upload_response.status_code == 201
+    payload = upload_response.json()["data"]
+    revision_id = payload["revision"]["id"]
+    document_id = payload["document"]["id"]
+
+    assert count_lexical_rows(revision_id, generation=active_generation) > 0
+
+    delete_response = api_client.delete(f"/api/documents/{document_id}")
+
+    assert delete_response.status_code == 200
+    assert count_lexical_rows(revision_id, generation=active_generation) == 0
+
+
+def test_reindex_document_restores_indexes_without_snapshot_reads(
+    api_client: TestClient,
+) -> None:
+    login_admin(api_client)
+    upload_response = api_client.post(
+        "/api/documents/upload",
+        files={"file": ("note.txt", b"hello world", "text/plain")},
+    )
+    assert upload_response.status_code == 201
+    payload = upload_response.json()["data"]
+    revision_id = payload["revision"]["id"]
+    document_id = payload["document"]["id"]
+    active_generation = get_active_generation()
+
+    session_factory = create_session_factory()
+    with session_factory() as session:
+        store = NoSnapshotChromaStore()
+        seed_in_memory_store_for_revision(session, store, revision_id)
+        service = IngestionService(session, get_settings())
+        service._chroma_store = store
+        store.fail_next_upsert = True
+
+        with pytest.raises(RuntimeError, match="simulated chroma failure"):
+            service.reindex_document(SimpleNamespace(id=1), document_id)
+
+        assert store.query("hello", generation=active_generation)
+        assert count_lexical_rows(revision_id, generation=active_generation) > 0
+
+
+def test_delete_document_restores_indexes_without_snapshot_reads(
+    api_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    login_admin(api_client)
+    upload_response = api_client.post(
+        "/api/documents/upload",
+        files={"file": ("note.txt", b"hello world", "text/plain")},
+    )
+    assert upload_response.status_code == 201
+    payload = upload_response.json()["data"]
+    revision_id = payload["revision"]["id"]
+    document_id = payload["document"]["id"]
+    active_generation = get_active_generation()
+
+    session_factory = create_session_factory()
+    with session_factory() as session:
+        store = NoSnapshotChromaStore()
+        seed_in_memory_store_for_revision(session, store, revision_id)
+        service = IngestionService(session, get_settings())
+        service._chroma_store = store
+        repository = DocumentRepository(session)
+        original_commit = session.commit
+        commit_calls = 0
+
+        def fail_once_commit():
+            nonlocal commit_calls
+            commit_calls += 1
+            if commit_calls == 1:
+                raise RuntimeError("simulated commit failure")
+            return original_commit()
+
+        monkeypatch.setattr(session, "commit", fail_once_commit)
+
+        with pytest.raises(RuntimeError, match="simulated commit failure"):
+            service.delete_document(SimpleNamespace(id=1), document_id)
+
+        assert repository.get_document_entity(document_id) is not None
+        assert store.query("hello", generation=active_generation)
+        assert count_lexical_rows(revision_id, generation=active_generation) > 0
 
 
 def test_upload_document_does_not_leak_internal_error_message(
@@ -309,6 +675,7 @@ def test_complete_document_ingestion_indexes_processing_image_revision(
         assert revision.normalized_path == str(normalized_path)
         assert revision.chunk_count is not None
         assert revision.indexed_at is not None
+        assert count_lexical_rows(revision_id, generation=get_active_generation()) > 0
 
     listed_response = api_client.get("/api/documents")
     assert listed_response.status_code == 200

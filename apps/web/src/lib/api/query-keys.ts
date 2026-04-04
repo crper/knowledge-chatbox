@@ -7,9 +7,11 @@
  */
 export const queryKeys = {
   auth: {
+    all: ["auth"] as const,
     me: ["auth", "me"] as const,
   },
   chat: {
+    all: ["chat"] as const,
     context: (sessionId: number | null) => ["chat", "context", sessionId] as const,
     messages: (sessionId: number | null) => ["chat", "messages", sessionId] as const,
     messagesWindow: (sessionId: number | null) => ["chat", "messages-window", sessionId] as const,
@@ -17,7 +19,10 @@ export const queryKeys = {
     sessions: ["chat", "sessions"] as const,
   },
   documents: {
+    all: ["documents"] as const,
     list: ["documents", "list"] as const,
+    summary: ["documents", "summary"] as const,
+    uploadReadiness: ["documents", "upload-readiness"] as const,
     versions: (documentId: number) => ["documents", "versions", documentId] as const,
   },
   settings: {

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.engine import Row
 from sqlalchemy.orm import Session
 
@@ -22,6 +22,7 @@ DOCUMENT_TYPE_FILTERS = {
     "pdf": ("pdf",),
     "text": tuple(TEXT_DOCUMENT_FILE_TYPES),
 }
+PENDING_LATEST_DOCUMENT_STATUSES = ("uploaded", "processing")
 
 
 class DocumentRepository:
@@ -154,6 +155,38 @@ class DocumentRepository:
             .order_by(DocumentRevision.revision_no.asc())
         )
         return list(self.session.scalars(statement).all())
+
+    def count_latest_pending(
+        self,
+        *,
+        space_ids: set[int] | None = None,
+    ) -> int:
+        """统计当前可见逻辑文档里最新修订仍在 pending 的数量。"""
+        if space_ids is not None and not space_ids:
+            return 0
+
+        statement = (
+            select(func.count())
+            .select_from(Document)
+            .join(
+                DocumentRevision,
+                or_(
+                    DocumentRevision.id == Document.latest_revision_id,
+                    and_(
+                        Document.latest_revision_id.is_(None),
+                        DocumentRevision.document_id == Document.id,
+                        DocumentRevision.revision_no == Document.current_version_number,
+                    ),
+                ),
+            )
+            .where(
+                Document.status == "active",
+                DocumentRevision.ingest_status.in_(PENDING_LATEST_DOCUMENT_STATUSES),
+            )
+        )
+        if space_ids is not None:
+            statement = statement.where(Document.space_id.in_(space_ids))
+        return int(self.session.scalar(statement) or 0)
 
     def list_processing_documents(self) -> list[DocumentRevision]:
         """列出Processing文档。"""

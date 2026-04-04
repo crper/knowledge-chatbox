@@ -8,6 +8,7 @@ from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, St
 from sqlalchemy.orm import Mapped, mapped_column, synonym
 
 from knowledge_chatbox_api.db.base import Base
+from knowledge_chatbox_api.utils.document_types import guess_mime_type
 
 
 class Document(Base):
@@ -118,21 +119,5 @@ class DocumentRevision(Base):
 
     def __init__(self, **kwargs) -> None:
         if kwargs.get("mime_type") is None:
-            file_type = kwargs.get("file_type")
-            mime_types = {
-                "txt": "text/plain",
-                "md": "text/markdown",
-                "markdown": "text/markdown",
-                "pdf": "application/pdf",
-                "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                "png": "image/png",
-                "jpg": "image/jpeg",
-                "jpeg": "image/jpeg",
-                "webp": "image/webp",
-            }
-            kwargs["mime_type"] = (
-                mime_types.get(file_type, "application/octet-stream")
-                if isinstance(file_type, str)
-                else "application/octet-stream"
-            )
+            kwargs["mime_type"] = guess_mime_type(kwargs.get("file_type"))
         super().__init__(**kwargs)

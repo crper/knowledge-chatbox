@@ -2,34 +2,25 @@
  * @file 聊天相关界面组件模块。
  */
 
-import { Component, type ReactNode, useMemo } from "react";
-import { cjk } from "@streamdown/cjk";
-import { code } from "@streamdown/code";
-import { createMathPlugin } from "@streamdown/math";
+import { Component, type ReactNode, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Streamdown, type StreamdownTranslations } from "streamdown";
-import { mermaid } from "@streamdown/mermaid";
-import "katex/dist/katex.min.css";
-import "streamdown/styles.css";
+import type { StreamdownTranslations } from "streamdown";
 
-const streamdownPlugins = {
-  code,
-  cjk,
-  mermaid,
-  math: createMathPlugin({ singleDollarTextMath: true }),
-} as const;
-const streamdownControls = {
-  code: { copy: true, download: true },
-  table: { copy: true, download: true, fullscreen: true },
-} as const;
+import { cn } from "@/lib/utils";
+import { loadRichMarkdownRenderer } from "./rich-markdown-renderer-loader";
 
 type MarkdownMessageProps = {
   content: string;
   isStreaming: boolean;
+  testId?: string;
 };
 
-type AssistantSoftLoadingStateProps = {
+type AssistantWaitingCardProps = {
+  caption?: string;
+  compact?: boolean;
+  detail?: string;
   statusLabel: string;
+  testId?: string;
 };
 
 type MarkdownRenderBoundaryProps = {
@@ -42,10 +33,30 @@ type MarkdownRenderBoundaryState = {
   hasError: boolean;
 };
 
+type RichMarkdownRendererComponent = (props: {
+  content: string;
+  isStreaming: boolean;
+  translations: Partial<StreamdownTranslations>;
+}) => ReactNode;
+
 const CJK_TEXT_PATTERN = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
 const INLINE_MATH_PATTERN =
   /^[0-9A-Za-z\s\\{}[\]()+\-*/^_=|<>.,:;%!~\u0370-\u03FF\u2200-\u22FF]+$/u;
 const NUMBER_LIKE_PATTERN = /^\s*[-+]?[\d,.]+(?:\s*%)?\s*$/u;
+const RICH_MARKDOWN_PATTERNS = [
+  /^#{1,6}\s/m,
+  /```/,
+  /^\|.+\|/m,
+  /^\s*[-*+]\s/m,
+  /^\s*\d+\.\s/m,
+  /^\s*>\s/m,
+  /!\[[^\]]*\]\([^)]+\)/,
+  /\[[^\]]+\]\([^)]+\)/,
+  /(^|[^\\])\*{1,2}[^*]+\*{1,2}/,
+  /(^|[^\\])_{1,2}[^_]+_{1,2}/,
+  /(^|[^\\])`[^`]+`/,
+  /(^|[^\\])\$\$?[^$]+\$\$?/,
+] as const;
 
 class MarkdownRenderBoundary extends Component<
   MarkdownRenderBoundaryProps,
@@ -159,35 +170,74 @@ function normalizeMarkdownContent(content: string) {
   return result;
 }
 
-function AssistantSoftLoadingState({ statusLabel }: AssistantSoftLoadingStateProps) {
+function shouldUseRichMarkdownRenderer(content: string) {
+  const trimmed = content.trim();
+
+  if (!trimmed) {
+    return false;
+  }
+
+  return RICH_MARKDOWN_PATTERNS.some((pattern) => pattern.test(trimmed));
+}
+
+export function AssistantWaitingCard({
+  caption,
+  compact = false,
+  detail,
+  statusLabel,
+  testId,
+}: AssistantWaitingCardProps) {
   return (
     <div
       aria-label={statusLabel}
       aria-live="polite"
-      className="surface-outline relative overflow-hidden rounded-[1.2rem] px-4 py-3"
+      className={cn(
+        "surface-outline relative min-w-0 max-w-full overflow-hidden rounded-[1.2rem] border-primary/12 bg-[linear-gradient(180deg,hsl(var(--primary)/0.055),transparent_38%),linear-gradient(145deg,hsl(var(--surface-top)/0.72),hsl(var(--surface-base)/0.9))] text-foreground shadow-[0_12px_28px_-24px_hsl(var(--shadow-color)/0.34),inset_0_1px_0_hsl(var(--surface-highlight)/0.07)] dark:border-primary/18 dark:bg-[linear-gradient(180deg,hsl(var(--primary)/0.08),transparent_36%),linear-gradient(145deg,hsl(var(--surface-top)/0.62),hsl(var(--surface-base)/0.88))]",
+        compact ? "px-4 py-3" : "px-4 py-3.5 sm:px-5 sm:py-4",
+      )}
       data-assistant-loading-state="true"
+      data-testid={testId}
+      data-waiting-card-tone="assistant"
       role="status"
     >
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 -translate-x-full bg-[linear-gradient(110deg,transparent_0%,hsl(var(--primary)/0.08)_42%,transparent_78%)] [animation:assistant-loading-shimmer_2.8s_ease-in-out_infinite]"
+        className="pointer-events-none absolute inset-0 -translate-x-full bg-[linear-gradient(110deg,transparent_0%,hsl(var(--primary)/0.12)_42%,transparent_78%)] [animation:assistant-loading-shimmer_2.8s_ease-in-out_infinite] motion-reduce:hidden"
       />
-      <div className="relative flex items-center gap-2 text-muted-foreground">
-        <div aria-hidden="true" className="flex items-center gap-1.5">
-          {[0, 1, 2].map((index) => (
-            <span
-              key={index}
-              className="size-1.5 rounded-full bg-primary/45 [animation:chat-streaming-dot-bounce_1.4s_ease-in-out_infinite]"
-              style={{ animationDelay: `${index * 160}ms` }}
-            />
-          ))}
+      <div className="relative space-y-3">
+        <div className="flex items-start gap-3">
+          <div
+            aria-hidden="true"
+            className="surface-icon flex size-9 shrink-0 items-center justify-center rounded-full border-primary/18 bg-primary/8 text-primary"
+          >
+            <div className="flex items-center gap-1.5">
+              {[0, 1, 2].map((index) => (
+                <span
+                  key={index}
+                  className="size-1.5 rounded-full bg-primary/55 [animation:chat-streaming-dot-bounce_1.4s_ease-in-out_infinite] motion-reduce:animate-none"
+                  style={{ animationDelay: `${index * 160}ms` }}
+                />
+              ))}
+            </div>
+          </div>
+          <div className="min-w-0 flex-1 space-y-1">
+            {caption ? (
+              <p className="text-[0.7rem] font-semibold tracking-[0.14em] text-muted-foreground uppercase">
+                {caption}
+              </p>
+            ) : null}
+            <p className="text-[0.95rem] font-medium leading-6 text-foreground/92">{statusLabel}</p>
+            {detail ? (
+              <p className="text-[0.82rem] leading-6 text-muted-foreground">{detail}</p>
+            ) : null}
+          </div>
         </div>
-        <span className="text-[0.92rem] leading-6">{statusLabel}</span>
-      </div>
-      <div aria-hidden="true" className="relative mt-3 space-y-2.5">
-        <div className="h-2 w-24 rounded-full bg-primary/12" />
-        <div className="h-2.5 w-[72%] rounded-full bg-foreground/8" />
-        <div className="h-2.5 w-[54%] rounded-full bg-foreground/6" />
+        <div aria-hidden="true" className="grid gap-2.5">
+          <div className="h-2 w-24 rounded-full bg-primary/16 dark:bg-primary/22" />
+          <div className="h-2.5 w-[78%] rounded-full bg-foreground/8 dark:bg-foreground/12" />
+          <div className="h-2.5 w-[62%] rounded-full bg-foreground/6 dark:bg-foreground/10" />
+          <div className="h-2.5 w-[44%] rounded-full bg-primary/10 dark:bg-primary/16" />
+        </div>
       </div>
     </div>
   );
@@ -196,7 +246,7 @@ function AssistantSoftLoadingState({ statusLabel }: AssistantSoftLoadingStatePro
 /**
  * 渲染聊天 Markdown 消息内容。
  */
-export function MarkdownMessage({ content, isStreaming }: MarkdownMessageProps) {
+export function MarkdownMessage({ content, isStreaming, testId }: MarkdownMessageProps) {
   const { i18n, t } = useTranslation("chat");
   const normalizedContent = useMemo(() => normalizeMarkdownContent(content), [content]);
   const streamingFallback = t("assistantStreamingFallback");
@@ -206,7 +256,13 @@ export function MarkdownMessage({ content, isStreaming }: MarkdownMessageProps) 
     isStreaming && normalizedContent === streamingFallback ? "" : normalizedContent;
   const hasVisibleContent = displayContent.trim().length > 0;
   const isPreTokenLoading = isStreaming && !hasVisibleContent;
-  const caret = isStreaming ? (hasVisibleContent ? "block" : "circle") : undefined;
+  const needsRichRenderer = useMemo(
+    () => shouldUseRichMarkdownRenderer(displayContent),
+    [displayContent],
+  );
+  const [RichMarkdownRenderer, setRichMarkdownRenderer] =
+    useState<RichMarkdownRendererComponent | null>(null);
+  const [richRendererLoadFailed, setRichRendererLoadFailed] = useState(false);
   const plainTextFallback = (
     <div
       className="text-sm leading-7 break-words whitespace-pre-wrap text-foreground"
@@ -215,6 +271,33 @@ export function MarkdownMessage({ content, isStreaming }: MarkdownMessageProps) 
       {displayContent}
     </div>
   );
+
+  useEffect(() => {
+    if (!needsRichRenderer) {
+      setRichRendererLoadFailed(false);
+      return;
+    }
+
+    let cancelled = false;
+    setRichRendererLoadFailed(false);
+
+    void loadRichMarkdownRenderer()
+      .then((module) => {
+        if (!cancelled) {
+          setRichMarkdownRenderer(() => module.RichMarkdownRenderer);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setRichRendererLoadFailed(true);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [displayContent, needsRichRenderer]);
+
   const translations = useMemo<Partial<StreamdownTranslations>>(
     () => ({
       close: t("markdown.close"),
@@ -242,33 +325,33 @@ export function MarkdownMessage({ content, isStreaming }: MarkdownMessageProps) 
     }),
     [i18n.resolvedLanguage, t],
   );
+  const shouldRenderRich =
+    needsRichRenderer && RichMarkdownRenderer !== null && !richRendererLoadFailed;
 
   return (
     <div
       aria-busy={isStreaming}
-      className="max-w-none pr-2 text-sm leading-7 text-foreground"
+      className="min-w-0 max-w-full overflow-x-hidden pr-2 text-sm leading-7 text-foreground"
       data-message-body="assistant"
+      data-message-overflow="managed"
+      data-testid={testId}
     >
       {isPreTokenLoading ? (
-        <AssistantSoftLoadingState statusLabel={t("assistantStreamingStatus")} />
+        <AssistantWaitingCard compact={true} statusLabel={t("assistantStreamingStatus")} />
       ) : (
         <MarkdownRenderBoundary
           fallback={plainTextFallback}
           resetKey={`${isStreaming ? "streaming" : "static"}:${displayContent}`}
         >
-          <Streamdown
-            animated={{ animation: "blurIn", duration: 220, easing: "ease-out" }}
-            caret={caret}
-            className="text-sm leading-7 [&>*]:my-0 [&>blockquote]:border-l-2 [&>blockquote]:border-border/70 [&>blockquote]:pl-4 [&>h1]:text-lg [&>h1]:font-semibold [&>h2]:text-base [&>h2]:font-semibold [&>hr]:my-0 [&>ol]:pl-5 [&>pre]:overflow-x-auto [&>ul]:pl-5"
-            controls={streamdownControls}
-            isAnimating={isStreaming}
-            mode={isStreaming ? "streaming" : "static"}
-            normalizeHtmlIndentation
-            plugins={streamdownPlugins}
-            translations={translations}
-          >
-            {displayContent}
-          </Streamdown>
+          {shouldRenderRich ? (
+            <RichMarkdownRenderer
+              content={displayContent}
+              isStreaming={isStreaming}
+              translations={translations}
+            />
+          ) : (
+            plainTextFallback
+          )}
         </MarkdownRenderBoundary>
       )}
     </div>

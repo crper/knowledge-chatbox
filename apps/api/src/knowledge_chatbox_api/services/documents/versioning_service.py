@@ -11,6 +11,7 @@ from knowledge_chatbox_api.models.document import Document, DocumentRevision
 from knowledge_chatbox_api.repositories.document_repository import DocumentRepository
 from knowledge_chatbox_api.repositories.space_repository import SpaceRepository
 from knowledge_chatbox_api.services.documents.constants import DEDUPLICABLE_DOCUMENT_STATUSES
+from knowledge_chatbox_api.utils.document_types import guess_mime_type
 from knowledge_chatbox_api.utils.files import PersistedUpload
 
 
@@ -87,7 +88,7 @@ class VersioningService:
             document_id=document.id,
             revision_no=next_version,
             source_filename=filename,
-            mime_type=self._guess_mime_type(file_type),
+            mime_type=guess_mime_type(file_type),
             content_hash=content_hash,
             file_type=file_type,
             ingest_status="uploaded",
@@ -105,16 +106,3 @@ class VersioningService:
             version=document_version,
             duplicate_content=duplicate_content,
         )
-
-    def _guess_mime_type(self, file_type: str) -> str:
-        return {
-            "txt": "text/plain",
-            "md": "text/markdown",
-            "markdown": "text/markdown",
-            "pdf": "application/pdf",
-            "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            "png": "image/png",
-            "jpg": "image/jpeg",
-            "jpeg": "image/jpeg",
-            "webp": "image/webp",
-        }.get(file_type, "application/octet-stream")

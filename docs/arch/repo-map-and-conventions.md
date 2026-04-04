@@ -46,7 +46,7 @@ knowledge-chatbox/
 | 目录 | 责任 |
 | --- | --- |
 | `apps/web` | React + Vite+ 前端工作台 |
-| `apps/api` | FastAPI 后端、SQLite、Chroma、provider 编排 |
+| `apps/api` | FastAPI 后端、SQLite（含 `FTS5` 词法兜底索引）、Chroma、provider 编排 |
 | `docs/arch` | 当前实现的长期架构文档 |
 | `examples/upload-samples` | 手工验证上传与问答链路的样例文件 |
 | `data` | 本地运行时数据目录，不是代码目录 |
@@ -125,6 +125,7 @@ knowledge-chatbox/
 | `providers` | OpenAI / Anthropic / Voyage / Ollama capability adapters |
 | `tasks` | 启动补偿任务 |
 | `utils` | 文件、哈希、Chroma 等工具 |
+| `repositories/retrieval_chunk_repository.py` | SQLite `FTS5` 词法候选索引的写入、删除与查询 |
 
 ### 4.3 常见改动入口
 
@@ -148,11 +149,13 @@ knowledge-chatbox/
 特别注意：
 
 - 改检索、索引或 provider 语义时，先看 `app_settings` 上的 `embedding_route_json / pending_embedding_route_json / active_index_generation / building_index_generation`，再看 [provider-and-settings.md](./provider-and-settings.md) 和 [runtime-flows.md](./runtime-flows.md)
-- 改聊天检索限域时，当前真相是“`services/chat/chat_service.py` 负责组合 `space_id + document_revision_id` 条件，`utils/chroma.py` 负责把复合条件归一化成 Chroma 兼容 `where`，并保证内存 / 持久化 store 语义一致”；不要在各调用方自己手拼不同方言
+- 改聊天检索限域时，当前真相是“`services/chat/chat_service.py` 负责组合 `space_id + document_revision_id` 条件；`utils/chroma.py` 负责向量召回；`repositories/retrieval_chunk_repository.py` 负责 SQLite `FTS5` 词法候选兜底”；不要在各调用方自己手拼不同方言，也不要恢复整代索引的全量词法扫描
 - 改认证与会话链路时，当前真相是“前端只在内存保存 access token，refresh session 继续走 HttpOnly cookie，`/api/auth/me` 等受保护读取接口在鉴权阶段保持纯读”；不要把 access token 落进 `localStorage`，也不要把 session 心跳重新塞回高频读路径
 - 改认证与会话链路时，启动期匿名探测与业务请求续期当前已经分开：前端用 `/api/auth/bootstrap` 处理“是否能恢复已有 refresh session”，匿名态返回 `200 + authenticated=false`；业务请求里的 `401` 续期仍走 `/api/auth/refresh`；更细时序统一看 [auth-and-session-flow.md](./auth-and-session-flow.md)
+- 改前端 API 基址或开发态鉴权链路时，当前真相是“浏览器开发态优先走同源 `/api`，由 `apps/web/vite.config.ts` 代理到本机 `8000`；只有显式指向独立后端时，才填 `VITE_API_BASE_URL`”；不要把页面开在 `127.0.0.1:3000`，却把 API 固定到 `http://localhost:8000`
 - 改上传与附件链路时，当前真相是“聊天区和资源页共用 document upload helper；前端只持久化附件元数据与作用域提示；后端按文件类型分流：文本文档同步标准化，图片先返回 `processing` 再后台补全；聊天当前轮图片仍直接读取原图”；不要在前端维护第二份附件正文缓存，也不要把上传请求做回 cookie-only 分支
-- 改后端上传链路时，当前真相是“`api/routes/documents.py` 先把上传流按块落盘，`VersioningService` 只消费已落盘工件并写入 document/document_revision，重复内容与失败路径的源文件清理由 `IngestionService` 收口”；不要再把整份文件一次性读成 `bytes` 后在 service 层到处传
+- 改后端上传链路时，当前真相是“`api/routes/documents.py` 先做 `upload-readiness` 校验，再把上传流按块落盘，`VersioningService` 只消费已落盘工件并写入 document/document_revision，重复内容与失败路径的源文件清理由 `IngestionService` 收口”；不要再把整份文件一次性读成 `bytes` 后在 service 层到处传
+- 改资源页上传入口时，当前真相是“前端只消费 `GET /api/documents/upload-readiness` 的最小结果，不自行推导 provider 语义，也不复用 `/api/health/capabilities` 做实时探活”；不要在前端维护第二套 provider readiness 规则
 - 改聊天 UI 时，附件展示、图片查看、消息视口、失败恢复带、新会话空态、会话恢复和默认标题语义，统一以 [frontend-workspace.md](./frontend-workspace.md) 为准；这里不再平行维护一套页面级视觉规则
 - 改聊天数据读取时，当前真相是“主区默认先走 `/api/chat/sessions/{id}/messages?limit=80`，继续向上滚动时再带 `before_id + limit` 请求更早消息；右栏走 `/api/chat/sessions/{id}/context`”；不要再让 `ChatResourcePanel` 或其他 UI 组件直接依赖整段消息列表去反推摘要
 - 改流式问答收尾时，当前真相是“Web 优先 patch `messagesWindow` 和 `context`，只有 patch miss 时才回退到对应 query 的失效刷新”；不要把成功或失败收尾重新做回默认整段消息重拉
@@ -202,7 +205,7 @@ just docker-logs api
 just docker-health
 ```
 
-首次 clone、前端 `pnpm-lock.yaml` 变更，或后端 `uv.lock` 变更后，先按根 `README.md` 执行 `just init-env -> just setup -> just dev`；其中 `just dev` 不负责补装依赖。`just repo-check` 负责校验 README / 包级 README 与 `justfile` 的关键入口约束。如果只是补齐本地数据库 schema、不想直接启动 API，优先在仓库根执行 `just api-migrate`。
+首次 clone、前端 `pnpm-lock.yaml` 变更，或后端 `uv.lock` 变更后，先按根 `README.md` 执行 `just init-env -> just setup -> just dev`；其中 `just dev` 不负责补装依赖，但会把当前 `API_PORT / WEB_PORT` 透传给共享开发脚本，并在终端打印对应访问地址。前端 `vp` 运行时版本当前由 `apps/web/.node-version` 固定到 `24.14.1`，避免每次启动都先依赖远端 `lts` 解析。`just repo-check` 负责校验 README / 包级 README 与 `justfile` 的关键入口约束。如果只是补齐本地数据库 schema、不想直接启动 API，优先在仓库根执行 `just api-migrate`。
 
 只有当你明确需要子项目独立运行时，再进入 `apps/web` 或 `apps/api` 执行细分命令。
 
@@ -255,7 +258,7 @@ scripts/docker-deploy.sh build
 
 ### 6.5 涉及本地数据目录
 
-`just reset-dev` 会先执行 `reset-local-data.sh`，再同步依赖并拉起前后端开发态脚本。
+`just reset-dev` 会先执行 `reset-local-data.sh`，再同步依赖并拉起前后端开发态脚本；最终访问地址输出与 `just dev` 保持一致。
 
 如果你只想补齐依赖、不想清空本地数据，使用 `just setup`。
 

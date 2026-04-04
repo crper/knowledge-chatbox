@@ -30,6 +30,7 @@ import {
   EmptyMedia,
 } from "@/components/ui/empty";
 import { ChatMessageViewport } from "@/features/chat/components/chat-message-viewport";
+import { AssistantWaitingCard } from "@/features/chat/components/markdown-message";
 import { MessageInput } from "@/features/chat/components/message-input";
 import { useChatWorkspace } from "@/features/chat/hooks/use-chat-workspace";
 import type { ChatMessageItem } from "@/features/chat/api/chat";
@@ -166,6 +167,7 @@ export function ChatPage() {
 
   const shouldShowResolvingState =
     (!sessionIdParam && !isSessionsReady) ||
+    (!sessionIdParam && isSessionsReady && sessions.length > 0 && activeSessionId === null) ||
     (Boolean(sessionIdParam) &&
       (routeSessionId === null || !isSessionsReady || activeSessionId === null));
   const shouldShowPendingEmptyState = submitPending && !hasMessages;
@@ -206,16 +208,16 @@ export function ChatPage() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[radial-gradient(circle_at_top,hsl(var(--primary)/0.08),transparent_28%),radial-gradient(circle_at_100%_0%,hsl(var(--chart-2)/0.08),transparent_22%)]">
-      <header className="shrink-0 px-5 pt-5 pb-3 sm:px-6">
-        <div className="page-content-rail mx-auto px-2 py-1 sm:px-3">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[radial-gradient(circle_at_top,hsl(var(--primary)/0.08),transparent_28%),radial-gradient(circle_at_100%_0%,hsl(var(--chart-2)/0.08),transparent_22%)]">
+      <header className="shrink-0 px-4 pt-4 pb-2.5 sm:px-6 sm:pt-5 sm:pb-3">
+        <div className="page-content-rail mx-auto px-1 py-0.5 sm:px-3 sm:py-1">
           <div className="flex flex-wrap items-center gap-2.5">
             <p className="text-ui-kicker text-muted-foreground">{t("pageTitle")}</p>
             <Badge className="text-ui-caption rounded-full px-2.5 py-1" variant="outline">
               {hasMessages ? t("assistantRole") : t("emptySessionStepsTitle")}
             </Badge>
           </div>
-          <div className="mt-2.5 space-y-2">
+          <div className="mt-2 space-y-1.5 sm:mt-2.5 sm:space-y-2">
             <h1 className="text-ui-heading break-words">
               {resolveSessionTitle(activeSession?.title, sessionTitleFallback)}
             </h1>
@@ -223,7 +225,7 @@ export function ChatPage() {
         </div>
       </header>
 
-      <div className="min-h-0 flex-1 px-5 pb-4 sm:px-6">
+      <div className="flex min-h-0 flex-1 flex-col px-4 pb-3 sm:px-6 sm:pb-4">
         {hasMessages ? (
           <ChatMessageViewport
             key={activeSessionId ?? "empty"}
@@ -237,24 +239,20 @@ export function ChatPage() {
             scrollToLatestRequestKey={scrollToLatestRequestKey}
           />
         ) : shouldShowPendingEmptyState ? (
-          <div className="flex h-full items-center">
+          <div className="flex min-h-0 flex-1 items-center">
             <div className="page-content-rail workspace-surface mx-auto rounded-[1.75rem] p-5 sm:p-6">
-              <section className="space-y-4 py-3">
-                <div className="flex items-center gap-3">
-                  <Spinner aria-hidden="true" className="size-4" />
-                  <p className="text-ui-kicker text-muted-foreground">{t("sendingAction")}</p>
-                </div>
-                <div className="space-y-2">
-                  <h2 className="text-ui-display">{t("assistantStreamingStatus")}</h2>
-                  <p className="text-ui-body measure-readable text-muted-foreground">
-                    {t("assistantStreamingFallback")}
-                  </p>
-                </div>
+              <section className="py-3">
+                <AssistantWaitingCard
+                  caption={t("sendingAction")}
+                  detail={t("assistantStreamingFallback")}
+                  statusLabel={t("assistantStreamingStatus")}
+                  testId="assistant-waiting-card"
+                />
               </section>
             </div>
           </div>
         ) : (
-          <div className="flex h-full items-center">
+          <div className="flex min-h-0 flex-1 items-center">
             <div className="page-content-rail workspace-surface mx-auto rounded-[1.75rem] p-5 sm:p-6">
               <section className="space-y-6 py-3">
                 <div className="space-y-3">
@@ -282,7 +280,7 @@ export function ChatPage() {
         )}
       </div>
 
-      <div className="shrink-0 px-5 pb-5 sm:px-6">
+      <div className="shrink-0 px-4 pb-4 sm:px-6 sm:pb-5">
         <div className="page-content-rail mx-auto" data-composer-embed="direct">
           <MessageInput
             activeModelActionLabel={activeModelActionLabel}

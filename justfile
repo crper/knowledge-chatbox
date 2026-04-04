@@ -44,7 +44,7 @@ web-dev:
     cd {{web_dir}} && vp dev --host 0.0.0.0 --port {{web_port}}
 
 dev:
-    {{dev_script}}
+    API_PORT={{api_port}} WEB_PORT={{web_port}} {{dev_script}}
 
 # 检查与测试
 repo-check:
@@ -75,7 +75,7 @@ reset-dev:
     {{reset_script}} --yes
     cd {{api_dir}} && uv sync --all-groups
     cd {{web_dir}} && vp install
-    {{dev_script}}
+    API_PORT={{api_port}} WEB_PORT={{web_port}} {{dev_script}}
 
 # Docker / 单机部署
 docker-check:

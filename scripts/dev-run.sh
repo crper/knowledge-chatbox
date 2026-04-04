@@ -11,6 +11,17 @@ log() {
   printf '[dev-run] %s\n' "$*"
 }
 
+print_urls() {
+  cat <<EOF
+[dev-run] 访问地址（服务启动后可用）
+[dev-run]   Web: http://localhost:${WEB_PORT}
+[dev-run]   API health: http://localhost:${API_PORT}/api/health
+[dev-run]   API docs: http://localhost:${API_PORT}/docs
+[dev-run]   API redoc: http://localhost:${API_PORT}/redoc
+[dev-run]   OpenAPI JSON: http://localhost:${API_PORT}/openapi.json
+EOF
+}
+
 cleanup() {
   trap - EXIT INT TERM
 
@@ -72,6 +83,8 @@ log "启动 Web：$WEB_DIR"
 ) &
 web_pid=$!
 pids+=("$web_pid")
+
+print_urls
 
 status=0
 if wait_for_exit; then

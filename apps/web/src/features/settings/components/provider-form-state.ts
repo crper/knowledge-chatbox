@@ -19,15 +19,11 @@ export type TemplateProviderName = keyof ProviderProfiles;
 
 export type ProviderSettingsView = {
   primaryProvider: PrimaryProviderName;
-  chatModel: string;
-  embeddingModel: string;
   retrievalOverrideEnabled: boolean;
   retrievalProvider: EmbeddingProviderName;
-  retrievalEmbeddingModel: string;
   templateProvider: TemplateProviderName;
   providerProfiles: ProviderProfiles;
   providerTimeoutSeconds: number;
-  visionModel: string;
 };
 
 export type ProviderSettingsFieldName =
@@ -174,20 +170,33 @@ export function buildProviderSettingsView(settings: AppSettings): ProviderSettin
 
   return {
     primaryProvider,
-    chatModel: getChatModel(providerProfiles[primaryProvider]),
-    embeddingModel: getEmbeddingModel(providerProfiles, defaultEmbeddingProvider),
     retrievalOverrideEnabled,
     retrievalProvider: retrievalOverrideEnabled
       ? targetEmbeddingRoute.provider
       : defaultEmbeddingProvider,
-    retrievalEmbeddingModel: retrievalOverrideEnabled
-      ? normalizeText(targetEmbeddingRoute.model)
-      : getEmbeddingModel(providerProfiles, defaultEmbeddingProvider),
     templateProvider: preferredTemplateProvider(primaryProvider),
     providerProfiles,
     providerTimeoutSeconds: settings.provider_timeout_seconds ?? 60,
-    visionModel: getVisionModel(providerProfiles[primaryProvider]),
   };
+}
+
+export function getPrimaryChatModel(view: ProviderSettingsView) {
+  return getChatModel(view.providerProfiles[view.primaryProvider]);
+}
+
+export function getPrimaryVisionModel(view: ProviderSettingsView) {
+  return getVisionModel(view.providerProfiles[view.primaryProvider]);
+}
+
+export function getDefaultEmbeddingModel(view: ProviderSettingsView) {
+  return getEmbeddingModel(
+    view.providerProfiles,
+    getDefaultEmbeddingProvider(view.primaryProvider),
+  );
+}
+
+export function getRetrievalEmbeddingModel(view: ProviderSettingsView) {
+  return getEmbeddingModel(view.providerProfiles, view.retrievalProvider);
 }
 
 export function updatePrimaryProvider(
@@ -195,9 +204,6 @@ export function updatePrimaryProvider(
   primaryProvider: PrimaryProviderName,
 ): ProviderSettingsView {
   const defaultEmbeddingProvider = getDefaultEmbeddingProvider(primaryProvider);
-  const chatModel = getChatModel(current.providerProfiles[primaryProvider]);
-  const embeddingModel = getEmbeddingModel(current.providerProfiles, defaultEmbeddingProvider);
-  const visionModel = getVisionModel(current.providerProfiles[primaryProvider]);
   const templateProvider =
     current.templateProvider === primaryProvider
       ? preferredTemplateProvider(primaryProvider)
@@ -206,16 +212,10 @@ export function updatePrimaryProvider(
   return {
     ...current,
     primaryProvider,
-    chatModel,
-    embeddingModel,
     retrievalProvider: current.retrievalOverrideEnabled
       ? current.retrievalProvider
       : defaultEmbeddingProvider,
-    retrievalEmbeddingModel: current.retrievalOverrideEnabled
-      ? current.retrievalEmbeddingModel
-      : embeddingModel,
     templateProvider,
-    visionModel,
   };
 }
 
@@ -226,32 +226,35 @@ export function toggleRetrievalOverride(current: ProviderSettingsView): Provider
     ...current,
     retrievalOverrideEnabled: !current.retrievalOverrideEnabled,
     retrievalProvider: defaultProvider,
-    retrievalEmbeddingModel: current.embeddingModel,
   };
 }
 
 export function toSettingsPayload(view: ProviderSettingsView) {
   const defaultEmbeddingProvider = getDefaultEmbeddingProvider(view.primaryProvider);
+  const chatModel = getPrimaryChatModel(view);
+  const defaultEmbeddingModel = getDefaultEmbeddingModel(view);
+  const retrievalEmbeddingModel = getRetrievalEmbeddingModel(view);
+  const visionModel = getPrimaryVisionModel(view);
   const embeddingRoute = view.retrievalOverrideEnabled
     ? {
         provider: view.retrievalProvider,
-        model: view.retrievalEmbeddingModel.trim(),
+        model: retrievalEmbeddingModel.trim(),
       }
     : {
         provider: defaultEmbeddingProvider,
-        model: view.embeddingModel.trim(),
+        model: defaultEmbeddingModel.trim(),
       };
 
   return {
     provider_profiles: view.providerProfiles,
     response_route: {
       provider: view.primaryProvider,
-      model: view.chatModel.trim(),
+      model: chatModel.trim(),
     },
     embedding_route: embeddingRoute,
     vision_route: {
       provider: view.primaryProvider,
-      model: view.visionModel.trim(),
+      model: visionModel.trim(),
     },
     provider_timeout_seconds: view.providerTimeoutSeconds,
   } satisfies Partial<AppSettings>;
@@ -260,9 +263,13 @@ export function toSettingsPayload(view: ProviderSettingsView) {
 export function validateProviderSettingsView(
   view: ProviderSettingsView,
 ): ProviderSettingsValidationResult | undefined {
+  const chatModel = getPrimaryChatModel(view);
+  const defaultEmbeddingModel = getDefaultEmbeddingModel(view);
+  const retrievalEmbeddingModel = getRetrievalEmbeddingModel(view);
+  const visionModel = getPrimaryVisionModel(view);
   const fields: Partial<Record<ProviderSettingsFieldName, FormErrorDescriptor | undefined>> = {
-    chatModel: trimmedRequired(view.chatModel, "chatModelRequiredError"),
-    embeddingModel: trimmedRequired(view.embeddingModel, "embeddingModelRequiredError"),
+    chatModel: trimmedRequired(chatModel, "chatModelRequiredError"),
+    embeddingModel: trimmedRequired(defaultEmbeddingModel, "embeddingModelRequiredError"),
     primaryBaseUrl: validatePrimaryBaseUrl(view),
     providerTimeoutSeconds: positiveIntegerInRange(
       view.providerTimeoutSeconds,
@@ -271,9 +278,9 @@ export function validateProviderSettingsView(
       "providerTimeoutInvalidError",
     ),
     retrievalEmbeddingModel: view.retrievalOverrideEnabled
-      ? trimmedRequired(view.retrievalEmbeddingModel, "retrievalEmbeddingModelRequiredError")
+      ? trimmedRequired(retrievalEmbeddingModel, "retrievalEmbeddingModelRequiredError")
       : undefined,
-    visionModel: trimmedRequired(view.visionModel, "visionModelRequiredError"),
+    visionModel: trimmedRequired(visionModel, "visionModelRequiredError"),
   };
 
   const result = buildFormValidationResult(formError("providerValidationSummaryError"), fields);

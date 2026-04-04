@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import base64
+import os
 import time
+from functools import lru_cache
 from typing import Any
-
-from ollama import Client, RequestError
 
 from knowledge_chatbox_api.providers.base import (
     BaseEmbeddingAdapter,
@@ -22,6 +22,26 @@ from knowledge_chatbox_api.providers.base import (
 )
 
 OLLAMA_BASE_URL_UNREACHABLE_CODE = "ollama_base_url_unreachable"
+OLLAMA_PROXY_ENV_KEYS = (
+    "ALL_PROXY",
+    "all_proxy",
+    "HTTP_PROXY",
+    "http_proxy",
+    "HTTPS_PROXY",
+    "https_proxy",
+)
+
+
+@lru_cache(maxsize=1)
+def _load_ollama_sdk_without_proxy_env():
+    """Lazily import the Ollama SDK without inheriting proxy env vars during import."""
+    preserved_env = {key: os.environ.pop(key) for key in OLLAMA_PROXY_ENV_KEYS if key in os.environ}
+    try:
+        from ollama import Client as OllamaClient
+        from ollama import RequestError as OllamaRequestError
+    finally:
+        os.environ.update(preserved_env)
+    return OllamaClient, OllamaRequestError
 
 
 def _ollama_status_code(exc: Exception) -> int | None:
@@ -46,7 +66,7 @@ def _ollama_failure_message(
                 else "Ollama service returned 502 Bad Gateway."
             ),
         )
-    if isinstance(exc, RequestError):
+    if _is_ollama_request_error(exc):
         return ProviderHealthResult(
             healthy=False,
             code=OLLAMA_BASE_URL_UNREACHABLE_CODE,
@@ -62,6 +82,11 @@ def _ollama_failure_message(
             message=f"Ollama model {model} is not available.",
         )
     return ProviderHealthResult(healthy=False, message=str(exc))
+
+
+def _is_ollama_request_error(exc: Exception) -> bool:
+    _, request_error_type = _load_ollama_sdk_without_proxy_env()
+    return isinstance(exc, request_error_type)
 
 
 def _attr(value: Any, name: str, default: Any = None) -> Any:
@@ -100,9 +125,33 @@ def _raw_dict(response: Any) -> dict[str, Any] | None:
     return None
 
 
+def _ollama_capabilities(response: Any) -> set[str] | None:
+    capabilities = _attr(response, "capabilities")
+    if isinstance(capabilities, str):
+        normalized = capabilities.strip().lower()
+        return {normalized} if normalized else set()
+    if not isinstance(capabilities, (list, tuple, set)):
+        return None
+    return {str(item).strip().lower() for item in capabilities if str(item).strip()}
+
+
+def _missing_ollama_capabilities(
+    response: Any,
+    requirements: dict[str, tuple[str, ...]],
+) -> list[str]:
+    capabilities = _ollama_capabilities(response)
+    if capabilities is None:
+        return []
+    return [
+        name
+        for name, aliases in requirements.items()
+        if not any(alias in capabilities for alias in aliases)
+    ]
+
+
 class _OllamaClientMixin:
     def __init__(self, client_factory=None) -> None:
-        self.client_factory = client_factory or Client
+        self.client_factory = client_factory
         self._client_cache: dict[tuple[str, float], Any] = {}
 
     def _request_timeout(self, settings: ProviderSettings) -> float:
@@ -119,12 +168,47 @@ class _OllamaClientMixin:
         cache_key = (host, timeout)
         client = self._client_cache.get(cache_key)
         if client is None:
-            client = self.client_factory(host=host, timeout=timeout)
+            client_factory = self.client_factory
+            if client_factory is None:
+                client_factory, _ = _load_ollama_sdk_without_proxy_env()
+            client = client_factory(host=host, timeout=timeout, trust_env=False)
             self._client_cache[cache_key] = client
         return client
 
-    def _quick_model_check(self, settings: ProviderSettings, model: str) -> None:
-        self._client(settings).show(model)
+    def _quick_model_check(self, settings: ProviderSettings, model: str) -> Any:
+        return self._client(settings).show(model)
+
+    def _health_check(
+        self,
+        settings: ProviderSettings,
+        model: str,
+        *,
+        required_capabilities: dict[str, tuple[str, ...]] | None = None,
+    ) -> ProviderHealthResult:
+        start = time.perf_counter()
+        try:
+            show_result = self._quick_model_check(settings, model)
+        except Exception as exc:  # noqa: BLE001
+            return _ollama_failure_message(
+                exc,
+                host=self._host(settings),
+                model=model,
+            )
+        if required_capabilities is not None:
+            missing_capabilities = _missing_ollama_capabilities(show_result, required_capabilities)
+            if missing_capabilities:
+                return ProviderHealthResult(
+                    healthy=False,
+                    message=(
+                        f"Ollama model {model} does not support required capabilities: "
+                        f"{', '.join(missing_capabilities)}."
+                    ),
+                )
+        return ProviderHealthResult(
+            healthy=True,
+            message="ok",
+            latency_ms=int((time.perf_counter() - start) * 1000),
+        )
 
     def _think_config(self, settings: ResponseRuntimeSettings) -> bool:
         return settings.reasoning_mode == "on"
@@ -200,19 +284,10 @@ class OllamaResponseAdapter(_OllamaClientMixin, BaseResponseAdapter):
             yield ResponseStreamChunk(type="error", error_message=str(exc))
 
     def health_check(self, settings: ResponseSettings) -> ProviderHealthResult:
-        start = time.perf_counter()
-        try:
-            self._quick_model_check(settings, settings.response_route.model)
-        except Exception as exc:  # noqa: BLE001
-            return _ollama_failure_message(
-                exc,
-                host=self._host(settings),
-                model=settings.response_route.model,
-            )
-        return ProviderHealthResult(
-            healthy=True,
-            message="ok",
-            latency_ms=int((time.perf_counter() - start) * 1000),
+        return self._health_check(
+            settings,
+            settings.response_route.model,
+            required_capabilities={"completion": ("completion",)},
         )
 
 
@@ -229,19 +304,10 @@ class OllamaEmbeddingAdapter(_OllamaClientMixin, BaseEmbeddingAdapter):
         return []
 
     def health_check(self, settings: EmbeddingSettings) -> ProviderHealthResult:
-        start = time.perf_counter()
-        try:
-            self.embed(["ping"], settings)
-        except Exception as exc:  # noqa: BLE001
-            return _ollama_failure_message(
-                exc,
-                host=self._host(settings),
-                model=settings.embedding_route.model,
-            )
-        return ProviderHealthResult(
-            healthy=True,
-            message="ok",
-            latency_ms=int((time.perf_counter() - start) * 1000),
+        return self._health_check(
+            settings,
+            settings.embedding_route.model,
+            required_capabilities={"embedding": ("embedding", "embeddings")},
         )
 
 
@@ -269,17 +335,11 @@ class OllamaVisionAdapter(_OllamaClientMixin, BaseVisionAdapter):
         return _message_content(response)
 
     def health_check(self, settings: VisionSettings) -> ProviderHealthResult:
-        start = time.perf_counter()
-        try:
-            self._quick_model_check(settings, settings.vision_route.model)
-        except Exception as exc:  # noqa: BLE001
-            return _ollama_failure_message(
-                exc,
-                host=self._host(settings),
-                model=settings.vision_route.model,
-            )
-        return ProviderHealthResult(
-            healthy=True,
-            message="ok",
-            latency_ms=int((time.perf_counter() - start) * 1000),
+        return self._health_check(
+            settings,
+            settings.vision_route.model,
+            required_capabilities={
+                "completion": ("completion",),
+                "vision": ("vision",),
+            },
         )

@@ -9,6 +9,24 @@ from knowledge_chatbox_api.core.logging import get_logger
 from knowledge_chatbox_api.services.chat.attachment_metadata import build_attachment_metadata
 from knowledge_chatbox_api.services.chat.chat_persistence_service import ChatPersistenceService
 from knowledge_chatbox_api.services.chat.chat_service import ChatService
+from knowledge_chatbox_api.services.chat.stream_events import (
+    MESSAGE_COMPLETED_EVENT,
+    MESSAGE_STARTED_EVENT,
+    PART_SOURCE_EVENT,
+    PART_TEXT_DELTA_EVENT,
+    PART_TEXT_END_EVENT,
+    PART_TEXT_START_EVENT,
+    RUN_COMPLETED_EVENT,
+    RUN_FAILED_EVENT,
+    RUN_STARTED_EVENT,
+    TOOL_CALL_EVENT,
+    TOOL_RESULT_EVENT,
+    USAGE_FINAL_EVENT,
+    StreamEventBatchItem,
+    StreamEventEnvelope,
+    StreamEventName,
+    StreamEventPayload,
+)
 from knowledge_chatbox_api.services.settings.runtime_settings import parse_runtime_settings
 
 STREAM_INTERRUPTED_ERROR_MESSAGE = "本次生成连接中断，请重试。"
@@ -118,7 +136,7 @@ class ChatRunService:
                 event_seq,
                 [
                     (
-                        "run.started",
+                        RUN_STARTED_EVENT,
                         {
                             "run_id": run.id,
                             "session_id": session_id,
@@ -127,7 +145,7 @@ class ChatRunService:
                         },
                     ),
                     (
-                        "message.started",
+                        MESSAGE_STARTED_EVENT,
                         {
                             "run_id": run.id,
                             "assistant_message_id": assistant_message.id,
@@ -135,7 +153,7 @@ class ChatRunService:
                         },
                     ),
                     (
-                        "tool.call",
+                        TOOL_CALL_EVENT,
                         {
                             "run_id": run.id,
                             "tool_name": "knowledge_search",
@@ -175,9 +193,9 @@ class ChatRunService:
                 yield event
                 return
 
-            source_events: list[tuple[str, dict[str, Any]]] = [
+            source_events: list[StreamEventBatchItem] = [
                 (
-                    "tool.result",
+                    TOOL_RESULT_EVENT,
                     {
                         "run_id": run.id,
                         "tool_name": "knowledge_search",
@@ -187,7 +205,7 @@ class ChatRunService:
             ]
             source_events.extend(
                 (
-                    "part.source",
+                    PART_SOURCE_EVENT,
                     {
                         "run_id": run.id,
                         "assistant_message_id": assistant_message.id,
@@ -214,7 +232,7 @@ class ChatRunService:
                         event_seq, event = self._append_event(
                             run,
                             event_seq,
-                            "part.text.start",
+                            PART_TEXT_START_EVENT,
                             {
                                 "run_id": run.id,
                                 "assistant_message_id": assistant_message.id,
@@ -228,7 +246,7 @@ class ChatRunService:
                     event_seq, event = self._append_event(
                         run,
                         event_seq,
-                        "part.text.delta",
+                        PART_TEXT_DELTA_EVENT,
                         {
                             "run_id": run.id,
                             "assistant_message_id": assistant_message.id,
@@ -298,12 +316,12 @@ class ChatRunService:
         sources: list[dict[str, Any]],
         started_text: bool,
         usage: dict | None,
-    ) -> tuple[int, list[dict]]:
-        completion_events: list[tuple[str, dict[str, Any]]] = []
+    ) -> tuple[int, list[StreamEventEnvelope]]:
+        completion_events: list[StreamEventBatchItem] = []
         if started_text:
             completion_events.append(
                 (
-                    "part.text.end",
+                    PART_TEXT_END_EVENT,
                     {
                         "run_id": run.id,
                         "assistant_message_id": assistant_message.id,
@@ -312,7 +330,7 @@ class ChatRunService:
             )
         completion_events.append(
             (
-                "usage.final",
+                USAGE_FINAL_EVENT,
                 {
                     "run_id": run.id,
                     "usage": usage or {},
@@ -339,7 +357,7 @@ class ChatRunService:
             next_seq,
             [
                 (
-                    "message.completed",
+                    MESSAGE_COMPLETED_EVENT,
                     {
                         "run_id": run.id,
                         "assistant_message_id": assistant_message.id,
@@ -347,7 +365,7 @@ class ChatRunService:
                     },
                 ),
                 (
-                    "run.completed",
+                    RUN_COMPLETED_EVENT,
                     {
                         "run_id": run.id,
                         "assistant_message_id": assistant_message.id,
@@ -368,7 +386,7 @@ class ChatRunService:
         error_message: str,
         failure_type: str,
         sources: list[dict[str, Any]] | None = None,
-    ) -> tuple[int, dict]:
+    ) -> tuple[int, StreamEventEnvelope]:
         return self._record_failed_run(
             run=run,
             assistant_message=assistant_message,
@@ -391,7 +409,7 @@ class ChatRunService:
         session_id: int,
         sources: list[dict[str, Any]] | None = None,
         user_message=None,
-    ) -> tuple[int, dict]:
+    ) -> tuple[int, StreamEventEnvelope]:
         if user_message is not None:
             user_message.status = "failed"
             user_message.error_message = error_message
@@ -414,7 +432,7 @@ class ChatRunService:
         return self._append_event(
             run,
             current_seq,
-            "run.failed",
+            RUN_FAILED_EVENT,
             {
                 "run_id": run.id,
                 "assistant_message_id": assistant_message.id,
@@ -426,11 +444,11 @@ class ChatRunService:
         self,
         run,
         current_seq: int,
-        event_name: str,
-        data: dict,
+        event_name: StreamEventName,
+        data: StreamEventPayload,
         *,
         commit: bool = True,
-    ) -> tuple[int, dict]:
+    ) -> tuple[int, StreamEventEnvelope]:
         next_seq = current_seq + 1
         self.chat_run_event_repository.append_event(
             run_id=run.id,
@@ -447,13 +465,13 @@ class ChatRunService:
         self,
         run,
         current_seq: int,
-        events: list[tuple[str, dict[str, Any]]],
-    ) -> tuple[int, list[dict]]:
+        events: list[StreamEventBatchItem],
+    ) -> tuple[int, list[StreamEventEnvelope]]:
         if not events:
             return current_seq, []
 
         next_seq = current_seq
-        presented_events: list[dict] = []
+        presented_events: list[StreamEventEnvelope] = []
         for event_name, data in events:
             next_seq += 1
             self.chat_run_event_repository.append_event(

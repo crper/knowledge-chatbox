@@ -27,6 +27,7 @@ from knowledge_chatbox_api.services.chat.retry_service import (
     RetryTargetNotFoundError,
 )
 from knowledge_chatbox_api.services.chat.runtime_settings import build_chat_runtime_settings
+from knowledge_chatbox_api.services.documents.query_service import DocumentQueryService
 from knowledge_chatbox_api.services.settings.settings_service import SettingsService
 from knowledge_chatbox_api.utils.chroma import get_chroma_store
 
@@ -65,6 +66,7 @@ class ChatApplicationService:
         self.chat_run_repository = ChatRunRepository(session)
         self.chat_run_event_repository = ChatRunEventRepository(session)
         self.document_repository = DocumentRepository(session)
+        self.document_query_service = DocumentQueryService(session)
 
     def create_session(
         self,
@@ -185,7 +187,10 @@ class ChatApplicationService:
     ) -> Any:
         """Link one chat attachment to a persisted document record."""
         message = self._require_owned_message(actor, message_id)
-        document_version = self.document_repository.get_by_id(document_revision_id)
+        document_version = self.document_query_service.get_document_revision(
+            actor,
+            document_revision_id,
+        )
         if document_version is None:
             raise ChatRouteError(404, "document_not_found", "Document not found.")
         document = self.document_repository.get_document_entity(document_version.document_id)

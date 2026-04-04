@@ -144,13 +144,27 @@ class PromptAttachmentService:
             if not isinstance(candidate_path, str) or not candidate_path:
                 continue
             try:
-                content = Path(candidate_path).read_text(encoding="utf-8").strip()
+                content = self._read_attached_document_preview(Path(candidate_path))
             except (OSError, UnicodeDecodeError):
                 continue
             if content:
-                return self._truncate_attached_document_text(content)
+                return content
 
         raise ValueError(DOCUMENT_ATTACHMENT_PROCESSING_ERROR_MESSAGE)
+
+    def _read_attached_document_preview(self, path: Path) -> str:
+        chunks: list[str] = []
+
+        with path.open(encoding="utf-8") as stream:
+            while True:
+                chunk = stream.read(1024)
+                if not chunk:
+                    return "".join(chunks).strip()
+
+                chunks.append(chunk)
+                preview = "".join(chunks).strip()
+                if len(preview) > ATTACHED_DOCUMENT_PROMPT_CHAR_LIMIT:
+                    return self._truncate_attached_document_text(preview)
 
     def _truncate_attached_document_text(self, content: str) -> str:
         if len(content) <= ATTACHED_DOCUMENT_PROMPT_CHAR_LIMIT:

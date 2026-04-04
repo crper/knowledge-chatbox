@@ -55,6 +55,11 @@ class DocumentQueryService:
         document = self.require_document(actor, document_id)
         return self.document_repository.list_versions(document.id)
 
+    def count_pending_documents(self, actor) -> int:
+        return self.document_repository.count_latest_pending(
+            space_ids=self._visible_space_ids(actor.id)
+        )
+
     def require_document(self, actor, document_id: int) -> Document:
         document = self.get_document(actor, document_id)
         if document is None:

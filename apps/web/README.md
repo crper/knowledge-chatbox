@@ -54,6 +54,8 @@
 
 这些命令默认建立在仓库根目录已经执行过 `just setup` 的前提上。
 
+前端 Node 运行时版本由当前目录下的 `.node-version` 固定为 `24.14.1`。这样 `vp` 会直接解析到仓库当前认可的本地版本，避免把开发态启动建立在远端 `lts` 元数据是否可达上。
+
 ```bash
 cd apps/web
 vp run api:generate
@@ -79,6 +81,10 @@ vp build
 前端主要依赖：
 
 - `VITE_API_BASE_URL`：浏览器访问后端 API 的基地址
+  - 开发态默认建议留空，让前端直接走同源 `/api`
+  - `vp dev` 会通过 Vite proxy 把 `/api` 转发到本机 `8000`
+  - 如果要连独立后端，再显式填写 origin，例如 `http://localhost:8000`
+  - 不要在开发态把页面开在 `127.0.0.1:3000`，却把 `VITE_API_BASE_URL` 固定成 `http://localhost:8000`；这样 refresh cookie host 会不一致，看起来像登录恢复失效
 
 通常从仓库根目录 `.env` 读取，不单独维护一份前端私有环境文件。
 

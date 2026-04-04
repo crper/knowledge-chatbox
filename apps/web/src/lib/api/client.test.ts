@@ -146,6 +146,31 @@ describe("api client", () => {
     );
   });
 
+  it("maps upload readiness errors to localized messages", async () => {
+    await expect(
+      openapiRequestRequired(
+        Promise.resolve({
+          error: {
+            success: false,
+            data: null,
+            error: {
+              code: "embedding_not_configured",
+              message: "Document upload requires a configured embedding provider.",
+            },
+          },
+          response: new Response(null, {
+            status: 409,
+            statusText: "Conflict",
+          }),
+        }),
+      ),
+    ).rejects.toMatchObject({
+      code: "embedding_not_configured",
+      message: "上传前需要先配置检索 Provider。",
+      status: 409,
+    });
+  });
+
   it("normalizes low-level network failures into a localized service error", async () => {
     await expect(
       openapiRequestRequired(Promise.reject(new TypeError("Failed to fetch"))),

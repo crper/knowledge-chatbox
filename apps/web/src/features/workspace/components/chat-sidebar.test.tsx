@@ -219,6 +219,105 @@ describe("ChatSidebar", () => {
     expect(JSON.parse(String(patchCall?.[1]?.body))).toMatchObject({ title: null });
   });
 
+  it("submits the rename draft when Enter is pressed", async () => {
+    const sessions: Array<{ id: number; title: string | null }> = [{ id: 1, title: "Session A" }];
+    const fetchMock = vi.fn().mockImplementation((input: string, init?: RequestInit) => {
+      if (input.endsWith("/api/chat/sessions/1") && init?.method === "PATCH") {
+        const body =
+          typeof init.body === "string" ? (JSON.parse(init.body) as { title?: string | null }) : {};
+        sessions[0] = { id: 1, title: body.title ?? null };
+        return Promise.resolve(
+          jsonResponse({
+            success: true,
+            data: sessions[0],
+            error: null,
+          }),
+        );
+      }
+
+      if (input.endsWith("/api/chat/sessions")) {
+        return Promise.resolve(
+          jsonResponse({
+            success: true,
+            data: sessions,
+            error: null,
+          }),
+        );
+      }
+
+      return Promise.resolve(jsonResponse({ success: true, data: [], error: null }));
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderSidebar("/chat/1");
+
+    fireEvent.click(await screen.findByRole("button", { name: "重命名 Session A" }));
+    const input = screen.getByRole("textbox", { name: "会话名称" });
+    fireEvent.change(input, {
+      target: { value: "Session A Renamed" },
+    });
+    fireEvent.keyDown(input, {
+      key: "Enter",
+      code: "Enter",
+      charCode: 13,
+    });
+
+    expect(await screen.findByRole("link", { name: "Session A Renamed" })).toBeInTheDocument();
+
+    const patchCall = fetchMock.mock.calls.find(
+      ([url, init]) =>
+        typeof url === "string" && url.endsWith("/api/chat/sessions/1") && init?.method === "PATCH",
+    );
+
+    expect(patchCall).toBeDefined();
+    expect(JSON.parse(String(patchCall?.[1]?.body))).toMatchObject({
+      title: "Session A Renamed",
+    });
+  });
+
+  it("does not submit the rename draft while IME composition is active", async () => {
+    const fetchMock = vi.fn().mockImplementation((input: string) => {
+      if (input.endsWith("/api/chat/sessions")) {
+        return Promise.resolve(
+          jsonResponse({
+            success: true,
+            data: [{ id: 1, title: "Session A" }],
+            error: null,
+          }),
+        );
+      }
+
+      return Promise.resolve(jsonResponse({ success: true, data: [], error: null }));
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderSidebar("/chat/1");
+
+    fireEvent.click(await screen.findByRole("button", { name: "重命名 Session A" }));
+    const input = screen.getByRole("textbox", { name: "会话名称" });
+    fireEvent.change(input, {
+      target: { value: "会话 A" },
+    });
+    fireEvent.keyDown(input, {
+      key: "Enter",
+      code: "Enter",
+      charCode: 13,
+      isComposing: true,
+    });
+
+    expect(
+      fetchMock.mock.calls.some(
+        ([url, init]) =>
+          typeof url === "string" &&
+          url.endsWith("/api/chat/sessions/1") &&
+          init?.method === "PATCH",
+      ),
+    ).toBe(false);
+    expect(screen.getByRole("textbox", { name: "会话名称" })).toHaveValue("会话 A");
+  });
+
   it("renders each session row as a concrete chat route link", async () => {
     useChatUiStore.setState({
       activeSessionId: null,

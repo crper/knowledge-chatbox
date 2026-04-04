@@ -42,6 +42,7 @@ class VoyageEmbeddingAdapter(BaseEmbeddingAdapter):
                     "Authorization": f"Bearer {api_key}",
                     "content-type": "application/json",
                 },
+                trust_env=False,
             )
             self._client_cache[key] = client
         return client

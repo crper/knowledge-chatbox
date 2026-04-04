@@ -140,6 +140,30 @@ def test_document_version_number_must_be_unique_within_document(migrated_db_sess
         migrated_db_session.commit()
 
 
+def test_document_revision_derives_mime_type_from_file_type() -> None:
+    image_revision = DocumentRevision(
+        document_id=1,
+        revision_no=1,
+        source_filename="image.webp",
+        content_hash="hash-1",
+        file_type="webp",
+        ingest_status="uploaded",
+        source_path="/uploads/image.webp",
+    )
+    unknown_revision = DocumentRevision(
+        document_id=1,
+        revision_no=2,
+        source_filename="archive.bin",
+        content_hash="hash-2",
+        file_type="bin",
+        ingest_status="uploaded",
+        source_path="/uploads/archive.bin",
+    )
+
+    assert image_revision.mime_type == "image/webp"
+    assert unknown_revision.mime_type == "application/octet-stream"
+
+
 def test_new_upload_creates_document_and_version_one(
     migrated_db_session,
     monkeypatch: pytest.MonkeyPatch,
@@ -161,6 +185,7 @@ def test_new_upload_creates_document_and_version_one(
     assert result.document.logical_name == "spec.pdf"
     assert result.version.version_number == 1
     assert result.version.document_id == result.document.id
+    assert result.version.mime_type == "application/pdf"
     assert result.version.supersedes_version_id is None
     assert result.duplicate_content is False
     assert Path(result.version.origin_path).exists()

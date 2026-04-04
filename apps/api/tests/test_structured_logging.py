@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+from unittest.mock import ANY
+
 from fastapi.testclient import TestClient
 
 from knowledge_chatbox_api.core.config import get_settings
 from knowledge_chatbox_api.db.session import create_session_factory
-from knowledge_chatbox_api.services.documents.ingestion_service import IngestionService
+from knowledge_chatbox_api.services.documents.ingestion_service import (
+    IngestionMetrics,
+    IngestionService,
+)
 
 
 class LoggerSpy:
@@ -43,8 +48,14 @@ class UnifiedResponseAdapterStub:
 
 class EmbeddingAdapterStub:
     def embed(self, texts: list[str], settings) -> list[list[float]]:
+        del settings
+        return [[0.1] * 384 for _ in texts]
+
+
+class FailingEmbeddingAdapterStub:
+    def embed(self, texts: list[str], settings) -> list[list[float]]:
         del texts, settings
-        return [[0.1] * 384]
+        raise RuntimeError("embedding backend unavailable")
 
 
 class FailingResponseAdapterStub:
@@ -61,11 +72,21 @@ def login_admin(api_client: TestClient) -> None:
     assert response.status_code == 200
 
 
+def stub_document_index_embedding(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "knowledge_chatbox_api.services.documents.ingestion_service.build_embedding_adapter",
+        lambda _route: EmbeddingAdapterStub(),
+    )
+
+
 def test_sync_chat_logs_prompt_and_response_summary(
     api_client: TestClient,
+    configure_upload_provider,
     monkeypatch,
 ) -> None:
+    del configure_upload_provider
     chat_logger = LoggerSpy()
+    stub_document_index_embedding(monkeypatch)
     monkeypatch.setattr(
         "knowledge_chatbox_api.services.chat.chat_application_service.build_response_adapter_from_settings",
         lambda _settings_record: UnifiedResponseAdapterStub(),
@@ -105,9 +126,13 @@ def test_sync_chat_logs_prompt_and_response_summary(
             "event": "chat_prompt_assembled",
             "level": "info",
             "attachment_count": 0,
+            "attachment_revision_scope_count": 0,
             "response_model": "gpt-5.4",
             "response_provider": "openai",
+            "retrieval_candidate_count": 1,
+            "retrieval_latency_ms": ANY,
             "retrieved_source_count": 1,
+            "retrieval_strategy": "vector",
             "session_id": session_id,
         },
         {
@@ -121,6 +146,63 @@ def test_sync_chat_logs_prompt_and_response_summary(
             "session_id": session_id,
         },
     ]
+
+
+def test_sync_chat_logs_lexical_retrieval_strategy_when_embedding_generation_fails(
+    api_client: TestClient,
+    configure_upload_provider,
+    monkeypatch,
+) -> None:
+    del configure_upload_provider
+    chat_logger = LoggerSpy()
+    stub_document_index_embedding(monkeypatch)
+    monkeypatch.setattr(
+        "knowledge_chatbox_api.services.chat.chat_application_service.build_response_adapter_from_settings",
+        lambda _settings_record: UnifiedResponseAdapterStub(),
+    )
+    monkeypatch.setattr(
+        "knowledge_chatbox_api.services.chat.chat_application_service.build_embedding_adapter_from_settings",
+        lambda _settings_record: FailingEmbeddingAdapterStub(),
+    )
+    monkeypatch.setattr("knowledge_chatbox_api.services.chat.chat_service.logger", chat_logger)
+
+    login_admin(api_client)
+    upload_response = api_client.post(
+        "/api/documents/upload",
+        files={
+            "file": (
+                "guide.txt",
+                b"OpenAI provider setup guide.\nUse the API key and base URL for setup.",
+                "text/plain",
+            )
+        },
+    )
+    assert upload_response.status_code == 201
+    session_response = api_client.post("/api/chat/sessions", json={"title": "lexical log session"})
+    session_id = session_response.json()["data"]["id"]
+
+    response = api_client.post(
+        f"/api/chat/sessions/{session_id}/messages",
+        json={
+            "content": "How do I set up OpenAI?",
+            "client_request_id": "req-chat-log-sync-lexical-1",
+        },
+    )
+
+    assert response.status_code == 200
+    assert chat_logger.records[0] == {
+        "event": "chat_prompt_assembled",
+        "level": "info",
+        "attachment_count": 0,
+        "attachment_revision_scope_count": 0,
+        "response_model": "gpt-5.4",
+        "response_provider": "openai",
+        "retrieval_candidate_count": 1,
+        "retrieval_latency_ms": ANY,
+        "retrieved_source_count": 1,
+        "retrieval_strategy": "lexical",
+        "session_id": session_id,
+    }
 
 
 def test_stream_chat_logs_run_lifecycle(
@@ -225,9 +307,12 @@ def test_sync_chat_logs_failure_summary(
 
 def test_document_upload_logs_completed_sync_ingestion(
     api_client: TestClient,
+    configure_upload_provider,
     monkeypatch,
 ) -> None:
+    del configure_upload_provider
     ingestion_logger = LoggerSpy()
+    stub_document_index_embedding(monkeypatch)
     monkeypatch.setattr(IngestionService, "logger", ingestion_logger)
 
     login_admin(api_client)
@@ -244,18 +329,24 @@ def test_document_upload_logs_completed_sync_ingestion(
             "level": "info",
             "background_processing": False,
             "deduplicated": False,
+            "chunk_count": payload["revision"]["chunk_count"],
             "document_id": payload["document"]["id"],
             "document_revision_id": payload["revision"]["id"],
             "file_type": "txt",
+            "file_size_bytes": payload["revision"]["file_size"],
             "filename": "note.txt",
+            "index_latency_ms": ANY,
+            "normalize_latency_ms": ANY,
         }
     ]
 
 
 def test_document_background_ingestion_logs_structured_failure(
     api_client: TestClient,
+    configure_upload_provider,
     monkeypatch,
 ) -> None:
+    del configure_upload_provider
     ingestion_logger = LoggerSpy()
     monkeypatch.setattr(IngestionService, "logger", ingestion_logger)
     monkeypatch.setattr(
@@ -291,4 +382,66 @@ def test_document_background_ingestion_logs_structured_failure(
         "exception_type": "RuntimeError",
         "failure_stage": "background_ingestion",
         "file_type": "png",
+    }
+
+
+def test_document_background_ingestion_logs_structured_success(
+    api_client: TestClient,
+    configure_upload_provider,
+    monkeypatch,
+    tmp_path,
+) -> None:
+    del configure_upload_provider
+    ingestion_logger = LoggerSpy()
+    stub_document_index_embedding(monkeypatch)
+    monkeypatch.setattr(IngestionService, "logger", ingestion_logger)
+    monkeypatch.setattr(
+        "knowledge_chatbox_api.tasks.document_jobs.complete_document_ingestion",
+        lambda *_args: True,
+    )
+
+    login_admin(api_client)
+    upload_response = api_client.post(
+        "/api/documents/upload",
+        files={"file": ("image.png", b"\x89PNG\r\n\x1a\n", "image/png")},
+    )
+    assert upload_response.status_code == 202
+    payload = upload_response.json()["data"]
+    revision_id = payload["revision"]["id"]
+    document_id = payload["document"]["id"]
+    normalized_path = tmp_path / "normalized" / "image.md"
+
+    def _ingest_revision(self, *, document_version, file_type: str, use_vision: bool):
+        del self, file_type, use_vision
+        normalized_path.parent.mkdir(parents=True, exist_ok=True)
+        normalized_path.write_text("normalized image content", encoding="utf-8")
+        document_version.normalized_path = str(normalized_path)
+        document_version.chunk_count = 1
+        return (
+            str(normalized_path),
+            [],
+            IngestionMetrics(index_latency_ms=34, normalize_latency_ms=12),
+        )
+
+    monkeypatch.setattr(IngestionService, "_ingest_revision", _ingest_revision)
+
+    session_factory = create_session_factory()
+    with session_factory() as session:
+        revision = IngestionService(session, get_settings()).complete_document_ingestion(
+            revision_id
+        )
+        assert revision.ingest_status == "indexed"
+
+    assert ingestion_logger.records[-1] == {
+        "event": "document_background_ingestion_completed",
+        "level": "info",
+        "background_processing_latency_ms": ANY,
+        "chunk_count": 1,
+        "document_id": document_id,
+        "document_revision_id": revision_id,
+        "file_size_bytes": payload["revision"]["file_size"],
+        "file_type": "png",
+        "filename": "image.png",
+        "index_latency_ms": 34,
+        "normalize_latency_ms": 12,
     }

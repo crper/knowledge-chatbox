@@ -124,6 +124,7 @@ export const MessageRow = memo(function MessageRow({
     [attachmentDescriptors, previewIndexes],
   );
   const roleLabel = isAssistantMessage ? assistantLabel : isUserMessage ? userLabel : systemLabel;
+  const bubbleWidthMode = isUserMessage ? "fit" : "adaptive";
   const statusMeta =
     message.status === "failed"
       ? {
@@ -260,15 +261,19 @@ export const MessageRow = memo(function MessageRow({
       </div>
       <div
         className={cn(
-          "surface-liquid w-fit max-w-full overflow-hidden rounded-[1.45rem]",
+          "surface-liquid min-w-0 max-w-full overflow-hidden rounded-[1.45rem]",
+          bubbleWidthMode === "adaptive" ? "w-full" : "w-fit",
           isUserMessage ? "border-primary/16" : "",
         )}
+        data-message-bubble-width={bubbleWidthMode}
+        data-testid={`chat-message-bubble-${message.id}`}
       >
         <div className="space-y-3 px-4 py-4 md:px-5">
           {isAssistantMessage ? (
             <MarkdownMessage
               content={assistantContent}
               isStreaming={message.status === "pending" || message.status === "streaming"}
+              testId="chat-markdown-body"
             />
           ) : message.content.trim() ? (
             <p className="text-ui-body break-words whitespace-pre-wrap text-foreground">

@@ -33,6 +33,13 @@ class EmbeddingAdapterStub:
         return [[0.1] * 384]
 
 
+def stub_document_index_embedding(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "knowledge_chatbox_api.services.documents.ingestion_service.build_embedding_adapter",
+        lambda _route: EmbeddingAdapterStub(),
+    )
+
+
 def login_admin(api_client: TestClient) -> None:
     response = api_client.post(
         "/api/auth/login",
@@ -85,8 +92,11 @@ def comparable_message_fields(message: dict) -> dict:
 
 def test_sync_and_stream_chat_produce_equivalent_successful_messages_and_sources(
     api_client: TestClient,
+    configure_upload_provider,
     monkeypatch,
 ) -> None:
+    del configure_upload_provider
+    stub_document_index_embedding(monkeypatch)
     monkeypatch.setattr(
         "knowledge_chatbox_api.services.chat.chat_application_service.build_response_adapter_from_settings",
         lambda _settings_record: UnifiedResponseAdapterStub(),
@@ -153,6 +163,7 @@ def test_sync_and_stream_chat_produce_equivalent_failure_messages(
     api_client: TestClient,
     monkeypatch,
 ) -> None:
+    stub_document_index_embedding(monkeypatch)
     monkeypatch.setattr(
         "knowledge_chatbox_api.services.chat.chat_application_service.build_response_adapter_from_settings",
         lambda _settings_record: UnifiedFailingResponseAdapterStub(),

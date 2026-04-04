@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from knowledge_chatbox_api.utils import document_types
+
 LISTABLE_DOCUMENT_STATUSES = ("uploaded", "processing", "indexed", "failed")
 DEDUPLICABLE_DOCUMENT_STATUSES = ("uploaded", "processing", "indexed")
 TEXT_DOCUMENT_FILE_TYPES = frozenset({"txt"})
@@ -19,24 +21,4 @@ SUPPORTED_DOCUMENT_FILE_TYPES = frozenset(
     }
 )
 
-CONTENT_TYPE_TO_FILE_TYPE = {
-    "text/plain": "txt",
-    "text/markdown": "md",
-    "application/pdf": "pdf",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
-    "image/png": "png",
-    "image/jpeg": "jpg",
-    "image/webp": "webp",
-}
-
-
-def derive_section_title(content: str) -> str | None:
-    """从文档内容首行提取章节标题。"""
-    for line in content.splitlines():
-        stripped = line.strip()
-        if not stripped:
-            continue
-        if stripped.startswith("#"):
-            return stripped.lstrip("#").strip() or None
-        return stripped[:120]
-    return None
+CONTENT_TYPE_TO_FILE_TYPE = document_types.CONTENT_TYPE_TO_FILE_TYPE

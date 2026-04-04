@@ -231,6 +231,10 @@ describe("ChatPage rendering", () => {
     renderChatPage();
 
     expect(await screen.findByText("正在生成回答")).toBeInTheDocument();
+    expect(screen.getByTestId("assistant-waiting-card")).toHaveAttribute(
+      "data-waiting-card-tone",
+      "assistant",
+    );
     expect(screen.queryByText("开始您今天的第一个问题？")).not.toBeInTheDocument();
   });
 });

@@ -2,10 +2,13 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { MemoryRouter } from "react-router-dom";
 
 import { i18n } from "@/i18n";
+import { THEME_SYNC_ON_LOGIN_STORAGE_KEY } from "@/lib/config/constants";
 import { useSessionStore } from "@/lib/auth/session-store";
+import { setAccessToken } from "@/lib/auth/token-store";
 import { AppProviders } from "@/providers/app-providers";
 import { AppRouter } from "@/router";
 import { buildAppSettings, buildAppUser } from "@/test/fixtures/app";
+import { createAuthFetchMock, type FetchHandler } from "@/test/auth";
 import { jsonResponse } from "@/test/http";
 
 const sonnerMocks = vi.hoisted(() => ({
@@ -26,167 +29,114 @@ function authenticatedFetch(
   role: "admin" | "user" | null = null,
   options?: { loginError?: { code?: string; message?: string; status: number } },
 ) {
-  return vi.fn().mockImplementation((input: string, init?: RequestInit) => {
-    if (input.endsWith("/api/auth/bootstrap")) {
-      if (!role) {
+  const user = role ? buildAppUser(role) : null;
+  const extraHandlers: FetchHandler[] = [
+    (input, init) => {
+      if (input.endsWith("/api/auth/login")) {
+        const loginError = options?.loginError;
+        if (loginError) {
+          return Promise.resolve(
+            jsonResponse(
+              {
+                success: false,
+                data: null,
+                error: {
+                  code: loginError.code,
+                  message: loginError.message,
+                },
+              },
+              { status: loginError.status },
+            ),
+          );
+        }
+
         return Promise.resolve(
           jsonResponse({
             success: true,
             data: {
-              authenticated: false,
-              access_token: null,
-              expires_in: null,
+              access_token: "login-token",
+              expires_in: 900,
               token_type: "Bearer",
-              user: null,
+              user: buildAppUser("admin"),
             },
             error: null,
           }),
         );
       }
 
-      return Promise.resolve(
-        jsonResponse({
-          success: true,
-          data: {
-            authenticated: true,
-            access_token: "refreshed-token",
-            expires_in: 900,
-            token_type: "Bearer",
-            user: buildAppUser(role),
-          },
-          error: null,
-        }),
-      );
-    }
-
-    if (input.endsWith("/api/auth/refresh")) {
-      if (!role) {
+      if (input.endsWith("/api/auth/change-password")) {
         return Promise.resolve(
-          jsonResponse(
-            { success: false, data: null, error: { code: "unauthorized" } },
-            { status: 401 },
-          ),
-        );
-      }
-
-      return Promise.resolve(
-        jsonResponse({
-          success: true,
-          data: {
-            access_token: "refreshed-token",
-            expires_in: 900,
-            token_type: "Bearer",
-          },
-          error: null,
-        }),
-      );
-    }
-
-    if (input.endsWith("/api/auth/me")) {
-      if (!role) {
-        return Promise.resolve(
-          jsonResponse(
-            { success: false, data: null, error: { code: "unauthorized" } },
-            { status: 401 },
-          ),
-        );
-      }
-
-      return Promise.resolve(
-        jsonResponse({
-          success: true,
-          data: buildAppUser(role),
-          error: null,
-        }),
-      );
-    }
-
-    if (input.endsWith("/api/auth/login")) {
-      const loginError = options?.loginError;
-      if (loginError) {
-        return Promise.resolve(
-          jsonResponse(
-            {
-              success: false,
-              data: null,
-              error: {
-                code: loginError.code,
-                message: loginError.message,
-              },
-            },
-            { status: loginError.status },
-          ),
-        );
-      }
-
-      return Promise.resolve(
-        jsonResponse({
-          success: true,
-          data: {
-            access_token: "login-token",
-            expires_in: 900,
-            token_type: "Bearer",
-            user: buildAppUser("admin"),
-          },
-          error: null,
-        }),
-      );
-    }
-
-    if (input.endsWith("/api/auth/change-password")) {
-      return Promise.resolve(
-        jsonResponse({
-          success: true,
-          data: buildAppUser("admin"),
-          error: null,
-        }),
-      );
-    }
-
-    if (input.endsWith("/api/auth/preferences")) {
-      const requestBody: { theme_preference: "dark" | "light" | "system" } =
-        typeof init?.body === "string"
-          ? (JSON.parse(init.body) as { theme_preference: "dark" | "light" | "system" })
-          : { theme_preference: "dark" };
-
-      return Promise.resolve(
-        jsonResponse({
-          success: true,
-          data: buildAppUser("admin", {
-            theme_preference: requestBody.theme_preference,
+          jsonResponse({
+            success: true,
+            data: buildAppUser("admin"),
+            error: null,
           }),
-          error: null,
-        }),
-      );
-    }
+        );
+      }
 
-    if (input.endsWith("/api/settings")) {
-      return Promise.resolve(
-        jsonResponse({
-          success: true,
-          data: buildAppSettings({
-            active_index_generation: 1,
-            provider_profiles: {
-              openai: {
-                api_key: "",
-              },
-              ollama: {
-                base_url: "http://localhost:11434",
-              },
-            },
+      if (input.endsWith("/api/auth/preferences")) {
+        const requestBody: { theme_preference: "dark" | "light" | "system" } =
+          typeof init?.body === "string"
+            ? (JSON.parse(init.body) as { theme_preference: "dark" | "light" | "system" })
+            : { theme_preference: "dark" };
+
+        return Promise.resolve(
+          jsonResponse({
+            success: true,
+            data: buildAppUser("admin", {
+              theme_preference: requestBody.theme_preference,
+            }),
+            error: null,
           }),
-          error: null,
-        }),
-      );
-    }
+        );
+      }
 
-    return Promise.resolve(jsonResponse({ success: true, data: [], error: null }));
+      if (input.endsWith("/api/chat/sessions")) {
+        return Promise.resolve(
+          jsonResponse({
+            success: true,
+            data: [{ id: 1, title: "Session A", reasoning_mode: "default" }],
+            error: null,
+          }),
+        );
+      }
+
+      if (input.endsWith("/api/chat/profile")) {
+        return Promise.resolve(
+          jsonResponse({
+            success: true,
+            data: { configured: true, provider: "openai", model: "gpt-5.4" },
+            error: null,
+          }),
+        );
+      }
+
+      return undefined;
+    },
+  ];
+
+  return createAuthFetchMock({
+    user,
+    status: user ? 200 : 401,
+    settings: buildAppSettings({
+      active_index_generation: 1,
+      provider_profiles: {
+        openai: {
+          api_key: "",
+        },
+        ollama: {
+          base_url: "http://localhost:11434",
+        },
+      },
+    }),
+    extraHandlers,
   });
 }
 
 describe("login page", () => {
   beforeEach(async () => {
     localStorage.clear();
+    setAccessToken(null);
     useSessionStore.getState().reset();
     sonnerMocks.error.mockReset();
     sonnerMocks.success.mockReset();
@@ -376,8 +326,7 @@ describe("login page", () => {
       </MemoryRouter>,
     );
 
-    fireEvent.pointerDown(await screen.findByRole("button", { name: "主题" }));
-    fireEvent.click(await screen.findByText("深色"));
+    window.sessionStorage.setItem(THEME_SYNC_ON_LOGIN_STORAGE_KEY, "dark");
     fireEvent.change(screen.getByLabelText("用户名"), {
       target: { value: "admin" },
     });
@@ -402,6 +351,114 @@ describe("login page", () => {
     expect(await screen.findByRole("button", { name: "新建会话" })).toBeInTheDocument();
     expect(document.documentElement).toHaveClass("dark");
     expect(window.localStorage.getItem("knowledge-chatbox-theme")).toBe("dark");
+  });
+
+  it("does not block sign-in navigation while theme preference sync is pending", async () => {
+    let resolvePreferencesRequest: (() => void) | undefined;
+    const fetchMock = vi.fn().mockImplementation((input: string, _init?: RequestInit) => {
+      if (input.endsWith("/api/auth/bootstrap")) {
+        return Promise.resolve(
+          jsonResponse({
+            success: true,
+            data: {
+              authenticated: false,
+              access_token: null,
+              expires_in: null,
+              token_type: "Bearer",
+              user: null,
+            },
+            error: null,
+          }),
+        );
+      }
+
+      if (input.endsWith("/api/auth/refresh")) {
+        return Promise.resolve(
+          jsonResponse(
+            { success: false, data: null, error: { code: "unauthorized" } },
+            { status: 401 },
+          ),
+        );
+      }
+
+      if (input.endsWith("/api/auth/me")) {
+        return Promise.resolve(
+          jsonResponse({
+            success: true,
+            data: buildAppUser("admin"),
+            error: null,
+          }),
+        );
+      }
+
+      if (input.endsWith("/api/auth/login")) {
+        return Promise.resolve(
+          jsonResponse({
+            success: true,
+            data: {
+              access_token: "login-token",
+              expires_in: 900,
+              token_type: "Bearer",
+              user: buildAppUser("admin"),
+            },
+            error: null,
+          }),
+        );
+      }
+
+      if (input.endsWith("/api/auth/preferences")) {
+        return new Promise((resolve) => {
+          resolvePreferencesRequest = () =>
+            resolve(
+              jsonResponse({
+                success: true,
+                data: buildAppUser("admin", { theme_preference: "dark" }),
+                error: null,
+              }),
+            );
+        });
+      }
+
+      if (input.endsWith("/api/settings")) {
+        return Promise.resolve(
+          jsonResponse({
+            success: true,
+            data: buildAppSettings(),
+            error: null,
+          }),
+        );
+      }
+
+      return Promise.resolve(jsonResponse({ success: true, data: [], error: null }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={["/login"]}>
+        <AppProviders>
+          <AppRouter />
+        </AppProviders>
+      </MemoryRouter>,
+    );
+
+    fireEvent.pointerDown(await screen.findByRole("button", { name: "主题" }));
+    fireEvent.click(await screen.findByText("深色"));
+    fireEvent.change(screen.getByLabelText("用户名"), {
+      target: { value: "admin" },
+    });
+    fireEvent.change(screen.getByLabelText("密码"), {
+      target: { value: "secret" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "登录" }));
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(([url]) => String(url).endsWith("/api/auth/preferences")),
+      ).toBe(true);
+    });
+    expect(await screen.findByRole("button", { name: "新建会话" })).toBeInTheDocument();
+
+    resolvePreferencesRequest?.();
   });
 
   it("prevents duplicate login submissions while pending", async () => {

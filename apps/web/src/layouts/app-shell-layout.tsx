@@ -2,7 +2,7 @@
  * @file 应用壳层布局布局模块。
  */
 
-import { useEffect, useEffectEvent, useMemo, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
@@ -26,10 +26,10 @@ import { CollapsedEdgeHandle } from "@/features/workspace/components/collapsed-e
 import { StandardSidebar } from "@/features/workspace/components/standard-sidebar";
 import { getWorkspaceLabelKey } from "@/features/workspace/workspace-links";
 import { queryKeys } from "@/lib/api/query-keys";
-import { THEME_SYNC_ON_LOGIN_STORAGE_KEY, type ThemeMode } from "@/lib/config/constants";
+import { clearPendingThemeSync, resolvePendingThemeSync } from "@/lib/config/theme-sync-storage";
 import { useIsMobile } from "@/lib/hooks/use-mobile";
 import type { AppUser } from "@/lib/api/client";
-import { markSessionAnonymous } from "@/lib/auth/session-manager";
+import { logoutSession } from "@/lib/auth/session-manager";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/providers/theme-provider";
 import { useChatUiStore } from "@/features/chat/store/chat-ui-store";
@@ -42,15 +42,6 @@ const DEFAULT_CHAT_WORKSPACE_PANELS: ChatWorkspacePanelsState = {
   leftCollapsed: false,
   rightCollapsed: false,
 };
-
-function readPendingThemeSync(): ThemeMode | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  const value = window.sessionStorage.getItem(THEME_SYNC_ON_LOGIN_STORAGE_KEY);
-  return value === "light" || value === "dark" || value === "system" ? value : null;
-}
 
 function isEditableHotkeyTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) {
@@ -82,16 +73,35 @@ export function AppShellLayout({ user }: { user: AppUser }) {
   const { setTheme } = useTheme();
   const clearAttachments = useChatUiStore((state) => state.clearAttachments);
   const setDraft = useChatUiStore((state) => state.setDraft);
+  const pendingThemeRef = useRef<AppUser["theme_preference"] | null>(null);
+  const pendingThemeBaseRef = useRef<AppUser["theme_preference"] | null>(null);
 
   useEffect(() => {
-    const pendingTheme = readPendingThemeSync();
-    if (pendingTheme !== null && pendingTheme !== user.theme_preference) {
-      setTheme(pendingTheme);
+    const pendingThemeSync = resolvePendingThemeSync(user.theme_preference);
+
+    if (pendingThemeSync.shouldClearPendingTheme) {
+      clearPendingThemeSync();
+      pendingThemeRef.current = null;
+      pendingThemeBaseRef.current = null;
+      setTheme(pendingThemeSync.resolvedTheme);
       return;
     }
-    if (pendingTheme === user.theme_preference) {
-      window.sessionStorage.removeItem(THEME_SYNC_ON_LOGIN_STORAGE_KEY);
+
+    if (pendingThemeRef.current !== pendingThemeSync.pendingTheme) {
+      pendingThemeRef.current = pendingThemeSync.pendingTheme;
+      pendingThemeBaseRef.current = user.theme_preference;
+      setTheme(pendingThemeSync.resolvedTheme);
+      return;
     }
+
+    if (pendingThemeBaseRef.current === user.theme_preference) {
+      setTheme(pendingThemeSync.resolvedTheme);
+      return;
+    }
+
+    clearPendingThemeSync();
+    pendingThemeRef.current = null;
+    pendingThemeBaseRef.current = null;
     setTheme(user.theme_preference);
   }, [setTheme, user.theme_preference]);
 
@@ -140,7 +150,7 @@ export function AppShellLayout({ user }: { user: AppUser }) {
 
   const createSessionMutation = useMutation({
     mutationFn: createChatSession,
-    onSuccess: async (session) => {
+    onSuccess: (session) => {
       setDraft(session.id, "");
       clearAttachments(session.id);
       queryClient.setQueryData(
@@ -152,7 +162,6 @@ export function AppShellLayout({ user }: { user: AppUser }) {
         },
       );
       void navigate(buildChatSessionPath(session.id));
-      await queryClient.invalidateQueries({ queryKey: queryKeys.chat.sessions });
     },
   });
 
@@ -160,9 +169,7 @@ export function AppShellLayout({ user }: { user: AppUser }) {
     try {
       await logout();
     } finally {
-      markSessionAnonymous();
-      queryClient.setQueryData(queryKeys.auth.me, null);
-      await queryClient.invalidateQueries({ queryKey: queryKeys.auth.me });
+      await logoutSession(queryClient);
     }
   };
 
@@ -179,8 +186,8 @@ export function AppShellLayout({ user }: { user: AppUser }) {
     return (
       <main className="min-h-[100dvh] bg-background/95 px-4 py-4 text-foreground">
         {isMobile ? (
-          <div className="flex min-h-[calc(100dvh-2rem)] flex-col gap-3">
-            <div className="surface-liquid flex items-center justify-between rounded-[1.25rem] p-1.5">
+          <div className="flex min-h-[calc(100dvh-2rem)] flex-col gap-2.5 sm:gap-3">
+            <div className="surface-liquid grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-[1.25rem] p-1.5">
               <Sheet onOpenChange={setIsMobileNavigationOpen} open={isMobileNavigationOpen}>
                 <SheetTrigger asChild>
                   <Button aria-label={t("mobileSessionsAction")} size="icon-sm" variant="ghost">
@@ -215,7 +222,7 @@ export function AppShellLayout({ user }: { user: AppUser }) {
                 </SheetContent>
               </Sheet>
 
-              <div className="min-w-0 px-2 text-center">
+              <div className="min-w-0 px-1 text-center">
                 <p className="truncate text-sm font-medium text-foreground">
                   {t(getWorkspaceLabelKey(location.pathname), { ns: "common" })}
                 </p>
@@ -243,7 +250,7 @@ export function AppShellLayout({ user }: { user: AppUser }) {
               </Sheet>
             </div>
 
-            <div className="surface-liquid flex h-[calc(100dvh-6rem)] min-h-[calc(100dvh-6rem)] min-w-0 flex-col overflow-hidden rounded-[1.5rem]">
+            <div className="surface-liquid flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-[1.5rem]">
               <Outlet />
             </div>
           </div>
@@ -339,8 +346,8 @@ export function AppShellLayout({ user }: { user: AppUser }) {
   return (
     <main className="min-h-[100dvh] bg-background/95 px-4 py-4 text-foreground">
       {isMobile ? (
-        <div className="flex min-h-[calc(100dvh-2rem)] flex-col gap-3">
-          <div className="surface-liquid flex items-center justify-between rounded-[1.25rem] p-1.5">
+        <div className="flex min-h-[calc(100dvh-2rem)] flex-col gap-2.5 sm:gap-3">
+          <div className="surface-liquid grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-[1.25rem] p-1.5">
             <Sheet onOpenChange={setIsMobileNavigationOpen} open={isMobileNavigationOpen}>
               <SheetTrigger asChild>
                 <Button
@@ -376,16 +383,16 @@ export function AppShellLayout({ user }: { user: AppUser }) {
               </SheetContent>
             </Sheet>
 
-            <div className="min-w-0 px-2 text-center">
+            <div className="min-w-0 px-1 text-center">
               <p className="truncate text-sm font-medium text-foreground">
                 {t(getWorkspaceLabelKey(location.pathname), { ns: "common" })}
               </p>
             </div>
 
-            <div className="size-8 shrink-0" />
+            <div className="size-11 shrink-0" />
           </div>
 
-          <div className="surface-liquid flex min-h-[calc(100dvh-6rem)] min-w-0 flex-col rounded-[1.5rem]">
+          <div className="surface-liquid flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-[1.5rem]">
             <Outlet />
           </div>
         </div>

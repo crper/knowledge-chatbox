@@ -162,6 +162,7 @@ class ProviderRuntimeSettingsSource(Protocol):
     @property
     def active_index_generation(self) -> PositiveInt | None: ...
 
+
 _PROVIDER_PROFILES_ADAPTER = TypeAdapter(ProviderProfiles)
 _RESPONSE_ROUTE_ADAPTER = TypeAdapter(ResponseRouteConfig)
 _EMBEDDING_ROUTE_ADAPTER = TypeAdapter(EmbeddingRouteConfig)

@@ -14,20 +14,25 @@ from knowledge_chatbox_api.core.logging import get_logger
 from knowledge_chatbox_api.repositories.document_repository import DocumentRepository
 from knowledge_chatbox_api.schemas.common import Envelope
 from knowledge_chatbox_api.schemas.document import (
+    DocumentListSummaryRead,
     DocumentRevisionRead,
     DocumentSummaryRead,
     DocumentUploadRead,
+    DocumentUploadReadinessRead,
 )
 from knowledge_chatbox_api.services.documents.constants import IMAGE_DOCUMENT_FILE_TYPES
 from knowledge_chatbox_api.services.documents.errors import (
     DocumentFileNotFoundError,
     DocumentNotFoundError,
     DocumentUploadFailedError,
+    EmbeddingNotConfiguredError,
     InvalidDocumentError,
+    PendingEmbeddingNotConfiguredError,
     UnsupportedFileTypeError,
 )
 from knowledge_chatbox_api.services.documents.ingestion_service import IngestionService
 from knowledge_chatbox_api.services.documents.query_service import DocumentQueryService
+from knowledge_chatbox_api.services.documents.upload_readiness import get_document_upload_readiness
 from knowledge_chatbox_api.tasks import document_jobs
 from knowledge_chatbox_api.utils.files import save_upload_stream
 
@@ -100,6 +105,63 @@ def to_document_summary_read(document, latest_revision) -> DocumentSummaryRead:
         updated_by_user_id=document.updated_by_user_id,
         created_at=document.created_at,
         updated_at=document.updated_at,
+    )
+
+
+def to_document_upload_readiness_read(settings_record) -> DocumentUploadReadinessRead:
+    """把上传 readiness 结果转换为响应结构。"""
+    readiness = get_document_upload_readiness(settings_record)
+    return DocumentUploadReadinessRead(
+        can_upload=readiness.can_upload,
+        image_fallback=readiness.image_fallback,
+        blocking_reason=readiness.blocking_reason,
+    )
+
+
+def to_document_list_summary_read(*, pending_count: int) -> DocumentListSummaryRead:
+    return DocumentListSummaryRead(pending_count=pending_count)
+
+
+def ensure_document_upload_ready(settings_record) -> None:
+    """上传前阻止缺少 embedding 配置的请求继续落盘。"""
+    readiness = get_document_upload_readiness(settings_record)
+    if readiness.blocking_reason == "pending_embedding_not_configured":
+        raise PendingEmbeddingNotConfiguredError()
+    if readiness.blocking_reason == "embedding_not_configured":
+        raise EmbeddingNotConfiguredError()
+
+
+@router.get("/upload-readiness", response_model=Envelope[DocumentUploadReadinessRead])
+def get_document_upload_readiness_route(
+    session: DbSessionDep,
+    settings: SettingsDep,
+    current_user: CurrentUserDep,
+) -> Envelope[DocumentUploadReadinessRead]:
+    """返回资源上传所需的最小配置是否就绪。"""
+    del current_user
+    ingestion_service = IngestionService(session, settings)
+    settings_record = ingestion_service.settings_service.get_or_create_settings_record()
+    return Envelope(
+        success=True,
+        data=to_document_upload_readiness_read(settings_record),
+        error=None,
+    )
+
+
+@router.get("/summary", response_model=Envelope[DocumentListSummaryRead])
+def get_document_list_summary(
+    session: DbSessionDep,
+    _settings: SettingsDep,
+    current_user: CurrentUserDep,
+) -> Envelope[DocumentListSummaryRead]:
+    """返回资源列表的轻量摘要。"""
+    service = DocumentQueryService(session)
+    return Envelope(
+        success=True,
+        data=to_document_list_summary_read(
+            pending_count=service.count_pending_documents(current_user)
+        ),
+        error=None,
     )
 
 
@@ -185,6 +247,7 @@ async def upload_document(
     """处理Upload文档相关逻辑。"""
     service = IngestionService(session, settings)
     repository = DocumentRepository(session)
+    ensure_document_upload_ready(service.settings_service.get_or_create_settings_record())
     filename = file.filename or "upload.bin"
     content_type = file.content_type or "application/octet-stream"
     try:

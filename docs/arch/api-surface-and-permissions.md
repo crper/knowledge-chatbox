@@ -43,6 +43,8 @@
 ## 4. 资源接口
 
 - `GET /api/documents`
+- `GET /api/documents/summary`
+- `GET /api/documents/upload-readiness`
 - `GET /api/documents/{document_id}`
 - `GET /api/documents/{document_id}/revisions`
 - `POST /api/documents/upload`
@@ -55,9 +57,14 @@
 
 - 列表返回逻辑 document 视角，并内嵌 `latest_revision`
 - `GET /api/documents` 当前支持服务端 `query / type / status` 过滤；资源页搜索与筛选直接复用这条列表接口，不再只靠前端本地过滤
+- `GET /api/documents/summary` 当前只返回资源列表所需的轻量摘要字段；目前用于资源页筛选态下的 `pending_count` 轮询，不替代完整列表接口
+- `GET /api/documents/upload-readiness` 当前只返回资源上传所需的最小配置是否就绪；它不是 provider 实时探活接口
 - 修订历史单独走 `/revisions`
 - 上传返回 `{ deduplicated, document, revision, latest_revision }`
 - 同名同 hash 仍会直接命中已有修订并返回 `200`
+- 上传前会先校验当前 `embedding_route`；若活动 route 缺配置，返回 `409 embedding_not_configured`
+- 索引重建中若 `pending_embedding_route` 缺配置，也会阻断新上传并返回 `409 pending_embedding_not_configured`
+- `vision_route` 缺配置不会阻断图片上传；图片会退化成基础文件信息入库
 - `POST /api/documents/{document_id}/reindex` 会区分资源缺失与状态冲突：
   - 文档不存在：`404 document_not_found`
   - 文档尚未完成标准化：`409 document_not_normalized`
@@ -85,6 +92,7 @@
 - 附件输入当前以 `document_revision_id` 为准
 - 图片附件不会在前端请求里直接携带 provider-ready 二进制；文档附件也不会直接携带正文
 - 服务端会在调用 provider 前按 `document_revision_id` 读取原图或标准化文本，并完成当前轮附件限域
+- `POST /api/chat/messages/{message_id}/attachments/{attachment_id}/archive` 当前除了校验消息归属，也会校验目标 `document_revision_id` 是否属于调用者可见的 space；不会再允许跨用户 / 跨 space 归档附件引用
 - 更细的附件输入、检索限域和多附件合并语义，统一看 [runtime-flows.md](./runtime-flows.md)
 
 ## 6. 设置接口
