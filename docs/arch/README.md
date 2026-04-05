@@ -8,17 +8,17 @@
 
 ## 文档导航
 
-| 文档 | 什么时候打开 | 读完会知道什么 |
-| --- | --- | --- |
-| [system-overview.md](./system-overview.md) | 第一次接触仓库 | V1 目标、系统边界、核心模型、主链路和非目标 |
-| [auth-and-session-flow.md](./auth-and-session-flow.md) | 需要理解登录、启动恢复、refresh 与改密后失效 | access token / refresh session 分工、启动恢复、`401 -> refresh -> retry once`、改密后重新登录 |
-| [frontend-workspace.md](./frontend-workspace.md) | 需要理解 Web 工作台 | 三栏工作台、账户中枢、设置中心、页面边界、前端状态分工 |
-| [provider-and-settings.md](./provider-and-settings.md) | 需要改模型配置或排查 provider | OpenAI / Anthropic / Voyage / Ollama 配置、settings API、pending embedding route、索引代际切换 |
-| [api-surface-and-permissions.md](./api-surface-and-permissions.md) | 需要对接口或权限做改动 | 路由分组、角色边界、统一响应格式、幂等和流式约束 |
-| [database-design.md](./database-design.md) | 需要理解 SQLite 真相源 | 表分组、主外键关系、关键约束、状态机和数据归属 |
-| [runtime-flows.md](./runtime-flows.md) | 需要排查上传、问答、流式、重试、配置变更 | 启动补偿、入库回滚、同步/流式问答、索引重建、失败恢复 |
-| [repo-map-and-conventions.md](./repo-map-and-conventions.md) | 需要快速定位代码和验证命令 | 仓库目录职责、代码入口、验证命令、文档同步约束 |
-| [deployment-and-operations.md](./deployment-and-operations.md) | 需要跑本地、Docker 或重置数据 | Compose 拓扑、脚本职责、容器边界、重置数据与操作手册 |
+| 文档                                                               | 什么时候打开                                 | 读完会知道什么                                                                                 |
+| ------------------------------------------------------------------ | -------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| [system-overview.md](./system-overview.md)                         | 第一次接触仓库                               | V1 目标、系统边界、核心模型、主链路和非目标                                                    |
+| [auth-and-session-flow.md](./auth-and-session-flow.md)             | 需要理解登录、启动恢复、refresh 与改密后失效 | access token / refresh session 分工、启动恢复、`401 -> refresh -> retry once`、改密后重新登录  |
+| [frontend-workspace.md](./frontend-workspace.md)                   | 需要理解 Web 工作台                          | 三栏工作台、账户中枢、设置中心、页面边界、前端状态分工                                         |
+| [provider-and-settings.md](./provider-and-settings.md)             | 需要改模型配置或排查 provider                | OpenAI / Anthropic / Voyage / Ollama 配置、settings API、pending embedding route、索引代际切换 |
+| [api-surface-and-permissions.md](./api-surface-and-permissions.md) | 需要对接口或权限做改动                       | 路由分组、角色边界、统一响应格式、幂等和流式约束                                               |
+| [database-design.md](./database-design.md)                         | 需要理解 SQLite 真相源                       | 表分组、主外键关系、关键约束、状态机和数据归属                                                 |
+| [runtime-flows.md](./runtime-flows.md)                             | 需要排查上传、问答、流式、重试、配置变更     | 启动补偿、入库回滚、同步/流式问答、索引重建、失败恢复                                          |
+| [repo-map-and-conventions.md](./repo-map-and-conventions.md)       | 需要快速定位代码和验证命令                   | 仓库目录职责、代码入口、验证命令、文档同步约束                                                 |
+| [deployment-and-operations.md](./deployment-and-operations.md)     | 需要跑本地、Docker 或重置数据                | Compose 拓扑、脚本职责、容器边界、重置数据与操作手册                                           |
 
 ## 按场景进入
 

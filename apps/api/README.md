@@ -32,6 +32,7 @@
 - PyJWT
 - OpenAI / Anthropic / Voyage / Ollama
 - structlog / asgi-correlation-id
+- orjson（SSE 流式序列化）
 - uv
 - Ruff / pytest / pytest-httpx
 
@@ -96,7 +97,12 @@ apps/api/
     tasks/         # 启动补偿任务
     utils/         # 文件、哈希、Chroma 等工具
   migrations/      # Alembic migration
-  tests/           # 后端测试
+  tests/
+    integration/   # API / provider / 文档链路集成测试
+    unit/          # 纯服务 / 仓储 / 工具单测
+    runtime/       # just / 脚本 / 仓库入口运行时约束
+    migrations/    # migration smoke tests
+    fixtures/      # 测试工厂与复用 helper
   docker-entrypoint.sh
   Dockerfile
 ```
@@ -110,15 +116,15 @@ apps/api/
 
 ## 核心路由分组
 
-| 路由前缀 | 作用 | 主要入口 |
-| --- | --- | --- |
-| `/api/auth` | 登录态、登录、刷新 access token、登出、改密 | `api/routes/auth.py` |
-| `/api/users` | 管理员用户管理 | `api/routes/users.py` |
-| `/api/documents` | 资源上传前置条件、上传、列表、版本、重建索引、下载文件 | `api/routes/documents.py` |
-| `/api/chat` | 会话、分页消息读取、会话上下文摘要、同步问答、流式问答、活动 run | `api/routes/chat.py` |
-| `/api/settings` | 系统 provider 配置、系统提示词、连接测试 | `api/routes/settings.py` |
-| `/api/health` | 基础健康检查 | `api/routes/health.py` |
-| `/api/health/capabilities` | 当前 response / embedding / vision route 健康检查 | `api/routes/health.py` |
+| 路由前缀                   | 作用                                                             | 主要入口                  |
+| -------------------------- | ---------------------------------------------------------------- | ------------------------- |
+| `/api/auth`                | 登录态、登录、刷新 access token、登出、改密                      | `api/routes/auth.py`      |
+| `/api/users`               | 管理员用户管理                                                   | `api/routes/users.py`     |
+| `/api/documents`           | 资源上传前置条件、上传、列表、版本、重建索引、下载文件           | `api/routes/documents.py` |
+| `/api/chat`                | 会话、分页消息读取、会话上下文摘要、同步问答、流式问答、活动 run | `api/routes/chat.py`      |
+| `/api/settings`            | 系统 provider 配置、系统提示词、连接测试                         | `api/routes/settings.py`  |
+| `/api/health`              | 基础健康检查                                                     | `api/routes/health.py`    |
+| `/api/health/capabilities` | 当前 response / embedding / vision route 健康检查                | `api/routes/health.py`    |
 
 ## 本地开发
 
@@ -230,6 +236,7 @@ scripts/docker-deploy.sh build
 
 补充约定：
 
+- 后端测试目录当前以 `tests/integration`、`tests/unit`、`tests/runtime`、`tests/migrations`、`tests/fixtures` 为准，不再保留旧的平铺重复目录
 - `apps/api/tests/conftest.py` 当前统一收敛 TestClient、环境变量、SQLite/Chroma 临时目录，以及 HTTPS / `SESSION_COOKIE_SECURE` 相关测试场景；新增 API 集成测试时优先复用这里的 helper，而不是在各测试文件里重复拼装初始化流程
 
 ## 排查入口

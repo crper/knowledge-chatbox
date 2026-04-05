@@ -34,6 +34,7 @@
 - 不要直接使用 `pnpm`、`npm`、`yarn` 代替 `vp`。
 - 后端依赖和运行统一使用 `uv`。
 - 后端测试统一使用 `uv run --group dev python -m pytest`。
+- 前端基础交互组件统一基于 `Base UI` 组装；组合优先使用 `render`，不要再新增 `asChild` 或重新引入 `radix-ui`。
 
 ## 测试约束
 

@@ -73,4 +73,9 @@ These commands map to their corresponding tools. For example, `vp dev --port 300
 
 - [ ] Run `vp install` after pulling remote changes and before getting started.
 - [ ] Run `vp check` and `vp test` to validate changes.
+- [ ] Use MSW for API mocking in tests. Do not use `vi.spyOn(globalThis, "fetch")` or `vi.stubGlobal("fetch", mockFetch)`.
+- [ ] Use `createTestServer()` to create test environment with default handlers.
+- [ ] Use `overrideHandler()` to override specific handlers for individual tests.
+- [ ] Use `apiResponse()` and `apiError()` to create mock responses.
+- [ ] Do not use deprecated test utilities: `jsonResponse`, `apiSuccessResponse`, `apiErrorResponse`, `stubFetch`, `createAuthFetchMock`.
 <!--VITE PLUS END-->

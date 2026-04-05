@@ -43,15 +43,15 @@ knowledge-chatbox/
 
 ## 2. 目录职责
 
-| 目录 | 责任 |
-| --- | --- |
-| `apps/web` | React + Vite+ 前端工作台 |
-| `apps/api` | FastAPI 后端、SQLite（含 `FTS5` 词法兜底索引）、Chroma、provider 编排 |
-| `docs/arch` | 当前实现的长期架构文档 |
-| `examples/upload-samples` | 手工验证上传与问答链路的样例文件 |
-| `data` | 本地运行时数据目录，不是代码目录 |
-| `scripts` | Docker 部署和运维脚本 |
-| `apps/web/openapi` | 前端消费的 OpenAPI schema 快照 |
+| 目录                      | 责任                                                                  |
+| ------------------------- | --------------------------------------------------------------------- |
+| `apps/web`                | React + Vite+ 前端工作台                                              |
+| `apps/api`                | FastAPI 后端、SQLite（含 `FTS5` 词法兜底索引）、Chroma、provider 编排 |
+| `docs/arch`               | 当前实现的长期架构文档                                                |
+| `examples/upload-samples` | 手工验证上传与问答链路的样例文件                                      |
+| `data`                    | 本地运行时数据目录，不是代码目录                                      |
+| `scripts`                 | Docker 部署和运维脚本                                                 |
+| `apps/web/openapi`        | 前端消费的 OpenAPI schema 快照                                        |
 
 ## 3. 前端代码地图
 
@@ -66,15 +66,15 @@ knowledge-chatbox/
 
 ### 3.2 分层约定
 
-| 目录 | 责任 |
-| --- | --- |
-| `pages` | 路由入口和页面装配 |
-| `features` | 业务模块、API 调用、query/mutation 配置、局部状态、页面级编排 |
-| `components/ui` | 基础 UI 组件 |
-| `components/shared` | 跨 feature 复用的共享组件 |
-| `providers` | Query、i18n、theme 等顶层 provider |
-| `lib` | API 客户端、环境变量、hooks、store、utils |
-| `i18n` | 多语言文案 |
+| 目录                | 责任                                                          |
+| ------------------- | ------------------------------------------------------------- |
+| `pages`             | 路由入口和页面装配                                            |
+| `features`          | 业务模块、API 调用、query/mutation 配置、局部状态、页面级编排 |
+| `components/ui`     | 基础 UI 组件                                                  |
+| `components/shared` | 跨 feature 复用的共享组件                                     |
+| `providers`         | Query、i18n、theme 等顶层 provider                            |
+| `lib`               | API 客户端、环境变量、hooks、store、utils                     |
+| `i18n`              | 多语言文案                                                    |
 
 补充约定：
 
@@ -90,17 +90,18 @@ knowledge-chatbox/
 - `features/chat/utils/chat-session-recovery.ts` 负责最近访问聊天会话的本地持久化与恢复决策；`/chat` 入口恢复逻辑优先收敛在这里，不要把同一语义分散到多个路由守卫或页面副作用里，也不要在页面里先落空态再补跳转
 - `features/knowledge/components/upload-queue-summary.tsx` 负责资源页专用的紧凑上传队列；它不直接复用聊天附件面板，但沿用“标题 + 条目 + 行内操作”的信息结构
 - 工作台标准侧栏和会话侧栏骨架优先复用 `components/ui/sidebar`；账户中枢与全局偏好切换优先复用 `components/ui/dropdown-menu`；设置页状态提示优先复用 `components/ui/alert`；会话行辅助动作当前是标题区 + 水平动作 rail，不要再为同语义容器平行造一套业务样式组件
+- `components/ui/*` 当前统一基于 `Base UI` 组装；自定义包装组件优先暴露 `render` 而不是 `asChild`；链接样式统一直接复用 `buttonVariants`，不要把 `<a>` 再包进按钮语义里
 - `features/*/api` 可以继续做业务封装，但响应 / 请求类型优先从生成契约引用
 
 ### 3.3 常见改动入口
 
-| 你要改什么 | 先看哪里 |
-| --- | --- |
-| 工作台导航或设置中心结构 | `src/layouts/app-shell-layout.tsx`、`features/workspace/*`、`features/settings/settings-sections.ts` |
-| 聊天请求、流式状态、重试、附件展示 | `features/chat/api/*`、`features/chat/hooks/*`、`features/chat/store/*`、`features/chat/components/chat-message-viewport.tsx`、`features/chat/components/attachment-list.tsx`、`features/chat/components/image-viewer-dialog.tsx`、`features/chat/components/message-list.tsx` |
-| 资源页表格、上传队列、重建索引、重复上传反馈 | `features/knowledge/*`、`components/shared/data-table.tsx`、`features/knowledge/components/upload-queue-summary.tsx`、`lib/document-upload.ts` |
-| 当前用户、登录、改密、主题偏好 | `features/auth/*`、`lib/auth/*`、`router/*`、`features/workspace/components/workspace-account-menu.tsx` |
-| 页面表单校验与提交流程 | 对应 `features/*/components/*form*`，默认先看 TanStack Form 用法；共享 submit / 错误抽取先看 `lib/forms.ts` |
+| 你要改什么                                   | 先看哪里                                                                                                                                                                                                                                                                       |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 工作台导航或设置中心结构                     | `src/layouts/app-shell-layout.tsx`、`features/workspace/*`、`features/settings/settings-sections.ts`                                                                                                                                                                           |
+| 聊天请求、流式状态、重试、附件展示           | `features/chat/api/*`、`features/chat/hooks/*`、`features/chat/store/*`、`features/chat/components/chat-message-viewport.tsx`、`features/chat/components/attachment-list.tsx`、`features/chat/components/image-viewer-dialog.tsx`、`features/chat/components/message-list.tsx` |
+| 资源页表格、上传队列、重建索引、重复上传反馈 | `features/knowledge/*`、`components/shared/data-table.tsx`、`features/knowledge/components/upload-queue-summary.tsx`、`lib/document-upload.ts`                                                                                                                                 |
+| 当前用户、登录、改密、主题偏好               | `features/auth/*`、`lib/auth/*`、`router/*`、`features/workspace/components/workspace-account-menu.tsx`                                                                                                                                                                        |
+| 页面表单校验与提交流程                       | 对应 `features/*/components/*form*`，默认先看 TanStack Form 用法；共享 submit / 错误抽取先看 `lib/forms.ts`                                                                                                                                                                    |
 
 ## 4. 后端代码地图
 
@@ -112,30 +113,30 @@ knowledge-chatbox/
 
 ### 4.2 分层约定
 
-| 目录 | 责任 |
-| --- | --- |
-| `api/routes` | HTTP 入口 |
-| `api/deps.py` | 路由共享依赖 |
-| `core` | 配置、日志、安全基础能力 |
-| `db` | 引擎和会话工厂 |
-| `models` | SQLAlchemy 模型 |
-| `schemas` | 请求/响应模型 |
-| `repositories` | 数据访问 |
-| `services` | 用例编排和事务边界 |
-| `providers` | OpenAI / Anthropic / Voyage / Ollama capability adapters |
-| `tasks` | 启动补偿任务 |
-| `utils` | 文件、哈希、Chroma 等工具 |
-| `repositories/retrieval_chunk_repository.py` | SQLite `FTS5` 词法候选索引的写入、删除与查询 |
+| 目录                                         | 责任                                                     |
+| -------------------------------------------- | -------------------------------------------------------- |
+| `api/routes`                                 | HTTP 入口                                                |
+| `api/deps.py`                                | 路由共享依赖                                             |
+| `core`                                       | 配置、日志、安全基础能力                                 |
+| `db`                                         | 引擎和会话工厂                                           |
+| `models`                                     | SQLAlchemy 模型                                          |
+| `schemas`                                    | 请求/响应模型                                            |
+| `repositories`                               | 数据访问                                                 |
+| `services`                                   | 用例编排和事务边界                                       |
+| `providers`                                  | OpenAI / Anthropic / Voyage / Ollama capability adapters |
+| `tasks`                                      | 启动补偿任务                                             |
+| `utils`                                      | 文件、哈希、Chroma 等工具                                |
+| `repositories/retrieval_chunk_repository.py` | SQLite `FTS5` 词法候选索引的写入、删除与查询             |
 
 ### 4.3 常见改动入口
 
-| 你要改什么 | 先看哪里 |
-| --- | --- |
-| provider 配置或重建索引语义 | `services/settings/settings_service.py`、`services/documents/rebuild_service.py`、`api/routes/settings.py` |
-| 上传、内容哈希去重、标准化、切块、索引 | `services/documents/*` |
-| 聊天、SSE、失败恢复、活跃 run 补偿 | `services/chat/*`、`tasks/document_jobs.py`、`main.py` |
-| 认证、会话、用户管理 | `services/auth/*`、`api/routes/auth.py`、`api/routes/users.py` |
-| personal space bootstrap | `repositories/space_repository.py`、`main.py` |
+| 你要改什么                             | 先看哪里                                                                                                   |
+| -------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| provider 配置或重建索引语义            | `services/settings/settings_service.py`、`services/documents/rebuild_service.py`、`api/routes/settings.py` |
+| 上传、内容哈希去重、标准化、切块、索引 | `services/documents/*`                                                                                     |
+| 聊天、SSE、失败恢复、活跃 run 补偿     | `services/chat/*`、`tasks/document_jobs.py`、`main.py`                                                     |
+| 认证、会话、用户管理                   | `services/auth/*`、`api/routes/auth.py`、`api/routes/users.py`                                             |
+| personal space bootstrap               | `repositories/space_repository.py`、`main.py`                                                              |
 
 ## 5. 修改时的基本规则
 
@@ -235,6 +236,7 @@ uv run --group dev python -m pytest
 
 - 后端单测优先保护公共契约、边界条件和业务行为；如果同一行为已经被更高层覆盖，不再补简单映射表或静态默认值的重复测试
 - `just api-check` 当前等价于 `ruff check + ruff format --check + basedpyright`
+- 后端测试目录当前只保留 `apps/api/tests/integration`、`apps/api/tests/unit`、`apps/api/tests/runtime`、`apps/api/tests/migrations` 和 `apps/api/tests/fixtures`
 - 后端 API 集成测试当前统一通过 `apps/api/tests/conftest.py` 的 helper 准备 TestClient、临时 SQLite/Chroma 路径，以及 HTTPS / `SESSION_COOKIE_SECURE` 场景；不要在各测试文件里平行复制同一套启动代码
 
 ### 6.4 涉及启动、环境变量或 Docker

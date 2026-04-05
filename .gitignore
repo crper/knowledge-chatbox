@@ -71,3 +71,7 @@ apps/web/*-mobile.yml
 # superpowers
 docs/superpowers/
 .gstack/
+
+
+# trae
+.trae/

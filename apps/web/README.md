@@ -211,6 +211,68 @@ apps/web/
 4. `src/lib/store/ui-store.ts`
 5. `src/i18n/index.ts`
 
+## 测试
+
+项目使用 MSW (Mock Service Worker) 来 mock API 请求，提供统一的 API mock 管理。
+
+### MSW 架构
+
+- `src/test/msw/server.ts` - MSW server 实例（Node.js 环境）
+- `src/test/msw/handlers/` - 统一的 API handlers
+  - `auth.ts` - 认证相关 handlers
+  - `chat.ts` - 聊天相关 handlers
+  - `settings.ts` - 设置相关 handlers
+  - `users.ts` - 用户管理 handlers
+  - `knowledge.ts` - 资源相关 handlers
+- `src/test/msw/utils.ts` - 测试工具函数
+- `src/test/setup.ts` - 测试环境设置
+
+### 基本使用
+
+```typescript
+import { createTestServer, overrideHandler, apiResponse } from "@/test/msw";
+import { http } from "msw";
+
+// 使用默认配置
+beforeEach(() => {
+  createTestServer();
+});
+
+// 自定义配置
+beforeEach(() => {
+  createTestServer({
+    user: buildAppUser("admin"),
+    authenticated: true,
+  });
+});
+
+// 覆盖特定 handler
+it("handles error", () => {
+  overrideHandler(
+    http.get("*/api/chat/sessions", () => {
+      return apiResponse([]);
+    }),
+  );
+});
+```
+
+### 测试工具函数
+
+- `createTestServer(options)` - 创建测试 server 配置
+- `overrideHandler(handler)` - 覆盖特定的 handler
+- `apiResponse(data, init?)` - 创建成功响应
+- `apiError(error, init?)` - 创建错误响应
+
+### 旧测试工具
+
+以下测试工具函数已标记为 deprecated，请使用 MSW 的对应函数：
+
+- `jsonResponse` → 使用 `apiResponse`
+- `apiSuccessResponse` → 使用 `apiResponse`
+- `apiErrorResponse` → 使用 `apiError`
+- `stubFetch` → 使用 `overrideHandler`
+- `createAuthFetchMock` → 使用 `createTestServer({ user, authenticated: true })`
+
 ## 验证要求
 
 提交前至少执行：
