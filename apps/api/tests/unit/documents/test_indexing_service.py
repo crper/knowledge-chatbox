@@ -4,11 +4,14 @@ from pathlib import Path
 
 import pytest
 from sqlalchemy import text
+from tests.fixtures.factories import (
+    DocumentFactory,
+    DocumentRevisionFactory,
+    SpaceFactory,
+    UserFactory,
+)
 
 from knowledge_chatbox_api.core.config import get_settings
-from knowledge_chatbox_api.models.auth import User
-from knowledge_chatbox_api.models.document import Document, DocumentRevision
-from knowledge_chatbox_api.models.space import Space
 from knowledge_chatbox_api.services.documents.chunking_service import ChunkingService
 from knowledge_chatbox_api.services.documents.errors import DocumentNotNormalizedError
 from knowledge_chatbox_api.services.documents.indexing_service import IndexingService
@@ -20,60 +23,35 @@ from knowledge_chatbox_api.services.settings.settings_service import (
 from knowledge_chatbox_api.utils.chroma import InMemoryChromaStore
 
 
-def create_admin(migrated_db_session) -> User:
-    admin = User(
-        username="admin",
-        password_hash="hash",
-        role="admin",
-        status="active",
-        theme_preference="system",
-    )
-    migrated_db_session.add(admin)
-    migrated_db_session.commit()
-    migrated_db_session.refresh(admin)
-    return admin
-
-
-def create_document(migrated_db_session) -> DocumentRevision:
-    admin = create_admin(migrated_db_session)
-    knowledge_base = Space(
+def create_document(migrated_db_session):
+    admin = UserFactory.persisted_create(migrated_db_session, role="admin")
+    knowledge_base = SpaceFactory.persisted_create(
+        migrated_db_session,
         owner_user_id=admin.id,
         slug="default",
         name="default",
-        kind="personal",
     )
-    migrated_db_session.add(knowledge_base)
-    migrated_db_session.commit()
-    migrated_db_session.refresh(knowledge_base)
 
-    document = Document(
-        knowledge_base_id=knowledge_base.id,
-        name="spec.md",
+    document = DocumentFactory.persisted_create(
+        migrated_db_session,
+        space_id=knowledge_base.id,
+        title="spec.md",
         logical_name="spec.md",
-        status="active",
-        current_version_number=1,
         created_by_user_id=admin.id,
         updated_by_user_id=admin.id,
     )
-    migrated_db_session.add(document)
-    migrated_db_session.commit()
-    migrated_db_session.refresh(document)
 
-    document_version = DocumentRevision(
+    document_version = DocumentRevisionFactory.persisted_create(
+        migrated_db_session,
         document_id=document.id,
-        version_number=1,
-        file_name="spec.md",
-        content_hash="hash-1",
+        source_filename="spec.md",
         file_type="md",
-        lifecycle_status="indexed",
-        origin_path="/uploads/spec.md",
+        ingest_status="indexed",
+        source_path="/uploads/spec.md",
         normalized_path="/normalized/spec.md",
         created_by_user_id=admin.id,
         updated_by_user_id=admin.id,
     )
-    migrated_db_session.add(document_version)
-    migrated_db_session.commit()
-    migrated_db_session.refresh(document_version)
     return document_version
 
 

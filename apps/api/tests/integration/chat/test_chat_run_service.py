@@ -2,10 +2,14 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+from tests.fixtures.factories import (
+    ChatRunFactory,
+    ChatSessionFactory,
+    SpaceFactory,
+    UserFactory,
+)
+
 from knowledge_chatbox_api.api.routes.chat import stream_presented_events
-from knowledge_chatbox_api.models.auth import User
-from knowledge_chatbox_api.models.chat import ChatRun, ChatSession
-from knowledge_chatbox_api.models.space import Space
 from knowledge_chatbox_api.repositories.chat_repository import ChatRepository
 from knowledge_chatbox_api.repositories.chat_run_event_repository import ChatRunEventRepository
 from knowledge_chatbox_api.repositories.chat_run_repository import ChatRunRepository
@@ -18,36 +22,21 @@ from knowledge_chatbox_api.services.settings.runtime_settings import parse_runti
 from knowledge_chatbox_api.utils.chroma import InMemoryChromaStore
 
 
-def create_user(migrated_db_session, username: str = "alice") -> User:
-    user = User(
-        username=username,
-        password_hash="hash",
-        role="user",
-        status="active",
-        theme_preference="system",
-    )
-    migrated_db_session.add(user)
-    migrated_db_session.commit()
-    migrated_db_session.refresh(user)
-    return user
-
-
-def create_chat_session(migrated_db_session) -> ChatSession:
-    user = create_user(migrated_db_session)
-    workspace = Space(
+def create_user_and_session(migrated_db_session):
+    user = UserFactory.persisted_create(migrated_db_session, username="alice")
+    workspace = SpaceFactory.persisted_create(
+        migrated_db_session,
         owner_user_id=user.id,
         slug=f"workspace-{user.id}",
         name="workspace",
-        kind="personal",
     )
-    migrated_db_session.add(workspace)
-    migrated_db_session.commit()
-    migrated_db_session.refresh(workspace)
 
-    chat_session = ChatSession(space_id=workspace.id, user_id=user.id, title="session")
-    migrated_db_session.add(chat_session)
-    migrated_db_session.commit()
-    migrated_db_session.refresh(chat_session)
+    chat_session = ChatSessionFactory.persisted_create(
+        migrated_db_session,
+        space_id=workspace.id,
+        user_id=user.id,
+        title="session",
+    )
     return chat_session
 
 
@@ -81,17 +70,12 @@ def build_chat_run_service(
 
 
 def test_chat_run_supports_full_lifecycle_states(migrated_db_session) -> None:
-    chat_session = create_chat_session(migrated_db_session)
-    chat_run = ChatRun(
+    chat_session = create_user_and_session(migrated_db_session)
+    chat_run = ChatRunFactory.persisted_create(
+        migrated_db_session,
         session_id=chat_session.id,
         status="pending",
-        response_provider="openai",
-        response_model="gpt-5.4",
-        client_request_id="req-1",
     )
-    migrated_db_session.add(chat_run)
-    migrated_db_session.commit()
-    migrated_db_session.refresh(chat_run)
 
     chat_run.status = "running"
     migrated_db_session.commit()
@@ -110,19 +94,15 @@ def test_chat_run_supports_full_lifecycle_states(migrated_db_session) -> None:
 
 
 def test_chat_run_repository_lists_active_runs(migrated_db_session) -> None:
-    chat_session = create_chat_session(migrated_db_session)
-    active_run = ChatRun(
+    chat_session = create_user_and_session(migrated_db_session)
+    active_run = ChatRunFactory.build(
         session_id=chat_session.id,
         status="running",
-        response_provider="openai",
-        response_model="gpt-5.4",
         client_request_id="req-running",
     )
-    finished_run = ChatRun(
+    finished_run = ChatRunFactory.build(
         session_id=chat_session.id,
         status="succeeded",
-        response_provider="openai",
-        response_model="gpt-5.4",
         client_request_id="req-finished",
     )
     migrated_db_session.add(active_run)
@@ -136,17 +116,13 @@ def test_chat_run_repository_lists_active_runs(migrated_db_session) -> None:
 
 
 def test_chat_run_read_schema_supports_from_attributes(migrated_db_session) -> None:
-    chat_session = create_chat_session(migrated_db_session)
-    chat_run = ChatRun(
+    chat_session = create_user_and_session(migrated_db_session)
+    chat_run = ChatRunFactory.persisted_create(
+        migrated_db_session,
         session_id=chat_session.id,
         status="pending",
-        response_provider="openai",
-        response_model="gpt-5.4",
         client_request_id="req-schema",
     )
-    migrated_db_session.add(chat_run)
-    migrated_db_session.commit()
-    migrated_db_session.refresh(chat_run)
 
     payload = ChatRunRead.model_validate(chat_run, from_attributes=True)
     active_payload = ActiveChatRunRead.model_validate(chat_run, from_attributes=True)
@@ -165,7 +141,7 @@ def test_chat_run_service_streams_runtime_events_and_persists_projection(
             yield SimpleNamespace(type="text_delta", delta="world")
             yield SimpleNamespace(type="completed", usage={"output_tokens": 2})
 
-    chat_session = create_chat_session(migrated_db_session)
+    chat_session = create_user_and_session(migrated_db_session)
     service, chat_repository, _, event_repository = build_chat_run_service(
         migrated_db_session,
         response_adapter=StreamingAdapterStub(),
@@ -210,7 +186,7 @@ def test_chat_run_service_marks_run_failed_when_stream_is_closed_early(
             yield SimpleNamespace(type="text_delta", delta="partial")
             yield SimpleNamespace(type="text_delta", delta=" response")
 
-    chat_session = create_chat_session(migrated_db_session)
+    chat_session = create_user_and_session(migrated_db_session)
     service, chat_repository, run_repository, event_repository = build_chat_run_service(
         migrated_db_session,
         response_adapter=HangingStreamingAdapterStub(),
@@ -280,7 +256,7 @@ def test_chat_run_service_marks_run_failed_when_provider_stream_ends_without_com
             yield SimpleNamespace(type="text_delta", delta="partial")
             yield SimpleNamespace(type="text_delta", delta=" response")
 
-    chat_session = create_chat_session(migrated_db_session)
+    chat_session = create_user_and_session(migrated_db_session)
     service, chat_repository, run_repository, event_repository = build_chat_run_service(
         migrated_db_session,
         response_adapter=HangingStreamingAdapterStub(),
@@ -341,7 +317,7 @@ def test_chat_run_service_keeps_retrieved_sources_when_provider_returns_error(
 
     monkeypatch.setattr(chat_run_service_module, "ChatService", FakeChatService)
 
-    chat_session = create_chat_session(migrated_db_session)
+    chat_session = create_user_and_session(migrated_db_session)
     service, chat_repository, run_repository, event_repository = build_chat_run_service(
         migrated_db_session,
         response_adapter=ProviderErrorStreamingAdapterStub(),
@@ -420,7 +396,7 @@ def test_chat_run_service_keeps_retrieved_sources_when_stream_is_closed_after_so
 
     monkeypatch.setattr(chat_run_service_module, "ChatService", FakeChatService)
 
-    chat_session = create_chat_session(migrated_db_session)
+    chat_session = create_user_and_session(migrated_db_session)
     service, chat_repository, run_repository, _ = build_chat_run_service(
         migrated_db_session,
         response_adapter=ShouldNotReachProviderAdapterStub(),
@@ -476,7 +452,7 @@ def test_chat_stream_wrapper_closes_inner_run_stream_when_consumer_disconnects(
                 "provider stream should not start after the outer stream is closed"
             )
 
-    chat_session = create_chat_session(migrated_db_session)
+    chat_session = create_user_and_session(migrated_db_session)
     service, chat_repository, run_repository, _ = build_chat_run_service(
         migrated_db_session,
         response_adapter=ShouldNotReachProviderAdapterStub(),
@@ -523,7 +499,7 @@ def test_chat_run_service_assigns_event_seq_without_reloading_all_events(
             self.list_for_run_calls += 1
             return super().list_for_run(run_id)
 
-    chat_session = create_chat_session(migrated_db_session)
+    chat_session = create_user_and_session(migrated_db_session)
     event_repository = CountingRunEventRepository(migrated_db_session)
     service, _, _, _ = build_chat_run_service(
         migrated_db_session,
@@ -552,7 +528,7 @@ def test_chat_run_service_batches_commit_for_many_text_deltas(
                 yield SimpleNamespace(type="text_delta", delta=f"chunk-{index} ")
             yield SimpleNamespace(type="completed", usage={"output_tokens": 20})
 
-    chat_session = create_chat_session(migrated_db_session)
+    chat_session = create_user_and_session(migrated_db_session)
     service, _, _, _ = build_chat_run_service(
         migrated_db_session,
         response_adapter=ManyDeltaStreamingAdapterStub(),

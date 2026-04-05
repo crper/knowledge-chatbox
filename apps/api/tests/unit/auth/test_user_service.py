@@ -3,10 +3,11 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy import select
+from tests.fixtures.factories import ChatSessionFactory, UserFactory
 
 from knowledge_chatbox_api.core.config import get_settings
 from knowledge_chatbox_api.core.security import PasswordManager
-from knowledge_chatbox_api.models.auth import AuthSession, User
+from knowledge_chatbox_api.models.auth import AuthSession
 from knowledge_chatbox_api.models.chat import ChatSession
 from knowledge_chatbox_api.models.space import Space
 from knowledge_chatbox_api.repositories.space_repository import SpaceRepository
@@ -40,32 +41,21 @@ def create_service_pair(migrated_db_session) -> tuple[AuthService, UserService]:
     return auth_service, user_service
 
 
-def seed_admin(migrated_db_session) -> User:
-    user = User(
+def seed_admin(migrated_db_session):
+    return UserFactory.persisted_create(
+        migrated_db_session,
         username="admin",
         password_hash=PasswordManager().hash_password("admin-123"),
         role="admin",
-        status="active",
-        theme_preference="system",
     )
-    migrated_db_session.add(user)
-    migrated_db_session.commit()
-    migrated_db_session.refresh(user)
-    return user
 
 
-def seed_user(migrated_db_session, username: str = "alice") -> User:
-    user = User(
+def seed_user(migrated_db_session, username: str = "alice"):
+    return UserFactory.persisted_create(
+        migrated_db_session,
         username=username,
         password_hash=PasswordManager().hash_password("secret-123"),
-        role="user",
-        status="active",
-        theme_preference="system",
     )
-    migrated_db_session.add(user)
-    migrated_db_session.commit()
-    migrated_db_session.refresh(user)
-    return user
 
 
 def test_admin_can_create_user(migrated_db_session) -> None:
@@ -111,12 +101,14 @@ def test_admin_can_delete_regular_user_and_cleanup_sessions(migrated_db_session)
     user = seed_user(migrated_db_session)
     auth_service.login("alice", "secret-123")
     space = SpaceRepository(migrated_db_session).ensure_personal_space(user_id=user.id)
-    migrated_db_session.add(ChatSession(space_id=space.id, user_id=user.id, title="demo"))
+    migrated_db_session.add(
+        ChatSessionFactory.build(space_id=space.id, user_id=user.id, title="demo")
+    )  # noqa: E501
     migrated_db_session.commit()
 
     user_service.delete_user(admin, user.id)
 
-    assert migrated_db_session.get(User, user.id) is None
+    assert migrated_db_session.get(type(user), user.id) is None
     assert (
         migrated_db_session.scalar(select(AuthSession).where(AuthSession.user_id == user.id))
         is None

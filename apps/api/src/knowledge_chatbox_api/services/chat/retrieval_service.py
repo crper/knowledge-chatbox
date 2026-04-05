@@ -20,35 +20,41 @@ from knowledge_chatbox_api.utils.chroma import (
 
 MIN_RETRIEVAL_SOURCE_SCORE = 0.45
 ATTACHMENT_SCOPED_QUERY_MULTIPLIER = 3
-SMALL_TALK_QUERIES = {
-    "hello",
-    "hey",
-    "hi",
-    "ok",
-    "okay",
-    "你好",
-    "你好啊",
-    "你好呀",
-    "再见",
-    "有人吗",
-    "哈喽",
-    "嗨",
-    "在吗",
-    "在不在",
-    "晚上好",
-    "晚安",
-    "早上好",
-    "早安",
-    "下午好",
-    "收到",
-    "拜拜",
-    "谢谢",
-    "谢谢你",
-    "多谢",
-    "好的",
-    "您好",
-}
-GENERIC_IMAGE_ONLY_QUERIES = {
+
+# 简单对话查询集合（无需知识检索）
+SMALL_TALK_QUERIES = frozenset(
+    {
+        "hello",
+        "hey",
+        "hi",
+        "ok",
+        "okay",
+        "你好",
+        "你好啊",
+        "你好呀",
+        "再见",
+        "有人吗",
+        "哈喽",
+        "嗨",
+        "在吗",
+        "在不在",
+        "晚上好",
+        "晚安",
+        "早上好",
+        "早安",
+        "下午好",
+        "收到",
+        "拜拜",
+        "谢谢",
+        "谢谢你",
+        "多谢",
+        "好的",
+        "您好",
+    }
+)
+
+# 通用图像分析查询（仅图片附件时跳过检索）
+GENERIC_IMAGE_ONLY_QUERIES = frozenset(
     _normalize_match_text(value)
     for value in {
         "帮我看看这张图",
@@ -66,7 +72,8 @@ GENERIC_IMAGE_ONLY_QUERIES = {
         "look at this image",
         "what does this image say",
     }
-}
+)
+
 logger = get_logger(__name__)
 
 
@@ -114,37 +121,24 @@ class RetrievalService:
         active_space_id: int | None,
         attachments: list[dict[str, Any]] | None = None,
     ) -> RetrievedContext:
+        """检索与查询相关的知识上下文。"""
         started_at = perf_counter()
         normalized_query = query_text.strip()
         attachment_revision_ids = sorted(self._collect_attachment_revision_ids(attachments))
         where_filter = self._build_retrieval_where_filter(active_space_id, attachments)
         attachment_revision_scope_count = len(attachment_revision_ids)
 
+        # 快速路径：无需检索的场景
         if not self._should_retrieve_knowledge(normalized_query, attachments=attachments):
-            return RetrievedContext(
-                context_sections=[],
-                sources=[],
-                diagnostics=self._build_diagnostics(
-                    strategy="none",
-                    started_at=started_at,
-                    candidate_count=0,
-                    attachment_revision_scope_count=attachment_revision_scope_count,
-                ),
-            )
+            return self._empty_context(started_at, attachment_revision_scope_count, strategy="none")
+
         if not self._has_retrievable_documents(active_space_id):
-            return RetrievedContext(
-                context_sections=[],
-                sources=[],
-                diagnostics=self._build_diagnostics(
-                    strategy="none",
-                    started_at=started_at,
-                    candidate_count=0,
-                    attachment_revision_scope_count=attachment_revision_scope_count,
-                ),
-            )
+            return self._empty_context(started_at, attachment_revision_scope_count, strategy="none")
 
         generation = getattr(self.settings, "active_index_generation", 1)
         query_embedding = self._embed_query_or_none(normalized_query)
+
+        # 尝试向量检索
         vector_chunks = self._query_retrieved_chunks(
             normalized_query,
             active_space_id=active_space_id,
@@ -159,6 +153,7 @@ class RetrievalService:
             for record in vector_chunks
             if self._is_relevant_retrieval_hit(record, normalized_query)
         ]
+
         if relevant_vector_chunks:
             return self._build_retrieved_context(
                 relevant_vector_chunks,
@@ -171,6 +166,7 @@ class RetrievalService:
                 ),
             )
 
+        # 回退到词法检索
         lexical_chunks = self._query_lexical_chunks(
             normalized_query,
             active_space_id=active_space_id,
@@ -183,6 +179,7 @@ class RetrievalService:
             for record in lexical_chunks
             if self._is_relevant_retrieval_hit(record, normalized_query)
         ]
+
         if relevant_lexical_chunks:
             return self._build_retrieved_context(
                 relevant_lexical_chunks,
@@ -195,11 +192,20 @@ class RetrievalService:
                 ),
             )
 
+        return self._empty_context(started_at, attachment_revision_scope_count, strategy="none")
+
+    def _empty_context(
+        self,
+        started_at: float,
+        attachment_revision_scope_count: int,
+        strategy: str = "none",
+    ) -> RetrievedContext:
+        """返回空检索结果。"""
         return RetrievedContext(
             context_sections=[],
             sources=[],
             diagnostics=self._build_diagnostics(
-                strategy="none",
+                strategy=strategy,
                 started_at=started_at,
                 candidate_count=0,
                 attachment_revision_scope_count=attachment_revision_scope_count,
@@ -207,11 +213,13 @@ class RetrievalService:
         )
 
     def _has_retrievable_documents(self, space_id: int | None) -> bool:
+        """检查空间中是否存在可检索的文档。"""
         if space_id is None:
             return False
 
-        current_version_ids = self.session.scalars(
-            select(DocumentRevision.id)
+        exists_query = (
+            select(1)
+            .select_from(DocumentRevision)
             .join(Document, Document.id == DocumentRevision.document_id)
             .where(
                 Document.space_id == space_id,
@@ -226,8 +234,10 @@ class RetrievalService:
                 DocumentRevision.ingest_status == "indexed",
             )
             .limit(1)
-        ).first()
-        return current_version_ids is not None
+        )
+
+        result = self.session.execute(select(exists_query.exists())).scalar()
+        return bool(result)
 
     def _build_retrieved_context(
         self,
@@ -236,6 +246,7 @@ class RetrievalService:
         *,
         diagnostics: RetrievalDiagnostics,
     ) -> RetrievedContext:
+        """从检索到的块构建上下文。"""
         versions_by_id, documents_by_id = self._load_retrieved_document_context(retrieved_chunks)
         context_sections: list[str] = []
         sources: list[dict[str, Any]] = []
@@ -247,16 +258,13 @@ class RetrievalService:
 
             revision_id = record.get("document_revision_id", record["document_id"])
             document_version = versions_by_id.get(revision_id)
+
             if document_version is None:
                 document_name = f"Document {record['document_id']}"
             else:
                 document = documents_by_id.get(document_version.document_id)
-                if document is not None and (
-                    document.space_id != active_space_id
-                    or (
-                        document.latest_revision_id != document_version.id
-                        and document.current_version_number != document_version.revision_no
-                    )
+                if document is not None and not self._is_valid_document_version(
+                    document, document_version, active_space_id
                 ):
                     continue
                 document_name = (
@@ -269,7 +277,7 @@ class RetrievalService:
             page_number = metadata.get("page_number")
             section_title = metadata.get("section_title")
             record_text = record["text"]
-            
+
             context_sections.append(
                 "\n".join(
                     filter(
@@ -302,6 +310,20 @@ class RetrievalService:
             diagnostics=diagnostics,
         )
 
+    def _is_valid_document_version(
+        self,
+        document: Document,
+        document_version: DocumentRevision,
+        active_space_id: int | None,
+    ) -> bool:
+        """验证文档版本是否有效（在正确空间且为最新版本）。"""
+        if document.space_id != active_space_id:
+            return False
+        return (
+            document.latest_revision_id == document_version.id
+            or document.current_version_number == document_version.revision_no
+        )
+
     def _build_diagnostics(
         self,
         *,
@@ -310,6 +332,7 @@ class RetrievalService:
         candidate_count: int,
         attachment_revision_scope_count: int,
     ) -> RetrievalDiagnostics:
+        """构建检索诊断信息。"""
         latency_ms = max(int(round((perf_counter() - started_at) * 1000)), 0)
         return RetrievalDiagnostics(
             strategy=strategy,
@@ -322,6 +345,7 @@ class RetrievalService:
         self,
         retrieved_chunks: list[dict[str, Any]],
     ) -> tuple[dict[int, DocumentRevision], dict[int, Document]]:
+        """加载检索结果相关的文档上下文。"""
         version_ids = {
             record.get("document_revision_id", record.get("document_id"))
             for record in retrieved_chunks
@@ -337,6 +361,7 @@ class RetrievalService:
         )
         versions_by_id = {version.id: version for version in versions}
         document_ids = {version.document_id for version in versions}
+
         if not document_ids:
             return versions_by_id, {}
 
@@ -347,6 +372,7 @@ class RetrievalService:
         return versions_by_id, documents_by_id
 
     def _embed_query_or_none(self, query_text: str) -> list[float] | None:
+        """生成查询嵌入，失败时返回 None。"""
         try:
             embeddings = self.embedding_adapter.embed([query_text], self.settings)
         except Exception as exc:  # noqa: BLE001
@@ -364,6 +390,7 @@ class RetrievalService:
         *,
         attachments: list[dict[str, Any]] | None = None,
     ) -> bool:
+        """判断是否需要执行知识检索。"""
         if self._is_image_only_analysis_turn(query_text, attachments):
             return False
 
@@ -377,6 +404,7 @@ class RetrievalService:
         query_text: str,
         attachments: list[dict[str, Any]] | None,
     ) -> bool:
+        """判断是否为仅图片分析场景。"""
         if not self._has_only_image_attachments(attachments):
             return False
 
@@ -387,6 +415,7 @@ class RetrievalService:
         return normalized_query in GENERIC_IMAGE_ONLY_QUERIES
 
     def _has_only_image_attachments(self, attachments: list[dict[str, Any]] | None) -> bool:
+        """检查是否只有图片附件。"""
         if not attachments:
             return False
         return all(attachment.get("type") == "image" for attachment in attachments)
@@ -396,6 +425,7 @@ class RetrievalService:
         active_space_id: int | None,
         attachments: list[dict[str, Any]] | None,
     ) -> dict[str, Any] | None:
+        """构建检索的 WHERE 过滤条件。"""
         conditions: list[dict[str, Any]] = []
         if active_space_id is not None:
             conditions.append({"space_id": active_space_id})
@@ -420,6 +450,7 @@ class RetrievalService:
         query_embedding: list[float] | None,
         where_filter: dict[str, Any] | None,
     ) -> list[dict[str, Any]]:
+        """执行向量检索查询。"""
         if len(attachment_revision_ids) <= 1:
             return self.chroma_store.query(
                 query_text,
@@ -446,6 +477,7 @@ class RetrievalService:
         attachment_revision_ids: list[int],
         generation: int,
     ) -> list[dict[str, Any]]:
+        """执行词法检索查询。"""
         if len(attachment_revision_ids) <= 1:
             return self.retrieval_chunk_repository.query(
                 query_text,
@@ -468,17 +500,18 @@ class RetrievalService:
         self,
         attachments: list[dict[str, Any]] | None,
     ) -> set[int]:
+        """收集附件中的文档版本 ID。"""
         if not attachments:
             return set()
 
-        revision_ids: set[int] = set()
-        for attachment in attachments:
-            revision_id = attachment.get("document_revision_id")
-            if isinstance(revision_id, int):
-                revision_ids.add(revision_id)
-        return revision_ids
+        return {
+            revision_id
+            for attachment in attachments
+            if isinstance(revision_id := attachment.get("document_revision_id"), int)
+        }
 
     def _attachment_scoped_top_k(self, attachment_revision_ids: list[int]) -> int:
+        """计算附件范围的 top_k 值。"""
         return max(len(attachment_revision_ids) * ATTACHMENT_SCOPED_QUERY_MULTIPLIER, 3)
 
     def _select_attachment_scoped_records(
@@ -486,6 +519,7 @@ class RetrievalService:
         records: list[dict[str, Any]],
         attachment_revision_ids: list[int],
     ) -> list[dict[str, Any]]:
+        """从附件范围的记录中选择代表性结果。"""
         if len(attachment_revision_ids) <= 1:
             return records
 
@@ -500,14 +534,19 @@ class RetrievalService:
 
         selected: list[dict[str, Any]] = []
         seen_chunk_ids: set[str] = set()
+        revision_iterators: dict[int, int] = {rid: 0 for rid in attachment_revision_ids}
+
         while True:
             round_added = False
             for revision_id in attachment_revision_ids:
                 revision_records = records_by_revision[revision_id]
-                while revision_records:
-                    record = revision_records.pop(0)
+                idx = revision_iterators[revision_id]
+                while idx < len(revision_records):
+                    record = revision_records[idx]
+                    revision_iterators[revision_id] = idx + 1
                     chunk_id = str(record.get("id", ""))
                     if chunk_id in seen_chunk_ids:
+                        idx += 1
                         continue
                     seen_chunk_ids.add(chunk_id)
                     selected.append(record)
@@ -520,12 +559,14 @@ class RetrievalService:
         return selected
 
     def _is_relevant_retrieval_hit(self, record: dict[str, Any], query_text: str) -> bool:
+        """判断检索结果是否与查询相关。"""
         score = float(record.get("score", 0.0))
         if score >= MIN_RETRIEVAL_SOURCE_SCORE:
             return True
         return self._has_query_overlap(record, query_text)
 
     def _has_query_overlap(self, record: dict[str, Any], query_text: str) -> bool:
+        """检查记录与查询是否有词项重叠。"""
         query_terms = _tokenize_text(query_text)
         if not query_terms:
             return False
@@ -534,12 +575,16 @@ class RetrievalService:
         haystack = f"{record.get('text', '')} {section_title}"
         normalized_haystack = _normalize_match_text(haystack)
         normalized_query = _normalize_match_text(query_text)
-        query_phrases = _quoted_phrases(query_text)
 
+        # 快速路径：检查引号短语匹配
+        query_phrases = _quoted_phrases(query_text)
         if any(phrase in normalized_haystack for phrase in query_phrases):
             return True
 
+        # 检查完整查询匹配
         if len(normalized_query) >= 2 and normalized_query in normalized_haystack:
             return True
 
-        return len(query_terms & _tokenize_text(haystack)) > 0
+        # 检查词项重叠
+        haystack_tokens = _tokenize_text(haystack)
+        return len(query_terms & haystack_tokens) > 0

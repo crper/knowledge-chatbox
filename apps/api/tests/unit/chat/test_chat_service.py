@@ -7,10 +7,14 @@ from typing import Any
 
 import pytest
 from PIL import Image
+from tests.fixtures.factories import (
+    DocumentFactory,
+    DocumentRevision,
+    DocumentRevisionFactory,
+    UserFactory,
+)
 
 from knowledge_chatbox_api.core.config import get_settings
-from knowledge_chatbox_api.models.auth import User
-from knowledge_chatbox_api.models.document import Document, DocumentRevision
 from knowledge_chatbox_api.repositories.chat_repository import ChatRepository
 from knowledge_chatbox_api.repositories.space_repository import SpaceRepository
 from knowledge_chatbox_api.services.chat.chat_application_service import (
@@ -55,16 +59,7 @@ class FailingEmbeddingAdapterStub:
 
 
 def create_user_and_session(migrated_db_session):
-    user = User(
-        username="alice",
-        password_hash="hash",
-        role="user",
-        status="active",
-        theme_preference="system",
-    )
-    migrated_db_session.add(user)
-    migrated_db_session.commit()
-    migrated_db_session.refresh(user)
+    user = UserFactory.persisted_create(migrated_db_session, username="alice")
 
     repository = ChatRepository(migrated_db_session)
     chat_session = repository.create_session(user.id, "Session")
@@ -77,18 +72,8 @@ def create_user(
     migrated_db_session,
     *,
     username: str,
-) -> User:
-    user = User(
-        username=username,
-        password_hash="hash",
-        role="user",
-        status="active",
-        theme_preference="system",
-    )
-    migrated_db_session.add(user)
-    migrated_db_session.commit()
-    migrated_db_session.refresh(user)
-    return user
+):
+    return UserFactory.persisted_create(migrated_db_session, username=username)
 
 
 def create_document_version(
@@ -96,37 +81,29 @@ def create_document_version(
     user_id: int,
     *,
     file_name: str = "guide.md",
-) -> DocumentRevision:
+):
     knowledge_base = SpaceRepository(migrated_db_session).ensure_personal_space(user_id=user_id)
 
-    document = Document(
-        knowledge_base_id=knowledge_base.id,
-        name=file_name,
+    document = DocumentFactory.persisted_create(
+        migrated_db_session,
+        space_id=knowledge_base.id,
+        title=file_name,
         logical_name=file_name,
-        status="active",
-        current_version_number=1,
         created_by_user_id=user_id,
         updated_by_user_id=user_id,
     )
-    migrated_db_session.add(document)
-    migrated_db_session.commit()
-    migrated_db_session.refresh(document)
 
-    document_version = DocumentRevision(
+    document_version = DocumentRevisionFactory.persisted_create(
+        migrated_db_session,
         document_id=document.id,
-        version_number=1,
-        file_name=document.name,
-        content_hash="hash-1",
-        file_type="md",
-        lifecycle_status="indexed",
-        origin_path=f"/uploads/{document.name}",
-        normalized_path=f"/normalized/{document.name}",
+        revision_no=1,
+        source_filename=file_name,
+        ingest_status="indexed",
+        source_path=f"/uploads/{file_name}",
+        normalized_path=f"/normalized/{file_name}",
         created_by_user_id=user_id,
         updated_by_user_id=user_id,
     )
-    migrated_db_session.add(document_version)
-    migrated_db_session.commit()
-    migrated_db_session.refresh(document_version)
     return document_version
 
 
@@ -134,28 +111,25 @@ def create_image_document_version(
     migrated_db_session,
     user_id: int,
     tmp_path: Path,
-) -> DocumentRevision:
+):
     knowledge_base = SpaceRepository(migrated_db_session).ensure_personal_space(user_id=user_id)
 
-    document = Document(
+    document = DocumentFactory.persisted_create(
+        migrated_db_session,
         space_id=knowledge_base.id,
         title="image.png",
         logical_name="image.png",
-        status="active",
-        current_version_number=1,
         created_by_user_id=user_id,
         updated_by_user_id=user_id,
     )
-    migrated_db_session.add(document)
-    migrated_db_session.commit()
-    migrated_db_session.refresh(document)
 
     image_path = tmp_path / "image.png"
     buffer = BytesIO()
     Image.new("RGB", (8, 8), color="white").save(buffer, format="PNG")
     image_path.write_bytes(buffer.getvalue())
 
-    document_version = DocumentRevision(
+    document_version = DocumentRevisionFactory.persisted_create(
+        migrated_db_session,
         document_id=document.id,
         revision_no=1,
         source_filename=image_path.name,
@@ -168,9 +142,6 @@ def create_image_document_version(
         created_by_user_id=user_id,
         updated_by_user_id=user_id,
     )
-    migrated_db_session.add(document_version)
-    migrated_db_session.commit()
-    migrated_db_session.refresh(document_version)
     return document_version
 
 
@@ -197,7 +168,7 @@ def build_document_attachment(
     return {
         "attachment_id": attachment_id,
         "type": "document",
-        "name": document_version.file_name,
+        "name": document_version.source_filename,
         "mime_type": document_version.mime_type,
         "size_bytes": 1,
         "resource_document_id": document_version.document_id,
@@ -213,7 +184,7 @@ def create_prompt_document_version(
     tmp_path: Path,
     file_name: str,
     content: str,
-) -> DocumentRevision:
+):
     document_version = create_document_version(
         migrated_db_session,
         user_id,
@@ -567,18 +538,12 @@ def test_chat_service_limits_retrieval_to_current_attachment_revisions(
         ],
     )
 
+    _ids = sorted([first_document_version.id, second_document_version.id])
     assert chroma_store.calls == [
         {
             "$and": [
                 {"space_id": chat_session.space_id},
-                {
-                    "document_revision_id": {
-                        "$in": [
-                            first_document_version.id,
-                            second_document_version.id,
-                        ]
-                    }
-                },
+                {"document_revision_id": {"$in": _ids}},  # noqa: E501
             ]
         }
     ]
@@ -833,10 +798,9 @@ def test_chat_service_uses_lexical_fallback_for_each_attachment_when_vector_is_e
     assert lexical_query_calls == [
         {
             "query_text": "poem",
-            "document_revision_ids": [
-                first_document_version.id,
-                second_document_version.id,
-            ],
+            "document_revision_ids": sorted(
+                [first_document_version.id, second_document_version.id]
+            ),
         }
     ]
 

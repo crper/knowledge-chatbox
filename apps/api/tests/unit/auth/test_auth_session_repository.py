@@ -3,39 +3,24 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
+from tests.fixtures.factories import AuthSessionFactory, UserFactory
 
-from knowledge_chatbox_api.models.auth import AuthSession, User
+from knowledge_chatbox_api.models.auth import AuthSession
 from knowledge_chatbox_api.repositories.auth_session_repository import AuthSessionRepository
 
 
-def _create_user(session, username: str = "alice") -> User:
-    user = User(
-        username=username,
-        password_hash="hash",
-        role="user",
-        status="active",
-        theme_preference="system",
-    )
-    session.add(user)
-    session.commit()
-    session.refresh(user)
-    return user
-
-
 def test_revoke_by_user_id_revokes_all_sessions(migrated_db_session) -> None:
-    user = _create_user(migrated_db_session)
+    user = UserFactory.persisted_create(migrated_db_session, username="alice")
     now = datetime.now(UTC)
+    _h1 = timedelta(hours=1)
+    _h2 = timedelta(hours=2)
     migrated_db_session.add_all(
         [
-            AuthSession(
-                user_id=user.id,
-                session_token_hash="token-1",
-                expires_at=now + timedelta(hours=1),
+            AuthSessionFactory.build(  # noqa: E501
+                user_id=user.id, session_token_hash="token-1", expires_at=now + _h1
             ),
-            AuthSession(
-                user_id=user.id,
-                session_token_hash="token-2",
-                expires_at=now + timedelta(hours=2),
+            AuthSessionFactory.build(  # noqa: E501
+                user_id=user.id, session_token_hash="token-2", expires_at=now + _h2
             ),
         ]
     )
@@ -54,19 +39,19 @@ def test_revoke_by_user_id_revokes_all_sessions(migrated_db_session) -> None:
 
 
 def test_cleanup_expired_revokes_only_active_expired_sessions(migrated_db_session) -> None:
-    user = _create_user(migrated_db_session)
+    user = UserFactory.persisted_create(migrated_db_session, username="alice")
     now = datetime.now(UTC)
-    expired_active = AuthSession(
+    expired_active = AuthSessionFactory.build(
         user_id=user.id,
         session_token_hash="expired-active",
         expires_at=now - timedelta(minutes=5),
     )
-    active = AuthSession(
+    active = AuthSessionFactory.build(
         user_id=user.id,
         session_token_hash="active",
         expires_at=now + timedelta(minutes=5),
     )
-    expired_revoked = AuthSession(
+    expired_revoked = AuthSessionFactory.build(
         user_id=user.id,
         session_token_hash="expired-revoked",
         expires_at=now - timedelta(minutes=10),

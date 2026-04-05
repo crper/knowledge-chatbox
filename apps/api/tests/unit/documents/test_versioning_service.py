@@ -1,18 +1,22 @@
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 import pytest
 from sqlalchemy.exc import IntegrityError
+from tests.fixtures.factories import (
+    DocumentFactory,
+    DocumentRevisionFactory,
+    SpaceFactory,
+    UserFactory,
+)
 
 import knowledge_chatbox_api.models.document as document_models
 from knowledge_chatbox_api.core.config import get_settings
-from knowledge_chatbox_api.models.auth import User
 from knowledge_chatbox_api.models.document import Document, DocumentRevision
-from knowledge_chatbox_api.models.space import Space
 from knowledge_chatbox_api.services.documents.versioning_service import VersioningService
 from knowledge_chatbox_api.utils.files import PersistedUpload
-from knowledge_chatbox_api.utils.hashing import sha256_bytes
 
 
 def test_document_models_use_document_revision_name_only() -> None:
@@ -20,31 +24,22 @@ def test_document_models_use_document_revision_name_only() -> None:
     assert not hasattr(document_models, "DocumentVersion")
 
 
-def create_admin(migrated_db_session) -> User:
-    admin = User(
+def create_admin(migrated_db_session):
+    return UserFactory.persisted_create(
+        migrated_db_session,
         username="admin",
-        password_hash="hash",
         role="admin",
-        status="active",
-        theme_preference="system",
     )
-    migrated_db_session.add(admin)
-    migrated_db_session.commit()
-    migrated_db_session.refresh(admin)
-    return admin
 
 
-def create_space(migrated_db_session, admin: User, slug: str = "space-a") -> Space:
-    knowledge_base = Space(
+def create_space(migrated_db_session, admin, slug: str = "space-a"):
+    return SpaceFactory.persisted_create(
+        migrated_db_session,
         owner_user_id=admin.id,
         slug=slug,
         name=slug,
         kind="personal",
     )
-    migrated_db_session.add(knowledge_base)
-    migrated_db_session.commit()
-    migrated_db_session.refresh(knowledge_base)
-    return knowledge_base
 
 
 def create_versioning_service(migrated_db_session) -> VersioningService:
@@ -56,7 +51,7 @@ def create_persisted_upload(tmp_path: Path, filename: str, content: bytes) -> Pe
     path.write_bytes(content)
     return PersistedUpload(
         path=path,
-        content_hash=sha256_bytes(content),
+        content_hash=hashlib.sha256(content).hexdigest(),
         file_size=len(content),
     )
 
@@ -65,21 +60,17 @@ def test_document_logical_name_must_be_unique_within_knowledge_base(migrated_db_
     admin = create_admin(migrated_db_session)
     knowledge_base = create_space(migrated_db_session, admin)
 
-    first_document = Document(
-        knowledge_base_id=knowledge_base.id,
-        name="spec.pdf",
+    first_document = DocumentFactory.build(
+        space_id=knowledge_base.id,
+        title="spec.pdf",
         logical_name="spec.pdf",
-        status="active",
-        current_version_number=1,
         created_by_user_id=admin.id,
         updated_by_user_id=admin.id,
     )
-    duplicated_document = Document(
-        knowledge_base_id=knowledge_base.id,
-        name="spec copy.pdf",
+    duplicated_document = DocumentFactory.build(
+        space_id=knowledge_base.id,
+        title="spec copy.pdf",
         logical_name="spec.pdf",
-        status="active",
-        current_version_number=1,
         created_by_user_id=admin.id,
         updated_by_user_id=admin.id,
     )
@@ -95,39 +86,30 @@ def test_document_logical_name_must_be_unique_within_knowledge_base(migrated_db_
 def test_document_version_number_must_be_unique_within_document(migrated_db_session) -> None:
     admin = create_admin(migrated_db_session)
     knowledge_base = create_space(migrated_db_session, admin)
-    document = Document(
-        knowledge_base_id=knowledge_base.id,
-        name="spec.pdf",
+    document = DocumentFactory.persisted_create(
+        migrated_db_session,
+        space_id=knowledge_base.id,
+        title="spec.pdf",
         logical_name="spec.pdf",
-        status="active",
-        current_version_number=1,
         created_by_user_id=admin.id,
         updated_by_user_id=admin.id,
     )
-    migrated_db_session.add(document)
-    migrated_db_session.commit()
-    migrated_db_session.refresh(document)
 
-    first_version = DocumentRevision(
+    first_version = DocumentRevisionFactory.build(
         document_id=document.id,
-        version_number=1,
-        file_name="spec.pdf",
-        content_hash="hash-1",
-        file_type="pdf",
-        lifecycle_status="indexed",
-        origin_path="/uploads/spec.pdf",
-        normalized_path="/normalized/spec.md",
+        revision_no=1,
+        source_filename="spec.pdf",
+        ingest_status="indexed",
+        source_path="/uploads/spec.pdf",
         created_by_user_id=admin.id,
         updated_by_user_id=admin.id,
     )
-    duplicate_version = DocumentRevision(
+    duplicate_version = DocumentRevisionFactory.build(
         document_id=document.id,
-        version_number=1,
-        file_name="spec-copy.pdf",
-        content_hash="hash-2",
-        file_type="pdf",
-        lifecycle_status="uploaded",
-        origin_path="/uploads/spec-copy.pdf",
+        revision_no=1,
+        source_filename="spec-copy.pdf",
+        ingest_status="uploaded",
+        source_path="/uploads/spec-copy.pdf",
         created_by_user_id=admin.id,
         updated_by_user_id=admin.id,
     )
@@ -145,7 +127,6 @@ def test_document_revision_derives_mime_type_from_file_type() -> None:
         document_id=1,
         revision_no=1,
         source_filename="image.webp",
-        content_hash="hash-1",
         file_type="webp",
         ingest_status="uploaded",
         source_path="/uploads/image.webp",
@@ -154,7 +135,6 @@ def test_document_revision_derives_mime_type_from_file_type() -> None:
         document_id=1,
         revision_no=2,
         source_filename="archive.bin",
-        content_hash="hash-2",
         file_type="bin",
         ingest_status="uploaded",
         source_path="/uploads/archive.bin",
@@ -183,12 +163,12 @@ def test_new_upload_creates_document_and_version_one(
 
     assert result.document.current_version_number == 1
     assert result.document.logical_name == "spec.pdf"
-    assert result.version.version_number == 1
+    assert result.version.revision_no == 1
     assert result.version.document_id == result.document.id
     assert result.version.mime_type == "application/pdf"
-    assert result.version.supersedes_version_id is None
+    assert result.version.supersedes_revision_id is None
     assert result.duplicate_content is False
-    assert Path(result.version.origin_path).exists()
+    assert Path(result.version.source_path).exists()
 
 
 def test_same_name_upload_creates_new_version_and_updates_document_pointer(
@@ -223,8 +203,8 @@ def test_same_name_upload_creates_new_version_and_updates_document_pointer(
     assert first_version is not None
     assert second_version is not None
     assert document.current_version_number == 2
-    assert second_version.version_number == 2
-    assert second_version.supersedes_version_id == first_version.id
+    assert second_version.revision_no == 2
+    assert second_version.supersedes_revision_id == first_version.id
 
 
 def test_duplicate_hash_reuses_latest_version_without_creating_new_version(
@@ -253,7 +233,7 @@ def test_duplicate_hash_reuses_latest_version_without_creating_new_version(
 
     assert first.document.id == second.document.id
     assert first.version.id == second.version.id
-    assert second.version.version_number == 1
+    assert second.version.revision_no == 1
     assert second.duplicate_content is True
     document = migrated_db_session.get(Document, first.document.id)
     versions = (

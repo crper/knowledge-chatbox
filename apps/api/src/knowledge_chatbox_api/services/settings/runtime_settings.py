@@ -88,3 +88,15 @@ def build_runtime_settings(
             reasoning_mode=reasoning_mode,
         )
     )
+
+
+def build_embedding_settings(settings_record, *, use_pending: bool) -> ProviderRuntimeSettings:
+    """根据 pending 标志选择 embedding route 并构建运行时设置。"""
+    return build_runtime_settings(
+        settings_record,
+        embedding_route=(
+            settings_record.pending_embedding_route
+            if use_pending
+            else settings_record.embedding_route
+        ),
+    )

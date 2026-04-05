@@ -1,21 +1,12 @@
 from __future__ import annotations
 
-from knowledge_chatbox_api.models.auth import User
+from tests.fixtures.factories import UserFactory
+
 from knowledge_chatbox_api.repositories.chat_repository import ChatRepository
 
 
 def create_user_and_session(migrated_db_session):
-    user = User(
-        username="alice",
-        password_hash="hash",
-        role="user",
-        status="active",
-        theme_preference="system",
-    )
-    migrated_db_session.add(user)
-    migrated_db_session.commit()
-    migrated_db_session.refresh(user)
-
+    user = UserFactory.persisted_create(migrated_db_session, username="alice")
     repository = ChatRepository(migrated_db_session)
     chat_session = repository.create_session(user.id, "Session")
     migrated_db_session.commit()

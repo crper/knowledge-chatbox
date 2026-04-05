@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from typing import Any
 
 from knowledge_chatbox_api.providers.anthropic_provider import (
@@ -34,38 +33,56 @@ from knowledge_chatbox_api.schemas.settings import (
     parse_vision_route,
 )
 
+_RESPONSE_REGISTRY: dict[str, type[BaseResponseAdapter]] = {
+    "anthropic": AnthropicResponseAdapter,
+    "ollama": OllamaResponseAdapter,
+    "openai": OpenAIResponseAdapter,
+}
+
+_EMBEDDING_REGISTRY: dict[str, type[BaseEmbeddingAdapter]] = {
+    "ollama": OllamaEmbeddingAdapter,
+    "openai": OpenAIEmbeddingAdapter,
+    "voyage": VoyageEmbeddingAdapter,
+}
+
+_VISION_REGISTRY: dict[str, type[BaseVisionAdapter]] = {
+    "anthropic": AnthropicVisionAdapter,
+    "ollama": OllamaVisionAdapter,
+    "openai": OpenAIVisionAdapter,
+}
+
+
+def _resolve_adapter(
+    registry: dict[str, type[Any]],
+    default: str,
+    route: Any,
+) -> Any:
+    provider_name = getattr(route, "provider", None) or default
+    adapter_cls = registry.get(provider_name)
+    if adapter_cls is None:
+        adapter_cls = registry[default]
+    return adapter_cls()
+
 
 def build_response_adapter(
-    route: ResponseRouteConfig | Mapping[str, Any] | None,
+    route: ResponseRouteConfig | dict[str, Any] | None,
 ) -> BaseResponseAdapter:
-    provider = parse_response_route(route).provider if route is not None else "openai"
-    if provider == "anthropic":
-        return AnthropicResponseAdapter()
-    if provider == "ollama":
-        return OllamaResponseAdapter()
-    return OpenAIResponseAdapter()
+    parsed = parse_response_route(route) if route is not None else None
+    return _resolve_adapter(_RESPONSE_REGISTRY, "openai", parsed)
 
 
 def build_embedding_adapter(
-    route: EmbeddingRouteConfig | Mapping[str, Any] | None,
+    route: EmbeddingRouteConfig | dict[str, Any] | None,
 ) -> BaseEmbeddingAdapter:
-    provider = parse_embedding_route(route).provider if route is not None else "openai"
-    if provider == "voyage":
-        return VoyageEmbeddingAdapter()
-    if provider == "ollama":
-        return OllamaEmbeddingAdapter()
-    return OpenAIEmbeddingAdapter()
+    parsed = parse_embedding_route(route) if route is not None else None
+    return _resolve_adapter(_EMBEDDING_REGISTRY, "openai", parsed)
 
 
 def build_vision_adapter(
-    route: VisionRouteConfig | Mapping[str, Any] | None,
+    route: VisionRouteConfig | dict[str, Any] | None,
 ) -> BaseVisionAdapter:
-    provider = parse_vision_route(route).provider if route is not None else "openai"
-    if provider == "anthropic":
-        return AnthropicVisionAdapter()
-    if provider == "ollama":
-        return OllamaVisionAdapter()
-    return OpenAIVisionAdapter()
+    parsed = parse_vision_route(route) if route is not None else None
+    return _resolve_adapter(_VISION_REGISTRY, "openai", parsed)
 
 
 def build_response_adapter_from_settings(settings_record) -> BaseResponseAdapter:

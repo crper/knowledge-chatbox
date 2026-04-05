@@ -6,11 +6,11 @@ from threading import Barrier
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError as PydanticValidationError
+from tests.fixtures.factories import UserFactory
 
 from knowledge_chatbox_api.core.config import Settings, get_settings
 from knowledge_chatbox_api.core.security import PasswordManager
 from knowledge_chatbox_api.db import session as db_session
-from knowledge_chatbox_api.models.auth import User
 from knowledge_chatbox_api.schemas.settings import (
     EmbeddingRouteConfig,
     ProviderProfiles,
@@ -41,18 +41,13 @@ def create_settings_service(migrated_db_session) -> SettingsService:
     return SettingsService(migrated_db_session, get_settings())
 
 
-def seed_admin(migrated_db_session) -> User:
-    user = User(
+def seed_admin(migrated_db_session):
+    return UserFactory.persisted_create(
+        migrated_db_session,
         username="admin",
         password_hash=PasswordManager().hash_password("admin-123"),
         role="admin",
-        status="active",
-        theme_preference="system",
     )
-    migrated_db_session.add(user)
-    migrated_db_session.commit()
-    migrated_db_session.refresh(user)
-    return user
 
 
 def test_settings_service_bootstraps_routes_and_profiles(migrated_db_session) -> None:

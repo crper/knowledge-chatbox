@@ -15,13 +15,13 @@ from knowledge_chatbox_api.repositories.document_repository import DocumentRepos
 from knowledge_chatbox_api.services.documents.chunking_service import ChunkingService
 from knowledge_chatbox_api.services.documents.indexing_service import IndexingService
 from knowledge_chatbox_api.services.documents.ingestion_service import IngestionService
-from knowledge_chatbox_api.utils.document_types import derive_section_title
 from knowledge_chatbox_api.services.settings.settings_service import (
     INDEX_REBUILD_STATUS_RUNNING,
     SettingsService,
 )
 from knowledge_chatbox_api.tasks import document_jobs
 from knowledge_chatbox_api.utils.chroma import InMemoryChromaStore, get_chroma_store
+from knowledge_chatbox_api.utils.document_types import derive_section_title
 
 
 def login_admin(api_client: TestClient) -> None:

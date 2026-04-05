@@ -1,16 +1,14 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
-
 import pytest
 from argon2 import PasswordHasher
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
+from tests.fixtures.factories import AuthSessionFactory, ChatSessionFactory, UserFactory
 
 from knowledge_chatbox_api.core.config import get_settings
 from knowledge_chatbox_api.core.security import PasswordManager
-from knowledge_chatbox_api.models.auth import AuthSession, User
-from knowledge_chatbox_api.models.chat import ChatSession
+from knowledge_chatbox_api.models.auth import AuthSession
 from knowledge_chatbox_api.services.auth.auth_service import (
     AuthService,
     InvalidCredentialsError,
@@ -29,20 +27,8 @@ def build_auth_service(migrated_db_session) -> AuthService:
 
 
 def test_user_username_must_be_unique(migrated_db_session) -> None:
-    first_user = User(
-        username="admin",
-        password_hash="hash-1",
-        role="admin",
-        status="active",
-        theme_preference="system",
-    )
-    duplicated_user = User(
-        username="admin",
-        password_hash="hash-2",
-        role="user",
-        status="active",
-        theme_preference="light",
-    )
+    first_user = UserFactory.build(username="admin", password_hash="hash-1", role="admin")
+    duplicated_user = UserFactory.build(username="admin", password_hash="hash-2", role="user")
 
     migrated_db_session.add(first_user)
     migrated_db_session.commit()
@@ -58,13 +44,7 @@ def test_user_username_must_be_unique(migrated_db_session) -> None:
     [("role", "owner"), ("status", "paused"), ("theme_preference", "blue")],
 )
 def test_user_enum_like_fields_are_constrained(migrated_db_session, field: str, value: str) -> None:
-    user = User(
-        username=f"user-{field}",
-        password_hash="hash",
-        role="user",
-        status="active",
-        theme_preference="system",
-    )
+    user = UserFactory.build(username=f"user-{field}")
     setattr(user, field, value)
 
     migrated_db_session.add(user)
@@ -74,12 +54,8 @@ def test_user_enum_like_fields_are_constrained(migrated_db_session, field: str, 
 
 
 def test_auth_session_and_chat_session_require_existing_user(migrated_db_session) -> None:
-    auth_session = AuthSession(
-        user_id=9999,
-        session_token_hash="token-hash",
-        expires_at=datetime.now(UTC) + timedelta(days=1),
-    )
-    chat_session = ChatSession(user_id=9999, title="hello")
+    auth_session = AuthSessionFactory.build(user_id=9999)
+    chat_session = ChatSessionFactory.build(user_id=9999)
 
     migrated_db_session.add(auth_session)
     with pytest.raises(IntegrityError):
@@ -112,16 +88,11 @@ def test_login_creates_session_and_rehashes_password(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     old_hasher = PasswordHasher(time_cost=1, memory_cost=8 * 1024, parallelism=1)
-    user = User(
+    user = UserFactory.persisted_create(
+        migrated_db_session,
         username="alice",
         password_hash=old_hasher.hash("secret-123"),
-        role="user",
-        status="active",
-        theme_preference="system",
     )
-    migrated_db_session.add(user)
-    migrated_db_session.commit()
-    migrated_db_session.refresh(user)
 
     monkeypatch.setenv("INITIAL_ADMIN_USERNAME", "admin")
     monkeypatch.setenv("INITIAL_ADMIN_PASSWORD", "admin123456")
@@ -142,16 +113,11 @@ def test_login_creates_session_and_rehashes_password(
 
 def test_change_password_revokes_existing_sessions(migrated_db_session) -> None:
     password_manager = PasswordManager()
-    user = User(
+    user = UserFactory.persisted_create(
+        migrated_db_session,
         username="alice",
         password_hash=password_manager.hash_password("secret-123"),
-        role="user",
-        status="active",
-        theme_preference="system",
     )
-    migrated_db_session.add(user)
-    migrated_db_session.commit()
-    migrated_db_session.refresh(user)
 
     service = build_auth_service(migrated_db_session)
     _, _, current_user = service.login("alice", "secret-123")
@@ -174,16 +140,11 @@ def test_change_password_revokes_existing_sessions(migrated_db_session) -> None:
 
 def test_update_preferences_persists_theme_preference(migrated_db_session) -> None:
     password_manager = PasswordManager()
-    user = User(
+    user = UserFactory.persisted_create(
+        migrated_db_session,
         username="alice",
         password_hash=password_manager.hash_password("secret-123"),
-        role="user",
-        status="active",
-        theme_preference="system",
     )
-    migrated_db_session.add(user)
-    migrated_db_session.commit()
-    migrated_db_session.refresh(user)
 
     service = build_auth_service(migrated_db_session)
     updated_user = service.update_preferences(user, "dark")
@@ -193,15 +154,11 @@ def test_update_preferences_persists_theme_preference(migrated_db_session) -> No
 
 def test_login_failure_is_rate_limited(migrated_db_session) -> None:
     password_manager = PasswordManager()
-    user = User(
+    UserFactory.persisted_create(
+        migrated_db_session,
         username="alice",
         password_hash=password_manager.hash_password("secret-123"),
-        role="user",
-        status="active",
-        theme_preference="system",
     )
-    migrated_db_session.add(user)
-    migrated_db_session.commit()
 
     service = AuthService(
         session=migrated_db_session,

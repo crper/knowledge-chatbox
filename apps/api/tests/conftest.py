@@ -17,6 +17,7 @@ from knowledge_chatbox_api.db.session import create_session_factory
 from knowledge_chatbox_api.main import create_app
 from knowledge_chatbox_api.services.settings.settings_service import SettingsService
 from knowledge_chatbox_api.utils.chroma import reset_chroma_store
+from tests.fixtures.stubs import EmbeddingAdapterStub, ResponseAdapterStub
 
 ALEMBIC_CONFIG_PATH = Path(__file__).resolve().parents[1] / "alembic.ini"
 DEFAULT_ADMIN_ENV = {
@@ -201,3 +202,48 @@ def configure_upload_provider() -> None:
         settings_record.index_rebuild_status = "idle"
         settings_record.building_index_generation = None
         session.commit()
+
+
+@pytest.fixture
+def stub_response_adapter():
+    """提供响应适配器 Stub"""
+    return ResponseAdapterStub()
+
+
+@pytest.fixture
+def stub_embedding_adapter():
+    """提供嵌入适配器 Stub"""
+    return EmbeddingAdapterStub()
+
+
+@pytest.fixture
+def mock_chat_adapters(monkeypatch, stub_response_adapter, stub_embedding_adapter):
+    """自动 mock chat 相关的 adapter"""
+    monkeypatch.setattr(
+        "knowledge_chatbox_api.services.chat.chat_application_service.build_response_adapter_from_settings",
+        lambda settings_record: stub_response_adapter,
+    )
+    monkeypatch.setattr(
+        "knowledge_chatbox_api.services.chat.chat_application_service.build_embedding_adapter_from_settings",
+        lambda settings_record: stub_embedding_adapter,
+    )
+
+
+@pytest.fixture
+def logged_in_admin(api_client: TestClient) -> dict:
+    """登录管理员并返回认证信息"""
+    response = api_client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": "admin123456"},
+    )
+    assert response.status_code == 200
+    return {
+        "access_token": response.json()["data"]["access_token"],
+        "cookies": response.cookies,
+    }
+
+
+@pytest.fixture
+def auth_headers(logged_in_admin):
+    """返回认证请求头"""
+    return {"Authorization": f"Bearer {logged_in_admin['access_token']}"}
