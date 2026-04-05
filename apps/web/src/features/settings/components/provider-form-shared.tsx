@@ -25,7 +25,7 @@ export type ProfileFieldDefinition = {
 export const providerFormControlClassName =
   "h-11 rounded-xl border-border/80 bg-background/80 md:h-10";
 export const providerFormInsetSectionClassName =
-  "rounded-[1.25rem] border border-border/60 bg-background/58 p-4";
+  "rounded-xl border border-border/60 bg-background/58 p-4";
 
 export const PROFILE_FIELDS: Record<TemplateProviderName, ProfileFieldDefinition[]> = {
   openai: [

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import json
+import orjson
 
 from knowledge_chatbox_api.services.chat.stream_events import (
     StreamEventEnvelope,
@@ -24,5 +24,5 @@ class ChatStreamPresenter:
 
     def to_sse(self, event: StreamEventEnvelope) -> str:
         """把Sse转换为响应结构。"""
-        payload = json.dumps(event["data"], ensure_ascii=False)
+        payload = orjson.dumps(event["data"]).decode("utf-8")
         return f"event: {event['event']}\ndata: {payload}\n\n"

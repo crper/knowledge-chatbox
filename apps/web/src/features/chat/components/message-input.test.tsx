@@ -209,6 +209,21 @@ describe("MessageInput", () => {
     expect(input).not.toHaveFocus();
   });
 
+  it("renders the selected reasoning mode label in the composer rail", () => {
+    render(
+      <MessageInput
+        draft="hello"
+        onChange={() => {}}
+        onSubmit={() => {}}
+        reasoningMode="on"
+        reasoningModeVisible={true}
+        sendShortcut="enter"
+      />,
+    );
+
+    expect(screen.getByRole("combobox", { name: "思考模式" })).toHaveTextContent("开启");
+  });
+
   it("does not submit while the user is composing with IME", () => {
     const onSubmit = vi.fn();
 

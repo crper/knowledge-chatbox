@@ -11,6 +11,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[4]
 JUSTFILE_PATH = REPO_ROOT / "justfile"
 DEV_RUN_SCRIPT = REPO_ROOT / "scripts" / "dev-run.sh"
+DOCKER_DEPLOY_SCRIPT = REPO_ROOT / "scripts" / "docker-deploy.sh"
 WEB_NODE_VERSION_PATH = REPO_ROOT / "apps" / "web" / ".node-version"
 
 
@@ -110,6 +111,13 @@ exit 1
     assert "http://localhost:18080/docs" in output
     assert "http://localhost:18080/redoc" in output
     assert "http://localhost:18080/openapi.json" in output
+
+
+def test_docker_deploy_wait_for_http_retries_quietly_until_final_failure() -> None:
+    content = DOCKER_DEPLOY_SCRIPT.read_text(encoding="utf-8")
+
+    assert 'curl --fail --silent --max-time 3 "$url" >/dev/null 2>&1' in content
+    assert 'curl --fail --silent --show-error --max-time 3 "$url" >/dev/null || true' in content
 
 
 def write_executable(path: Path, body: str) -> None:

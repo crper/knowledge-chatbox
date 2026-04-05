@@ -3,6 +3,12 @@ import {
   toSettingsPayload,
   updatePrimaryProvider,
   validateProviderSettingsView,
+  toggleRetrievalOverride,
+  getPrimaryChatModel,
+  getPrimaryVisionModel,
+  getDefaultEmbeddingModel,
+  getRetrievalEmbeddingModel,
+  getDefaultEmbeddingProvider,
 } from "./provider-form-state";
 import type { AppSettings } from "../api/settings";
 
@@ -116,6 +122,45 @@ describe("provider-form-state validation", () => {
       },
       firstInvalidField: "primaryBaseUrl",
     });
+  });
+
+  it("rejects malformed http urls even when they include a protocol prefix", () => {
+    const malformedUrls = [
+      "http://exa mple.com",
+      "http://[::1",
+      "https://foo bar/baz",
+      "http://:80",
+    ];
+
+    for (const baseUrl of malformedUrls) {
+      const view = buildProviderSettingsView(
+        buildSettings({
+          provider_profiles: {
+            openai: {
+              base_url: baseUrl,
+            },
+          } as AppSettings["provider_profiles"],
+        }),
+      );
+
+      expect(
+        validateProviderSettingsView({
+          ...view,
+          providerProfiles: {
+            ...view.providerProfiles,
+            openai: {
+              ...view.providerProfiles.openai,
+              base_url: baseUrl,
+            },
+          },
+        }),
+      ).toMatchObject({
+        fields: {
+          primaryBaseUrl: { i18nKey: "baseUrlInvalidError" },
+        },
+        firstInvalidField: "primaryBaseUrl",
+      });
+    }
   });
 
   it("allows an empty OpenAI base url but requires one for Ollama", () => {
@@ -239,5 +284,94 @@ describe("provider-form-state validation", () => {
       embedding_route: { provider: "voyage", model: "voyage-3.5" },
       vision_route: { provider: "anthropic", model: "claude-sonnet-4-5" },
     });
+  });
+});
+
+describe("model getters", () => {
+  it("getPrimaryChatModel returns the chat model of the primary provider", () => {
+    const view = buildProviderSettingsView(buildSettings());
+
+    expect(getPrimaryChatModel(view)).toBe("gpt-5.4");
+  });
+
+  it("getPrimaryVisionModel returns the vision model of the primary provider", () => {
+    const view = buildProviderSettingsView(buildSettings());
+
+    expect(getPrimaryVisionModel(view)).toBe("gpt-5.4");
+  });
+
+  it("getDefaultEmbeddingModel returns the default embedding model for openai primary", () => {
+    const view = buildProviderSettingsView(buildSettings());
+
+    expect(getDefaultEmbeddingModel(view)).toBe("text-embedding-3-small");
+  });
+
+  it("getDefaultEmbeddingModel returns voyage model when primary is anthropic", () => {
+    const view = buildProviderSettingsView(
+      buildSettings({
+        response_route: { provider: "anthropic", model: "claude-sonnet-4-5" },
+        vision_route: { provider: "anthropic", model: "claude-sonnet-4-5" },
+        provider_profiles: {
+          anthropic: {
+            api_key: null,
+            base_url: "https://api.anthropic.com",
+            chat_model: "claude-sonnet-4-5",
+            vision_model: "claude-sonnet-4-5",
+          },
+        } as AppSettings["provider_profiles"],
+      }),
+    );
+
+    expect(getDefaultEmbeddingModel(view)).toBe("voyage-3.5");
+  });
+
+  it("getRetrievalEmbeddingModel returns retrieval-specific model when override is enabled", () => {
+    const view = buildProviderSettingsView(
+      buildSettings({
+        pending_embedding_route: { provider: "voyage", model: "voyage-lite" },
+      }),
+    );
+
+    expect(getRetrievalEmbeddingModel(view)).toBe("voyage-lite");
+  });
+});
+
+describe("getDefaultEmbeddingProvider", () => {
+  it("returns 'openai' for openai primary", () => {
+    expect(getDefaultEmbeddingProvider("openai")).toBe("openai");
+  });
+
+  it("returns 'voyage' for anthropic primary", () => {
+    expect(getDefaultEmbeddingProvider("anthropic")).toBe("voyage");
+  });
+
+  it("returns 'ollama' for ollama primary", () => {
+    expect(getDefaultEmbeddingProvider("ollama")).toBe("ollama");
+  });
+});
+
+describe("toggleRetrievalOverride", () => {
+  it("enables retrieval override and resets to default provider", () => {
+    const view = buildProviderSettingsView(buildSettings());
+
+    const toggled = toggleRetrievalOverride(view);
+
+    expect(toggled.retrievalOverrideEnabled).toBe(true);
+    expect(toggled.retrievalProvider).toBe("openai");
+  });
+
+  it("disables retrieval override when already enabled", () => {
+    const view = buildProviderSettingsView(
+      buildSettings({
+        pending_embedding_route: { provider: "voyage", model: "voyage-3.5" },
+      }),
+    );
+
+    expect(view.retrievalOverrideEnabled).toBe(true);
+
+    const toggled = toggleRetrievalOverride(view);
+
+    expect(toggled.retrievalOverrideEnabled).toBe(false);
+    expect(toggled.retrievalProvider).toBe("openai");
   });
 });

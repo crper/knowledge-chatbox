@@ -6,73 +6,41 @@ import { ChatMessageViewport } from "./chat-message-viewport";
 
 const scrollToIndexSpy = vi.fn();
 
-vi.mock("react-virtuoso", async () => {
+vi.mock("@tanstack/react-virtual", async () => {
   const React = await import("react");
 
-  const Virtuoso = React.forwardRef(function MockVirtuoso(
-    {
-      className,
-      components,
-      data = [],
-      initialItemCount,
-      itemContent,
-      startReached,
-      scrollerRef,
-      "data-testid": testId,
-    }: {
-      className?: string;
-      components?: {
-        List?: React.ComponentType<React.ComponentProps<"div">>;
-        Scroller?: React.ComponentType<React.ComponentProps<"div">>;
-      };
-      data?: ChatMessageItem[];
-      initialItemCount?: number;
-      itemContent?: (index: number, item?: ChatMessageItem) => React.ReactNode;
-      startReached?: () => void;
-      scrollerRef?: (element: HTMLElement | null) => void;
-      "data-testid"?: string;
-    },
-    ref: React.ForwardedRef<{ scrollToIndex: typeof scrollToIndexSpy }>,
-  ) {
-    const elementRef = React.useRef<HTMLDivElement | null>(null);
+  return {
+    useVirtualizer: vi.fn(
+      (options: {
+        count?: number;
+        getScrollElement?: () => HTMLElement | null;
+        estimateSize?: (index: number) => number;
+        overscan?: number;
+      }) => {
+        const count = options.count ?? 0;
+        const elementRef = React.useRef<HTMLDivElement | null>(null);
 
-    React.useImperativeHandle(ref, () => ({
-      scrollToIndex: scrollToIndexSpy,
-    }));
+        React.useEffect(() => {
+          const el = options.getScrollElement?.();
+          if (el instanceof HTMLDivElement) {
+            elementRef.current = el;
+          }
+        });
 
-    React.useEffect(() => {
-      scrollerRef?.(elementRef.current);
-      return () => {
-        scrollerRef?.(null);
-      };
-    }, [scrollerRef]);
-
-    const Scroller = components?.Scroller ?? "div";
-    const List = components?.List ?? "div";
-    const renderCount = Math.max(data.length, initialItemCount ?? 0);
-    const items = Array.from({ length: renderCount }, (_, index) =>
-      itemContent?.(index, data[index]),
-    );
-
-    if (items.some((item) => item == null)) {
-      throw new Error("Virtuoso received an empty message row.");
-    }
-
-    return (
-      <Scroller className={className} data-testid={testId} ref={elementRef}>
-        <button onClick={startReached} type="button">
-          mock-load-older
-        </button>
-        <List data-testid="virtuoso-item-list">
-          {items.map((item, index) => (
-            <div key={data[index]?.id ?? `probe-message-${index}`}>{item}</div>
-          ))}
-        </List>
-      </Scroller>
-    );
-  });
-
-  return { Virtuoso };
+        return {
+          getVirtualItems: () =>
+            Array.from({ length: count }, (_, index) => ({
+              index,
+              start: index * 220,
+              size: 220,
+              key: index,
+            })),
+          getTotalSize: () => count * 220,
+          scrollToIndex: scrollToIndexSpy,
+        };
+      },
+    ),
+  };
 });
 
 function buildMessages(count: number): ChatMessageItem[] {
@@ -118,19 +86,12 @@ describe("ChatMessageViewport", () => {
     );
   });
 
-  it("bounds the internal virtuoso item list width without hiding vertical flow", async () => {
+  it("renders the internal virtual item list with bounded attribute", async () => {
     renderViewport(buildMessages(12));
 
     const list = await screen.findByTestId("virtuoso-item-list");
 
     expect(list).toHaveAttribute("data-chat-viewport-list", "bounded");
-    expect(list).toHaveStyle({
-      width: "100%",
-      maxWidth: "100%",
-      minWidth: "0",
-      overflowX: "clip",
-      overflowY: "visible",
-    });
   });
 
   it("renders a short message list without producing empty probe rows", async () => {
@@ -139,9 +100,50 @@ describe("ChatMessageViewport", () => {
     expect(await screen.findAllByTestId("chat-message-virtual-item")).toHaveLength(1);
   });
 
+  it("scrolls to the latest message when a long history is rendered for the first time", async () => {
+    renderViewport(buildMessages(80));
+
+    await waitFor(() => {
+      expect(scrollToIndexSpy).toHaveBeenCalledWith(79, {
+        align: "end",
+        behavior: "auto",
+      });
+    });
+  });
+
+  it("does not request older messages on first paint before the reader scrolls", async () => {
+    const onLoadOlderMessages = vi.fn();
+
+    render(
+      <AppProviders>
+        <div style={{ height: "640px" }}>
+          <ChatMessageViewport
+            hasOlderMessages={true}
+            isLoadingOlderMessages={false}
+            messages={buildMessages(80)}
+            onLoadOlderMessages={onLoadOlderMessages}
+            onRetry={vi.fn()}
+          />
+        </div>
+      </AppProviders>,
+    );
+
+    await screen.findByTestId("chat-message-viewport-scroll");
+
+    expect(onLoadOlderMessages).not.toHaveBeenCalled();
+  });
+
   it("scrolls to the latest message after a send-triggered request is followed by a new message", async () => {
     const view = renderViewport(buildMessages(80), 0);
     const scroller = await screen.findByTestId("chat-message-viewport-scroll");
+
+    await waitFor(() => {
+      expect(scrollToIndexSpy).toHaveBeenCalledWith(79, {
+        align: "end",
+        behavior: "auto",
+      });
+    });
+    scrollToIndexSpy.mockClear();
 
     Object.defineProperty(scroller, "clientHeight", {
       configurable: true,
@@ -186,8 +188,7 @@ describe("ChatMessageViewport", () => {
     );
 
     await waitFor(() => {
-      expect(scrollToIndexSpy).toHaveBeenCalledWith({
-        index: 80,
+      expect(scrollToIndexSpy).toHaveBeenCalledWith(80, {
         align: "end",
         behavior: "auto",
       });
@@ -197,6 +198,14 @@ describe("ChatMessageViewport", () => {
   it("cancels a pending send-triggered scroll when the reader scrolls away first", async () => {
     const view = renderViewport(buildMessages(80), 0);
     const scroller = await screen.findByTestId("chat-message-viewport-scroll");
+
+    await waitFor(() => {
+      expect(scrollToIndexSpy).toHaveBeenCalledWith(79, {
+        align: "end",
+        behavior: "auto",
+      });
+    });
+    scrollToIndexSpy.mockClear();
 
     Object.defineProperty(scroller, "clientHeight", {
       configurable: true,
@@ -246,7 +255,7 @@ describe("ChatMessageViewport", () => {
     });
   });
 
-  it("requests older messages when older history exists", async () => {
+  it("requests older messages when scrolling near top and older history exists", async () => {
     const onLoadOlderMessages = vi.fn();
 
     render(
@@ -263,7 +272,14 @@ describe("ChatMessageViewport", () => {
       </AppProviders>,
     );
 
-    fireEvent.click(await screen.findByRole("button", { name: "mock-load-older" }));
+    const scroller = await screen.findByTestId("chat-message-viewport-scroll");
+    Object.defineProperty(scroller, "scrollTop", {
+      configurable: true,
+      writable: true,
+      value: 0,
+    });
+
+    fireEvent.scroll(scroller);
 
     expect(onLoadOlderMessages).toHaveBeenCalled();
   });

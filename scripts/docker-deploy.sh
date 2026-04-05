@@ -169,7 +169,7 @@ wait_for_http() {
   local attempt
 
   for ((attempt = 1; attempt <= max_attempts; attempt += 1)); do
-    if curl --fail --silent --show-error --max-time 3 "$url" >/dev/null; then
+    if curl --fail --silent --max-time 3 "$url" >/dev/null 2>&1; then
       log "$name 已就绪：$url"
       return 0
     fi
@@ -178,6 +178,7 @@ wait_for_http() {
 
   log "当前容器状态："
   compose_cmd ps || true
+  curl --fail --silent --show-error --max-time 3 "$url" >/dev/null || true
   die "$name 健康检查失败：$url"
 }
 

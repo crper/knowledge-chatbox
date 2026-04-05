@@ -60,7 +60,7 @@ export function PrimaryProviderSection({
   );
 
   return (
-    <section className="rounded-[1.5rem] border border-border/60 bg-background/55 px-5 py-5">
+    <section className="rounded-2xl border border-border/60 bg-background/55 px-5 py-5">
       <div className="mb-5">
         <h2 className="text-sm font-medium">{t("providerCategoryTitle")}</h2>
       </div>
@@ -69,6 +69,10 @@ export function PrimaryProviderSection({
         <Field>
           <FieldLabel>{t("primaryProviderLabel")}</FieldLabel>
           <Select
+            items={PRIMARY_PROVIDER_OPTIONS.map((provider) => ({
+              label: getProviderLabel(provider, t),
+              value: provider,
+            }))}
             onValueChange={(value) =>
               handleViewChange((current) =>
                 updatePrimaryProvider(current, value as PrimaryProviderName),
@@ -80,7 +84,7 @@ export function PrimaryProviderSection({
               aria-label={t("primaryProviderLabel")}
               className={providerFormControlClassName}
             >
-              <SelectValue />
+              <SelectValue>{() => getProviderLabel(draft.primaryProvider, t)}</SelectValue>
             </SelectTrigger>
             <SelectContent>
               {PRIMARY_PROVIDER_OPTIONS.map((provider) => (

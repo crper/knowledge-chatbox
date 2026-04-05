@@ -109,18 +109,16 @@ export function normalizeKnowledgeDocumentListFilters(
   };
 }
 
-function toKnowledgeDocumentVersion(revision: DocumentRevisionRead): KnowledgeDocument {
+function toRevisionBaseFields(revision: DocumentRevisionRead) {
   return {
     id: revision.id,
     document_id: revision.document_id,
     name: revision.source_filename,
-    logical_name: undefined,
     version: revision.revision_no,
     hash: revision.content_hash,
     file_type: revision.file_type,
     mime_type: revision.mime_type,
     status: revision.ingest_status as KnowledgeDocumentStatus,
-    is_latest: false,
     supersedes_version_id: revision.supersedes_revision_id ?? null,
     origin_path: revision.source_path,
     normalized_path: revision.normalized_path ?? null,
@@ -132,6 +130,14 @@ function toKnowledgeDocumentVersion(revision: DocumentRevisionRead): KnowledgeDo
     created_at: revision.created_at,
     updated_at: revision.updated_at,
     indexed_at: revision.indexed_at ?? null,
+  };
+}
+
+function toKnowledgeDocumentVersion(revision: DocumentRevisionRead): KnowledgeDocument {
+  return {
+    ...toRevisionBaseFields(revision),
+    logical_name: undefined,
+    is_latest: false,
   };
 }
 

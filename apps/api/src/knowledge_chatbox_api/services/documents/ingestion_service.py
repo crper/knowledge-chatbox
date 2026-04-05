@@ -23,7 +23,6 @@ from knowledge_chatbox_api.services.documents.constants import (
     IMAGE_DOCUMENT_FILE_TYPES,
     SUPPORTED_DOCUMENT_FILE_TYPES,
 )
-from knowledge_chatbox_api.utils.document_types import derive_section_title
 from knowledge_chatbox_api.services.documents.errors import (
     DocumentNotFoundError,
     DocumentNotNormalizedError,
@@ -33,12 +32,13 @@ from knowledge_chatbox_api.services.documents.indexing_service import IndexingSe
 from knowledge_chatbox_api.services.documents.normalization_service import NormalizationService
 from knowledge_chatbox_api.services.documents.query_service import DocumentQueryService
 from knowledge_chatbox_api.services.documents.versioning_service import VersioningService
-from knowledge_chatbox_api.services.settings.runtime_settings import build_runtime_settings
+from knowledge_chatbox_api.services.settings.runtime_settings import build_embedding_settings
 from knowledge_chatbox_api.services.settings.settings_service import (
     INDEX_REBUILD_STATUS_RUNNING,
     SettingsService,
 )
 from knowledge_chatbox_api.utils.chroma import get_chroma_store
+from knowledge_chatbox_api.utils.document_types import derive_section_title
 from knowledge_chatbox_api.utils.files import PersistedUpload
 
 
@@ -375,13 +375,20 @@ class IngestionService:
         document_version.normalized_path = normalized.normalized_path
         settings_record = self.settings_service.get_or_create_settings_record()
         indexing_targets = self._build_indexing_targets(settings_record)
+
+        # 优化：复用 indexing_service 实例并只计算一次 section_title
         index_started_at = perf_counter()
+        section_title = derive_section_title(normalized.content)
+        indexing_services = {
+            id(target.settings): self._build_indexing_service(target.settings)
+            for target in indexing_targets
+        }
         for target in indexing_targets:
-            self._build_indexing_service(target.settings).index_document(
+            indexing_services[id(target.settings)].index_document(
                 document_version,
                 normalized.content,
                 generation=target.generation,
-                section_title=derive_section_title(normalized.content),
+                section_title=section_title,
             )
         index_latency_ms = max(int(round((perf_counter() - index_started_at) * 1000)), 0)
         self._set_revision_indexed(document_version)
@@ -407,7 +414,7 @@ class IngestionService:
         targets = [
             IndexingTarget(
                 generation=settings_record.active_index_generation,
-                settings=self._build_embedding_settings(settings_record, use_pending=False),
+                settings=build_embedding_settings(settings_record, use_pending=False),
             )
         ]
         building_generation = getattr(settings_record, "building_index_generation", None)
@@ -419,25 +426,10 @@ class IngestionService:
             targets.append(
                 IndexingTarget(
                     generation=building_generation,
-                    settings=self._build_embedding_settings(settings_record, use_pending=True),
+                    settings=build_embedding_settings(settings_record, use_pending=True),
                 )
             )
         return targets
-
-    def _build_embedding_settings(
-        self,
-        settings_record,
-        *,
-        use_pending: bool,
-    ) -> ProviderRuntimeSettings:
-        return build_runtime_settings(
-            settings_record,
-            embedding_route=(
-                settings_record.pending_embedding_route
-                if use_pending
-                else settings_record.embedding_route
-            ),
-        )
 
     def _index_document_for_targets(
         self,
@@ -446,9 +438,18 @@ class IngestionService:
         *,
         indexing_targets: list[IndexingTarget],
     ) -> None:
+        """为多个索引目标构建文档索引。
+
+        注意：当前顺序执行以确保事务一致性。如有性能需求，可考虑使用 asyncio.gather 并行化。
+        """
         section_title = derive_section_title(content)
+        # 复用 indexing_service 实例避免重复构建
+        indexing_services = {
+            id(target.settings): self._build_indexing_service(target.settings)
+            for target in indexing_targets
+        }
         for target in indexing_targets:
-            self._build_indexing_service(target.settings).index_document(
+            indexing_services[id(target.settings)].index_document(
                 document_version,
                 content,
                 generation=target.generation,

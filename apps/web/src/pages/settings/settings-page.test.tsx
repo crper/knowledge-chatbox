@@ -131,6 +131,31 @@ describe("SettingsPage", () => {
     expect(providerOptions.map((option) => option.textContent?.trim())).toContain("Ollama");
   });
 
+  it("expands advanced settings and reveals retrieval and timeout controls", async () => {
+    renderSettingsPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "展开高级配置" }));
+
+    expect(await screen.findByText("检索覆盖")).toBeInTheDocument();
+    expect(screen.getByLabelText("Provider Timeout (Seconds)")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "收起高级配置" })).toBeInTheDocument();
+  });
+
+  it("reopens advanced settings when timeout validation fails while collapsed", async () => {
+    renderSettingsPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "展开高级配置" }));
+    fireEvent.change(screen.getByLabelText("Provider Timeout (Seconds)"), {
+      target: { value: "0" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "收起高级配置" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存设置" }));
+
+    expect(await screen.findByRole("button", { name: "收起高级配置" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Provider Timeout (Seconds)")).toBeInTheDocument();
+    expect(screen.getByText("请先修正当前配置中的高亮字段。")).toBeInTheDocument();
+  });
+
   it("saves the edited primary provider draft and shows rebuild feedback", async () => {
     vi.mocked(settingsApi.updateSettings).mockResolvedValue(
       buildAppSettings({

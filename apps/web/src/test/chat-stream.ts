@@ -42,10 +42,14 @@ export function createChatStreamResponse(chunks: ChatStreamChunk[]) {
     },
   });
 
-  return {
-    ok: true,
-    body: stream,
-  };
+  return new Response(stream, {
+    status: 200,
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    },
+  });
 }
 
 export function getChatStreamEventPayload<TEventName extends ChatStreamEventName>(

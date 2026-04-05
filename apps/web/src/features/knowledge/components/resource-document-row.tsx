@@ -58,7 +58,7 @@ export function ResourceDocumentRow({
   return (
     <article
       className={cn(
-        "surface-outline grid gap-2.5 rounded-[1.25rem] px-3 py-2.5 transition-[border-color,background-color,box-shadow] md:grid-cols-[minmax(0,1.4fr)_minmax(10rem,0.72fr)_auto] md:items-center md:px-4",
+        "surface-light grid gap-2.5 rounded-xl px-3 py-2.5 transition-[border-color,background-color,box-shadow] md:grid-cols-[minmax(0,1.4fr)_minmax(10rem,0.72fr)_auto] md:items-center md:px-4",
         isSelected &&
           "border-primary/25 bg-[linear-gradient(135deg,hsl(var(--primary)/0.08),transparent_48%),linear-gradient(180deg,hsl(var(--surface-highlight)/0.06),transparent_52%),hsl(var(--surface-base)/0.12)] shadow-[0_18px_34px_-28px_hsl(var(--primary)/0.28)]",
       )}
@@ -66,15 +66,13 @@ export function ResourceDocumentRow({
     >
       <button
         aria-label={document.name}
-        className="grid min-w-0 gap-2 rounded-[1rem] text-left outline-none transition-transform focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+        className="grid min-w-0 gap-2 rounded-xl text-left outline-none transition-transform focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
         onClick={() => onSelectDocument(document)}
         type="button"
       >
         <div className="min-w-0">
-          <p className="truncate text-[0.98rem] font-medium tracking-[-0.018em] text-foreground">
-            {document.name}
-          </p>
-          <p className="truncate text-xs text-muted-foreground">{logicalName}</p>
+          <p className="truncate text-ui-title font-medium text-foreground">{document.name}</p>
+          <p className="truncate text-ui-caption text-muted-foreground">{logicalName}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Badge variant="outline">
@@ -114,22 +112,24 @@ export function ResourceDocumentRow({
         </Button>
         {canDelete ? (
           <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                aria-label={t("rowOpenMenuAction", { name: document.name })}
-                size="icon-sm"
-                type="button"
-                variant="ghost"
-              >
-                <MoreHorizontalIcon />
-              </Button>
+            <DropdownMenuTrigger
+              render={
+                <Button
+                  aria-label={t("rowOpenMenuAction", { name: document.name })}
+                  size="icon-sm"
+                  type="button"
+                  variant="ghost"
+                />
+              }
+            >
+              <MoreHorizontalIcon />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="min-w-44">
-              <DropdownMenuItem onSelect={() => onReindex(document)}>
+              <DropdownMenuItem onClick={() => onReindex(document)}>
                 <RotateCcwIcon />
                 <span>{t("reindexAction")}</span>
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => onDelete(document)} variant="destructive">
+              <DropdownMenuItem onClick={() => onDelete(document)} variant="destructive">
                 <Trash2Icon />
                 <span>{t("deleteAction")}</span>
               </DropdownMenuItem>

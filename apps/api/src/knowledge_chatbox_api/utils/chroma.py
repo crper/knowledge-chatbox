@@ -88,59 +88,55 @@ def _is_collection_missing_error(error: Exception) -> bool:
 
 
 def _quoted_phrases(text: str) -> set[str]:
-    phrases = {
-        _normalize_match_text(match.strip()) for match in re.findall(r'[“"「『](.+?)[”"」』]', text)
-    }
+    pattern = r'[\""「『](.+?)[\""」』]'
+    phrases = {_normalize_match_text(match.strip()) for match in re.findall(pattern, text)}
     return {phrase for phrase in phrases if len(phrase) >= 2}
 
 
 def _raw_quoted_phrases(text: str) -> list[str]:
-    return [
-        match.strip()
-        for match in re.findall(r'[“"「『](.+?)[”"」』]', text)
-        if len(match.strip()) >= 2
-    ]
+    pattern = r'[\""「『](.+?)[\""」』]'
+    return [match.strip() for match in re.findall(pattern, text) if len(match.strip()) >= 2]
 
 
 def _tokenize_text(text: str) -> set[str]:
+    """将文本分词为 tokens，支持 ASCII 和 CJK 字符。"""
     tokens: set[str] = set()
     ascii_buffer: list[str] = []
     cjk_buffer: list[str] = []
 
-    def flush_ascii_buffer() -> None:
-        if not ascii_buffer:
-            return
-        tokens.add("".join(ascii_buffer))
-        ascii_buffer.clear()
+    def flush_ascii() -> None:
+        if ascii_buffer:
+            tokens.add("".join(ascii_buffer))
+            ascii_buffer.clear()
 
-    def flush_cjk_buffer() -> None:
+    def flush_cjk() -> None:
         if not cjk_buffer:
             return
         run = "".join(cjk_buffer)
         if len(run) == 1:
             tokens.add(run)
         else:
-            tokens.update(run[index : index + 2] for index in range(len(run) - 1))
+            tokens.update(run[i : i + 2] for i in range(len(run) - 1))
         cjk_buffer.clear()
 
     for char in text:
         if char.isascii() and char.isalnum():
-            flush_cjk_buffer()
+            flush_cjk()
             ascii_buffer.append(char.lower())
-            continue
-        if _is_cjk_character(char):
-            flush_ascii_buffer()
+        elif _is_cjk_character(char):
+            flush_ascii()
             cjk_buffer.append(char)
-            continue
-        flush_ascii_buffer()
-        flush_cjk_buffer()
+        else:
+            flush_ascii()
+            flush_cjk()
 
-    flush_ascii_buffer()
-    flush_cjk_buffer()
+    flush_ascii()
+    flush_cjk()
     return tokens
 
 
 def _text_fallback_where_document_terms(query_text: str) -> list[str]:
+    """提取查询文本中的候选词项用于文本回退搜索。"""
     candidates: list[str] = []
     seen: set[str] = set()
 
@@ -151,14 +147,17 @@ def _text_fallback_where_document_terms(query_text: str) -> list[str]:
         seen.add(normalized)
         candidates.append(normalized)
 
+    # 优先添加引号内的短语
     for phrase in _raw_quoted_phrases(query_text):
         add_candidate(phrase)
 
+    # 添加完整查询（如果长度合适）
     stripped_query = query_text.strip()
     if 2 <= len(stripped_query) <= 120:
         add_candidate(stripped_query)
 
-    for token in sorted(_tokenize_text(query_text), key=lambda token: (-len(token), token)):
+    # 添加分词结果（按长度排序，优先长词）
+    for token in sorted(_tokenize_text(query_text), key=lambda t: (-len(t), t)):
         if token.isascii() and len(token) < 3:
             continue
         if not token.isascii() and len(token) < 2:
@@ -176,10 +175,18 @@ def _score_records(
     *,
     top_k: int,
 ) -> list[dict[str, Any]]:
+    """对记录进行评分和排序，返回 top_k 结果。"""
+    # 预计算查询相关值，避免在循环中重复计算
     query_terms = _tokenize_text(query_text)
     query_phrases = _quoted_phrases(query_text)
     normalized_query = _normalize_match_text(query_text)
+
+    # 提前退出：如果没有查询词，返回空结果
+    if not query_terms and not query_phrases and len(normalized_query) < 2:
+        return []
+
     scored_records: list[tuple[float, dict[str, Any]]] = []
+    query_term_count = max(len(query_terms), 1)
 
     for record in records:
         section_title = record.get("metadata", {}).get("section_title") or ""
@@ -193,7 +200,7 @@ def _score_records(
         )
         if overlap == 0 and phrase_hits == 0 and not normalized_query_hit:
             continue
-        score = overlap / max(len(query_terms), 1)
+        score = overlap / query_term_count
         if phrase_hits:
             score += float(phrase_hits)
         if normalized_query_hit:
@@ -205,6 +212,7 @@ def _score_records(
 
 
 def _record_filter_value(record: dict[str, Any], key: str) -> Any:
+    """从记录中提取过滤值，支持多种字段名映射。"""
     actual = record.get(key)
     if actual is None:
         actual = record.get("metadata", {}).get(key)
@@ -216,18 +224,26 @@ def _record_filter_value(record: dict[str, Any], key: str) -> Any:
 
 
 def _matches_where_clause(record: dict[str, Any], clause: dict[str, Any]) -> bool:
-    and_clauses = clause.get("$and")
-    if isinstance(and_clauses, list):
-        return all(
-            isinstance(item, dict) and _matches_where_clause(record, item) for item in and_clauses
-        )
+    """检查记录是否匹配 WHERE 子句条件。"""
+    # 处理 $and 操作符
+    if "$and" in clause:
+        and_clauses = clause["$and"]
+        if isinstance(and_clauses, list):
+            return all(
+                isinstance(item, dict) and _matches_where_clause(record, item)
+                for item in and_clauses
+            )
 
-    or_clauses = clause.get("$or")
-    if isinstance(or_clauses, list):
-        return any(
-            isinstance(item, dict) and _matches_where_clause(record, item) for item in or_clauses
-        )
+    # 处理 $or 操作符
+    if "$or" in clause:
+        or_clauses = clause["$or"]
+        if isinstance(or_clauses, list):
+            return any(
+                isinstance(item, dict) and _matches_where_clause(record, item)
+                for item in or_clauses
+            )
 
+    # 处理字段条件
     for key, expected in clause.items():
         if key.startswith("$"):
             return False
@@ -242,6 +258,7 @@ def _matches_where_clause(record: dict[str, Any], clause: dict[str, Any]) -> boo
 
 
 def _normalize_chroma_where(where: dict[str, Any] | None) -> dict[str, Any] | None:
+    """标准化 Chroma WHERE 条件格式。"""
     if not where:
         return None
     if len(where) == 1 or any(key.startswith("$") for key in where):
@@ -404,27 +421,33 @@ class PersistentChromaStore:
         """Rank persisted chunks with the current lightweight overlap scorer."""
         collection = self._collection_for_generation(generation)
         chroma_where = _normalize_chroma_where(where)
-        if query_embedding is not None:
-            candidate_limit = max(top_k * VECTOR_RERANK_CANDIDATE_MULTIPLIER, top_k)
-            result = collection.query(
-                query_embeddings=[query_embedding],
-                n_results=candidate_limit,
-                include=["documents", "metadatas", "distances"],
-                where=chroma_where,
-            )
-            vector_records = self._deserialize_query_records(result)
-            if query_text and vector_records:
-                reranked_records = _score_records(
-                    vector_records,
-                    query_text,
-                    top_k=candidate_limit,
-                )
-                if reranked_records:
-                    return self._merge_records(reranked_records, vector_records, top_k=top_k)
-            if vector_records:
-                return vector_records[:top_k]
 
-        return []
+        # 如果没有 embedding，直接返回空结果
+        if query_embedding is None:
+            return []
+
+        candidate_limit = max(top_k * VECTOR_RERANK_CANDIDATE_MULTIPLIER, top_k)
+        result = collection.query(
+            query_embeddings=[query_embedding],
+            n_results=candidate_limit,
+            include=["documents", "metadatas", "distances"],
+            where=chroma_where,
+        )
+        vector_records = self._deserialize_query_records(result)
+
+        if not query_text or not vector_records:
+            return vector_records[:top_k] if vector_records else []
+
+        reranked_records = _score_records(
+            vector_records,
+            query_text,
+            top_k=candidate_limit,
+        )
+
+        if reranked_records:
+            return self._merge_records(reranked_records, vector_records, top_k=top_k)
+
+        return vector_records[:top_k]
 
     def clear(self) -> None:
         """Delete all collection data under the current persistent store."""

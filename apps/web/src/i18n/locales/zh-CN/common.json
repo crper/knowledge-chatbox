@@ -60,5 +60,6 @@
   "apiErrorServiceUnavailable": "服务暂时不可用，请稍后重试。",
   "apiErrorUnauthorized": "登录状态已失效，请重新登录。",
   "apiErrorUnsupportedMediaType": "当前文件类型或请求内容不受支持。",
-  "apiErrorValidation": "提交内容不符合要求，请检查后重试。"
+  "apiErrorValidation": "提交内容不符合要求，请检查后重试。",
+  "helpAction": "帮助与文档"
 }

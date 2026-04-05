@@ -49,6 +49,9 @@ describe("resource-document-helpers", () => {
 
   it("formats timestamps with locale fallback", () => {
     expect(formatKnowledgeDocumentDateTime("2026-03-19T09:00:00Z", "zh-CN")).toContain("2026");
+    expect(formatKnowledgeDocumentDateTime("2026-03-19T09:00:00Z", "en")).not.toBe(
+      formatKnowledgeDocumentDateTime("2026-03-19T09:00:00Z", "zh-CN"),
+    );
     expect(formatKnowledgeDocumentDateTime("not-a-date", "zh-CN")).toBe("not-a-date");
   });
 });

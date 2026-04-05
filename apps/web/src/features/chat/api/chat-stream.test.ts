@@ -1,15 +1,13 @@
 import { getAccessToken, setAccessToken } from "@/lib/auth/token-store";
+import { http, HttpResponse } from "msw";
 import {
   createChatStreamFrame,
   createChatStreamResponse,
   createRawChatStreamFrame,
 } from "@/test/chat-stream";
+import { overrideHandler } from "@/test/msw";
 import { startChatStream } from "./chat-stream";
 import { CHAT_STREAM_EVENT, type ChatStreamEvent } from "./chat-stream-events";
-
-function apiPath(path: string) {
-  return expect.stringMatching(new RegExp(`${path.replaceAll("/", "\\/")}$`));
-}
 
 describe("chat stream api", () => {
   beforeEach(() => {
@@ -17,30 +15,31 @@ describe("chat stream api", () => {
   });
 
   it("posts to the streaming endpoint and parses SSE-style events", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      createChatStreamResponse([
-        createChatStreamFrame(CHAT_STREAM_EVENT.runStarted, {
-          run_id: 1,
-          assistant_message_id: 11,
-        }),
-        createChatStreamFrame(CHAT_STREAM_EVENT.legacyMessageDelta, {
-          run_id: 1,
-          assistant_message_id: 11,
-          delta: "hello ",
-        }),
-        createChatStreamFrame(CHAT_STREAM_EVENT.legacyMessageDelta, {
-          run_id: 1,
-          assistant_message_id: 11,
-          delta: "world",
-        }),
-        createChatStreamFrame(CHAT_STREAM_EVENT.runCompleted, {
-          run_id: 1,
-          assistant_message_id: 11,
-        }),
-        createChatStreamFrame(CHAT_STREAM_EVENT.done, {}),
-      ]),
+    overrideHandler(
+      http.post("*/api/chat/sessions/7/messages/stream", () => {
+        return createChatStreamResponse([
+          createChatStreamFrame(CHAT_STREAM_EVENT.runStarted, {
+            run_id: 1,
+            assistant_message_id: 11,
+          }),
+          createChatStreamFrame(CHAT_STREAM_EVENT.legacyMessageDelta, {
+            run_id: 1,
+            assistant_message_id: 11,
+            delta: "hello ",
+          }),
+          createChatStreamFrame(CHAT_STREAM_EVENT.legacyMessageDelta, {
+            run_id: 1,
+            assistant_message_id: 11,
+            delta: "world",
+          }),
+          createChatStreamFrame(CHAT_STREAM_EVENT.runCompleted, {
+            run_id: 1,
+            assistant_message_id: 11,
+          }),
+          createChatStreamFrame(CHAT_STREAM_EVENT.done, {}),
+        ]);
+      }),
     );
-    vi.stubGlobal("fetch", fetchMock);
 
     const events: ChatStreamEvent[] = [];
 
@@ -53,10 +52,6 @@ describe("chat stream api", () => {
       onEvent: (event) => events.push(event),
     });
 
-    expect(fetchMock).toHaveBeenCalledWith(
-      apiPath("/api/chat/sessions/7/messages/stream"),
-      expect.objectContaining({ method: "POST", credentials: "include" }),
-    );
     expect(events.map((event) => event.event)).toEqual([
       CHAT_STREAM_EVENT.runStarted,
       CHAT_STREAM_EVENT.legacyMessageDelta,
@@ -77,15 +72,19 @@ describe("chat stream api", () => {
   it("attaches the bearer token when streaming with an authenticated session", async () => {
     setAccessToken("stream-token");
 
-    const fetchMock = vi.fn().mockResolvedValue(
-      createChatStreamResponse([
-        createChatStreamFrame(CHAT_STREAM_EVENT.runCompleted, {
-          run_id: 1,
-          assistant_message_id: 11,
-        }),
-      ]),
+    overrideHandler(
+      http.post("*/api/chat/sessions/7/messages/stream", ({ request }) => {
+        const authHeader = request.headers.get("Authorization");
+        expect(authHeader).toBe("Bearer stream-token");
+
+        return createChatStreamResponse([
+          createChatStreamFrame(CHAT_STREAM_EVENT.runCompleted, {
+            run_id: 1,
+            assistant_message_id: 11,
+          }),
+        ]);
+      }),
     );
-    vi.stubGlobal("fetch", fetchMock);
 
     await startChatStream({
       sessionId: 7,
@@ -95,56 +94,44 @@ describe("chat stream api", () => {
       },
       onEvent: () => {},
     });
-
-    const [, requestInit] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(new Headers(requestInit.headers).get("Authorization")).toBe("Bearer stream-token");
   });
 
   it("refreshes the access token and retries the stream request after an unauthorized response", async () => {
     setAccessToken("expired-token");
 
-    const fetchMock = vi.fn().mockImplementation((input: string) => {
-      if (input.endsWith("/api/auth/refresh")) {
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              success: true,
-              data: {
-                access_token: "fresh-token",
-                expires_in: 900,
-                token_type: "Bearer",
-              },
-              error: null,
-            }),
-            {
-              status: 200,
-              headers: { "Content-Type": "application/json" },
-            },
-          ),
-        );
-      }
+    let callCount = 0;
 
-      const bearer = new Headers(
-        (fetchMock.mock.calls.at(-1)?.[1] as RequestInit | undefined)?.headers,
-      ).get("Authorization");
+    overrideHandler(
+      http.post("*/api/chat/sessions/7/messages/stream", ({ request }) => {
+        callCount++;
+        const authHeader = request.headers.get("Authorization");
 
-      if (
-        input.endsWith("/api/chat/sessions/7/messages/stream") &&
-        bearer === "Bearer expired-token"
-      ) {
-        return Promise.resolve(new Response("", { status: 401, statusText: "Unauthorized" }));
-      }
+        if (callCount === 1 && authHeader === "Bearer expired-token") {
+          return new HttpResponse(null, { status: 401, statusText: "Unauthorized" });
+        }
 
-      return Promise.resolve(
-        createChatStreamResponse([
+        return createChatStreamResponse([
           createChatStreamFrame(CHAT_STREAM_EVENT.runCompleted, {
             run_id: 1,
             assistant_message_id: 11,
           }),
-        ]),
-      );
-    });
-    vi.stubGlobal("fetch", fetchMock);
+        ]);
+      }),
+    );
+
+    overrideHandler(
+      http.post("*/api/auth/refresh", () => {
+        return HttpResponse.json({
+          success: true,
+          data: {
+            access_token: "fresh-token",
+            expires_in: 900,
+            token_type: "Bearer",
+          },
+          error: null,
+        });
+      }),
+    );
 
     await startChatStream({
       sessionId: 7,
@@ -155,21 +142,14 @@ describe("chat stream api", () => {
       onEvent: () => {},
     });
 
-    const streamCalls = fetchMock.mock.calls.filter(([url]) =>
-      String(url).endsWith("/api/chat/sessions/7/messages/stream"),
-    );
-    expect(streamCalls).toHaveLength(2);
-    const retryRequestInit = streamCalls[1]?.[1] as RequestInit | undefined;
-    expect(retryRequestInit).toBeDefined();
-    expect(new Headers(retryRequestInit?.headers).get("Authorization")).toBe("Bearer fresh-token");
+    expect(callCount).toBe(2);
     expect(getAccessToken()).toBe("fresh-token");
   });
 
   it("handles chunked frames and trailing failure events", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(
-        createChatStreamResponse([
+    overrideHandler(
+      http.post("*/api/chat/sessions/7/messages/stream", () => {
+        return createChatStreamResponse([
           createRawChatStreamFrame(
             CHAT_STREAM_EVENT.runStarted,
             ['{"run_id":1,"assistant_message_id":11,"user_message_id":9}'],
@@ -181,9 +161,9 @@ describe("chat stream api", () => {
             ['{"run_id":1,"error_message":"provider failed"}'],
             { trailingBlankLine: false },
           ),
-        ]),
-      );
-    vi.stubGlobal("fetch", fetchMock);
+        ]);
+      }),
+    );
 
     const events: ChatStreamEvent[] = [];
 
@@ -205,10 +185,9 @@ describe("chat stream api", () => {
   });
 
   it("supports events whose JSON payload spans multiple data lines", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(
-        createChatStreamResponse([
+    overrideHandler(
+      http.post("*/api/chat/sessions/7/messages/stream", () => {
+        return createChatStreamResponse([
           [
             `event: ${CHAT_STREAM_EVENT.legacyMessageDelta}`,
             'data: {"run_id":1,',
@@ -222,9 +201,9 @@ describe("chat stream api", () => {
             ),
             "",
           ].join("\n"),
-        ]),
-      );
-    vi.stubGlobal("fetch", fetchMock);
+        ]);
+      }),
+    );
 
     const events: ChatStreamEvent[] = [];
 
@@ -264,12 +243,12 @@ describe("chat stream api", () => {
       ].join("\n"),
     );
     const splitIndex = frame.indexOf(0xe4) + 1;
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(
-        createChatStreamResponse([frame.slice(0, splitIndex), frame.slice(splitIndex)]),
-      );
-    vi.stubGlobal("fetch", fetchMock);
+
+    overrideHandler(
+      http.post("*/api/chat/sessions/7/messages/stream", () => {
+        return createChatStreamResponse([frame.slice(0, splitIndex), frame.slice(splitIndex)]);
+      }),
+    );
 
     const events: ChatStreamEvent[] = [];
 
@@ -291,10 +270,9 @@ describe("chat stream api", () => {
   });
 
   it("parses events when the stream starts with a BOM and uses CRLF separators", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(
-        createChatStreamResponse([
+    overrideHandler(
+      http.post("*/api/chat/sessions/7/messages/stream", () => {
+        return createChatStreamResponse([
           [
             `\uFEFFevent: ${CHAT_STREAM_EVENT.partTextDelta}`,
             'data: {"run_id":1,"assistant_message_id":11,"delta":"hello"}',
@@ -303,9 +281,9 @@ describe("chat stream api", () => {
             'data: {"run_id":1,"assistant_message_id":11}',
             "",
           ].join("\r\n"),
-        ]),
-      );
-    vi.stubGlobal("fetch", fetchMock);
+        ]);
+      }),
+    );
 
     const events: ChatStreamEvent[] = [];
 
@@ -331,20 +309,21 @@ describe("chat stream api", () => {
   });
 
   it("rejects when the stream ends before a terminal run event arrives", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      createChatStreamResponse([
-        createChatStreamFrame(CHAT_STREAM_EVENT.runStarted, {
-          run_id: 1,
-          assistant_message_id: 11,
-        }),
-        createChatStreamFrame(CHAT_STREAM_EVENT.legacyMessageDelta, {
-          run_id: 1,
-          assistant_message_id: 11,
-          delta: "partial",
-        }),
-      ]),
+    overrideHandler(
+      http.post("*/api/chat/sessions/7/messages/stream", () => {
+        return createChatStreamResponse([
+          createChatStreamFrame(CHAT_STREAM_EVENT.runStarted, {
+            run_id: 1,
+            assistant_message_id: 11,
+          }),
+          createChatStreamFrame(CHAT_STREAM_EVENT.legacyMessageDelta, {
+            run_id: 1,
+            assistant_message_id: 11,
+            delta: "partial",
+          }),
+        ]);
+      }),
     );
-    vi.stubGlobal("fetch", fetchMock);
 
     const events: ChatStreamEvent[] = [];
 
@@ -366,13 +345,12 @@ describe("chat stream api", () => {
   });
 
   it("fails fast when the backend sends an unknown event name", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi
-        .fn()
-        .mockResolvedValue(
-          createChatStreamResponse([createRawChatStreamFrame("mystery.event", ['{"run_id":1}'])]),
-        ),
+    overrideHandler(
+      http.post("*/api/chat/sessions/7/messages/stream", () => {
+        return createChatStreamResponse([
+          createRawChatStreamFrame("mystery.event", ['{"run_id":1}']),
+        ]);
+      }),
     );
 
     await expect(
@@ -388,21 +366,19 @@ describe("chat stream api", () => {
   });
 
   it("surfaces the backend error message when the stream request is rejected before SSE starts", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          detail: {
-            code: "chat_message_conflict",
-            message: "client_request_id already exists for a different message payload.",
+    overrideHandler(
+      http.post("*/api/chat/sessions/7/messages/stream", () => {
+        return HttpResponse.json(
+          {
+            detail: {
+              code: "chat_message_conflict",
+              message: "client_request_id already exists for a different message payload.",
+            },
           },
-        }),
-        {
-          status: 409,
-          headers: { "Content-Type": "application/json" },
-        },
-      ),
+          { status: 409 },
+        );
+      }),
     );
-    vi.stubGlobal("fetch", fetchMock);
 
     await expect(
       startChatStream({

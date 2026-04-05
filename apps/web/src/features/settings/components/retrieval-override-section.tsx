@@ -70,6 +70,10 @@ export function RetrievalOverrideSection({
           <Field>
             <FieldLabel>{t("retrievalProviderLabel")}</FieldLabel>
             <Select
+              items={["openai", "voyage", "ollama"].map((provider) => ({
+                label: getProviderLabel(provider as EmbeddingProviderName, t),
+                value: provider,
+              }))}
               onValueChange={(value) =>
                 handleViewChange((current) => ({
                   ...current,
@@ -82,7 +86,7 @@ export function RetrievalOverrideSection({
                 aria-label={t("retrievalProviderLabel")}
                 className={providerFormControlClassName}
               >
-                <SelectValue />
+                <SelectValue>{() => getProviderLabel(draft.retrievalProvider, t)}</SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {["openai", "voyage", "ollama"].map((provider) => (

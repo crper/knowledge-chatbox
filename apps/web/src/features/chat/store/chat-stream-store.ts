@@ -18,6 +18,8 @@ type StreamingRun = {
   toastShown: boolean;
 };
 
+export type { StreamingRun };
+
 type ChatStreamState = {
   runsById: Record<number, StreamingRun>;
   startRun: (input: {
@@ -36,6 +38,24 @@ type ChatStreamState = {
   removeRun: (runId: number) => void;
   pruneRuns: (runIds: number[]) => void;
 };
+
+function updateRun(
+  state: { runsById: Record<number, StreamingRun> },
+  runId: number,
+  patch: Partial<StreamingRun>,
+) {
+  const run = state.runsById[runId];
+  if (!run) {
+    return state;
+  }
+
+  return {
+    runsById: {
+      ...state.runsById,
+      [runId]: { ...run, ...patch },
+    },
+  };
+}
 
 /**
  * 集中管理聊天流式响应状态。
@@ -71,92 +91,24 @@ export const useChatStreamStore = create<ChatStreamState>((set) => ({
   appendDelta: (runId, delta) =>
     set((state) => {
       const run = state.runsById[runId];
-      if (!run) {
-        return state;
-      }
-
-      return {
-        runsById: {
-          ...state.runsById,
-          [runId]: {
-            ...run,
-            content: `${run.content}${delta}`,
-            errorMessage: null,
-            status: "streaming",
-          },
-        },
-      };
+      if (!run) return state;
+      return updateRun(state, runId, {
+        content: `${run.content}${delta}`,
+        errorMessage: null,
+        status: "streaming",
+      });
     }),
   addSource: (runId, source) =>
     set((state) => {
       const run = state.runsById[runId];
-      if (!run) {
-        return state;
-      }
-
-      return {
-        runsById: {
-          ...state.runsById,
-          [runId]: {
-            ...run,
-            sources: [...run.sources, source],
-          },
-        },
-      };
+      if (!run) return state;
+      return updateRun(state, runId, { sources: [...run.sources, source] });
     }),
   completeRun: (runId) =>
-    set((state) => {
-      const run = state.runsById[runId];
-      if (!run) {
-        return state;
-      }
-
-      return {
-        runsById: {
-          ...state.runsById,
-          [runId]: {
-            ...run,
-            errorMessage: null,
-            status: "succeeded",
-          },
-        },
-      };
-    }),
+    set((state) => updateRun(state, runId, { errorMessage: null, status: "succeeded" })),
   failRun: (runId, errorMessage = null) =>
-    set((state) => {
-      const run = state.runsById[runId];
-      if (!run) {
-        return state;
-      }
-
-      return {
-        runsById: {
-          ...state.runsById,
-          [runId]: {
-            ...run,
-            errorMessage,
-            status: "failed",
-          },
-        },
-      };
-    }),
-  markToastShown: (runId) =>
-    set((state) => {
-      const run = state.runsById[runId];
-      if (!run) {
-        return state;
-      }
-
-      return {
-        runsById: {
-          ...state.runsById,
-          [runId]: {
-            ...run,
-            toastShown: true,
-          },
-        },
-      };
-    }),
+    set((state) => updateRun(state, runId, { errorMessage, status: "failed" })),
+  markToastShown: (runId) => set((state) => updateRun(state, runId, { toastShown: true })),
   removeRun: (runId) =>
     set((state) => {
       if (!(runId in state.runsById)) {

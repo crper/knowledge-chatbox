@@ -34,6 +34,7 @@ describe("buildDisplayMessages", () => {
           userContent: "hello",
           status: "streaming",
           toastShown: false,
+          sources: [],
         },
       },
     });
@@ -74,6 +75,7 @@ describe("buildDisplayMessages", () => {
           userContent: "hello",
           status: "succeeded",
           toastShown: false,
+          sources: [],
         },
       },
     });
@@ -116,6 +118,7 @@ describe("buildDisplayMessages", () => {
           userContent: "hello",
           status: "streaming",
           toastShown: false,
+          sources: [],
         },
       },
     });
@@ -148,6 +151,7 @@ describe("buildDisplayMessages", () => {
           userContent: "hello",
           status: "failed",
           toastShown: false,
+          sources: [],
         },
       },
     });
@@ -280,6 +284,7 @@ describe("buildDisplayMessages", () => {
           userContent: "hello",
           status: "streaming",
           toastShown: false,
+          sources: [],
         },
       },
     });
@@ -318,8 +323,9 @@ describe("buildDisplayMessages", () => {
           sessionId: 1,
           userMessageId: 1,
           userContent: "hello",
-          status: "streaming",
+          status: "succeeded",
           toastShown: false,
+          sources: [],
         },
       },
     });
@@ -414,6 +420,7 @@ describe("buildDisplayMessages", () => {
           retryOfMessageId: 1,
           status: "streaming",
           toastShown: false,
+          sources: [],
         },
       },
     });

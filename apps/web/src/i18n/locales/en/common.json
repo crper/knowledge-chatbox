@@ -60,5 +60,6 @@
   "apiErrorServiceUnavailable": "The service is temporarily unavailable. Try again later.",
   "apiErrorUnauthorized": "Your session has expired. Sign in again.",
   "apiErrorUnsupportedMediaType": "The file type or request content is not supported.",
-  "apiErrorValidation": "The submitted content is invalid. Check it and try again."
+  "apiErrorValidation": "The submitted content is invalid. Check it and try again.",
+  "helpAction": "Help & Docs"
 }

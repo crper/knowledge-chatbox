@@ -2,13 +2,13 @@
  * @file 工作区相关界面组件模块。
  */
 
-import { useDeferredValue, useMemo, useState } from "react";
+import { useCallback, memo, useDeferredValue, useMemo, useRef, useState } from "react";
 import type { FormEvent, KeyboardEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { PencilLineIcon, PlusIcon, SearchIcon, Trash2Icon } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { NavLink, useNavigate } from "react-router-dom";
-import { Virtuoso } from "react-virtuoso";
 
 import { BrandMark } from "@/components/shared/brand-mark";
 import { Button } from "@/components/ui/button";
@@ -52,6 +52,124 @@ function isInputComposing(event: KeyboardEvent<HTMLInputElement>) {
     Boolean((event as KeyboardEvent<HTMLInputElement> & { isComposing?: boolean }).isComposing)
   );
 }
+
+type SessionRowProps = {
+  activeSessionId: number | null;
+  editingSessionId: number | null;
+  editingTitle: string;
+  isRenamePending: boolean;
+  onBeginRename: (sessionId: number, title: string | null) => void;
+  onDeleteSession: (sessionId: number) => void;
+  onRenameInputKeyDown: (event: KeyboardEvent<HTMLInputElement>) => void;
+  onRenameSubmit: (sessionId: number) => (event: FormEvent<HTMLFormElement>) => void;
+  onSelectSession?: () => void;
+  onSetEditingTitle: (value: string) => void;
+  session: { id: number; title: string | null };
+  sessionTitleFallback: string;
+  t: ReturnType<typeof useTranslation>["t"];
+};
+
+const SessionRow = memo(function SessionRow({
+  activeSessionId,
+  editingSessionId,
+  editingTitle,
+  isRenamePending,
+  onBeginRename,
+  onDeleteSession,
+  onRenameInputKeyDown,
+  onRenameSubmit,
+  onSelectSession,
+  onSetEditingTitle,
+  session,
+  sessionTitleFallback,
+  t,
+}: SessionRowProps) {
+  const isEditing = editingSessionId === session.id;
+
+  return (
+    <div data-testid={`chat-session-actions-${session.id}`}>
+      {isEditing ? (
+        <form
+          className="surface-light flex items-center gap-2 rounded-xl p-1"
+          data-testid={`chat-session-row-${session.id}`}
+          noValidate
+          onSubmit={onRenameSubmit(session.id)}
+        >
+          <SidebarInput
+            aria-label={t("sessionRenameLabel", { ns: "chat" })}
+            className="h-9 rounded-lg bg-background"
+            disabled={isRenamePending}
+            onChange={(event) => onSetEditingTitle(event.target.value)}
+            onKeyDown={onRenameInputKeyDown}
+            value={editingTitle}
+          />
+          <Button
+            aria-label={t("saveSessionRenameAction", { ns: "chat" })}
+            className="shrink-0"
+            disabled={isRenamePending}
+            size="sm"
+            type="submit"
+            variant="secondary"
+          >
+            {t("saveSessionRenameAction", { ns: "chat" })}
+          </Button>
+        </form>
+      ) : (
+        <div
+          className="group/menu-item flex items-center gap-2"
+          data-testid={`chat-session-row-${session.id}`}
+        >
+          <SidebarMenuButton
+            className={cn(
+              "h-auto min-w-0 flex-1 rounded-xl px-3 py-3 text-left transition-[background-color,color] duration-180 ease-out",
+              "data-[active=true]:bg-secondary/70 data-[active=true]:text-foreground",
+              "data-[active=false]:text-foreground/82 data-[active=false]:hover:bg-background/72 data-[active=false]:hover:text-foreground",
+            )}
+            isActive={session.id === activeSessionId}
+            render={
+              <NavLink onClick={() => onSelectSession?.()} to={buildChatSessionPath(session.id)} />
+            }
+          >
+            <span className="min-w-0 truncate">
+              {resolveSessionTitle(session.title, sessionTitleFallback)}
+            </span>
+          </SidebarMenuButton>
+          <div
+            className="flex shrink-0 select-none items-center gap-1"
+            data-testid={`chat-session-action-rail-${session.id}`}
+          >
+            <Button
+              aria-label={t("renameSessionAction", {
+                ns: "chat",
+                title: resolveSessionTitle(session.title, sessionTitleFallback),
+              })}
+              className="size-9 rounded-full"
+              onClick={() => onBeginRename(session.id, session.title)}
+              size="icon-sm"
+              type="button"
+              variant="ghost"
+            >
+              <PencilLineIcon />
+            </Button>
+            <Button
+              aria-label={t("deleteSessionAction", {
+                ns: "chat",
+                title: resolveSessionTitle(session.title, sessionTitleFallback),
+              })}
+              className="size-9 rounded-full"
+              onClick={() => onDeleteSession(session.id)}
+              size="icon-sm"
+              type="button"
+              variant="ghost"
+            >
+              <Trash2Icon />
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+});
 
 /**
  * 渲染聊天侧栏。
@@ -121,10 +239,10 @@ export function ChatSidebar({
     );
   }, [deferredSearchValue, sessionTitleFallback, sessions]);
 
-  const beginRename = (sessionId: number, title: string | null) => {
+  const beginRename = useCallback((sessionId: number, title: string | null) => {
     setEditingSessionId(sessionId);
     setEditingTitle(title ?? "");
-  };
+  }, []);
 
   const submitRename = async (sessionId: number) => {
     if (renameSessionMutation.isPending) {
@@ -139,116 +257,67 @@ export function ChatSidebar({
       });
       setEditingSessionId(null);
       setEditingTitle("");
-    } catch {
-      // Keep the draft open so the user can retry after a failed rename.
-    }
+    } catch {}
   };
 
-  const handleDeleteSession = async (sessionId: number) => {
-    await deleteSessionMutation.mutateAsync(sessionId);
-  };
+  const handleDeleteSession = useCallback(
+    (sessionId: number) => {
+      void deleteSessionMutation.mutateAsync(sessionId);
+    },
+    [deleteSessionMutation],
+  );
 
-  const handleRenameSubmit = (sessionId: number) => (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    void submitRename(sessionId);
-  };
+  const handleRenameSubmit = useCallback(
+    (sessionId: number) => (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      void submitRename(sessionId);
+    },
+    [submitRename],
+  );
 
-  const handleRenameInputKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+  const handleRenameInputKeyDown = useCallback((event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key !== "Enter" || isInputComposing(event)) {
       return;
     }
 
     event.preventDefault();
     event.currentTarget.form?.requestSubmit();
-  };
+  }, []);
 
-  const renderSessionRow = (session: { id: number; title: string | null }) => {
-    const renamePending = editingSessionId === session.id && renameSessionMutation.isPending;
+  const handleSetEditingTitle = useCallback((value: string) => {
+    setEditingTitle(value);
+  }, []);
 
-    return (
-      <div data-testid={`chat-session-actions-${session.id}`}>
-        {editingSessionId === session.id ? (
-          <form
-            className="surface-outline flex items-center gap-2 rounded-xl p-1"
-            data-testid={`chat-session-row-${session.id}`}
-            noValidate
-            onSubmit={handleRenameSubmit(session.id)}
-          >
-            <SidebarInput
-              aria-label={t("sessionRenameLabel", { ns: "chat" })}
-              className="h-9 rounded-lg bg-background"
-              disabled={renamePending}
-              onChange={(event) => setEditingTitle(event.target.value)}
-              onKeyDown={handleRenameInputKeyDown}
-              value={editingTitle}
-            />
-            <Button
-              aria-label={t("saveSessionRenameAction", { ns: "chat" })}
-              className="shrink-0"
-              disabled={renamePending}
-              size="sm"
-              type="submit"
-              variant="secondary"
-            >
-              {t("saveSessionRenameAction", { ns: "chat" })}
-            </Button>
-          </form>
-        ) : (
-          <div
-            className="group/menu-item flex items-center gap-2"
-            data-testid={`chat-session-row-${session.id}`}
-          >
-            <SidebarMenuButton
-              asChild
-              className={cn(
-                "h-auto min-w-0 flex-1 rounded-xl px-3 py-3 text-left",
-                "data-[active=true]:bg-secondary/70 data-[active=true]:text-foreground",
-                "data-[active=false]:text-foreground/82 data-[active=false]:hover:bg-background/72 data-[active=false]:hover:text-foreground",
-              )}
-              isActive={session.id === activeSessionId}
-            >
-              <NavLink onClick={() => onSelectSession?.()} to={buildChatSessionPath(session.id)}>
-                <span className="min-w-0 truncate">
-                  {resolveSessionTitle(session.title, sessionTitleFallback)}
-                </span>
-              </NavLink>
-            </SidebarMenuButton>
-            <div
-              className="flex shrink-0 select-none items-center gap-1"
-              data-testid={`chat-session-action-rail-${session.id}`}
-            >
-              <Button
-                aria-label={t("renameSessionAction", {
-                  ns: "chat",
-                  title: resolveSessionTitle(session.title, sessionTitleFallback),
-                })}
-                className="size-9 rounded-full"
-                onClick={() => beginRename(session.id, session.title)}
-                size="icon-sm"
-                type="button"
-                variant="ghost"
-              >
-                <PencilLineIcon />
-              </Button>
-              <Button
-                aria-label={t("deleteSessionAction", {
-                  ns: "chat",
-                  title: resolveSessionTitle(session.title, sessionTitleFallback),
-                })}
-                className="size-9 rounded-full"
-                onClick={() => void handleDeleteSession(session.id)}
-                size="icon-sm"
-                type="button"
-                variant="ghost"
-              >
-                <Trash2Icon />
-              </Button>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  };
+  const handleBeginRename = useCallback(
+    (sessionId: number, title: string | null) => {
+      beginRename(sessionId, title);
+    },
+    [beginRename],
+  );
+
+  const handleCreateSession = useCallback(() => {
+    void onCreateSession();
+  }, [onCreateSession]);
+
+  const handleSetSearchValue = useCallback(
+    (value: string) => {
+      setSearchValue(value);
+    },
+    [setSearchValue],
+  );
+
+  const handleClearSearch = useCallback(() => {
+    setSearchValue("");
+  }, [setSearchValue]);
+
+  const SESSION_ROW_HEIGHT = 72;
+  const parentRef = useRef<HTMLDivElement>(null);
+  const virtualizer = useVirtualizer({
+    count: filteredSessions.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => SESSION_ROW_HEIGHT,
+    overscan: 5,
+  });
 
   return (
     <SidebarProvider className="h-full min-h-0 w-full">
@@ -257,7 +326,7 @@ export function ChatSidebar({
         className={cn(
           surface === "embedded"
             ? "h-full w-full bg-transparent px-5 py-5"
-            : "surface-panel-subtle h-full w-full rounded-[1.5rem] px-4 py-4",
+            : "surface-panel-subtle h-full w-full rounded-2xl px-4 py-4",
           className,
         )}
         collapsible="none"
@@ -272,12 +341,12 @@ export function ChatSidebar({
 
           <WorkspaceModeSwitcher onNavigate={onNavigate} pathname={pathname} />
 
-          <SidebarGroup className="surface-outline gap-3 rounded-2xl p-3.5">
+          <SidebarGroup className="surface-light gap-3 rounded-2xl p-3.5">
             <SidebarGroupContent>
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="text-sm font-medium">{t("sessionListTitle", { ns: "chat" })}</p>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-ui-title">{t("sessionListTitle", { ns: "chat" })}</p>
+                  <p className="text-ui-caption text-muted-foreground">
                     {t("workspaceChatHint", { ns: "common" })}
                   </p>
                 </div>
@@ -285,7 +354,7 @@ export function ChatSidebar({
                   <Button
                     aria-label={t("newSessionAction", { ns: "chat" })}
                     disabled={createSessionPending}
-                    onClick={() => void onCreateSession()}
+                    onClick={handleCreateSession}
                     size="icon-sm"
                     type="button"
                     variant="secondary"
@@ -301,7 +370,7 @@ export function ChatSidebar({
                 <SidebarInput
                   aria-label={t("searchSessionsLabel", { ns: "chat" })}
                   className="h-10 rounded-xl border-border/70 bg-background/62 pr-3 pl-9"
-                  onChange={(event) => setSearchValue(event.target.value)}
+                  onChange={(event) => handleSetSearchValue(event.target.value)}
                   placeholder={t("searchSessionsLabel", { ns: "chat" })}
                   value={searchValue}
                 />
@@ -328,28 +397,64 @@ export function ChatSidebar({
                   </EmptyDescription>
                 </EmptyHeader>
                 {searchValue ? (
-                  <Button
-                    onClick={() => setSearchValue("")}
-                    size="sm"
-                    type="button"
-                    variant="outline"
-                  >
+                  <Button onClick={handleClearSearch} size="sm" type="button" variant="outline">
                     {t("clearSearchAction", { ns: "chat" })}
                   </Button>
                 ) : null}
               </Empty>
             ) : (
-              <Virtuoso
-                className="min-h-0 h-full pr-3"
-                computeItemKey={(index, session) => session?.id ?? `probe-session-${index}`}
-                data={filteredSessions}
-                fixedItemHeight={72}
-                initialItemCount={Math.min(filteredSessions.length, 10)}
-                itemContent={(_index, session) =>
-                  session ? renderSessionRow(session) : renderSessionProbeRow()
-                }
-                style={{ height: "100%" }}
-              />
+              <div
+                ref={parentRef}
+                className="min-h-0 h-full overflow-auto pr-3"
+                data-testid="chat-sidebar-virtuoso"
+                style={{ contain: "strict" }}
+              >
+                <div
+                  style={{
+                    height: `${virtualizer.getTotalSize()}px`,
+                    width: "100%",
+                    position: "relative",
+                  }}
+                >
+                  {virtualizer.getVirtualItems().map((virtualItem) => {
+                    const session = filteredSessions[virtualItem.index];
+                    return (
+                      <div
+                        key={session?.id ?? `probe-session-${virtualItem.index}`}
+                        data-index={virtualItem.index}
+                        style={{
+                          position: "absolute",
+                          top: 0,
+                          left: 0,
+                          width: "100%",
+                          height: `${virtualItem.size}px`,
+                          transform: `translateY(${virtualItem.start}px)`,
+                        }}
+                      >
+                        {session ? (
+                          <SessionRow
+                            activeSessionId={activeSessionId}
+                            editingSessionId={editingSessionId}
+                            editingTitle={editingTitle}
+                            isRenamePending={renameSessionMutation.isPending}
+                            onBeginRename={handleBeginRename}
+                            onDeleteSession={handleDeleteSession}
+                            onRenameInputKeyDown={handleRenameInputKeyDown}
+                            onRenameSubmit={handleRenameSubmit}
+                            onSelectSession={onSelectSession}
+                            onSetEditingTitle={handleSetEditingTitle}
+                            session={session}
+                            sessionTitleFallback={sessionTitleFallback}
+                            t={t}
+                          />
+                        ) : (
+                          renderSessionProbeRow()
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             )}
           </div>
         </SidebarContent>

@@ -47,7 +47,7 @@ export function DocumentImagePreview({ document }: { document: KnowledgeDocument
   }, [document.id]);
 
   return (
-    <div className="surface-outline flex min-h-[16rem] items-center justify-center rounded-[1.2rem] p-3">
+    <div className="surface-light flex min-h-[16rem] items-center justify-center rounded-xl p-3">
       {loadFailed ? (
         <p className="text-sm text-muted-foreground">{t("previewLoadFailed")}</p>
       ) : resolvedUrl ? (

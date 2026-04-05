@@ -31,7 +31,7 @@ export function AuthDegradedPage({ onBackToLogin, onRetry }: AuthDegradedPagePro
 
   return (
     <main className="flex min-h-[100dvh] items-center justify-center bg-background px-6 py-10 text-foreground">
-      <section className="surface-liquid flex w-full max-w-lg flex-col gap-4 rounded-[1.5rem] p-8">
+      <section className="surface-elevated flex w-full max-w-lg flex-col gap-4 rounded-2xl p-8">
         <div className="space-y-2 text-center">
           <p className="text-sm font-medium tracking-[0.14em] text-muted-foreground uppercase">
             {t("authDegradedEyebrow")}

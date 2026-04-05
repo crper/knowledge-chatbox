@@ -2,7 +2,7 @@
  * @file 资源页面模块。
  */
 
-import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   FilesIcon,
@@ -37,6 +37,13 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Sheet,
   SheetContent,
@@ -105,6 +112,8 @@ export function KnowledgePage() {
   const [typeFilter, setTypeFilter] = useState<ResourceTypeFilter>("all");
   const [statusFilter, setStatusFilter] = useState<"all" | KnowledgeDocumentStatus>("all");
   const deferredSearchValue = useDeferredValue(searchValue);
+  const hadDocumentsRef = useRef(false);
+  const [filterTransitioning, setFilterTransitioning] = useState(false);
   const documentFilters = useMemo(
     () => ({
       query: deferredSearchValue,
@@ -120,7 +129,7 @@ export function KnowledgePage() {
     closeVersionDrawer,
     deleteDocument,
     documents,
-    documentsRefreshing,
+    documentsUpdatedAt,
     enqueueUploads,
     localUploadingCount,
     processingCount,
@@ -142,6 +151,7 @@ export function KnowledgePage() {
   const activeFilterCount =
     Number(hasSearchQuery) + Number(typeFilter !== "all") + Number(statusFilter !== "all");
   const hasActiveFilters = activeFilterCount > 0;
+  const showFilteredListShell = hasDocuments || hasActiveFilters || filterTransitioning;
   const selectedDocument = useMemo(
     () => documents.find((document) => document.id === selectedDocumentId) ?? null,
     [documents, selectedDocumentId],
@@ -183,6 +193,19 @@ export function KnowledgePage() {
     setSelectedDocumentId(null);
   }, [filteredDocuments, selectedDocumentId]);
 
+  useEffect(() => {
+    if (documents.length > 0) {
+      hadDocumentsRef.current = true;
+    }
+    setFilterTransitioning(false);
+  }, [documents.length, documentsUpdatedAt]);
+
+  useEffect(() => {
+    if (hadDocumentsRef.current) {
+      setFilterTransitioning(true);
+    }
+  }, [documentFilters]);
+
   const openPreviewForDocument = (document: KnowledgeDocument) => {
     setSelectedDocumentId(document.id);
     setPreviewOpen(true);
@@ -207,7 +230,7 @@ export function KnowledgePage() {
 
     if (uploadReadinessChecking) {
       return (
-        <Alert className="rounded-[1.15rem] border-border/60 bg-background/60">
+        <Alert className="rounded-xl border-border/60 bg-background/60">
           <AlertTitle>{t("uploadCheckingTitle")}</AlertTitle>
           <AlertDescription>{t("uploadCheckingDescription")}</AlertDescription>
         </Alert>
@@ -216,10 +239,7 @@ export function KnowledgePage() {
 
     if (uploadBlocked) {
       return (
-        <Alert
-          className="rounded-[1.15rem] border-destructive/30 bg-destructive/5"
-          variant="destructive"
-        >
+        <Alert className="rounded-xl border-destructive/30 bg-destructive/5" variant="destructive">
           <AlertTitle>{t("uploadBlockedTitle")}</AlertTitle>
           <AlertDescription>{t("uploadBlockedDescription")}</AlertDescription>
           {canManageProviderSettings ? (
@@ -240,7 +260,7 @@ export function KnowledgePage() {
 
     if (imageUploadFallback) {
       return (
-        <Alert className="rounded-[1.15rem] border-border/60 bg-background/60">
+        <Alert className="rounded-xl border-border/60 bg-background/60">
           <AlertTitle>{t("uploadFallbackTitle")}</AlertTitle>
           <AlertDescription>{t("uploadFallbackDescription")}</AlertDescription>
         </Alert>
@@ -265,7 +285,7 @@ export function KnowledgePage() {
           <div
             {...getRootProps({
               className: cn(
-                "rounded-[1.15rem] transition-transform",
+                "rounded-xl transition-transform",
                 fullWidth && "flex-1",
                 isDragAccept && "scale-[1.01]",
                 isDragReject && "scale-[0.99]",
@@ -300,17 +320,19 @@ export function KnowledgePage() {
 
   const mobileFilterSheet = (
     <Sheet onOpenChange={setMobileFiltersOpen} open={mobileFiltersOpen}>
-      <SheetTrigger asChild>
-        <Button
-          className="w-full sm:flex-none"
-          type="button"
-          variant={activeFilterCount > 0 ? "secondary" : "outline"}
-        >
-          <SlidersHorizontalIcon data-icon="inline-start" />
-          {activeFilterCount > 0
-            ? t("mobileFilterActionWithCount", { count: activeFilterCount })
-            : t("mobileFilterAction")}
-        </Button>
+      <SheetTrigger
+        render={
+          <Button
+            className="w-full sm:flex-none"
+            type="button"
+            variant={activeFilterCount > 0 ? "secondary" : "outline"}
+          />
+        }
+      >
+        <SlidersHorizontalIcon data-icon="inline-start" />
+        {activeFilterCount > 0
+          ? t("mobileFilterActionWithCount", { count: activeFilterCount })
+          : t("mobileFilterAction")}
       </SheetTrigger>
       <SheetContent
         className="max-h-[85dvh] gap-0 rounded-t-[1.5rem] border-x-0 border-b-0 bg-background/98 p-0"
@@ -382,7 +404,7 @@ export function KnowledgePage() {
                 <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   aria-label={t("searchInputLabel")}
-                  className="h-11 rounded-[1.15rem] border-border/60 bg-background/68 pl-9"
+                  className="h-11 rounded-xl border-border/60 bg-background/68 pl-9"
                   onChange={(event) => setSearchValue(event.target.value)}
                   placeholder={t("searchInputPlaceholder")}
                   value={searchValue}
@@ -411,7 +433,7 @@ export function KnowledgePage() {
                 <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   aria-label={t("searchInputLabel")}
-                  className="h-11 rounded-[1.15rem] border-border/60 bg-background/68 pl-9"
+                  className="h-11 rounded-xl border-border/60 bg-background/68 pl-9"
                   onChange={(event) => setSearchValue(event.target.value)}
                   placeholder={t("searchInputPlaceholder")}
                   value={searchValue}
@@ -468,8 +490,8 @@ export function KnowledgePage() {
                   onRetry={retryUpload}
                 />
               ) : null}
-              {hasDocuments ? (
-                <section className="surface-panel-subtle space-y-3 rounded-[1.35rem] p-3.5 md:p-4">
+              {showFilteredListShell ? (
+                <section className="surface-panel-subtle space-y-3 rounded-2xl p-3.5 md:p-4">
                   <div className="flex flex-col gap-2.5 md:flex-row md:items-start md:justify-between">
                     <div className="space-y-1.5">
                       <p className="text-ui-title">{t("tableSectionTitle")}</p>
@@ -485,13 +507,13 @@ export function KnowledgePage() {
                   {isMobile ? mobileSummaryBadges : null}
 
                   {processingCount > 0 ? (
-                    <div className="surface-outline rounded-[0.95rem] px-3 py-2">
+                    <div className="surface-light rounded-lg px-3 py-2">
                       <p className="text-ui-subtle text-muted-foreground">
                         {t("processingInlineHint")}
                       </p>
                     </div>
                   ) : null}
-                  {documentsRefreshing ? (
+                  {filterTransitioning ? (
                     <div className="flex items-center gap-2 px-1 text-ui-subtle text-muted-foreground">
                       <Spinner aria-hidden="true" className="size-3.5" />
                       <span>{t("searchRefreshingHint")}</span>
@@ -499,34 +521,53 @@ export function KnowledgePage() {
                   ) : null}
 
                   {isMobile ? null : (
-                    <div className="flex flex-wrap gap-2">
-                      {TYPE_FILTER_VALUES.map((value) => (
-                        <Button
-                          key={value}
-                          onClick={() => setTypeFilter(value)}
-                          size="sm"
-                          type="button"
-                          variant={typeFilter === value ? "default" : "outline"}
+                    <div className="flex flex-wrap items-center gap-3">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-ui-caption text-muted-foreground">
+                          {t("filterTypeSectionTitle")}
+                        </span>
+                        {TYPE_FILTER_VALUES.map((value) => (
+                          <Button
+                            key={value}
+                            onClick={() => setTypeFilter(value)}
+                            size="xs"
+                            type="button"
+                            variant={typeFilter === value ? "default" : "outline"}
+                          >
+                            {getTypeFilterLabel(value, t)}
+                          </Button>
+                        ))}
+                      </div>
+                      <div className="ml-1 h-5 w-px bg-border/60" />
+                      <Select
+                        items={STATUS_FILTER_VALUES.map((value) => ({
+                          label: getStatusFilterLabel(value, t),
+                          value,
+                        }))}
+                        value={statusFilter}
+                        onValueChange={(value) =>
+                          setStatusFilter(value as "all" | KnowledgeDocumentStatus)
+                        }
+                      >
+                        <SelectTrigger
+                          aria-label={t("filterStatusSectionTitle")}
+                          className="h-8 w-auto min-w-[7rem] rounded-lg px-2.5 text-xs"
                         >
-                          {getTypeFilterLabel(value, t)}
-                        </Button>
-                      ))}
-                      {STATUS_FILTER_VALUES.map((value) => (
-                        <Button
-                          key={value}
-                          onClick={() => setStatusFilter(value)}
-                          size="sm"
-                          type="button"
-                          variant={statusFilter === value ? "secondary" : "ghost"}
-                        >
-                          {getStatusFilterLabel(value, t)}
-                        </Button>
-                      ))}
+                          <SelectValue>{() => getStatusFilterLabel(statusFilter, t)}</SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          {STATUS_FILTER_VALUES.map((value) => (
+                            <SelectItem key={value} value={value}>
+                              {getStatusFilterLabel(value, t)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                   )}
                 </section>
               ) : null}
-              {!hasDocuments ? (
+              {!hasDocuments && !hasActiveFilters && !filterTransitioning ? (
                 canManageDocuments ? (
                   <FileDropzone
                     disabled={uploadBlocked}
@@ -544,9 +585,10 @@ export function KnowledgePage() {
                       <Empty
                         {...getRootProps({
                           className: cn(
-                            "min-h-[20rem] select-none rounded-[1.75rem] border border-dashed border-border/70 bg-[radial-gradient(circle_at_top,hsl(var(--primary)/0.08),transparent_36%),linear-gradient(180deg,hsl(var(--background)/0.72),hsl(var(--muted)/0.34))] px-6 py-8 transition-colors",
-                            isDragAccept && "border-primary/45 bg-primary/6",
-                            isDragReject && "border-destructive/45 bg-destructive/8",
+                            "min-h-[20rem] select-none rounded-3xl border border-dashed border-border/70 bg-[radial-gradient(ellipse_56%_40%_at_top,hsl(var(--primary)/0.07),transparent_44%),linear-gradient(180deg,hsl(var(--background)/0.72),hsl(var(--muted)/0.34))] px-6 py-8 transition-[color,border-color,background,transform,box-shadow] duration-200 ease-out",
+                            isDragAccept &&
+                              "border-primary/46 bg-primary/6 scale-[1.005] shadow-[0_16px_36px_-20px_hsl(var(--primary)/0.18)]",
+                            isDragReject && "border-destructive/46 bg-destructive/8 scale-[0.998]",
                           ),
                         })}
                       >
@@ -559,7 +601,7 @@ export function KnowledgePage() {
                             {t("emptyOnboardingFlowBadge")}
                           </Badge>
                           <EmptyMedia
-                            className="surface-icon size-12 rounded-2xl text-primary [&_svg]:size-5"
+                            className="surface-light size-12 rounded-2xl text-primary [&_svg]:size-5"
                             variant="icon"
                           >
                             <UploadIcon aria-hidden="true" />
@@ -573,14 +615,14 @@ export function KnowledgePage() {
                         </EmptyHeader>
                         <EmptyContent className="max-w-xl gap-4">
                           <div className="grid w-full gap-2 text-left">
-                            <div className="surface-outline text-ui-subtle select-none rounded-2xl px-4 py-3 text-muted-foreground">
+                            <div className="surface-light text-ui-subtle select-none rounded-2xl px-4 py-3 text-muted-foreground">
                               {t("emptyOnboardingStepOne")}
                             </div>
-                            <div className="surface-outline text-ui-subtle select-none rounded-2xl px-4 py-3 text-muted-foreground">
+                            <div className="surface-light text-ui-subtle select-none rounded-2xl px-4 py-3 text-muted-foreground">
                               {t("emptyOnboardingStepTwo")}
                             </div>
                           </div>
-                          <div className="surface-outline select-none rounded-2xl border-dashed px-4 py-3 text-left">
+                          <div className="surface-light select-none rounded-2xl border-dashed px-4 py-3 text-left">
                             <p className="text-sm font-medium text-foreground">
                               {t("dropzoneTitle")}
                             </p>
@@ -611,13 +653,13 @@ export function KnowledgePage() {
                     )}
                   </FileDropzone>
                 ) : (
-                  <Empty className="min-h-[20rem] rounded-[1.75rem] border border-dashed border-border/70 bg-[radial-gradient(circle_at_top,hsl(var(--primary)/0.08),transparent_36%),linear-gradient(180deg,hsl(var(--background)/0.72),hsl(var(--muted)/0.34))] px-6 py-8">
+                  <Empty className="min-h-[20rem] rounded-3xl border border-dashed border-border/70 bg-[radial-gradient(circle_at_top,hsl(var(--primary)/0.08),transparent_36%),linear-gradient(180deg,hsl(var(--background)/0.72),hsl(var(--muted)/0.34))] px-6 py-8">
                     <EmptyHeader className="max-w-xl gap-3">
                       <Badge className="text-ui-kicker rounded-full px-3 py-1" variant="outline">
                         {t("emptyReadonlyFlowBadge")}
                       </Badge>
                       <EmptyMedia
-                        className="surface-icon size-12 rounded-2xl text-primary [&_svg]:size-5"
+                        className="surface-light size-12 rounded-2xl text-primary [&_svg]:size-5"
                         variant="icon"
                       >
                         <UploadIcon aria-hidden="true" />

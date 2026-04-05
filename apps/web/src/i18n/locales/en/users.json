@@ -39,7 +39,7 @@
   "newUsernameLabel": "New Username",
   "initialPasswordRequiredError": "Enter the initial password.",
   "initialPasswordLabel": "Initial Password",
-  "passwordLengthValidationError": "The password must be at least 8 characters long.",
+  "passwordLengthValidationError": "The password must be at least {{min}} characters long.",
   "resetPasswordDialogTitle": "Reset User Password",
   "resetPasswordDialogDescription": "Set a new sign-in password for {{username}}.",
   "resetPasswordValidationError": "Enter a new password with at least 8 characters.",

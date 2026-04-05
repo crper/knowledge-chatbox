@@ -10,10 +10,11 @@ from knowledge_chatbox_api.core.logging import get_logger
 from knowledge_chatbox_api.models.document import Document, DocumentRevision
 from knowledge_chatbox_api.providers.factory import build_embedding_adapter
 from knowledge_chatbox_api.repositories.retrieval_chunk_repository import RetrievalChunkRepository
-from knowledge_chatbox_api.schemas.settings import ProviderRuntimeSettings
 from knowledge_chatbox_api.services.documents.chunking_service import ChunkingService
 from knowledge_chatbox_api.services.documents.indexing_service import IndexingService
-from knowledge_chatbox_api.services.settings.runtime_settings import build_runtime_settings
+from knowledge_chatbox_api.services.settings.runtime_settings import (
+    build_embedding_settings,
+)
 from knowledge_chatbox_api.services.settings.settings_service import (
     INDEX_REBUILD_STATUS_IDLE,
     INDEX_REBUILD_STATUS_RUNNING,
@@ -57,7 +58,7 @@ class RebuildService:
             chunking_service=self.chunking_service,
             chroma_store=self.chroma_store,
             embedding_provider=build_embedding_adapter(settings_record.pending_embedding_route),
-            settings=self._build_embedding_settings(settings_record, use_pending=True),
+            settings=build_embedding_settings(settings_record, use_pending=True),
             default_generation=target_generation,
         )
         try:
@@ -134,21 +135,6 @@ class RebuildService:
             .order_by(Document.updated_at.desc(), Document.id.desc())
         )
         return list(self.session.scalars(statement).all())
-
-    def _build_embedding_settings(
-        self,
-        settings_record,
-        *,
-        use_pending: bool,
-    ) -> ProviderRuntimeSettings:
-        return build_runtime_settings(
-            settings_record,
-            embedding_route=(
-                settings_record.pending_embedding_route
-                if use_pending
-                else settings_record.embedding_route
-            ),
-        )
 
     def _mark_rebuild_failed(self, target_generation: int) -> None:
         latest_settings = self.settings_service.get_or_create_settings_record()

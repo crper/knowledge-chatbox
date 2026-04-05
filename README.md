@@ -2,7 +2,7 @@
 
 > 本地优先的知识工作台
 
-把“上传资料、标准化、索引、问答、来源回看、系统配置、用户管理”收进同一套单机工作流。前端使用 React + Vite+，后端使用 FastAPI；SQLite 保存业务真相与 `FTS5` 词法兜底索引，Chroma 保存向量检索派生索引，原始文件和标准化结果直接落在本地目录。
+把“上传资料、标准化、索引、问答、来源回看、系统配置、用户管理”收进同一套单机工作流。前端使用 React + Vite+ + Base UI，后端使用 FastAPI；SQLite 保存业务真相与 `FTS5` 词法兜底索引，Chroma 保存向量检索派生索引，原始文件和标准化结果直接落在本地目录。
 
 [快速开始](#快速开始) • [文档入口](#文档入口) • [开发入口](#开发入口) • [Docker 单机部署](#docker-单机部署) • [参与贡献](#参与贡献)
 
@@ -15,23 +15,24 @@
 
 当前已落地的能力：
 
-| 特性 | 状态 | 说明 |
-| --- | --- | --- |
-| 📱 响应式工作台 | 已支持 | `/chat` 桌面端三栏，移动端退化为抽屉和单栏 |
-| 📚 多格式资料入库 | 已支持 | `txt / md / pdf / docx / png / jpg / jpeg / webp` |
-| 🌊 流式问答 | 已支持 | 同步问答、SSE 流式输出、失败重试、活动 run 查询；长会话主区默认只加载最近一段消息窗口 |
-| 🧾 来源引用回看 | 已支持 | 回答内容带来源片段；右侧上下文栏走独立会话摘要接口，不再依赖整段消息重拉 |
-| 🔎 检索兜底 | 已支持 | `Chroma` 向量召回优先，`SQLite FTS5` 负责词法候选兜底 |
-| 🧠 三路模型路由 | 已支持 | `response / embedding / vision` 独立配置与切换 |
-| 🔌 多 Provider | 已支持 | `OpenAI / Anthropic / Voyage / Ollama` |
-| 🌐 中英双语 | 已支持 | 前端内置 `zh-CN / en` 文案与切换能力 |
-| 🌓 主题切换 | 已支持 | `light / dark / system` 三种主题偏好 |
-| 🔐 角色与设置中心 | 已支持 | `admin / user` 两类角色，带设置中心和用户管理 |
-| 🐳 单机部署 | 已支持 | 开发态可直跑，稳定运行走 Docker Compose |
-| 🗂️ 本地优先存储 | 已支持 | SQLite（含 `FTS5` 词法兜底索引）、Chroma、上传文件和标准化结果都落本地目录 |
-| 🪶 依赖克制 | 已支持 | V1 不引入 Redis、Celery、对象存储等非必需基础设施 |
+| 特性              | 状态   | 说明                                                                                  |
+| ----------------- | ------ | ------------------------------------------------------------------------------------- |
+| 📱 响应式工作台   | 已支持 | `/chat` 桌面端三栏，移动端退化为抽屉和单栏                                            |
+| 📚 多格式资料入库 | 已支持 | `txt / md / pdf / docx / png / jpg / jpeg / webp`                                     |
+| 🌊 流式问答       | 已支持 | 同步问答、SSE 流式输出、失败重试、活动 run 查询；长会话主区默认只加载最近一段消息窗口 |
+| 🧾 来源引用回看   | 已支持 | 回答内容带来源片段；右侧上下文栏走独立会话摘要接口，不再依赖整段消息重拉              |
+| 🔎 检索兜底       | 已支持 | `Chroma` 向量召回优先，`SQLite FTS5` 负责词法候选兜底                                 |
+| 🧠 三路模型路由   | 已支持 | `response / embedding / vision` 独立配置与切换                                        |
+| 🔌 多 Provider    | 已支持 | `OpenAI / Anthropic / Voyage / Ollama`                                                |
+| 🌐 中英双语       | 已支持 | 前端内置 `zh-CN / en` 文案与切换能力                                                  |
+| 🌓 主题切换       | 已支持 | `light / dark / system` 三种主题偏好                                                  |
+| 🔐 角色与设置中心 | 已支持 | `admin / user` 两类角色，带设置中心和用户管理                                         |
+| 🐳 单机部署       | 已支持 | 开发态可直跑，稳定运行走 Docker Compose                                               |
+| 🗂️ 本地优先存储   | 已支持 | SQLite（含 `FTS5` 词法兜底索引）、Chroma、上传文件和标准化结果都落本地目录            |
+| 🪶 依赖克制       | 已支持 | V1 不引入 Redis、Celery、对象存储等非必需基础设施                                     |
 
 ## 演示 Demo
+
 [Bilibili: v1](https://www.bilibili.com/video/BV1RCQQBvEKb/?vd_source=c217126ec335b1b5117485606ac9594f)
 
 ## 快速开始
@@ -100,20 +101,27 @@ just setup
 
 ### 4. 选择运行方式
 
-| 目标 | 命令 | 说明 |
-| --- | --- | --- |
-| 首次安装依赖 | `just setup` | 同步后端虚拟环境和前端依赖 |
-| 看仓库入口 | `just --list` | 查看当前保留的高频命令 |
-| 手动执行数据库迁移 | `just api-migrate` | 只补齐本地 API schema，不启动服务 |
-| 本地开发 | `just dev` | 依赖已安装后启动前后端，并打印访问地址 |
-| 检查仓库表面约束 | `just repo-check` | 校验 README / 包级 README 和 `justfile` 的关键入口是否保持一致 |
-| 只跑后端 | `just api-dev` | FastAPI 开发态 |
-| 只跑前端 | `just web-dev` | Web 开发态 |
-| 检查与测试 | `just test` | 先跑 `repo-check`，再执行前后端检查与测试 |
-| 重置本地数据 | `just reset-dev` | 清空数据、同步依赖、重新拉起，并打印访问地址 |
-| 单机部署 | `just docker-up` | Docker Compose 运行 |
+| 目标               | 命令               | 说明                                                           |
+| ------------------ | ------------------ | -------------------------------------------------------------- |
+| 首次安装依赖       | `just setup`       | 同步后端虚拟环境和前端依赖                                     |
+| 看仓库入口         | `just --list`      | 查看当前保留的高频命令                                         |
+| 手动执行数据库迁移 | `just api-migrate` | 只补齐本地 API schema，不启动服务                              |
+| 本地开发           | `just dev`         | 依赖已安装后启动前后端，并打印访问地址                         |
+| 检查仓库表面约束   | `just repo-check`  | 校验 README / 包级 README 和 `justfile` 的关键入口是否保持一致 |
+| 只跑后端           | `just api-dev`     | FastAPI 开发态                                                 |
+| 只跑前端           | `just web-dev`     | Web 开发态                                                     |
+| 检查与测试         | `just test`        | 先跑 `repo-check`，再执行后端 `tests/integration + unit + runtime + migrations` 与前端测试 |
+| 重置本地数据       | `just reset-dev`   | 清空全部本地数据（上传文件/标准化结果/向量索引/SQLite含WAL）、重装依赖、重启前后端，并打印访问地址 |
+| 单机部署           | `just docker-up`   | Docker Compose 运行                                            |
 
-`just reset-dev` 会清空本地数据，只适合“环境已经乱掉，需要一键回到干净状态”的场景，不作为首次启动入口。
+`just reset-dev` 会按顺序执行以下操作：
+
+1. **清空本地数据**：删除 `data/uploads/`、`data/normalized/`、`data/chroma/` 目录内容，以及 `data/sqlite/ai_qa.db`（含 `-wal` / `-shm` 副本）
+2. **重建数据库 schema**：通过 Alembic migration 重新创建空表结构
+3. **重装依赖**：后端 `uv sync --all-groups`，前端 `vp install`
+4. **重启开发态**：前后端一起拉起，终端打印访问地址
+
+只适合“环境已经乱掉，需要一键回到干净状态”的场景，**不作为首次启动入口**（首次请用 `just init-env && just setup && just dev`）。
 
 ### 5. 打开服务
 
@@ -127,17 +135,17 @@ just setup
 
 ## 文档入口
 
-| 想做什么 | 先看哪里 |
-| --- | --- |
-| 第一次接手仓库并准备开发 | [CONTRIBUTING.md](./CONTRIBUTING.md) |
-| 只想先跑起来 | [快速开始](#快速开始) |
-| 想先看架构文档导航 | [docs/arch/README.md](./docs/arch/README.md) |
-| 想理解登录 / 会话恢复 / refresh | [docs/arch/auth-and-session-flow.md](./docs/arch/auth-and-session-flow.md) |
-| 只改前端 | [apps/web/README.md](./apps/web/README.md) |
-| 只改后端 | [apps/api/README.md](./apps/api/README.md) |
-| 理解系统边界 | [docs/arch/system-overview.md](./docs/arch/system-overview.md) |
-| 看 provider / 设置语义 | [docs/arch/provider-and-settings.md](./docs/arch/provider-and-settings.md) |
-| 看部署和运维 | [docs/arch/deployment-and-operations.md](./docs/arch/deployment-and-operations.md) |
+| 想做什么                        | 先看哪里                                                                           |
+| ------------------------------- | ---------------------------------------------------------------------------------- |
+| 第一次接手仓库并准备开发        | [CONTRIBUTING.md](./CONTRIBUTING.md)                                               |
+| 只想先跑起来                    | [快速开始](#快速开始)                                                              |
+| 想先看架构文档导航              | [docs/arch/README.md](./docs/arch/README.md)                                       |
+| 想理解登录 / 会话恢复 / refresh | [docs/arch/auth-and-session-flow.md](./docs/arch/auth-and-session-flow.md)         |
+| 只改前端                        | [apps/web/README.md](./apps/web/README.md)                                         |
+| 只改后端                        | [apps/api/README.md](./apps/api/README.md)                                         |
+| 理解系统边界                    | [docs/arch/system-overview.md](./docs/arch/system-overview.md)                     |
+| 看 provider / 设置语义          | [docs/arch/provider-and-settings.md](./docs/arch/provider-and-settings.md)         |
+| 看部署和运维                    | [docs/arch/deployment-and-operations.md](./docs/arch/deployment-and-operations.md) |
 
 ## 开发入口
 
@@ -174,12 +182,12 @@ just docker-down
 
 仓库内置了 4 个可直接上传的样例文件，位于 `examples/upload-samples/`：
 
-| 文件 | 类型 | 可以用来问什么 |
-| --- | --- | --- |
-| `01-night-voyage.txt` | TXT | 哪个文件写到“云层背面也有路标”？ |
-| `02-south-window.md` | Markdown | 哪篇文章提到“折页里藏着一枚迟到的晴天”？ |
-| `03-tide-reading-list.pdf` | PDF | 哪份 PDF 写到“海风把借阅证吹成了一片小帆”？ |
-| `04-brick-lane-letter.docx` | DOCX | 哪份 DOCX 里出现“北窗下那只琥珀色风标总在无风时轻响”？ |
+| 文件                        | 类型     | 可以用来问什么                                         |
+| --------------------------- | -------- | ------------------------------------------------------ |
+| `01-night-voyage.txt`       | TXT      | 哪个文件写到“云层背面也有路标”？                       |
+| `02-south-window.md`        | Markdown | 哪篇文章提到“折页里藏着一枚迟到的晴天”？               |
+| `03-tide-reading-list.pdf`  | PDF      | 哪份 PDF 写到“海风把借阅证吹成了一片小帆”？            |
+| `04-brick-lane-letter.docx` | DOCX     | 哪份 DOCX 里出现“北窗下那只琥珀色风标总在无风时轻响”？ |
 
 这些样例主要用于手工验证“上传 -> 标准化 -> 索引 -> 问答引用”这条链路是否正常。
 

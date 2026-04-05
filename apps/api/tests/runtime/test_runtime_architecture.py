@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+from tests.fixtures.factories import UserFactory
+
 from knowledge_chatbox_api.core.config import get_settings
-from knowledge_chatbox_api.models.auth import User
 from knowledge_chatbox_api.repositories.chat_repository import ChatRepository
 from knowledge_chatbox_api.repositories.chat_run_event_repository import ChatRunEventRepository
 from knowledge_chatbox_api.repositories.chat_run_repository import ChatRunRepository
@@ -14,18 +15,12 @@ from knowledge_chatbox_api.services.documents.ingestion_service import Ingestion
 from knowledge_chatbox_api.utils.chroma import InMemoryChromaStore
 
 
-def seed_admin(migrated_db_session) -> User:
-    user = User(
+def seed_admin(migrated_db_session):
+    return UserFactory.persisted_create(
+        migrated_db_session,
         username="admin",
-        password_hash="hash",
         role="admin",
-        status="active",
-        theme_preference="system",
     )
-    migrated_db_session.add(user)
-    migrated_db_session.commit()
-    migrated_db_session.refresh(user)
-    return user
 
 
 def test_chat_run_service_persists_runtime_events_and_updates_message_projection(
@@ -38,8 +33,9 @@ def test_chat_run_service_persists_runtime_events_and_updates_message_projection
             yield {"type": "text_delta", "delta": "world"}
             yield {"type": "completed", "usage": {"output_tokens": 2}}
 
+    admin = seed_admin(migrated_db_session)
     chat_repository = ChatRepository(migrated_db_session)
-    session = chat_repository.create_session(user_id=seed_admin(migrated_db_session).id, title="S")
+    session = chat_repository.create_session(user_id=admin.id, title="S")
     migrated_db_session.commit()
     migrated_db_session.refresh(session)
 

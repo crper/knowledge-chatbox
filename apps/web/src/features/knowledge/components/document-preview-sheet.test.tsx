@@ -1,11 +1,15 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
 import { I18nextProvider } from "react-i18next";
 import { MemoryRouter } from "react-router-dom";
 
 import { QueryProvider } from "@/providers/query-provider";
 import { i18n } from "@/i18n";
+import { createTestServer, overrideHandler } from "@/test/msw";
 import type { KnowledgeDocument } from "../api/documents";
 import { DocumentPreviewSheet } from "./document-preview-sheet";
+
+declare const fetchMockCalls: Array<[string, RequestInit?]>;
 
 vi.mock("@/features/chat/components/markdown-message", () => ({
   MarkdownMessage: ({ content }: { content: string }) => (
@@ -58,8 +62,8 @@ function renderSheet(document: KnowledgeDocument) {
 
 describe("DocumentPreviewSheet", () => {
   beforeEach(() => {
+    createTestServer();
     vi.spyOn(window, "open").mockImplementation(() => null);
-    vi.stubGlobal("fetch", vi.fn());
     vi.stubGlobal(
       "URL",
       Object.assign(URL, {
@@ -75,10 +79,11 @@ describe("DocumentPreviewSheet", () => {
   });
 
   it("renders markdown previews with summary badges and actions", async () => {
-    vi.mocked(fetch).mockResolvedValue(
-      new Response("# 标题\n\n正文", {
-        status: 200,
-      }),
+    overrideHandler(
+      http.get(
+        "*/api/documents/revisions/:revisionId/file",
+        () => new HttpResponse("# 标题\n\n正文", { status: 200 }),
+      ),
     );
 
     renderSheet(buildDocument({}));
@@ -96,11 +101,14 @@ describe("DocumentPreviewSheet", () => {
   });
 
   it("renders image previews inline", async () => {
-    vi.mocked(fetch).mockImplementation(() =>
-      Promise.resolve(
-        new Response(new Blob(["image"], { type: "image/png" }), {
-          status: 200,
-        }),
+    overrideHandler(
+      http.get(
+        "*/api/documents/revisions/:revisionId/file",
+        () =>
+          new HttpResponse(new Blob(["image"], { type: "image/png" }), {
+            headers: { "Content-Type": "image/png" },
+            status: 200,
+          }),
       ),
     );
 
@@ -116,10 +124,11 @@ describe("DocumentPreviewSheet", () => {
   });
 
   it("renders txt previews as plain text instead of markdown", async () => {
-    vi.mocked(fetch).mockResolvedValue(
-      new Response("# not a heading", {
-        status: 200,
-      }),
+    overrideHandler(
+      http.get(
+        "*/api/documents/revisions/:revisionId/file",
+        () => new HttpResponse("# not a heading", { status: 200 }),
+      ),
     );
 
     renderSheet(
@@ -183,14 +192,15 @@ describe("DocumentPreviewSheet", () => {
 
     expect(screen.getByText("资源预览失败")).toBeInTheDocument();
     expect(screen.getByText("解析失败")).toBeInTheDocument();
-    expect(fetch).not.toHaveBeenCalled();
+    expect(fetchMockCalls).toHaveLength(0);
   });
 
   it("calls version and reindex callbacks from the action area", async () => {
-    vi.mocked(fetch).mockResolvedValue(
-      new Response("正文", {
-        status: 200,
-      }),
+    overrideHandler(
+      http.get(
+        "*/api/documents/revisions/:revisionId/file",
+        () => new HttpResponse("正文", { status: 200 }),
+      ),
     );
     const { onReindex, onShowVersions } = renderSheet(buildDocument({}));
 

@@ -55,7 +55,7 @@
   "selectedResourceTitle": "当前资源",
   "selectedResourceDescription": "围绕当前选中的资源查看状态并继续进入对话。",
   "selectedResourceEmptyTitle": "暂无匹配资源",
-  "selectedResourceEmptyDescription": "调整搜索条件后再试，或先上传新的资源。",
+  "selectedResourceEmptyDescription": "当前筛选条件下没有匹配资源，试试更换关键词、类型或状态。",
   "selectedBandTitle": "当前资源",
   "selectedBandDescription": "围绕当前选中的资源查看状态与高频动作。",
   "selectedBandEmptyTitle": "当前没有选中资源",

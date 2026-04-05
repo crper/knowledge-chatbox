@@ -2,6 +2,8 @@
  * @file 资源展示辅助函数模块。
  */
 
+import { formatDateTime } from "@/lib/date-utils";
+
 import { getDocumentPreviewKind } from "../api/document-preview";
 import type { KnowledgeDocumentStatus } from "../api/documents";
 
@@ -72,16 +74,6 @@ export function getKnowledgeDocumentStatusMeta(
  * 按当前语言格式化资源时间。
  */
 export function formatKnowledgeDocumentDateTime(value: string, locale: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return new Intl.DateTimeFormat(locale, {
-    hour: "2-digit",
-    minute: "2-digit",
-    month: "2-digit",
-    day: "2-digit",
-    year: "numeric",
-  }).format(date);
+  const result = formatDateTime(value, locale);
+  return result || value;
 }

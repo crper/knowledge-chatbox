@@ -2,7 +2,7 @@
  * @file 资源页上传队列组件模块。
  */
 
-import { useEffect, useState } from "react";
+import { useCallback, memo, useEffect, useMemo, useState } from "react";
 import {
   ChevronDownIcon,
   ChevronUpIcon,
@@ -16,6 +16,8 @@ import { useTranslation } from "react-i18next";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 
 type UploadQueueItem = {
@@ -33,119 +35,60 @@ type UploadQueueSummaryProps = {
   onRetry: (uploadId: string) => void;
 };
 
-/**
- * 渲染资源页紧凑上传队列。
- */
-export function UploadQueueSummary({
-  items,
-  onCancel,
+type FailedQueueItemProps = {
+  item: UploadQueueItem;
+  onRemove: (uploadId: string) => void;
+  onRetry: (uploadId: string) => void;
+};
+
+const FailedQueueItem = memo(function FailedQueueItem({
+  item,
   onRemove,
   onRetry,
-}: UploadQueueSummaryProps) {
+}: FailedQueueItemProps) {
   const { t } = useTranslation("knowledge");
-  const failedItems = items.filter((item) => item.status === "failed");
-  const uploadingItems = items.filter((item) => item.status === "uploading");
-  const hasVisibleItems = failedItems.length > 0 || uploadingItems.length > 0;
-  const [expanded, setExpanded] = useState(true);
-
-  useEffect(() => {
-    if (failedItems.length > 0) {
-      setExpanded(true);
-    }
-  }, [failedItems.length]);
-
-  if (!hasVisibleItems) {
-    return null;
-  }
 
   return (
-    <section className="surface-panel-subtle space-y-3 rounded-[1.25rem] p-3 md:p-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-          <p className="text-ui-title text-foreground">{t("queueCompactTitle")}</p>
-          {uploadingItems.length > 0 ? (
-            <Badge className="shrink-0" variant="secondary">
-              <LoaderCircleIcon data-icon="inline-start" />
-              {t("queueUploadingCount", { count: uploadingItems.length })}
-            </Badge>
-          ) : null}
-          {failedItems.length > 0 ? (
-            <Badge className="shrink-0" variant="destructive">
-              <CircleAlertIcon data-icon="inline-start" />
-              {t("queueFailedCount", { count: failedItems.length })}
-            </Badge>
-          ) : null}
-        </div>
-
+    <div
+      className={cn(
+        "surface-light flex flex-wrap items-center justify-between gap-3 rounded-xl px-3 py-2.5",
+        "border-destructive/15 bg-destructive/6",
+      )}
+      key={item.id}
+    >
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium text-foreground">{item.name}</p>
+        <p className="text-xs text-destructive">{item.errorMessage || t("uploadItemFailed")}</p>
+      </div>
+      <div className="flex items-center gap-2">
+        <Button onClick={() => onRetry(item.id)} size="sm" type="button" variant="outline">
+          <RotateCcwIcon data-icon="inline-start" />
+          {t("retryUploadAction")}
+        </Button>
         <Button
-          className="self-start"
-          onClick={() => setExpanded((current) => !current)}
+          aria-label={t("removeUploadAction", { name: item.name })}
+          onClick={() => onRemove(item.id)}
           size="sm"
           type="button"
           variant="ghost"
         >
-          {expanded ? (
-            <ChevronUpIcon data-icon="inline-start" />
-          ) : (
-            <ChevronDownIcon data-icon="inline-start" />
-          )}
-          {expanded ? t("queueCollapseAction") : t("queueExpandAction")}
+          <Trash2Icon data-icon="inline-start" />
+          {t("deleteAction")}
         </Button>
       </div>
-
-      {expanded ? (
-        <div className="space-y-2">
-          {uploadingItems.map((item) => (
-            <UploadingQueueItem item={item} key={item.id} onCancel={onCancel} />
-          ))}
-
-          {failedItems.map((item) => (
-            <div
-              className={cn(
-                "surface-outline flex flex-wrap items-center justify-between gap-3 rounded-[1rem] px-3 py-2.5",
-                "border-destructive/15 bg-destructive/6",
-              )}
-              key={item.id}
-            >
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-foreground">{item.name}</p>
-                <p className="text-xs text-destructive">
-                  {item.errorMessage || t("uploadItemFailed")}
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button onClick={() => onRetry(item.id)} size="sm" type="button" variant="outline">
-                  <RotateCcwIcon data-icon="inline-start" />
-                  {t("retryUploadAction")}
-                </Button>
-                <Button
-                  aria-label={t("removeUploadAction", { name: item.name })}
-                  onClick={() => onRemove(item.id)}
-                  size="sm"
-                  type="button"
-                  variant="ghost"
-                >
-                  <Trash2Icon data-icon="inline-start" />
-                  {t("deleteAction")}
-                </Button>
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : null}
-    </section>
+    </div>
   );
-}
+});
 
 type UploadingQueueItemProps = {
   item: UploadQueueItem;
   onCancel: (uploadId: string) => void;
 };
 
-/**
- * 渲染进行中的上传项。
- */
-function UploadingQueueItem({ item, onCancel }: UploadingQueueItemProps) {
+const UploadingQueueItem = memo(function UploadingQueueItem({
+  item,
+  onCancel,
+}: UploadingQueueItemProps) {
   const { t } = useTranslation("knowledge");
   const isProcessing = item.progress >= 100;
   const progressWidth = isProcessing ? 100 : Math.min(Math.max(item.progress, 0), 100);
@@ -153,7 +96,7 @@ function UploadingQueueItem({ item, onCancel }: UploadingQueueItemProps) {
   return (
     <div
       className={cn(
-        "surface-outline flex flex-wrap items-center justify-between gap-3 rounded-[1rem] px-3 py-2.5",
+        "surface-light flex flex-wrap items-center justify-between gap-3 rounded-xl px-3 py-2.5",
         "border-border/70 bg-background/52",
       )}
     >
@@ -167,13 +110,14 @@ function UploadingQueueItem({ item, onCancel }: UploadingQueueItemProps) {
               : t("uploadItemUploading", { progress: item.progress })}
           </Badge>
         </div>
-        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
-          <div
+        <div className="mt-2">
+          <Progress
+            value={progressWidth}
             className={cn(
-              "h-full rounded-full transition-[width] duration-200",
-              isProcessing ? "animate-pulse bg-primary/70" : "bg-primary",
+              "h-1.5",
+              isProcessing &&
+                "[&>[data-slot=progress-indicator]]:animate-pulse [&>[data-slot=progress-indicator]]:bg-primary/70",
             )}
-            style={{ width: `${progressWidth}%` }}
           />
         </div>
       </div>
@@ -191,4 +135,91 @@ function UploadingQueueItem({ item, onCancel }: UploadingQueueItemProps) {
       </div>
     </div>
   );
-}
+});
+
+/**
+ * 渲染资源页紧凑上传队列。
+ */
+export const UploadQueueSummary = memo(function UploadQueueSummary({
+  items,
+  onCancel,
+  onRemove,
+  onRetry,
+}: UploadQueueSummaryProps) {
+  const { t } = useTranslation("knowledge");
+  const [expanded, setExpanded] = useState(true);
+
+  const failedItems = useMemo(() => items.filter((item) => item.status === "failed"), [items]);
+  const uploadingItems = useMemo(
+    () => items.filter((item) => item.status === "uploading"),
+    [items],
+  );
+  const hasVisibleItems = failedItems.length > 0 || uploadingItems.length > 0;
+
+  useEffect(() => {
+    if (failedItems.length > 0) {
+      setExpanded(true);
+    }
+  }, [failedItems.length]);
+
+  const handleToggleExpanded = useCallback(() => {
+    setExpanded((current) => !current);
+  }, []);
+
+  if (!hasVisibleItems) {
+    return null;
+  }
+
+  return (
+    <Collapsible open={expanded} onOpenChange={setExpanded}>
+      <section className="surface-panel-subtle space-y-3 rounded-xl p-3 md:p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+            <p className="text-ui-title text-foreground">{t("queueCompactTitle")}</p>
+            {uploadingItems.length > 0 ? (
+              <Badge className="shrink-0" variant="secondary">
+                <LoaderCircleIcon data-icon="inline-start" />
+                {t("queueUploadingCount", { count: uploadingItems.length })}
+              </Badge>
+            ) : null}
+            {failedItems.length > 0 ? (
+              <Badge className="shrink-0" variant="destructive">
+                <CircleAlertIcon data-icon="inline-start" />
+                {t("queueFailedCount", { count: failedItems.length })}
+              </Badge>
+            ) : null}
+          </div>
+
+          <CollapsibleTrigger
+            render={
+              <Button
+                className="self-start"
+                onClick={handleToggleExpanded}
+                size="sm"
+                type="button"
+                variant="ghost"
+              />
+            }
+          >
+            {expanded ? (
+              <ChevronUpIcon data-icon="inline-start" />
+            ) : (
+              <ChevronDownIcon data-icon="inline-start" />
+            )}
+            {expanded ? t("queueCollapseAction") : t("queueExpandAction")}
+          </CollapsibleTrigger>
+        </div>
+
+        <CollapsibleContent className="space-y-2">
+          {uploadingItems.map((item) => (
+            <UploadingQueueItem item={item} key={item.id} onCancel={onCancel} />
+          ))}
+
+          {failedItems.map((item) => (
+            <FailedQueueItem item={item} key={item.id} onRemove={onRemove} onRetry={onRetry} />
+          ))}
+        </CollapsibleContent>
+      </section>
+    </Collapsible>
+  );
+});

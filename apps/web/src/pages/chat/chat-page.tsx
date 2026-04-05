@@ -113,6 +113,44 @@ export function ChatPage() {
     [deleteFailedMessage],
   );
 
+  const handleNavigateToSettings = useCallback(() => {
+    void navigate("/settings?section=providers");
+  }, [navigate]);
+
+  const handleNavigateToKnowledge = useCallback(() => {
+    void navigate("/knowledge");
+  }, [navigate]);
+
+  const handleDraftChange = useCallback(
+    (value: string) => {
+      setDraft(activeSessionId, value);
+    },
+    [activeSessionId, setDraft],
+  );
+
+  const handleRemoveAttachment = useCallback(
+    (attachmentId: string) => {
+      removeAttachment(activeSessionId, attachmentId);
+    },
+    [activeSessionId, removeAttachment],
+  );
+
+  const handleReasoningModeChange = useCallback(
+    (mode: ChatReasoningMode) => {
+      if (activeSessionId == null) return;
+      updateSessionMutation.mutate({ reasoningMode: mode, sessionId: activeSessionId });
+    },
+    [activeSessionId, updateSessionMutation],
+  );
+
+  const handleSubmit = useCallback(() => {
+    if (!activeProfileConfigured) {
+      toast.error(t("providerSetupRequiredToast"));
+      return;
+    }
+    void submitMessage();
+  }, [activeProfileConfigured, submitMessage, t]);
+
   useLayoutEffect(() => {
     if (sessionIdParam) {
       return;
@@ -175,7 +213,7 @@ export function ChatPage() {
   if (shouldShowResolvingState) {
     return (
       <div className="flex h-full min-h-[50vh] items-center justify-center px-6">
-        <div className="flex items-center gap-3 rounded-full border border-border/70 bg-background/78 px-4 py-2 text-sm text-muted-foreground">
+        <div className="flex items-center gap-3 rounded-full border border-border/70 bg-background/78 px-4 py-2 text-ui-caption text-muted-foreground">
           <Spinner aria-hidden="true" className="size-4" />
           <span>{t("pageTitle")}</span>
         </div>
@@ -186,7 +224,7 @@ export function ChatPage() {
   if (activeSessionId === null) {
     return (
       <div className="flex h-full min-h-[50vh] items-center justify-center px-6">
-        <Empty className="max-w-xl rounded-[1.75rem] border border-dashed border-border/70 bg-background/72 p-10 shadow-[inset_0_1px_0_hsl(var(--background)/0.72)]">
+        <Empty className="max-w-xl rounded-3xl border border-dashed border-border/70 bg-background/72 p-10 sm:p-12 shadow-[inset_0_1px_0_hsl(var(--background)/0.72)]">
           <EmptyHeader>
             <EmptyMedia variant="icon">
               <MessageSquareDashedIcon />
@@ -197,7 +235,7 @@ export function ChatPage() {
             </EmptyDescription>
           </EmptyHeader>
           <EmptyContent>
-            <Button onClick={() => navigate("/knowledge")} type="button" variant="outline">
+            <Button onClick={handleNavigateToKnowledge} type="button" variant="outline">
               <FilePlus2Icon data-icon="inline-start" />
               {t("emptySessionResourceAction")}
             </Button>
@@ -208,24 +246,28 @@ export function ChatPage() {
   }
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[radial-gradient(circle_at_top,hsl(var(--primary)/0.08),transparent_28%),radial-gradient(circle_at_100%_0%,hsl(var(--chart-2)/0.08),transparent_22%)]">
-      <header className="shrink-0 px-4 pt-4 pb-2.5 sm:px-6 sm:pt-5 sm:pb-3">
-        <div className="page-content-rail mx-auto px-1 py-0.5 sm:px-3 sm:py-1">
-          <div className="flex flex-wrap items-center gap-2.5">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[radial-gradient(ellipse_72%_52%_at_top,hsl(var(--primary)/0.06),transparent_44%)]">
+      {/* 优化 header 间距节奏 */}
+      <header className="shrink-0 px-4 pt-4 pb-3 sm:px-6 sm:pt-5 sm:pb-3">
+        <div className="page-content-rail mx-auto">
+          <div className="flex flex-wrap items-center gap-2">
             <p className="text-ui-kicker text-muted-foreground">{t("pageTitle")}</p>
-            <Badge className="text-ui-caption rounded-full px-2.5 py-1" variant="outline">
+            <Badge
+              className="text-ui-caption rounded-full px-2.5 py-1 transition-colors"
+              variant="outline"
+            >
               {hasMessages ? t("assistantRole") : t("emptySessionStepsTitle")}
             </Badge>
           </div>
-          <div className="mt-2 space-y-1.5 sm:mt-2.5 sm:space-y-2">
-            <h1 className="text-ui-heading break-words">
+          <div className="mt-2 space-y-1">
+            <h1 className="text-ui-heading break-words text-balance">
               {resolveSessionTitle(activeSession?.title, sessionTitleFallback)}
             </h1>
           </div>
         </div>
       </header>
 
-      <div className="flex min-h-0 flex-1 flex-col px-4 pb-3 sm:px-6 sm:pb-4">
+      <div className="flex min-h-0 flex-1 flex-col px-4 pb-4 sm:px-6 sm:pb-5">
         {hasMessages ? (
           <ChatMessageViewport
             key={activeSessionId ?? "empty"}
@@ -240,7 +282,7 @@ export function ChatPage() {
           />
         ) : shouldShowPendingEmptyState ? (
           <div className="flex min-h-0 flex-1 items-center">
-            <div className="page-content-rail workspace-surface mx-auto rounded-[1.75rem] p-5 sm:p-6">
+            <div className="page-content-rail workspace-surface mx-auto rounded-3xl p-5 sm:p-6">
               <section className="py-3">
                 <AssistantWaitingCard
                   caption={t("sendingAction")}
@@ -253,9 +295,9 @@ export function ChatPage() {
           </div>
         ) : (
           <div className="flex min-h-0 flex-1 items-center">
-            <div className="page-content-rail workspace-surface mx-auto rounded-[1.75rem] p-5 sm:p-6">
-              <section className="space-y-6 py-3">
-                <div className="space-y-3">
+            <div className="page-content-rail workspace-surface mx-auto rounded-3xl p-6 sm:p-8">
+              <section className="space-y-7 py-4">
+                <div className="space-y-3.5">
                   <p className="text-ui-kicker text-muted-foreground">{t("messageInputLabel")}</p>
                   <h2 className="text-ui-display">{t("emptySessionTitle")}</h2>
                   <p className="text-ui-body measure-readable text-muted-foreground">
@@ -263,12 +305,12 @@ export function ChatPage() {
                   </p>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-3">
-                  <Button onClick={() => navigate("/knowledge")} type="button" variant="outline">
+                <div className="flex flex-wrap items-center gap-3.5">
+                  <Button onClick={handleNavigateToKnowledge} type="button" variant="outline">
                     <FilePlus2Icon data-icon="inline-start" />
                     {t("emptySessionResourceAction")}
                   </Button>
-                  <p className="text-ui-subtle text-muted-foreground">
+                  <p className="text-ui-subtle text-muted-foreground/82">
                     {sendShortcut === "enter"
                       ? t("messageShortcutHintEnter")
                       : t("messageShortcutHintShiftEnter")}
@@ -280,6 +322,7 @@ export function ChatPage() {
         )}
       </div>
 
+      {/* 优化底部输入区域间距 */}
       <div className="shrink-0 px-4 pb-4 sm:px-6 sm:pb-5">
         <div className="page-content-rail mx-auto" data-composer-embed="direct">
           <MessageInput
@@ -288,21 +331,13 @@ export function ChatPage() {
             attachmentScopeHint={attachmentScopeHint}
             attachments={attachments}
             draft={draft}
-            onActiveModelAction={() => navigate("/settings?section=providers")}
+            onActiveModelAction={handleNavigateToSettings}
             onAttachFiles={attachFiles}
-            onChange={(value) => setDraft(activeSessionId, value)}
+            onChange={handleDraftChange}
             onRejectFiles={rejectFiles}
-            onRemoveAttachment={(attachmentId) => removeAttachment(activeSessionId, attachmentId)}
-            onReasoningModeChange={(mode) => {
-              updateSessionMutation.mutate({ reasoningMode: mode, sessionId: activeSessionId });
-            }}
-            onSubmit={() => {
-              if (!activeProfileConfigured) {
-                toast.error(t("providerSetupRequiredToast"));
-                return;
-              }
-              void submitMessage();
-            }}
+            onRemoveAttachment={handleRemoveAttachment}
+            onReasoningModeChange={handleReasoningModeChange}
+            onSubmit={handleSubmit}
             reasoningMode={activeSession?.reasoning_mode ?? "default"}
             reasoningModeVisible={activeSessionId !== null}
             sendShortcut={sendShortcut}

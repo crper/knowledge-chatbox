@@ -10,14 +10,9 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import {
-  buildFormValidationResult,
-  formError,
-  getFirstFormError,
-  handleFormSubmitEvent,
-  toFieldErrorItems,
-  trimmedRequired,
-} from "@/lib/forms";
+import { getFirstFormError, handleFormSubmitEvent, toFieldErrorItems } from "@/lib/forms";
+import { zodToTanStackFormErrors } from "@/lib/validation/form-adapter";
+import { loginSchema } from "@/lib/validation/schemas";
 
 type LoginFormProps = {
   errorMessage?: string | null;
@@ -41,13 +36,12 @@ export function LoginForm({ errorMessage = null, onFieldChange, onSubmit }: Logi
     }),
     validators: {
       onDynamic: ({ value }) => {
-        const username = trimmedRequired(value.username, "usernameRequiredError");
-        const password = trimmedRequired(value.password, "passwordRequiredError");
-
-        return buildFormValidationResult(formError("loginValidationError"), {
-          password,
-          username,
-        });
+        const result = loginSchema.safeParse(value);
+        return result.success
+          ? undefined
+          : zodToTanStackFormErrors(result.error, {
+              formI18nKey: "auth:loginValidationError",
+            });
       },
     },
     onSubmit: async ({ value }) => {
@@ -78,7 +72,7 @@ export function LoginForm({ errorMessage = null, onFieldChange, onSubmit }: Logi
                 aria-label={t("usernameLabel")}
                 aria-invalid={field.state.meta.errors.length > 0}
                 autoComplete="username"
-                className="h-11 rounded-[1rem] border-border/80 bg-background/68 px-4 focus-visible:bg-background/82"
+                className="h-11 rounded-xl border-border/80 bg-background/68 px-4 focus-visible:bg-background/82"
                 id="login-username"
                 onChange={(event) => {
                   onFieldChange?.();
@@ -105,7 +99,7 @@ export function LoginForm({ errorMessage = null, onFieldChange, onSubmit }: Logi
                 aria-label={t("passwordLabel")}
                 aria-invalid={field.state.meta.errors.length > 0}
                 autoComplete="current-password"
-                className="h-11 rounded-[1rem] border-border/80 bg-background/68 px-4 focus-visible:bg-background/82"
+                className="h-11 rounded-xl border-border/80 bg-background/68 px-4 focus-visible:bg-background/82"
                 id="login-password"
                 onChange={(event) => {
                   onFieldChange?.();
@@ -145,7 +139,7 @@ export function LoginForm({ errorMessage = null, onFieldChange, onSubmit }: Logi
       <form.Subscribe selector={(state) => state.isSubmitting}>
         {(isSubmitting) => (
           <Button
-            className="mt-1 h-11 w-full rounded-[1rem]"
+            className="mt-1 h-11 w-full rounded-xl"
             disabled={isSubmitting}
             size="lg"
             type="submit"

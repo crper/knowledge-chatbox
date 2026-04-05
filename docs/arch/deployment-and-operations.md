@@ -11,13 +11,13 @@
 
 先把运行模式分清楚：
 
-| 模式 | 推荐入口 | 适合什么 |
-| --- | --- | --- |
-| 首次本地开发初始化 | `just init-env` -> `just setup` -> `just dev` | 第一次 clone 或依赖更新后补齐环境并拉起开发态 |
-| 日常本地开发 | `just dev`、`just api-dev`、`just web-dev` | 改代码、看热更新、排查局部问题 |
-| 本地单机稳定运行 | `just docker-up` | 像生产一样在一台机器上长期跑 |
-| 运行态排查 | `just docker-ps`、`just docker-logs`、`just docker-health` | 看容器状态、日志和健康检查 |
-| 数据清空 | `just reset-data`、`just reset-dev` | 回到干净本地状态 |
+| 模式               | 推荐入口                                                   | 适合什么                                      |
+| ------------------ | ---------------------------------------------------------- | --------------------------------------------- |
+| 首次本地开发初始化 | `just init-env` -> `just setup` -> `just dev`              | 第一次 clone 或依赖更新后补齐环境并拉起开发态 |
+| 日常本地开发       | `just dev`、`just api-dev`、`just web-dev`                 | 改代码、看热更新、排查局部问题                |
+| 本地单机稳定运行   | `just docker-up`                                           | 像生产一样在一台机器上长期跑                  |
+| 运行态排查         | `just docker-ps`、`just docker-logs`、`just docker-health` | 看容器状态、日志和健康检查                    |
+| 数据清空           | `just reset-data`、`just reset-dev`                        | 回到干净本地状态                              |
 
 ### 本地开发
 
@@ -27,6 +27,7 @@
 - 前端 `vp` 当前通过 `apps/web/.node-version` 固定到 `24.14.1`；这样 `vp dev / check / test / build` 会优先直接使用本地已安装版本，而不是每次都先走远端 `lts` 解析
 - 只需要手动补齐本地数据库 schema 时，优先使用仓库根目录 `just api-migrate`
 - 后端本地静态检查入口：仓库根目录 `just api-check`，内部会执行 `ruff check`、`ruff format --check` 和 `basedpyright`
+- 后端测试目录当前按 `apps/api/tests/integration`、`apps/api/tests/unit`、`apps/api/tests/runtime`、`apps/api/tests/migrations`、`apps/api/tests/fixtures` 分层；`just api-test` / `just test` 以这套结构为准
 - 仓库表面入口检查：仓库根目录 `just repo-check`，用于校验 README / 包级 README 和 `justfile` 的关键入口约束
 - Web 子命令：`apps/web` 下用 `vp dev`
 - 浏览器开发态默认优先走同源 `/api`：如果 `.env` 里的 `VITE_API_BASE_URL` 为空，或仍是本机 `http://localhost:8000 / http://127.0.0.1:8000` 这类本地地址，前端会优先收口到同源 `/api`，再由 Vite proxy 转发到本机 API
@@ -107,20 +108,20 @@ flowchart LR
 
 ## 2. 运维资产地图
 
-| 文件 | 责任 | 什么时候用 |
-| --- | --- | --- |
-| `docker-compose.yml` | 定义 `web` / `api` 两个服务、端口、健康检查、bind mount 和日志策略 | 需要看容器拓扑、端口或挂载关系 |
-| `scripts/docker-deploy.sh` | 统一封装 Compose 校验、构建、启动、停止、日志、健康检查 | 日常 Docker 启停和排查 |
-| `scripts/export_openapi.py` | 导出 FastAPI OpenAPI schema 给前端生成契约类型 | 改 API route / schema 后同步前端契约；`vp run api:check` / `just web-check` 也依赖它做快照校验 |
-| `just setup` | 同步后端 `uv` 环境和前端依赖，不清空本地数据 | 首次 clone、依赖变更，或单纯想补装依赖 |
-| `reset-local-data.sh` | 清空本地 SQLite / Chroma / uploads / normalized，并可重跑 migration | 本地需要回到干净状态 |
-| `just reset-dev` | 清空本地数据、同步依赖并拉起前后端开发态 | 本地开发状态已经混乱，需要一步回到可运行状态 |
-| `just docker-check / build / up / down / restart / ps / logs / health` | 仓库根统一入口 | 日常单机部署、排障和验证 |
-| `apps/api/docker-entrypoint.sh` | 容器启动入口：准备目录、迁移数据库、启动 API | 排查容器启动链路 |
-| `apps/api/Dockerfile` | 构建 API 运行镜像 | 排查后端镜像构建、依赖缓存 |
-| `apps/web/Dockerfile` | 构建前端静态资源镜像 | 排查前端构建、Docker 单机模式下同源 `/api` 固化，以及聊天视口相关前端依赖是否已进入构建产物 |
-| `apps/api/.dockerignore` | 收窄后端构建上下文 | Docker 构建过慢或上下文过大 |
-| `apps/web/.dockerignore` | 收窄前端构建上下文 | Docker 构建过慢或上下文过大 |
+| 文件                                                                   | 责任                                                                | 什么时候用                                                                                     |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `docker-compose.yml`                                                   | 定义 `web` / `api` 两个服务、端口、健康检查、bind mount 和日志策略  | 需要看容器拓扑、端口或挂载关系                                                                 |
+| `scripts/docker-deploy.sh`                                             | 统一封装 Compose 校验、构建、启动、停止、日志、健康检查             | 日常 Docker 启停和排查                                                                         |
+| `scripts/export_openapi.py`                                            | 导出 FastAPI OpenAPI schema 给前端生成契约类型                      | 改 API route / schema 后同步前端契约；`vp run api:check` / `just web-check` 也依赖它做快照校验 |
+| `just setup`                                                           | 同步后端 `uv` 环境和前端依赖，不清空本地数据                        | 首次 clone、依赖变更，或单纯想补装依赖                                                         |
+| `reset-local-data.sh`                                                  | 清空本地 SQLite / Chroma / uploads / normalized，并可重跑 migration | 本地需要回到干净状态                                                                           |
+| `just reset-dev`                                                       | 清空本地数据、同步依赖并拉起前后端开发态                            | 本地开发状态已经混乱，需要一步回到可运行状态                                                   |
+| `just docker-check / build / up / down / restart / ps / logs / health` | 仓库根统一入口                                                      | 日常单机部署、排障和验证                                                                       |
+| `apps/api/docker-entrypoint.sh`                                        | 容器启动入口：准备目录、迁移数据库、启动 API                        | 排查容器启动链路                                                                               |
+| `apps/api/Dockerfile`                                                  | 构建 API 运行镜像                                                   | 排查后端镜像构建、依赖缓存                                                                     |
+| `apps/web/Dockerfile`                                                  | 构建前端静态资源镜像                                                | 排查前端构建、Docker 单机模式下同源 `/api` 固化，以及聊天视口相关前端依赖是否已进入构建产物    |
+| `apps/api/.dockerignore`                                               | 收窄后端构建上下文                                                  | Docker 构建过慢或上下文过大                                                                    |
+| `apps/web/.dockerignore`                                               | 收窄前端构建上下文                                                  | Docker 构建过慢或上下文过大                                                                    |
 
 ## 3. `docker-compose.yml` 怎么读
 

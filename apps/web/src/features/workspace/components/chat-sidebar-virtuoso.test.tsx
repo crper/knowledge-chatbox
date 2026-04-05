@@ -5,34 +5,35 @@ import { MemoryRouter } from "react-router-dom";
 import type { AppUser } from "@/lib/api/client";
 import { I18nProvider } from "@/providers/i18n-provider";
 import { ThemeProvider } from "@/providers/theme-provider";
-import { jsonResponse } from "@/test/http";
+import { http } from "msw";
+import { apiResponse, overrideHandler } from "@/test/msw";
 import { createTestQueryClient } from "@/test/query-client";
 import { ChatSidebar } from "./chat-sidebar";
 
-vi.mock("react-virtuoso", async () => {
-  const Virtuoso = ({
-    data = [],
-    initialItemCount,
-    itemContent,
-  }: {
-    data?: Array<{ id: number; title: string | null }>;
-    initialItemCount?: number;
-    itemContent?: (index: number, item: { id: number; title: string | null }) => React.ReactNode;
-  }) => {
-    const renderCount = Math.max(data.length, initialItemCount ?? 0);
-    const items = Array.from({ length: renderCount }, (_, index) =>
-      itemContent?.(index, data[index]!),
-    );
+vi.mock("@tanstack/react-virtual", () => ({
+  useVirtualizer: vi.fn(
+    (options: {
+      count?: number;
+      getScrollElement?: () => HTMLElement | null;
+      estimateSize?: (index: number) => number;
+      overscan?: number;
+    }) => {
+      const count = options.count ?? 0;
 
-    if (items.some((item) => item == null)) {
-      throw new Error("Virtuoso received an empty session row.");
-    }
-
-    return <div data-testid="chat-sidebar-virtuoso">{items}</div>;
-  };
-
-  return { Virtuoso };
-});
+      return {
+        getVirtualItems: () =>
+          Array.from({ length: count }, (_, index) => ({
+            index,
+            start: index * 72,
+            size: 72,
+            key: index,
+          })),
+        getTotalSize: () => count * 72,
+        scrollToIndex: vi.fn(),
+      };
+    },
+  ),
+}));
 
 function buildUser(): AppUser {
   return {
@@ -76,25 +77,10 @@ function renderSidebar(initialEntry = "/chat/1") {
 }
 
 describe("ChatSidebar virtuoso integration", () => {
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
   it("renders a short session list without producing empty probe rows", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockImplementation((input: string) => {
-        if (input.endsWith("/api/chat/sessions")) {
-          return Promise.resolve(
-            jsonResponse({
-              success: true,
-              data: [{ id: 1, title: "Session A" }],
-              error: null,
-            }),
-          );
-        }
-
-        return Promise.resolve(jsonResponse({ success: true, data: [], error: null }));
+    overrideHandler(
+      http.get("*/api/chat/sessions", () => {
+        return apiResponse([{ id: 1, title: "Session A" }]);
       }),
     );
 

@@ -55,7 +55,7 @@
   "selectedResourceTitle": "Current Resource",
   "selectedResourceDescription": "Review the selected resource and jump back into chat from here.",
   "selectedResourceEmptyTitle": "No matching resources",
-  "selectedResourceEmptyDescription": "Adjust the search term or upload another resource.",
+  "selectedResourceEmptyDescription": "No resources match the current filters. Try a different keyword, type, or status.",
   "selectedBandTitle": "Current Resource",
   "selectedBandDescription": "Review status and the highest-frequency actions for the current resource.",
   "selectedBandEmptyTitle": "No resource selected",

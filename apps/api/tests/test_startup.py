@@ -12,13 +12,19 @@ from knowledge_chatbox_api.core.config import get_settings
 from knowledge_chatbox_api.db.session import create_session_factory
 from knowledge_chatbox_api.main import _raise_if_database_schema_incompatible, create_app
 from knowledge_chatbox_api.models.auth import User
-from knowledge_chatbox_api.models.chat import ChatMessage, ChatRun, ChatSession
+from knowledge_chatbox_api.models.chat import ChatMessage, ChatRun
 from knowledge_chatbox_api.models.space import Space
 from knowledge_chatbox_api.repositories.space_repository import SpaceRepository
 from knowledge_chatbox_api.services.chat.chat_run_service import STREAM_INTERRUPTED_ERROR_MESSAGE
 from knowledge_chatbox_api.services.settings.settings_service import (
     INDEX_REBUILD_STATUS_RUNNING,
     SettingsService,
+)
+from tests.fixtures.factories import (
+    ChatMessageFactory,
+    ChatRunFactory,
+    ChatSessionFactory,
+    UserFactory,
 )
 
 
@@ -159,57 +165,44 @@ def test_startup_compensates_active_chat_runs(
 
     session_factory = create_session_factory()
     with session_factory() as session:
-        user = User(
-            username="alice",
-            password_hash="hash",
-            role="user",
-            status="active",
-            theme_preference="system",
-        )
-        session.add(user)
-        session.commit()
-        session.refresh(user)
+        user = UserFactory.persisted_create(session, username="alice")
 
         space = SpaceRepository(session).ensure_personal_space(user_id=user.id)
-        chat_session = ChatSession(space_id=space.id, user_id=user.id, title="session")
-        session.add(chat_session)
-        session.commit()
-        session.refresh(chat_session)
+        chat_session = ChatSessionFactory.persisted_create(
+            session,
+            space_id=space.id,
+            user_id=user.id,
+            title="session",
+        )
 
-        user_message = ChatMessage(
+        user_message = ChatMessageFactory.persisted_create(
+            session,
             session_id=chat_session.id,
             role="user",
             content="question",
             status="succeeded",
             client_request_id="req-startup-run-1",
         )
-        session.add(user_message)
-        session.commit()
-        session.refresh(user_message)
 
-        assistant_message = ChatMessage(
+        assistant_message = ChatMessageFactory.persisted_create(
+            session,
             session_id=chat_session.id,
             role="assistant",
             content="partial",
             status="streaming",
             reply_to_message_id=user_message.id,
+            client_request_id=None,
         )
-        session.add(assistant_message)
-        session.commit()
-        session.refresh(assistant_message)
 
-        chat_run = ChatRun(
+        chat_run = ChatRunFactory.persisted_create(
+            session,
             session_id=chat_session.id,
             user_message_id=user_message.id,
             assistant_message_id=assistant_message.id,
             status="running",
-            response_provider="openai",
-            response_model="gpt-5.4",
             reasoning_mode="default",
             client_request_id="req-startup-run-1",
         )
-        session.add(chat_run)
-        session.commit()
         run_id = chat_run.id
         assistant_message_id = assistant_message.id
 

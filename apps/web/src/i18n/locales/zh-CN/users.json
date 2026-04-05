@@ -39,7 +39,7 @@
   "newUsernameLabel": "新用户名",
   "initialPasswordRequiredError": "请输入初始密码。",
   "initialPasswordLabel": "初始密码",
-  "passwordLengthValidationError": "密码至少需要 8 位。",
+  "passwordLengthValidationError": "密码至少需要 {{min}} 位。",
   "resetPasswordDialogTitle": "重置用户密码",
   "resetPasswordDialogDescription": "为账号 {{username}} 设置一个新的登录密码。",
   "resetPasswordValidationError": "请输入至少 8 位的新密码。",

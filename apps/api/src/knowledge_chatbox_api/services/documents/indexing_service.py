@@ -81,7 +81,7 @@ class IndexingService:
                 chunk_count=len(chunks),
             )
             raise DocumentNotNormalizedError("Document embedding generation failed.") from exc
-        
+
         chunk_records = [
             {
                 "id": chunk.chunk_id,
@@ -93,7 +93,7 @@ class IndexingService:
             }
             for chunk in chunks
         ]
-        
+
         self.chroma_store.upsert(
             chunk_records,
             embeddings=embeddings,

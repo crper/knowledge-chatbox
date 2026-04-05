@@ -41,7 +41,7 @@ export function SelectedResourceBand({
   );
 
   return (
-    <section className="surface-panel-subtle grid gap-4 rounded-[1.75rem] p-4 md:grid-cols-[minmax(0,1.3fr)_minmax(11rem,0.8fr)_auto] md:items-start md:p-5">
+    <section className="surface-panel-subtle grid gap-4 rounded-3xl p-4 md:grid-cols-[minmax(0,1.3fr)_minmax(11rem,0.8fr)_auto] md:items-start md:p-5">
       <div className="space-y-2.5">
         <p className="text-ui-caption text-muted-foreground">{t("selectedBandTitle")}</p>
         <div className="space-y-1.5">

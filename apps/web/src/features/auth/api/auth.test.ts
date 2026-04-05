@@ -1,5 +1,6 @@
 import { getAccessToken, setAccessToken } from "@/lib/auth/token-store";
-import { jsonResponse } from "@/test/http";
+import { http, HttpResponse } from "msw";
+import { apiResponse, apiError, overrideHandler } from "@/test/msw";
 import {
   bootstrapAuthSession,
   changePassword,
@@ -10,108 +11,75 @@ import {
   updatePreferences,
 } from "./auth";
 
-function apiPath(path: string) {
-  return expect.stringMatching(new RegExp(`${path.replaceAll("/", "\\/")}$`));
-}
-
 describe("auth api", () => {
   beforeEach(() => {
     setAccessToken(null);
   });
 
   it("calls login endpoint", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      jsonResponse({
-        success: true,
-        data: {
+    overrideHandler(
+      http.post("*/api/auth/login", () => {
+        return apiResponse({
           access_token: "access-token",
           expires_in: 900,
           token_type: "Bearer",
           user: { username: "admin" },
-        },
-        error: null,
+        });
       }),
     );
-    vi.stubGlobal("fetch", fetchMock);
 
     const result = await login({ username: "admin", password: "secret" });
 
-    expect(fetchMock).toHaveBeenCalledWith(
-      apiPath("/api/auth/login"),
-      expect.objectContaining({
-        method: "POST",
-      }),
-    );
     expect(result.accessToken).toBe("access-token");
   });
 
   it("calls refresh endpoint and stores the next access token", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      jsonResponse({
-        success: true,
-        data: {
+    overrideHandler(
+      http.post("*/api/auth/refresh", () => {
+        return apiResponse({
           access_token: "refreshed-token",
           expires_in: 900,
           token_type: "Bearer",
-        },
-        error: null,
+        });
       }),
     );
-    vi.stubGlobal("fetch", fetchMock);
 
     await expect(refreshSession()).resolves.toBe("refreshed-token");
-
-    expect(fetchMock).toHaveBeenCalledWith(
-      apiPath("/api/auth/refresh"),
-      expect.objectContaining({ method: "POST" }),
-    );
     expect(getAccessToken()).toBe("refreshed-token");
   });
 
   it("calls bootstrap endpoint and stores the access token when a refresh session can be restored", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      jsonResponse({
-        success: true,
-        data: {
+    overrideHandler(
+      http.post("*/api/auth/bootstrap", () => {
+        return apiResponse({
           authenticated: true,
           access_token: "bootstrapped-token",
           expires_in: 900,
           token_type: "Bearer",
           user: { username: "admin" },
-        },
-        error: null,
+        });
       }),
     );
-    vi.stubGlobal("fetch", fetchMock);
 
     await expect(bootstrapAuthSession()).resolves.toMatchObject({
       accessToken: "bootstrapped-token",
       user: { username: "admin" },
     });
 
-    expect(fetchMock).toHaveBeenCalledWith(
-      apiPath("/api/auth/bootstrap"),
-      expect.objectContaining({ method: "POST" }),
-    );
     expect(getAccessToken()).toBe("bootstrapped-token");
   });
 
   it("returns null when bootstrap endpoint reports an anonymous session", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(
-        jsonResponse({
-          success: true,
-          data: {
-            authenticated: false,
-            access_token: null,
-            expires_in: null,
-            token_type: "Bearer",
-            user: null,
-          },
-          error: null,
-        }),
-      ),
+    overrideHandler(
+      http.post("*/api/auth/bootstrap", () => {
+        return apiResponse({
+          authenticated: false,
+          access_token: null,
+          expires_in: null,
+          token_type: "Bearer",
+          user: null,
+        });
+      }),
     );
 
     await expect(bootstrapAuthSession()).resolves.toBeNull();
@@ -119,66 +87,45 @@ describe("auth api", () => {
   });
 
   it("calls logout endpoint", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(jsonResponse({ success: true, data: { status: "ok" }, error: null }));
-    vi.stubGlobal("fetch", fetchMock);
+    overrideHandler(
+      http.post("*/api/auth/logout", () => {
+        return apiResponse({ status: "ok" });
+      }),
+    );
 
     await logout();
-
-    expect(fetchMock).toHaveBeenCalledWith(
-      apiPath("/api/auth/logout"),
-      expect.objectContaining({ method: "POST" }),
-    );
   });
 
   it("calls auth me endpoint", async () => {
     setAccessToken("access-token");
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(jsonResponse({ success: true, data: { username: "admin" }, error: null }));
-    vi.stubGlobal("fetch", fetchMock);
 
-    await getCurrentUser();
+    overrideHandler(
+      http.get("*/api/auth/me", ({ request }) => {
+        const authHeader = request.headers.get("Authorization");
+        expect(authHeader).toBe("Bearer access-token");
 
-    expect(fetchMock).toHaveBeenCalledWith(
-      apiPath("/api/auth/me"),
-      expect.objectContaining({
-        credentials: "include",
-        method: "GET",
+        return apiResponse({ username: "admin" });
       }),
     );
 
-    const [, requestInit] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(new Headers(requestInit.headers).get("Authorization")).toBe("Bearer access-token");
+    await getCurrentUser();
   });
 
   it("returns null for unauthorized current user responses", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockImplementation((input: string) => {
-        if (input.endsWith("/api/auth/refresh")) {
-          return Promise.resolve(
-            jsonResponse(
-              {
-                success: false,
-                data: null,
-                error: { code: "unauthorized", message: "Authentication required." },
-              },
-              { status: 401, statusText: "Unauthorized" },
-            ),
-          );
-        }
+    overrideHandler(
+      http.get("*/api/auth/me", () => {
+        return apiError(
+          { code: "unauthorized", message: "登录状态已失效，请重新登录。" },
+          { status: 401, statusText: "Unauthorized" },
+        );
+      }),
+    );
 
-        return Promise.resolve(
-          jsonResponse(
-            {
-              success: false,
-              data: null,
-              error: { code: "unauthorized", message: "登录状态已失效，请重新登录。" },
-            },
-            { status: 401, statusText: "Unauthorized" },
-          ),
+    overrideHandler(
+      http.post("*/api/auth/refresh", () => {
+        return apiError(
+          { code: "unauthorized", message: "Authentication required." },
+          { status: 401, statusText: "Unauthorized" },
         );
       }),
     );
@@ -187,9 +134,10 @@ describe("auth api", () => {
   });
 
   it("preserves service errors from current user endpoint", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(new Response("", { status: 500, statusText: "Server Error" })),
+    overrideHandler(
+      http.get("*/api/auth/me", () => {
+        return new HttpResponse(null, { status: 500, statusText: "Server Error" });
+      }),
     );
 
     await expect(getCurrentUser()).rejects.toMatchObject({
@@ -200,16 +148,10 @@ describe("auth api", () => {
 
   it("times out the current user probe so the login page is not blocked indefinitely", async () => {
     vi.useFakeTimers();
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockImplementation((_: string, init?: RequestInit) => {
-        return new Promise((_, reject) => {
-          init?.signal?.addEventListener("abort", () => {
-            const abortError = new Error("The operation was aborted.");
-            abortError.name = "AbortError";
-            reject(abortError);
-          });
-        });
+
+    overrideHandler(
+      http.get("*/api/auth/me", () => {
+        return new Promise(() => {});
       }),
     );
 
@@ -225,32 +167,22 @@ describe("auth api", () => {
   });
 
   it("calls change password endpoint", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(jsonResponse({ success: true, data: { username: "admin" }, error: null }));
-    vi.stubGlobal("fetch", fetchMock);
+    overrideHandler(
+      http.post("*/api/auth/change-password", () => {
+        return apiResponse({ username: "admin" });
+      }),
+    );
 
     await changePassword({ currentPassword: "old", newPassword: "new" });
-
-    expect(fetchMock).toHaveBeenCalledWith(
-      apiPath("/api/auth/change-password"),
-      expect.objectContaining({ method: "POST" }),
-    );
   });
 
   it("calls update preferences endpoint", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(
-        jsonResponse({ success: true, data: { theme_preference: "dark" }, error: null }),
-      );
-    vi.stubGlobal("fetch", fetchMock);
+    overrideHandler(
+      http.patch("*/api/auth/preferences", () => {
+        return apiResponse({ theme_preference: "dark" });
+      }),
+    );
 
     await updatePreferences({ themePreference: "dark" });
-
-    expect(fetchMock).toHaveBeenCalledWith(
-      apiPath("/api/auth/preferences"),
-      expect.objectContaining({ method: "PATCH" }),
-    );
   });
 });

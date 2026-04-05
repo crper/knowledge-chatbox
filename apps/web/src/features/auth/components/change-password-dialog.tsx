@@ -20,15 +20,9 @@ import {
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { ApiRequestError, getApiErrorMessage } from "@/lib/api/client";
-import {
-  buildFormValidationResult,
-  formError,
-  getFirstFormError,
-  handleFormSubmitEvent,
-  minLength,
-  toFieldErrorItems,
-  trimmedRequired,
-} from "@/lib/forms";
+import { getFirstFormError, handleFormSubmitEvent, toFieldErrorItems } from "@/lib/forms";
+import { zodToTanStackFormErrors } from "@/lib/validation/form-adapter";
+import { changePasswordSchema } from "@/lib/validation/schemas";
 
 type ChangePasswordDialogProps = {
   open: boolean;
@@ -53,24 +47,22 @@ export function ChangePasswordDialog({ open, onClose, onSubmit }: ChangePassword
     }),
     validators: {
       onDynamic: ({ value }) => {
-        const currentPassword = trimmedRequired(
-          value.currentPassword,
-          "currentPasswordRequiredError",
-        );
-        const newPassword =
-          trimmedRequired(value.newPassword, "newPasswordRequiredError") ??
-          minLength(value.newPassword, 8, "passwordLengthValidationError");
-
-        if (!currentPassword && !newPassword) {
+        const result = changePasswordSchema.safeParse(value);
+        if (result.success) {
           return undefined;
         }
 
-        const formIssue =
-          currentPassword && newPassword ? formError("changePasswordValidationError") : undefined;
+        const fieldNames = new Set(
+          result.error.issues
+            .map((issue) => issue.path[0])
+            .filter((fieldName): fieldName is string => typeof fieldName === "string"),
+        );
 
-        return buildFormValidationResult(formIssue, {
-          currentPassword,
-          newPassword,
+        return zodToTanStackFormErrors(result.error, {
+          formI18nKey:
+            !fieldNames.has("currentPassword") && fieldNames.has("newPassword")
+              ? "auth:changePasswordValidationError"
+              : undefined,
         });
       },
     },

@@ -12,7 +12,7 @@ import {
   useState,
   type ComponentProps,
 } from "react";
-import { Virtuoso, type FollowOutput, type ListProps, type VirtuosoHandle } from "react-virtuoso";
+import { useVirtualizer } from "@tanstack/react-virtual";
 
 import { useIsMobile } from "@/lib/hooks/use-mobile";
 import type { ChatMessageItem } from "../api/chat";
@@ -34,30 +34,12 @@ const BOTTOM_THRESHOLD = 120;
 const INITIAL_MESSAGE_ITEM_COUNT = 12;
 const TOP_THRESHOLD = 80;
 
-const ChatViewportScroller = forwardRef<HTMLDivElement, ComponentProps<"div">>(
-  function ChatViewportScroller({ ...props }, ref) {
-    return <div data-scroll-padding="comfortable" ref={ref} {...props} />;
-  },
-);
-
-const ChatViewportList = forwardRef<HTMLDivElement, ListProps>(function ChatViewportList(
-  { children, style, "data-testid": testId },
-  ref,
-) {
+const ChatViewportList = forwardRef<
+  HTMLDivElement,
+  { "data-testid"?: string } & Omit<ComponentProps<"div">, "data-testid">
+>(function ChatViewportList({ children, "data-testid": testId }, ref) {
   return (
-    <div
-      data-chat-viewport-list="bounded"
-      data-testid={testId}
-      ref={ref}
-      style={{
-        ...style,
-        width: "100%",
-        minWidth: 0,
-        maxWidth: "100%",
-        overflowX: "clip",
-        overflowY: "visible",
-      }}
-    >
+    <div data-chat-viewport-list="bounded" data-testid={testId} ref={ref}>
       {children}
     </div>
   );
@@ -89,19 +71,16 @@ export const ChatMessageViewport = memo(function ChatMessageViewport({
   scrollToLatestRequestKey = 0,
 }: ChatMessageViewportProps) {
   const isMobile = useIsMobile();
-  const virtuosoRef = useRef<VirtuosoHandle | null>(null);
+  const parentRef = useRef<HTMLDivElement>(null);
   const previousLatestMessageSignatureRef = useRef<string>("empty");
   const previousScrollRequestKeyRef = useRef(scrollToLatestRequestKey);
   const previousMessagesLengthRef = useRef(messages.length);
   const pendingScrollToLatestRef = useRef(false);
   const pendingPrependScrollHeightRef = useRef<number | null>(null);
   const olderLoadTriggerArmedRef = useRef(true);
+  const initialPositionHandledRef = useRef(false);
   const [scrollElement, setScrollElement] = useState<HTMLElement | null>(null);
   const latestMessage = messages.at(-1) ?? null;
-  const initialPositionProps =
-    messages.length > INITIAL_MESSAGE_ITEM_COUNT
-      ? { initialTopMostItemIndex: messages.length - 1 }
-      : {};
   const latestMessageSignature = useMemo(
     () =>
       latestMessage === null
@@ -110,24 +89,23 @@ export const ChatMessageViewport = memo(function ChatMessageViewport({
     [latestMessage],
   );
 
+  const virtualizer = useVirtualizer({
+    count: messages.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => DEFAULT_ITEM_HEIGHT,
+    overscan: 5,
+  });
+
   const scrollToLatest = useCallback(
     (behavior: "auto" | "smooth" = "auto") => {
       if (messages.length === 0) {
         return;
       }
 
-      virtuosoRef.current?.scrollToIndex({
-        index: messages.length - 1,
-        align: "end",
-        behavior,
-      });
+      virtualizer.scrollToIndex(messages.length - 1, { align: "end", behavior });
     },
-    [messages.length],
+    [messages.length, virtualizer],
   );
-
-  const followOutput: FollowOutput = useCallback((atBottom: boolean) => {
-    return atBottom ? "auto" : false;
-  }, []);
 
   useEffect(() => {
     if (previousScrollRequestKeyRef.current === scrollToLatestRequestKey) {
@@ -161,7 +139,11 @@ export const ChatMessageViewport = memo(function ChatMessageViewport({
     if (previousSignature === "empty") {
       return;
     }
-  }, [latestMessageSignature, messages.length, scrollToLatest]);
+
+    if (isNearBottom(scrollElement)) {
+      scrollToLatest("auto");
+    }
+  }, [latestMessageSignature, messages.length, scrollToLatest, scrollElement]);
 
   useEffect(() => {
     if (!scrollElement) {
@@ -191,7 +173,6 @@ export const ChatMessageViewport = memo(function ChatMessageViewport({
       }
     };
 
-    handleScroll();
     scrollElement.addEventListener("scroll", handleScroll, { passive: true });
 
     return () => {
@@ -226,52 +207,86 @@ export const ChatMessageViewport = memo(function ChatMessageViewport({
     pendingPrependScrollHeightRef.current = null;
   }, [isLoadingOlderMessages, messages.length, scrollElement]);
 
+  useEffect(() => {
+    const element = parentRef.current;
+    if (!element) {
+      return;
+    }
+
+    setScrollElement(element instanceof HTMLElement ? element : null);
+
+    return () => {
+      setScrollElement(null);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (messages.length === 0 || initialPositionHandledRef.current) {
+      return;
+    }
+
+    initialPositionHandledRef.current = true;
+
+    if (messages.length > INITIAL_MESSAGE_ITEM_COUNT) {
+      scrollToLatest("auto");
+    }
+  }, [messages.length, scrollToLatest]);
+
   return (
     <div className="relative flex min-h-0 flex-1 flex-col" data-testid="chat-message-viewport-root">
-      <Virtuoso
-        alignToBottom={true}
-        atBottomThreshold={BOTTOM_THRESHOLD}
-        className="min-h-0 flex-1 overflow-x-hidden px-2 pr-4 pb-4 sm:px-3 sm:pr-5 sm:pb-5 [scrollbar-gutter:stable_both-edges]"
-        components={{ List: ChatViewportList, Scroller: ChatViewportScroller }}
-        computeItemKey={(index, message) => message?.id ?? `probe-message-${index}`}
-        data={messages}
+      <div
+        ref={parentRef}
+        className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-2 pr-4 pb-4 sm:px-3 sm:pr-5 sm:pb-5 [scrollbar-gutter:stable_both-edges]"
         data-testid="chat-message-viewport-scroll"
-        defaultItemHeight={DEFAULT_ITEM_HEIGHT}
-        followOutput={followOutput}
-        initialItemCount={Math.min(messages.length, INITIAL_MESSAGE_ITEM_COUNT)}
-        itemContent={(_index, message) =>
-          message ? (
-            <div
-              className="page-content-rail mx-auto px-3 py-3 sm:px-4 md:px-5"
-              data-message-rail="comfortable"
-              data-testid="chat-message-virtual-item"
-            >
-              <MessageRow
-                isCompactLayout={isMobile}
-                message={message}
-                onDeleteFailed={onDeleteFailed}
-                onEditFailed={onEditFailed}
-                onRetry={onRetry}
-              />
-            </div>
-          ) : (
-            renderProbeMessageRow()
-          )
-        }
-        overscan={{ main: 720, reverse: 360 }}
-        ref={virtuosoRef}
-        startReached={() => {
-          if (hasOlderMessages && !isLoadingOlderMessages) {
-            pendingPrependScrollHeightRef.current = scrollElement?.scrollHeight ?? null;
-            olderLoadTriggerArmedRef.current = false;
-            void onLoadOlderMessages?.();
-          }
-        }}
-        scrollerRef={(element) => {
-          setScrollElement(element instanceof HTMLElement ? element : null);
-        }}
-        {...initialPositionProps}
-      />
+        data-scroll-padding="comfortable"
+        style={{ contain: "strict" }}
+      >
+        <ChatViewportList data-testid="virtuoso-item-list">
+          <div
+            style={{
+              height: `${virtualizer.getTotalSize()}px`,
+              width: "100%",
+              position: "relative",
+            }}
+          >
+            {virtualizer.getVirtualItems().map((virtualItem) => {
+              const message = messages[virtualItem.index];
+              return (
+                <div
+                  key={message?.id ?? `probe-message-${virtualItem.index}`}
+                  data-index={virtualItem.index}
+                  ref={virtualizer.measureElement}
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    width: "100%",
+                    transform: `translateY(${virtualItem.start}px)`,
+                  }}
+                >
+                  {message ? (
+                    <div
+                      className="page-content-rail mx-auto px-3 py-3 sm:px-4 md:px-5"
+                      data-message-rail="comfortable"
+                      data-testid="chat-message-virtual-item"
+                    >
+                      <MessageRow
+                        isCompactLayout={isMobile}
+                        message={message}
+                        onDeleteFailed={onDeleteFailed}
+                        onEditFailed={onEditFailed}
+                        onRetry={onRetry}
+                      />
+                    </div>
+                  ) : (
+                    renderProbeMessageRow()
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </ChatViewportList>
+      </div>
     </div>
   );
 });
