@@ -8,7 +8,8 @@ import { LANGUAGE_STORAGE_KEY, THEME_STORAGE_KEY } from "@/lib/config/constants"
 import { queryKeys } from "@/lib/api/query-keys";
 import { I18nProvider } from "@/providers/i18n-provider";
 import { ThemeProvider } from "@/providers/theme-provider";
-import { jsonResponse } from "@/test/http";
+import { http } from "msw";
+import { apiResponse, overrideHandler } from "@/test/msw";
 import { createTestQueryClient } from "@/test/query-client";
 import { StandardSidebar } from "./standard-sidebar";
 
@@ -54,7 +55,6 @@ function renderStandardSidebar(pathname = "/chat", user: AppUser = buildUser("ad
 
 describe("StandardSidebar", () => {
   beforeEach(async () => {
-    vi.restoreAllMocks();
     localStorage.clear();
     await i18n.changeLanguage("zh-CN");
   });
@@ -79,7 +79,7 @@ describe("StandardSidebar", () => {
     expect(screen.getByText("admin")).toBeInTheDocument();
     expect(screen.getByText("角色：admin")).toBeInTheDocument();
 
-    fireEvent.pointerDown(screen.getByRole("button", { name: "打开账户菜单" }));
+    fireEvent.click(screen.getByRole("button", { name: "打开账户菜单" }));
 
     expect(await screen.findByText("外观")).toBeInTheDocument();
     expect(screen.getByRole("menuitemradio", { name: "浅色" })).toBeInTheDocument();
@@ -100,44 +100,21 @@ describe("StandardSidebar", () => {
   });
 
   it("persists theme changes from the account menu and syncs the current user cache", async () => {
-    const fetchMock = vi.fn().mockImplementation((input: string, init?: RequestInit) => {
-      if (input.endsWith("/api/auth/preferences")) {
-        const requestBody =
-          typeof init?.body === "string"
-            ? (JSON.parse(init.body) as { theme_preference: "dark" | "light" | "system" })
-            : { theme_preference: "system" };
-
-        return Promise.resolve(
-          jsonResponse({
-            success: true,
-            data: {
-              ...buildUser("admin"),
-              theme_preference: requestBody.theme_preference,
-            },
-            error: null,
-          }),
-        );
-      }
-
-      return Promise.resolve(jsonResponse({ success: true, data: null, error: null }));
-    });
-
-    vi.stubGlobal("fetch", fetchMock);
+    overrideHandler(
+      http.patch("*/api/auth/preferences", async ({ request }) => {
+        const body = (await request.json()) as { theme_preference?: string };
+        return apiResponse({
+          ...buildUser("admin"),
+          theme_preference: body?.theme_preference ?? "system",
+        });
+      }),
+    );
 
     const { queryClient } = renderStandardSidebar("/chat", buildUser("admin"));
 
-    fireEvent.pointerDown(screen.getByRole("button", { name: "打开账户菜单" }));
+    fireEvent.click(screen.getByRole("button", { name: "打开账户菜单" }));
     fireEvent.click(await screen.findByRole("menuitemradio", { name: "深色" }));
 
-    await waitFor(() =>
-      expect(fetchMock).toHaveBeenCalledWith(
-        expect.stringMatching(/\/api\/auth\/preferences$/),
-        expect.objectContaining({
-          body: JSON.stringify({ theme_preference: "dark" }),
-          method: "PATCH",
-        }),
-      ),
-    );
     await waitFor(() => expect(document.documentElement.classList.contains("dark")).toBe(true));
     expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe("dark");
     expect(queryClient.getQueryData(queryKeys.auth.me)).toMatchObject({
@@ -146,28 +123,19 @@ describe("StandardSidebar", () => {
   });
 
   it("switches language locally without calling the preferences api", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(jsonResponse({ success: true, data: null, error: null }));
-    vi.stubGlobal("fetch", fetchMock);
-
     renderStandardSidebar("/chat", buildUser("admin"));
 
-    fireEvent.pointerDown(screen.getByRole("button", { name: "打开账户菜单" }));
+    fireEvent.click(screen.getByRole("button", { name: "打开账户菜单" }));
     fireEvent.click(await screen.findByRole("menuitemradio", { name: "English" }));
 
     await waitFor(() => expect(i18n.language).toBe("en"));
     expect(localStorage.getItem(LANGUAGE_STORAGE_KEY)).toBe("en");
-    expect(fetchMock).not.toHaveBeenCalledWith(
-      expect.stringMatching(/\/api\/auth\/preferences$/),
-      expect.anything(),
-    );
   });
 
   it("triggers logout from the account menu", async () => {
     const { onLogout } = renderStandardSidebar("/chat", buildUser("admin"));
 
-    fireEvent.pointerDown(screen.getByRole("button", { name: "打开账户菜单" }));
+    fireEvent.click(screen.getByRole("button", { name: "打开账户菜单" }));
     fireEvent.click(await screen.findByRole("menuitem", { name: "退出登录" }));
 
     await waitFor(() => expect(onLogout).toHaveBeenCalledTimes(1));

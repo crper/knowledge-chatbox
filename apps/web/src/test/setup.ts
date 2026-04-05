@@ -15,6 +15,7 @@ import {
   THEME_SYNC_ON_LOGIN_STORAGE_KEY,
 } from "../lib/config/constants";
 import { useUiStore } from "../lib/store/ui-store";
+import { server } from "./msw/server";
 
 function createDomRect(width: number, height: number): DOMRectReadOnly {
   return {
@@ -106,6 +107,11 @@ Object.defineProperty(Element.prototype, "scrollIntoView", {
   value: vi.fn(),
 });
 
+Object.defineProperty(Element.prototype, "getAnimations", {
+  configurable: true,
+  value: vi.fn(() => []),
+});
+
 Object.defineProperty(HTMLElement.prototype, "getBoundingClientRect", {
   configurable: true,
   value: function getBoundingClientRect() {
@@ -173,8 +179,29 @@ ResizeObserverMock.prototype.observe = vi.fn(function observe(
   );
 });
 
+beforeAll(() => {
+  server.listen({ onUnhandledRequest: "error" });
+});
+
 beforeEach(() => {
   vi.stubGlobal("ResizeObserver", ResizeObserverMock);
+  vi.stubGlobal("fetchMockCalls", [] as Array<[string, RequestInit?]>);
+  const originalFetch = globalThis.fetch.bind(globalThis);
+
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url =
+        input instanceof Request ? input.url : input instanceof URL ? input.href : String(input);
+      (globalThis as Record<string, unknown>).fetchMockCalls =
+        ((globalThis as Record<string, unknown>).fetchMockCalls as Array<[string, RequestInit?]>) ||
+        [];
+      (
+        (globalThis as Record<string, unknown>).fetchMockCalls as Array<[string, RequestInit?]>
+      ).push([url, init]);
+      return originalFetch(input, init);
+    }),
+  );
   window.localStorage.removeItem(LANGUAGE_STORAGE_KEY);
   window.localStorage.removeItem(THEME_STORAGE_KEY);
   window.localStorage.removeItem(LAST_VISITED_CHAT_SESSION_STORAGE_KEY);
@@ -189,4 +216,12 @@ beforeEach(() => {
     sendShortcut: "enter",
   });
   void i18n.changeLanguage(DEFAULT_LANGUAGE);
+});
+
+afterEach(() => {
+  server.resetHandlers();
+});
+
+afterAll(() => {
+  server.close();
 });

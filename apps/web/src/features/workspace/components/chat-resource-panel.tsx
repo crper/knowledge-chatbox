@@ -10,6 +10,7 @@ import { NavLink, useParams } from "react-router-dom";
 
 import { CardDescription, CardTitle } from "@/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { chatContextQueryOptions } from "@/features/chat/api/chat-query";
 import { AttachmentList } from "@/features/chat/components/attachment-list";
 import { ImageViewerDialog } from "@/features/chat/components/image-viewer-dialog";
@@ -22,7 +23,7 @@ import {
 } from "@/features/chat/utils/attachment-list-items";
 import { groupChatSources } from "@/features/chat/utils/group-chat-sources";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 /**
@@ -82,14 +83,14 @@ export function ChatResourcePanel({
       className={cn(
         surface === "embedded"
           ? "flex h-full min-h-0 min-w-0 flex-col bg-transparent px-5 py-5"
-          : "surface-panel-subtle flex h-full min-h-0 min-w-0 flex-col rounded-[1.5rem] p-4",
+          : "surface-panel-subtle flex h-full min-h-0 min-w-0 flex-col rounded-2xl p-4",
         className,
       )}
     >
       <div className="space-y-1 pb-4">
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2">
-            <span className="surface-icon flex size-9 items-center justify-center rounded-2xl text-primary">
+            <span className="surface-light flex size-9 items-center justify-center rounded-2xl text-primary">
               <BookOpenTextIcon aria-hidden="true" className="size-4" />
             </span>
             <CardTitle>{t("currentSessionResourcesTitle")}</CardTitle>
@@ -99,12 +100,12 @@ export function ChatResourcePanel({
         <CardDescription>{t("currentSessionResourcesDescription")}</CardDescription>
       </div>
 
-      <div
-        className="min-h-0 min-w-0 flex-1 overflow-auto pr-3"
+      <ScrollArea
+        className="min-h-0 min-w-0 flex-1"
         data-testid="chat-resource-panel-scroll-container"
       >
         <div className={cn("min-w-full pb-1 pr-1", isOverviewOnly ? "space-y-4" : "space-y-8")}>
-          <section className="surface-panel rounded-[1.75rem] p-4">
+          <section className="surface-panel rounded-3xl p-4">
             <div className="grid gap-2 sm:grid-cols-3">
               <Badge className="justify-center sm:justify-start" variant="outline">
                 {t("contextAttachmentsCount", { count: attachments.length })}
@@ -124,19 +125,23 @@ export function ChatResourcePanel({
                 ? t("contextReadyDescription")
                 : t("contextEmptyDescription")}
             </p>
-            <Button asChild className="mt-4 justify-start" size="sm" variant="outline">
-              <NavLink to="/knowledge">
-                <UploadIcon data-icon="inline-start" />
-                {t("emptySessionResourceAction")}
-              </NavLink>
-            </Button>
+            <NavLink
+              className={cn(
+                buttonVariants({ size: "sm", variant: "outline" }),
+                "mt-4 justify-start",
+              )}
+              to="/knowledge"
+            >
+              <UploadIcon data-icon="inline-start" />
+              {t("emptySessionResourceAction")}
+            </NavLink>
           </section>
 
           {!isOverviewOnly ? (
             <section className="space-y-4">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
-                  <span className="surface-icon flex size-8 items-center justify-center rounded-xl text-primary">
+                  <span className="surface-light flex size-8 items-center justify-center rounded-xl text-primary">
                     <BookOpenTextIcon aria-hidden="true" className="size-4" />
                   </span>
                   <p className="text-sm font-medium text-foreground">
@@ -168,7 +173,7 @@ export function ChatResourcePanel({
             <section className="space-y-4">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
-                  <span className="surface-icon flex size-8 items-center justify-center rounded-xl text-primary">
+                  <span className="surface-light flex size-8 items-center justify-center rounded-xl text-primary">
                     <ScanSearchIcon aria-hidden="true" className="size-4" />
                   </span>
                   <p className="text-sm font-medium text-foreground">
@@ -189,7 +194,7 @@ export function ChatResourcePanel({
               ) : (
                 <div className="space-y-2.5">
                   {groupedSources.map((group) => (
-                    <div key={group.key} className="surface-outline rounded-2xl p-4">
+                    <div key={group.key} className="surface-light rounded-2xl p-4">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0 flex-1">
                           <p className="break-words font-medium text-foreground">{group.title}</p>
@@ -213,7 +218,7 @@ export function ChatResourcePanel({
             </section>
           ) : null}
         </div>
-      </div>
+      </ScrollArea>
       <ImageViewerDialog
         initialIndex={viewerIndex ?? 0}
         items={imageViewerItems}

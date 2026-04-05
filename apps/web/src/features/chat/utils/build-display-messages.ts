@@ -3,20 +3,7 @@
  */
 
 import type { ChatMessageItem } from "../api/chat";
-
-type StreamingRun = {
-  assistantMessageId: number;
-  content: string;
-  errorMessage: string | null;
-  runId: number;
-  retryOfMessageId?: number | null;
-  sessionId: number;
-  userMessageId: number | null;
-  userContent: string;
-  sources?: Array<Record<string, unknown>>;
-  status: "pending" | "streaming" | "succeeded" | "failed";
-  toastShown: boolean;
-};
+import type { StreamingRun } from "../store/chat-stream-store";
 
 function isStreamingStatus(status: string) {
   return status === "pending" || status === "streaming";

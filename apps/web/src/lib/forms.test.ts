@@ -85,4 +85,17 @@ describe("forms helpers", () => {
       ),
     ).toEqual(["请输入用户名。", "请输入密码。", "raw message"]);
   });
+
+  it("translates namespaced string keys with inline params when extracting display messages", () => {
+    expect(
+      getFormErrorMessages(["auth:passwordLengthValidationError:12"], (key, values) => {
+        if (key === "auth:passwordLengthValidationError") {
+          const min =
+            typeof values?.min === "number" || typeof values?.min === "string" ? values.min : "";
+          return `密码至少需要 ${min} 位。`;
+        }
+        return key;
+      }),
+    ).toEqual(["密码至少需要 12 位。"]);
+  });
 });

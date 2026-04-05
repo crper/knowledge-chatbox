@@ -7,6 +7,7 @@ import type { FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import type { AppSettings, ProviderConnectionResult } from "../api/settings";
 import {
   buildProviderSettingsView,
@@ -39,6 +40,11 @@ type FormNotice = {
   title: string;
   variant?: "default" | "destructive";
 };
+
+const ADVANCED_FIELD_NAMES: ProviderSettingsFieldName[] = [
+  "retrievalEmbeddingModel",
+  "providerTimeoutSeconds",
+];
 
 /**
  * 渲染 Provider 设置表单。
@@ -103,7 +109,7 @@ export function ProviderForm({
   };
 
   const scrollToField = (field: ProviderSettingsFieldName) => {
-    if (field === "retrievalEmbeddingModel" && !advancedOpen) {
+    if (ADVANCED_FIELD_NAMES.includes(field) && !advancedOpen) {
       setAdvancedOpen(true);
       setPendingScrollField(field);
       return;
@@ -235,24 +241,27 @@ export function ProviderForm({
         embeddingModelLabel={embeddingModelLabel}
       />
 
-      <section className="rounded-[1.5rem] border border-border/60 bg-background/55 px-5 py-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-sm font-medium">{t("advancedSettingsTitle")}</h2>
+      <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
+        <section className="rounded-2xl border border-border/60 bg-background/55 px-5 py-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-medium">{t("advancedSettingsTitle")}</h2>
+            </div>
+            <CollapsibleTrigger
+              render={
+                <Button
+                  aria-expanded={advancedOpen}
+                  size="sm"
+                  type="button"
+                  variant={advancedOpen ? "secondary" : "outline"}
+                />
+              }
+            >
+              {advancedOpen ? t("advancedSettingsCloseAction") : t("advancedSettingsOpenAction")}
+            </CollapsibleTrigger>
           </div>
-          <Button
-            aria-expanded={advancedOpen}
-            onClick={() => setAdvancedOpen((current) => !current)}
-            size="sm"
-            type="button"
-            variant={advancedOpen ? "secondary" : "outline"}
-          >
-            {advancedOpen ? t("advancedSettingsCloseAction") : t("advancedSettingsOpenAction")}
-          </Button>
-        </div>
 
-        {advancedOpen ? (
-          <div className="mt-5 space-y-5">
+          <CollapsibleContent className="mt-5 space-y-5">
             <RetrievalOverrideSection
               draft={draft}
               fieldErrorMessages={{
@@ -275,9 +284,9 @@ export function ProviderForm({
               handleViewChange={handleViewChange}
               t={t}
             />
-          </div>
-        ) : null}
-      </section>
+          </CollapsibleContent>
+        </section>
+      </Collapsible>
 
       <SettingsActionBar
         errorMessage={errorMessage}

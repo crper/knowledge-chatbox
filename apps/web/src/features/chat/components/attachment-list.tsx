@@ -64,9 +64,9 @@ export function AttachmentList({
   const ToggleIcon = collapsed ? ChevronDownIcon : ChevronUpIcon;
 
   return (
-    <section className="surface-outline overflow-hidden rounded-[1rem]">
+    <section className="surface-light overflow-hidden rounded-xl">
       <div className="flex select-none items-center justify-between gap-3 px-3 py-2.5">
-        <p className="text-[0.76rem] font-medium tracking-[0.02em] text-foreground/92">
+        <p className="text-ui-caption font-medium text-foreground/92">
           {t("attachmentPanelLabel", {
             count: items.length,
             defaultValue: "附件 {{count}}",
@@ -76,7 +76,7 @@ export function AttachmentList({
           aria-controls={contentId}
           aria-expanded={!collapsed}
           aria-label={toggleLabel}
-          className="h-7 gap-1 rounded-full px-2 text-[0.72rem] text-muted-foreground hover:text-foreground"
+          className="h-7 gap-1 rounded-full px-2 text-ui-caption text-muted-foreground hover:text-foreground"
           onClick={() => setCollapsed((current) => !current)}
           size="sm"
           type="button"
@@ -116,7 +116,7 @@ export function AttachmentList({
                 </p>
                 <div className="flex shrink-0 select-none items-center gap-1.5">
                   {item.statusLabel ? (
-                    <span className="max-w-28 truncate text-[0.72rem] text-muted-foreground">
+                    <span className="max-w-28 truncate text-ui-caption text-muted-foreground">
                       {item.statusLabel}
                     </span>
                   ) : null}

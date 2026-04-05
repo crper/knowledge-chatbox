@@ -2,11 +2,13 @@
  * @file 资源行卡列表组件模块。
  */
 
+import { memo, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { Virtuoso } from "react-virtuoso";
+import { useVirtualizer } from "@tanstack/react-virtual";
 
 import type { KnowledgeDocument } from "../api/documents";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { ResourceDocumentRow } from "./resource-document-row";
 
@@ -29,7 +31,7 @@ type ResourceDocumentListProps = {
 /**
  * 渲染资源行卡列表。
  */
-export function ResourceDocumentList({
+export const ResourceDocumentList = memo(function ResourceDocumentList({
   canDelete,
   className,
   documents,
@@ -46,13 +48,20 @@ export function ResourceDocumentList({
     documents.length * VIRTUAL_ROW_HEIGHT + 24,
     VIRTUAL_LIST_MAX_HEIGHT,
   );
+  const parentRef = useRef<HTMLDivElement>(null);
+  const virtualizer = useVirtualizer({
+    count: documents.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => VIRTUAL_ROW_HEIGHT,
+    overscan: 3,
+  });
 
   if (documents.length === 0) {
     return (
-      <div className={cn("surface-panel-subtle rounded-[1.5rem] p-4", className)}>
+      <div className={cn("surface-panel-subtle rounded-2xl p-4", className)}>
         <Empty className="bg-transparent">
           <EmptyHeader>
-            <EmptyTitle>{t("emptyState")}</EmptyTitle>
+            <EmptyTitle>{t("selectedResourceEmptyTitle")}</EmptyTitle>
             <EmptyDescription>{t("selectedResourceEmptyDescription")}</EmptyDescription>
           </EmptyHeader>
         </Empty>
@@ -64,59 +73,81 @@ export function ResourceDocumentList({
     return (
       <section
         className={cn(
-          "surface-panel-subtle min-h-0 overflow-hidden rounded-[1.5rem] p-3 md:p-4",
+          "surface-panel-subtle min-h-0 overflow-hidden rounded-2xl p-3 md:p-4",
           className,
         )}
       >
-        <Virtuoso
-          className="h-full min-h-0 pr-1 [scrollbar-gutter:stable_both-edges]"
-          computeItemKey={(_index, document) => String(document.id)}
-          data={documents}
+        <div
+          ref={parentRef}
+          className="h-full min-h-0 overflow-auto pr-1 [scrollbar-gutter:stable_both-edges]"
           data-testid="resource-document-list-virtual-scroll"
-          defaultItemHeight={VIRTUAL_ROW_HEIGHT}
-          itemContent={(_index, document) => (
-            <div className="pb-2.5 last:pb-0">
-              <ResourceDocumentRow
-                canDelete={canDelete}
-                document={document}
-                isSelected={selectedDocumentId === document.id}
-                onDelete={onDelete}
-                onPreviewDocument={onPreviewDocument}
-                onReindex={onReindex}
-                onSelectDocument={onSelectDocument}
-                onShowVersions={onShowVersions}
-              />
-            </div>
-          )}
-          overscan={240}
-          style={{ height: "100%", minHeight: `${Math.min(virtualListHeight, 320)}px` }}
-        />
+          style={{ contain: "strict", minHeight: `${Math.min(virtualListHeight, 320)}px` }}
+        >
+          <div
+            style={{
+              height: `${virtualizer.getTotalSize()}px`,
+              width: "100%",
+              position: "relative",
+            }}
+          >
+            {virtualizer.getVirtualItems().map((virtualItem) => {
+              const document = documents[virtualItem.index];
+              if (!document) return null;
+              return (
+                <div
+                  key={document.id}
+                  data-index={virtualItem.index}
+                  ref={virtualizer.measureElement}
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    width: "100%",
+                    transform: `translateY(${virtualItem.start}px)`,
+                  }}
+                >
+                  <div className="pb-2.5 last:pb-0">
+                    <ResourceDocumentRow
+                      canDelete={canDelete}
+                      document={document}
+                      isSelected={selectedDocumentId === document.id}
+                      onDelete={onDelete}
+                      onPreviewDocument={onPreviewDocument}
+                      onReindex={onReindex}
+                      onSelectDocument={onSelectDocument}
+                      onShowVersions={onShowVersions}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       </section>
     );
   }
 
   return (
     <section
-      className={cn(
-        "surface-panel-subtle min-h-0 overflow-hidden rounded-[1.5rem] p-3 md:p-4",
-        className,
-      )}
+      className={cn("surface-panel-subtle min-h-0 overflow-hidden rounded-2xl", className)}
     >
-      <div className="h-full min-h-0 space-y-2.5 overflow-y-auto pr-1 [scrollbar-gutter:stable_both-edges]">
-        {documents.map((document) => (
-          <ResourceDocumentRow
-            canDelete={canDelete}
-            document={document}
-            isSelected={selectedDocumentId === document.id}
-            key={document.id}
-            onDelete={onDelete}
-            onPreviewDocument={onPreviewDocument}
-            onReindex={onReindex}
-            onSelectDocument={onSelectDocument}
-            onShowVersions={onShowVersions}
-          />
-        ))}
-      </div>
+      <ScrollArea className="h-full min-h-0 p-3 md:p-4">
+        <div className="space-y-2.5">
+          {documents.map((document) => (
+            <ResourceDocumentRow
+              canDelete={canDelete}
+              document={document}
+              isSelected={selectedDocumentId === document.id}
+              key={document.id}
+              onDelete={onDelete}
+              onPreviewDocument={onPreviewDocument}
+              onReindex={onReindex}
+              onSelectDocument={onSelectDocument}
+              onShowVersions={onShowVersions}
+            />
+          ))}
+        </div>
+      </ScrollArea>
     </section>
   );
-}
+});

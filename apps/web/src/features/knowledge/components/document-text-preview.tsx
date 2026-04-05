@@ -15,14 +15,14 @@ type DocumentTextPreviewProps = {
 export function DocumentTextPreview({ content, mode }: DocumentTextPreviewProps) {
   if (mode === "markdown") {
     return (
-      <div className="rounded-[1.2rem] border border-border/70 bg-background/80 p-4">
+      <div className="rounded-xl border border-border/70 bg-background/80 p-4">
         <MarkdownMessage content={content} isStreaming={false} />
       </div>
     );
   }
 
   return (
-    <div className="rounded-[1.2rem] border border-border/70 bg-background/80 p-4">
+    <div className="rounded-xl border border-border/70 bg-background/80 p-4">
       <pre className="whitespace-pre-wrap break-words text-sm leading-6 text-foreground">
         {content}
       </pre>

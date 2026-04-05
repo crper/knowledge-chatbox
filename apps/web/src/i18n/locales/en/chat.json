@@ -67,6 +67,7 @@
   "mobileSessionsAction": "Open sessions panel",
   "configureOllamaAction": "Set Up Ollama First",
   "providerSetupRequiredToast": "Finish provider setup before sending.",
+  "providerSetupInlineHint": "A model provider must be configured before sending",
   "sendAction": "Send",
   "sendingAction": "Sending",
   "reasoningModeLabel": "Reasoning Mode",

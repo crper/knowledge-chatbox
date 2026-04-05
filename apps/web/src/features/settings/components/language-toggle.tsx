@@ -42,19 +42,21 @@ export function LanguageToggle({ compact = false, className }: LanguageTogglePro
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          aria-label={t("languageLabel")}
-          className={cn(compact ? "min-w-24" : "w-full justify-between", className)}
-          size={compact ? "sm" : "default"}
-          variant="outline"
-        >
-          <span className="flex min-w-0 items-center gap-2">
-            <LanguagesIcon className="size-4" />
-            <span className="truncate">{triggerLabel}</span>
-          </span>
-          <ChevronDownIcon className="size-4 text-muted-foreground" />
-        </Button>
+      <DropdownMenuTrigger
+        render={
+          <Button
+            aria-label={t("languageLabel")}
+            className={cn(compact ? "min-w-24" : "w-full justify-between", className)}
+            size={compact ? "sm" : "default"}
+            variant="outline"
+          />
+        }
+      >
+        <span className="flex min-w-0 items-center gap-2">
+          <LanguagesIcon className="size-4" />
+          <span className="truncate">{triggerLabel}</span>
+        </span>
+        <ChevronDownIcon className="size-4 text-muted-foreground" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuRadioGroup onValueChange={handleChange} value={language}>

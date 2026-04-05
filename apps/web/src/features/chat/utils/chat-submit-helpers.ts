@@ -59,8 +59,20 @@ export function resolveSubmitErrorMessage(error: unknown, fallback: string) {
   return message;
 }
 
+function toAttachmentSignature(input: {
+  attachmentId: string;
+  documentId: number | null;
+  documentRevisionId: number | null;
+  kind: string;
+  mimeType: string | null;
+  name: string;
+  sizeBytes: number | null;
+}) {
+  return JSON.stringify(input);
+}
+
 function toComposerAttachmentSignature(attachment: ChatAttachmentItem) {
-  return JSON.stringify({
+  return toAttachmentSignature({
     attachmentId: attachment.id,
     documentId: attachment.resourceDocumentId ?? null,
     documentRevisionId: attachment.resourceDocumentVersionId ?? null,
@@ -74,7 +86,7 @@ function toComposerAttachmentSignature(attachment: ChatAttachmentItem) {
 function toMessageAttachmentSignature(
   attachment: NonNullable<ChatMessageItem["attachments_json"]>[number],
 ) {
-  return JSON.stringify({
+  return toAttachmentSignature({
     attachmentId: attachment.attachment_id,
     documentId: attachment.resource_document_id ?? null,
     documentRevisionId: attachment.resource_document_version_id ?? null,

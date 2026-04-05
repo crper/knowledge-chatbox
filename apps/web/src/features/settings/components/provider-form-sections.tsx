@@ -21,7 +21,7 @@ export function SystemPromptSection({
   t: (key: string, params?: Record<string, unknown>) => string;
 }) {
   return (
-    <section className="surface-panel-subtle rounded-[1.5rem] px-5 py-5">
+    <section className="surface-panel-subtle rounded-2xl px-5 py-5">
       <div className="mb-5">
         <h2 className="text-sm font-medium">{t("systemPromptSectionTitle")}</h2>
       </div>
@@ -80,7 +80,7 @@ export function SettingsActionBar({
   const showError = typeof errorMessage === "string" && errorMessage.trim().length > 0;
 
   return (
-    <section className="surface-panel-subtle rounded-[1.5rem] px-5 py-5">
+    <section className="surface-panel-subtle rounded-2xl px-5 py-5">
       <div className="mb-5">
         <h2 className="text-sm font-medium">{t("saveSectionTitle")}</h2>
       </div>

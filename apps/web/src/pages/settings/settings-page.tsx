@@ -9,7 +9,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { WorkspacePage } from "@/components/shared/workspace-page";
@@ -36,6 +36,7 @@ import type { AppUser } from "@/lib/api/client";
 import { getApiErrorMessage } from "@/lib/api/client";
 import { expireSession } from "@/lib/auth/session-manager";
 import { useIsMobile } from "@/lib/hooks/use-mobile";
+import { cn } from "@/lib/utils";
 
 /**
  * 渲染设置页面。
@@ -183,20 +184,17 @@ export function SettingsPage({ user }: { user: AppUser }) {
           const isActive = section.id === activeSection;
 
           return (
-            <Button
+            <Link
               key={section.id}
-              asChild
-              className="shrink-0"
-              size="sm"
-              variant={isActive ? "secondary" : "outline"}
+              aria-current={isActive ? "page" : undefined}
+              className={cn(
+                buttonVariants({ size: "sm", variant: isActive ? "secondary" : "outline" }),
+                "shrink-0",
+              )}
+              to={`/settings?section=${section.id}`}
             >
-              <Link
-                aria-current={isActive ? "page" : undefined}
-                to={`/settings?section=${section.id}`}
-              >
-                {t(section.titleKey)}
-              </Link>
-            </Button>
+              {t(section.titleKey)}
+            </Link>
           );
         })}
       </nav>
@@ -211,7 +209,7 @@ export function SettingsPage({ user }: { user: AppUser }) {
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4 pt-6 md:grid-cols-2">
-        <div className="space-y-3 rounded-[1.25rem] border border-border/70 bg-background/55 p-4">
+        <div className="space-y-3 rounded-xl border border-border/70 bg-background/55 p-4">
           <div className="space-y-1">
             <p className="text-ui-title">{t("languageSettingTitle")}</p>
             <p className="text-ui-subtle text-muted-foreground">
@@ -220,7 +218,7 @@ export function SettingsPage({ user }: { user: AppUser }) {
           </div>
           <LanguageToggle className="h-11 justify-between md:h-10" />
         </div>
-        <div className="space-y-3 rounded-[1.25rem] border border-border/70 bg-background/55 p-4">
+        <div className="space-y-3 rounded-xl border border-border/70 bg-background/55 p-4">
           <div className="space-y-1">
             <p className="text-ui-title">{t("themeSettingTitle")}</p>
             <p className="text-ui-subtle text-muted-foreground">{t("themeSettingDescription")}</p>
@@ -260,9 +258,9 @@ export function SettingsPage({ user }: { user: AppUser }) {
         <CardDescription className="text-ui-body">{t("managementCardDescription")}</CardDescription>
       </CardHeader>
       <CardContent className="pt-6">
-        <Button asChild className="w-full sm:w-auto" type="button">
-          <Link to="/users">{t("managementEntryAction")}</Link>
-        </Button>
+        <Link className={cn(buttonVariants(), "w-full sm:w-auto")} to="/users">
+          {t("managementEntryAction")}
+        </Link>
       </CardContent>
     </Card>
   );
@@ -318,8 +316,8 @@ export function SettingsPage({ user }: { user: AppUser }) {
             <CardContent className="pt-0">
               <div className="space-y-5">
                 <Skeleton className="h-10 w-48 rounded-full" />
-                <Skeleton className="h-72 w-full rounded-[1.5rem]" />
-                <Skeleton className="h-28 w-full rounded-[1.5rem]" />
+                <Skeleton className="h-72 w-full rounded-2xl" />
+                <Skeleton className="h-28 w-full rounded-2xl" />
               </div>
             </CardContent>
           </Card>

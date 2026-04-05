@@ -9,7 +9,7 @@ import { Link } from "react-router-dom";
 
 import { getDocumentFileUrl } from "@/features/chat/utils/document-file-url";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Sheet,
   SheetContent,
@@ -25,6 +25,8 @@ import {
   type DocumentPreviewKind,
 } from "../api/document-preview";
 import { fetchProtectedFileBlob } from "@/lib/api/protected-file";
+import { formatDateTime as formatDateTimeUtil } from "@/lib/date-utils";
+import { cn } from "@/lib/utils";
 import { DocumentImagePreview } from "./document-image-preview";
 import { DocumentTextPreview } from "./document-text-preview";
 
@@ -38,18 +40,8 @@ type DocumentPreviewSheetProps = {
 };
 
 function formatDateTime(value: string, locale: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return new Intl.DateTimeFormat(locale, {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date);
+  const result = formatDateTimeUtil(value, locale);
+  return result || value;
 }
 
 function formatFileSize(bytes: number | null | undefined) {
@@ -153,7 +145,7 @@ export function DocumentPreviewSheet({
 
         <div className="flex min-h-0 flex-1 flex-col">
           <div className="space-y-4 border-b border-border/70 p-4">
-            <div className="surface-outline space-y-2 rounded-[1.2rem] p-4">
+            <div className="surface-light space-y-2 rounded-xl p-4">
               <p className="break-words text-base font-semibold text-foreground">{document.name}</p>
               <div className="flex flex-wrap gap-2">
                 <Badge variant="outline">{getTypeLabel(previewKind, t)}</Badge>
@@ -172,11 +164,11 @@ export function DocumentPreviewSheet({
 
           <div className="min-h-0 flex-1 overflow-y-auto p-4 pt-0">
             {shouldShowProcessing ? (
-              <div className="surface-outline mt-4 rounded-[1.2rem] p-4 text-sm text-muted-foreground">
+              <div className="surface-light mt-4 rounded-xl p-4 text-sm text-muted-foreground">
                 {t("previewProcessingDescription")}
               </div>
             ) : shouldShowFailed ? (
-              <div className="mt-4 space-y-2 rounded-[1.2rem] border border-destructive/30 bg-destructive/8 p-4">
+              <div className="mt-4 space-y-2 rounded-xl border border-destructive/30 bg-destructive/8 p-4">
                 <p className="text-sm font-medium text-foreground">{t("previewFailedTitle")}</p>
                 <p className="text-sm text-muted-foreground">
                   {document.error_message || t("previewFailedDescription")}
@@ -189,15 +181,15 @@ export function DocumentPreviewSheet({
             ) : previewKind === "markdown" || previewKind === "text" ? (
               <div className="mt-4">
                 {previewQuery.isPending ? (
-                  <div className="surface-outline rounded-[1.2rem] p-4 text-sm text-muted-foreground">
+                  <div className="surface-light rounded-xl p-4 text-sm text-muted-foreground">
                     {t("previewLoading")}
                   </div>
                 ) : previewQuery.isError ? (
-                  <div className="surface-outline rounded-[1.2rem] p-4 text-sm text-muted-foreground">
+                  <div className="surface-light rounded-xl p-4 text-sm text-muted-foreground">
                     {t("previewLoadFailed")}
                   </div>
                 ) : previewQuery.data?.kind === "too-large" ? (
-                  <div className="surface-outline rounded-[1.2rem] p-4 text-sm text-muted-foreground">
+                  <div className="surface-light rounded-xl p-4 text-sm text-muted-foreground">
                     {t("previewTooLargeDescription")}
                   </div>
                 ) : previewQuery.data?.kind === "text" ? (
@@ -208,7 +200,7 @@ export function DocumentPreviewSheet({
                 ) : null}
               </div>
             ) : previewKind === "pdf" ? (
-              <div className="surface-outline mt-4 space-y-3 rounded-[1.2rem] p-4">
+              <div className="surface-light mt-4 space-y-3 rounded-xl p-4">
                 <p className="text-sm font-medium text-foreground">{t("previewTypePdf")}</p>
                 <p className="text-sm text-muted-foreground">{t("previewPdfDescription")}</p>
                 <Button
@@ -224,7 +216,7 @@ export function DocumentPreviewSheet({
                 </Button>
               </div>
             ) : (
-              <div className="surface-outline mt-4 space-y-2 rounded-[1.2rem] p-4">
+              <div className="surface-light mt-4 space-y-2 rounded-xl p-4">
                 <p className="text-sm font-medium text-foreground">
                   {t("previewUnsupportedTitle")}
                 </p>
@@ -238,9 +230,9 @@ export function DocumentPreviewSheet({
           <SheetFooter className="sticky bottom-0 border-t border-border/70 bg-background/96">
             <div className="flex w-full flex-col gap-2">
               <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-                <Button asChild type="button" variant="outline">
-                  <Link to="/chat">{t("openChatAction")}</Link>
-                </Button>
+                <Link className={cn(buttonVariants({ variant: "outline" }))} to="/chat">
+                  {t("openChatAction")}
+                </Link>
                 <Button onClick={() => onShowVersions(document.id)} type="button" variant="outline">
                   {t("viewVersionsAction")}
                 </Button>

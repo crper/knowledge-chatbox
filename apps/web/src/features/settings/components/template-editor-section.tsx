@@ -44,6 +44,10 @@ export function TemplateEditorSection({
         <Field>
           <FieldLabel>{t("templateProviderLabel")}</FieldLabel>
           <Select
+            items={nonPrimaryTemplateOptions.map((provider) => ({
+              label: getProviderLabel(provider, t),
+              value: provider,
+            }))}
             onValueChange={(value) =>
               handleViewChange((current) => ({
                 ...current,
@@ -56,7 +60,7 @@ export function TemplateEditorSection({
               aria-label={t("templateProviderLabel")}
               className={providerFormControlClassName}
             >
-              <SelectValue />
+              <SelectValue>{() => getProviderLabel(templateProvider, t)}</SelectValue>
             </SelectTrigger>
             <SelectContent>
               {nonPrimaryTemplateOptions.map((provider) => (

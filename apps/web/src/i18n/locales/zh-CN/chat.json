@@ -67,6 +67,7 @@
   "mobileSessionsAction": "打开会话面板",
   "configureOllamaAction": "先配置 Ollama",
   "providerSetupRequiredToast": "发送前请先完成 Provider 配置。",
+  "providerSetupInlineHint": "发送前需要先配置模型提供商",
   "sendAction": "发送",
   "sendingAction": "发送中",
   "reasoningModeLabel": "思考模式",

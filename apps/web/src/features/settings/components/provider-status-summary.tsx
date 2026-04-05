@@ -17,7 +17,7 @@ export function ProviderStatusSummary({
   const statusSummary = buildStatusSummary(initialValues, t);
 
   return (
-    <section className="rounded-[1.5rem] border border-border/60 bg-background/45 px-5 py-5">
+    <section className="rounded-2xl border border-border/60 bg-background/45 px-5 py-5">
       <div className="mb-4">
         <h2 className="text-sm font-medium">{t("statusSummaryTitle")}</h2>
       </div>

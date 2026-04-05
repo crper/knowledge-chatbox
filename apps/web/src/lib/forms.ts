@@ -31,8 +31,10 @@ export function trimmedRequired(
   return normalizeText(value) ? undefined : formError(i18nKey);
 }
 
+// 注意：长度校验功能已迁移到 validation/schemas.ts 中的 z.string().min()
+// 请优先使用 Zod schema 进行验证，以获得更好的类型安全和一致性
 /**
- * 校验最小长度。
+ * @deprecated 请使用 validation/schemas.ts 中的 Zod schema
  */
 export function minLength(
   value: string | null | undefined,
@@ -42,8 +44,10 @@ export function minLength(
   return (value ?? "").length >= min ? undefined : formError(i18nKey, { min });
 }
 
+// 注意：URL 校验功能已迁移到 validation/schemas.ts 中的 httpUrlSchema
+// 请优先使用 Zod schema 进行验证，以获得更好的类型安全和一致性
 /**
- * 校验可选的绝对 URL，仅接受 http/https。
+ * @deprecated 请使用 validation/schemas.ts 中的 httpUrlSchema
  */
 export function isValidHttpUrl(
   value: string | null | undefined,
@@ -65,8 +69,10 @@ export function isValidHttpUrl(
   }
 }
 
+// 注意：范围校验功能已迁移到 validation/schemas.ts 中的 positiveIntegerInRange
+// 请优先使用 Zod schema 进行验证，以获得更好的类型安全和一致性
 /**
- * 校验正整数范围。
+ * @deprecated 请使用 validation/schemas.ts 中的 positiveIntegerInRange
  */
 export function positiveIntegerInRange(
   value: number | string | null | undefined,
@@ -146,7 +152,29 @@ export function toFieldErrorItems(
 
 function collectErrorMessages(error: unknown, translate?: FormErrorTranslator): string[] {
   if (typeof error === "string" && error.trim()) {
-    return [error.trim()];
+    const trimmedError = error.trim();
+    if (translate && trimmedError.includes(":")) {
+      const parts = trimmedError.split(":");
+      if (parts.length >= 2) {
+        const i18nKey = parts.slice(0, 2).join(":");
+        const params = parts.slice(2);
+
+        if (params.length > 0) {
+          const paramObj: Record<string, unknown> = {};
+          params.forEach((param, index) => {
+            paramObj[`param${index}`] = param;
+            if (index === 0) {
+              paramObj.min = param;
+              paramObj.max = param;
+            }
+          });
+          return [translate(i18nKey, paramObj)];
+        }
+
+        return [translate(i18nKey)];
+      }
+    }
+    return [trimmedError];
   }
 
   if (isFormErrorDescriptor(error)) {
@@ -183,6 +211,6 @@ function isFormErrorDescriptor(error: unknown): error is FormErrorDescriptor {
   );
 }
 
-function normalizeText(value: string | null | undefined) {
+export function normalizeText(value: string | null | undefined) {
   return typeof value === "string" ? value.trim() : "";
 }

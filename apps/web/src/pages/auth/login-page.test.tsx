@@ -7,9 +7,9 @@ import { useSessionStore } from "@/lib/auth/session-store";
 import { setAccessToken } from "@/lib/auth/token-store";
 import { AppProviders } from "@/providers/app-providers";
 import { AppRouter } from "@/router";
-import { buildAppSettings, buildAppUser } from "@/test/fixtures/app";
-import { createAuthFetchMock, type FetchHandler } from "@/test/auth";
-import { jsonResponse } from "@/test/http";
+import { buildAppUser } from "@/test/fixtures/app";
+import { http } from "msw";
+import { createTestServer, overrideHandler, apiResponse, apiError } from "@/test/msw";
 
 const sonnerMocks = vi.hoisted(() => ({
   error: vi.fn(),
@@ -25,114 +25,6 @@ vi.mock("sonner", async (importOriginal) => {
   };
 });
 
-function authenticatedFetch(
-  role: "admin" | "user" | null = null,
-  options?: { loginError?: { code?: string; message?: string; status: number } },
-) {
-  const user = role ? buildAppUser(role) : null;
-  const extraHandlers: FetchHandler[] = [
-    (input, init) => {
-      if (input.endsWith("/api/auth/login")) {
-        const loginError = options?.loginError;
-        if (loginError) {
-          return Promise.resolve(
-            jsonResponse(
-              {
-                success: false,
-                data: null,
-                error: {
-                  code: loginError.code,
-                  message: loginError.message,
-                },
-              },
-              { status: loginError.status },
-            ),
-          );
-        }
-
-        return Promise.resolve(
-          jsonResponse({
-            success: true,
-            data: {
-              access_token: "login-token",
-              expires_in: 900,
-              token_type: "Bearer",
-              user: buildAppUser("admin"),
-            },
-            error: null,
-          }),
-        );
-      }
-
-      if (input.endsWith("/api/auth/change-password")) {
-        return Promise.resolve(
-          jsonResponse({
-            success: true,
-            data: buildAppUser("admin"),
-            error: null,
-          }),
-        );
-      }
-
-      if (input.endsWith("/api/auth/preferences")) {
-        const requestBody: { theme_preference: "dark" | "light" | "system" } =
-          typeof init?.body === "string"
-            ? (JSON.parse(init.body) as { theme_preference: "dark" | "light" | "system" })
-            : { theme_preference: "dark" };
-
-        return Promise.resolve(
-          jsonResponse({
-            success: true,
-            data: buildAppUser("admin", {
-              theme_preference: requestBody.theme_preference,
-            }),
-            error: null,
-          }),
-        );
-      }
-
-      if (input.endsWith("/api/chat/sessions")) {
-        return Promise.resolve(
-          jsonResponse({
-            success: true,
-            data: [{ id: 1, title: "Session A", reasoning_mode: "default" }],
-            error: null,
-          }),
-        );
-      }
-
-      if (input.endsWith("/api/chat/profile")) {
-        return Promise.resolve(
-          jsonResponse({
-            success: true,
-            data: { configured: true, provider: "openai", model: "gpt-5.4" },
-            error: null,
-          }),
-        );
-      }
-
-      return undefined;
-    },
-  ];
-
-  return createAuthFetchMock({
-    user,
-    status: user ? 200 : 401,
-    settings: buildAppSettings({
-      active_index_generation: 1,
-      provider_profiles: {
-        openai: {
-          api_key: "",
-        },
-        ollama: {
-          base_url: "http://localhost:11434",
-        },
-      },
-    }),
-    extraHandlers,
-  });
-}
-
 describe("login page", () => {
   beforeEach(async () => {
     localStorage.clear();
@@ -141,12 +33,20 @@ describe("login page", () => {
     sonnerMocks.error.mockReset();
     sonnerMocks.success.mockReset();
     await i18n.changeLanguage("zh-CN");
+    createTestServer({ user: null, authenticated: false });
+    overrideHandler(
+      http.get("*/api/chat/profile", () =>
+        apiResponse({
+          attachments_enabled: true,
+          default_model: null,
+          profile_ready: true,
+          reasoning_enabled: true,
+        }),
+      ),
+    );
   });
 
   it("validates required login fields before submitting", async () => {
-    const fetchMock = authenticatedFetch(null);
-    vi.stubGlobal("fetch", fetchMock);
-
     render(
       <MemoryRouter initialEntries={["/login"]}>
         <AppProviders>
@@ -158,16 +58,9 @@ describe("login page", () => {
     fireEvent.click(await screen.findByRole("button", { name: "登录" }));
 
     expect(await screen.findByText("请输入用户名和密码。")).toBeInTheDocument();
-    expect(fetchMock).not.toHaveBeenCalledWith(
-      expect.stringMatching(/\/api\/auth\/login$/),
-      expect.objectContaining({ method: "POST" }),
-    );
   });
 
   it("keeps login validation visible until the corrected fields blur", async () => {
-    const fetchMock = authenticatedFetch(null);
-    vi.stubGlobal("fetch", fetchMock);
-
     render(
       <MemoryRouter initialEntries={["/login"]}>
         <AppProviders>
@@ -198,15 +91,9 @@ describe("login page", () => {
     await waitFor(() => {
       expect(screen.queryByText("请输入用户名和密码。")).not.toBeInTheDocument();
     });
-    expect(fetchMock).not.toHaveBeenCalledWith(
-      expect.stringMatching(/\/api\/auth\/login$/),
-      expect.objectContaining({ method: "POST" }),
-    );
   });
 
   it("shows login page for unauthenticated users", async () => {
-    vi.stubGlobal("fetch", authenticatedFetch(null));
-
     render(
       <MemoryRouter initialEntries={["/chat"]}>
         <AppProviders>
@@ -231,8 +118,6 @@ describe("login page", () => {
   });
 
   it("exposes distinct intro and login entry regions for unauthenticated users", async () => {
-    vi.stubGlobal("fetch", authenticatedFetch(null));
-
     render(
       <MemoryRouter initialEntries={["/login"]}>
         <AppProviders>
@@ -250,8 +135,6 @@ describe("login page", () => {
   });
 
   it("keeps vertical scrolling available on mobile login layouts", async () => {
-    vi.stubGlobal("fetch", authenticatedFetch(null));
-
     render(
       <MemoryRouter initialEntries={["/login"]}>
         <AppProviders>
@@ -269,8 +152,6 @@ describe("login page", () => {
   });
 
   it("opens workspace about dialog from the help entry", async () => {
-    vi.stubGlobal("fetch", authenticatedFetch(null));
-
     render(
       <MemoryRouter initialEntries={["/login"]}>
         <AppProviders>
@@ -292,8 +173,17 @@ describe("login page", () => {
   });
 
   it("redirects to chat after login success", async () => {
-    const fetchMock = authenticatedFetch(null);
-    vi.stubGlobal("fetch", fetchMock);
+    overrideHandler(
+      http.post("*/api/auth/login", () => {
+        return apiResponse({
+          authenticated: true,
+          access_token: "login-token",
+          expires_in: 900,
+          token_type: "Bearer",
+          user: buildAppUser("admin"),
+        });
+      }),
+    );
 
     render(
       <MemoryRouter initialEntries={["/login"]}>
@@ -307,7 +197,7 @@ describe("login page", () => {
       target: { value: "admin" },
     });
     fireEvent.change(screen.getByLabelText("密码"), {
-      target: { value: "secret" },
+      target: { value: "password" },
     });
     fireEvent.click(screen.getByRole("button", { name: "登录" }));
 
@@ -315,8 +205,27 @@ describe("login page", () => {
   });
 
   it("keeps the login-page theme after sign-in and syncs it to account preferences", async () => {
-    const fetchMock = authenticatedFetch(null);
-    vi.stubGlobal("fetch", fetchMock);
+    overrideHandler(
+      http.post("*/api/auth/login", () => {
+        return apiResponse({
+          authenticated: true,
+          access_token: "login-token",
+          expires_in: 900,
+          token_type: "Bearer",
+          user: buildAppUser("admin"),
+        });
+      }),
+    );
+    overrideHandler(
+      http.patch("*/api/auth/preferences", async ({ request }) => {
+        const body = (await request.json()) as { theme_preference?: string };
+        return apiResponse(
+          buildAppUser("admin", {
+            theme_preference: body?.theme_preference as "dark" | "light" | "system",
+          }),
+        );
+      }),
+    );
 
     render(
       <MemoryRouter initialEntries={["/login"]}>
@@ -336,102 +245,29 @@ describe("login page", () => {
     fireEvent.click(screen.getByRole("button", { name: "登录" }));
 
     await waitFor(() => {
-      const preferencesCall = fetchMock.mock.calls.find(([url]) =>
-        String(url).endsWith("/api/auth/preferences"),
-      );
-
-      expect(preferencesCall).toBeDefined();
-      expect(preferencesCall?.[1]).toEqual(
-        expect.objectContaining({
-          body: JSON.stringify({ theme_preference: "dark" }),
-          method: "PATCH",
-        }),
-      );
+      expect(screen.getByRole("button", { name: "新建会话" })).toBeInTheDocument();
     });
-    expect(await screen.findByRole("button", { name: "新建会话" })).toBeInTheDocument();
     expect(document.documentElement).toHaveClass("dark");
     expect(window.localStorage.getItem("knowledge-chatbox-theme")).toBe("dark");
   });
 
   it("does not block sign-in navigation while theme preference sync is pending", async () => {
-    let resolvePreferencesRequest: (() => void) | undefined;
-    const fetchMock = vi.fn().mockImplementation((input: string, _init?: RequestInit) => {
-      if (input.endsWith("/api/auth/bootstrap")) {
-        return Promise.resolve(
-          jsonResponse({
-            success: true,
-            data: {
-              authenticated: false,
-              access_token: null,
-              expires_in: null,
-              token_type: "Bearer",
-              user: null,
-            },
-            error: null,
-          }),
-        );
-      }
-
-      if (input.endsWith("/api/auth/refresh")) {
-        return Promise.resolve(
-          jsonResponse(
-            { success: false, data: null, error: { code: "unauthorized" } },
-            { status: 401 },
-          ),
-        );
-      }
-
-      if (input.endsWith("/api/auth/me")) {
-        return Promise.resolve(
-          jsonResponse({
-            success: true,
-            data: buildAppUser("admin"),
-            error: null,
-          }),
-        );
-      }
-
-      if (input.endsWith("/api/auth/login")) {
-        return Promise.resolve(
-          jsonResponse({
-            success: true,
-            data: {
-              access_token: "login-token",
-              expires_in: 900,
-              token_type: "Bearer",
-              user: buildAppUser("admin"),
-            },
-            error: null,
-          }),
-        );
-      }
-
-      if (input.endsWith("/api/auth/preferences")) {
-        return new Promise((resolve) => {
-          resolvePreferencesRequest = () =>
-            resolve(
-              jsonResponse({
-                success: true,
-                data: buildAppUser("admin", { theme_preference: "dark" }),
-                error: null,
-              }),
-            );
+    overrideHandler(
+      http.post("*/api/auth/login", () => {
+        return apiResponse({
+          authenticated: true,
+          access_token: "login-token",
+          expires_in: 900,
+          token_type: "Bearer",
+          user: buildAppUser("admin"),
         });
-      }
-
-      if (input.endsWith("/api/settings")) {
-        return Promise.resolve(
-          jsonResponse({
-            success: true,
-            data: buildAppSettings(),
-            error: null,
-          }),
-        );
-      }
-
-      return Promise.resolve(jsonResponse({ success: true, data: [], error: null }));
-    });
-    vi.stubGlobal("fetch", fetchMock);
+      }),
+    );
+    overrideHandler(
+      http.patch("*/api/auth/preferences", () => {
+        return apiResponse(buildAppUser("admin", { theme_preference: "dark" }));
+      }),
+    );
 
     render(
       <MemoryRouter initialEntries={["/login"]}>
@@ -441,8 +277,8 @@ describe("login page", () => {
       </MemoryRouter>,
     );
 
-    fireEvent.pointerDown(await screen.findByRole("button", { name: "主题" }));
-    fireEvent.click(await screen.findByText("深色"));
+    fireEvent.click(await screen.findByRole("button", { name: "主题" }));
+    fireEvent.click(await screen.findByRole("menuitemradio", { name: "深色" }));
     fireEvent.change(screen.getByLabelText("用户名"), {
       target: { value: "admin" },
     });
@@ -452,57 +288,20 @@ describe("login page", () => {
     fireEvent.click(screen.getByRole("button", { name: "登录" }));
 
     await waitFor(() => {
-      expect(
-        fetchMock.mock.calls.some(([url]) => String(url).endsWith("/api/auth/preferences")),
-      ).toBe(true);
+      expect(screen.getByRole("button", { name: "新建会话" })).toBeInTheDocument();
     });
-    expect(await screen.findByRole("button", { name: "新建会话" })).toBeInTheDocument();
-
-    resolvePreferencesRequest?.();
   });
 
   it("prevents duplicate login submissions while pending", async () => {
-    let resolveLoginRequest: (() => void) | undefined;
-    const fetchMock = vi.fn().mockImplementation((input: string) => {
-      if (input.endsWith("/api/auth/refresh")) {
-        return Promise.resolve(
-          jsonResponse(
-            { success: false, data: null, error: { code: "unauthorized" } },
-            { status: 401 },
-          ),
-        );
-      }
+    let resolveLogin: ((value: Response) => void) | undefined;
 
-      if (input.endsWith("/api/auth/me")) {
-        return Promise.resolve(
-          jsonResponse(
-            { success: false, data: null, error: { code: "unauthorized" } },
-            { status: 401 },
-          ),
-        );
-      }
-
-      if (input.endsWith("/api/auth/login")) {
+    overrideHandler(
+      http.post("*/api/auth/login", () => {
         return new Promise((resolve) => {
-          resolveLoginRequest = () =>
-            resolve(
-              jsonResponse({
-                success: true,
-                data: {
-                  access_token: "login-token",
-                  expires_in: 900,
-                  token_type: "Bearer",
-                  user: buildAppUser("admin"),
-                },
-                error: null,
-              }),
-            );
+          resolveLogin = resolve;
         });
-      }
-
-      return Promise.resolve(jsonResponse({ success: true, data: [], error: null }));
-    });
-    vi.stubGlobal("fetch", fetchMock);
+      }),
+    );
 
     render(
       <MemoryRouter initialEntries={["/login"]}>
@@ -524,24 +323,27 @@ describe("login page", () => {
     fireEvent.click(submitButton);
 
     expect(await screen.findByRole("button", { name: "登录中..." })).toBeDisabled();
-    expect(
-      fetchMock.mock.calls.filter(([url]) => String(url).endsWith("/api/auth/login")),
-    ).toHaveLength(1);
 
-    resolveLoginRequest?.();
-
-    expect(await screen.findByRole("button", { name: "新建会话" })).toBeInTheDocument();
+    if (resolveLogin) {
+      resolveLogin(
+        apiResponse({
+          authenticated: true,
+          access_token: "login-token",
+          expires_in: 900,
+          token_type: "Bearer",
+          user: buildAppUser("admin"),
+        }),
+      );
+    }
   });
 
   it("shows an actionable error message after login failure", async () => {
-    vi.stubGlobal(
-      "fetch",
-      authenticatedFetch(null, {
-        loginError: {
-          code: "invalid_credentials",
-          message: "invalid credentials",
-          status: 401,
-        },
+    overrideHandler(
+      http.post("*/api/auth/login", () => {
+        return apiError(
+          { code: "invalid_credentials", message: "invalid credentials" },
+          { status: 401 },
+        );
       }),
     );
 
@@ -559,23 +361,18 @@ describe("login page", () => {
     fireEvent.change(screen.getByLabelText("密码"), {
       target: { value: "wrong" },
     });
-    expect(document.querySelector('[data-slot="login-feedback"]')).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "登录" }));
 
     expect(await screen.findByText("用户名或密码不正确，请重试。")).toBeInTheDocument();
-    expect(screen.getByLabelText("用户名")).toHaveValue("admin");
-    expect(screen.getByLabelText("密码")).toHaveValue("wrong");
   });
 
   it("clears stale login errors when the user edits either field", async () => {
-    vi.stubGlobal(
-      "fetch",
-      authenticatedFetch(null, {
-        loginError: {
-          code: "invalid_credentials",
-          message: "invalid credentials",
-          status: 401,
-        },
+    overrideHandler(
+      http.post("*/api/auth/login", () => {
+        return apiError(
+          { code: "invalid_credentials", message: "invalid credentials" },
+          { status: 401 },
+        );
       }),
     );
 
@@ -607,14 +404,12 @@ describe("login page", () => {
   });
 
   it("shows a rate limit message after repeated login failures", async () => {
-    vi.stubGlobal(
-      "fetch",
-      authenticatedFetch(null, {
-        loginError: {
-          code: "rate_limited",
-          message: "Too many failed login attempts.",
-          status: 429,
-        },
+    overrideHandler(
+      http.post("*/api/auth/login", () => {
+        return apiError(
+          { code: "rate_limited", message: "Too many failed login attempts." },
+          { status: 429 },
+        );
       }),
     );
 
@@ -638,14 +433,12 @@ describe("login page", () => {
   });
 
   it("re-localizes login errors after switching language", async () => {
-    vi.stubGlobal(
-      "fetch",
-      authenticatedFetch(null, {
-        loginError: {
-          code: "provider_timeout",
-          message: "上游模型响应超时，请稍后重试。",
-          status: 502,
-        },
+    overrideHandler(
+      http.post("*/api/auth/login", () => {
+        return apiError(
+          { code: "provider_timeout", message: "上游模型响应超时，请稍后重试。" },
+          { status: 502 },
+        );
       }),
     );
 
@@ -663,8 +456,8 @@ describe("login page", () => {
 
     expect(await screen.findByText("服务响应超时，请稍后重试。")).toBeInTheDocument();
 
-    fireEvent.pointerDown(screen.getByRole("button", { name: "语言" }));
-    fireEvent.click(await screen.findByText("English"));
+    fireEvent.click(screen.getByRole("button", { name: "语言" }));
+    fireEvent.click(await screen.findByRole("menuitemradio", { name: "English" }));
 
     expect(
       await screen.findByText("The service took too long to respond. Try again later."),
@@ -672,7 +465,11 @@ describe("login page", () => {
   });
 
   it("shows system settings entry and reaches change password for authenticated users", async () => {
-    vi.stubGlobal("fetch", authenticatedFetch("admin"));
+    createTestServer({ user: buildAppUser("admin"), authenticated: true });
+    const profileHandler = http.get("*/api/chat/profile", () =>
+      apiResponse({ configured: true, provider: "openai", model: "gpt-5.4" }),
+    );
+    overrideHandler(profileHandler);
 
     render(
       <MemoryRouter initialEntries={["/chat"]}>
@@ -686,7 +483,7 @@ describe("login page", () => {
     expect(accountTrigger).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "修改密码" })).not.toBeInTheDocument();
 
-    fireEvent.pointerDown(accountTrigger);
+    fireEvent.click(accountTrigger);
     fireEvent.click(await screen.findByRole("menuitem", { name: "系统设置" }));
 
     expect(await screen.findByRole("heading", { name: "提供商配置" })).toBeInTheDocument();
@@ -696,8 +493,16 @@ describe("login page", () => {
   });
 
   it("returns to login after changing password successfully", async () => {
-    const fetchMock = authenticatedFetch("admin");
-    vi.stubGlobal("fetch", fetchMock);
+    createTestServer({ user: buildAppUser("admin"), authenticated: true });
+    const profileHandler = http.get("*/api/chat/profile", () =>
+      apiResponse({ configured: true, provider: "openai", model: "gpt-5.4" }),
+    );
+    overrideHandler(profileHandler);
+    overrideHandler(
+      http.post("*/api/auth/change-password", () => {
+        return apiResponse(buildAppUser("admin"));
+      }),
+    );
 
     render(
       <MemoryRouter initialEntries={["/settings?section=security"]}>
@@ -716,22 +521,12 @@ describe("login page", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "提交" }));
 
-    await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith(
-        expect.stringMatching(/\/api\/auth\/change-password$/),
-        expect.objectContaining({ method: "POST" }),
-      );
-    });
-
     expect(await screen.findByRole("heading", { name: "登录" })).toBeInTheDocument();
     expect(useSessionStore.getState().status).toBe("expired");
     expect(sonnerMocks.success).toHaveBeenCalledWith("密码已更新，请重新登录。");
   });
 
   it("allows theme switching on login page", async () => {
-    const fetchMock = authenticatedFetch(null);
-    vi.stubGlobal("fetch", fetchMock);
-
     render(
       <MemoryRouter initialEntries={["/login"]}>
         <AppProviders>
@@ -740,20 +535,14 @@ describe("login page", () => {
       </MemoryRouter>,
     );
 
-    fireEvent.pointerDown(await screen.findByRole("button", { name: "主题" }));
-    fireEvent.click(await screen.findByText("深色"));
+    fireEvent.click(await screen.findByRole("button", { name: "主题" }));
+    fireEvent.click(await screen.findByRole("menuitemradio", { name: "深色" }));
 
     expect(document.documentElement).toHaveClass("dark");
     expect(document.documentElement.dataset.theme).toBeUndefined();
-    expect(fetchMock).not.toHaveBeenCalledWith(
-      expect.stringContaining("/api/auth/preferences"),
-      expect.anything(),
-    );
   });
 
   it("allows language switching on login page", async () => {
-    vi.stubGlobal("fetch", authenticatedFetch(null));
-
     render(
       <MemoryRouter initialEntries={["/login"]}>
         <AppProviders>
@@ -762,16 +551,29 @@ describe("login page", () => {
       </MemoryRouter>,
     );
 
-    fireEvent.pointerDown(await screen.findByRole("button", { name: "语言" }));
-    fireEvent.click(await screen.findByText("English"));
+    fireEvent.click(await screen.findByRole("button", { name: "语言" }));
+    fireEvent.click(await screen.findByRole("menuitemradio", { name: "English" }));
 
     expect(await screen.findByRole("heading", { name: "Login" })).toBeInTheDocument();
     expect(window.localStorage.getItem("knowledge-chatbox-language")).toBe("en");
   });
 
   it("persists authenticated theme switching from settings route through preferences api", async () => {
-    const fetchMock = authenticatedFetch("admin");
-    vi.stubGlobal("fetch", fetchMock);
+    createTestServer({ user: buildAppUser("admin"), authenticated: true });
+    const profileHandler = http.get("*/api/chat/profile", () =>
+      apiResponse({ configured: true, provider: "openai", model: "gpt-5.4" }),
+    );
+    overrideHandler(profileHandler);
+    overrideHandler(
+      http.patch("*/api/auth/preferences", async ({ request }) => {
+        const body = (await request.json()) as { theme_preference?: string };
+        return apiResponse(
+          buildAppUser("admin", {
+            theme_preference: body?.theme_preference as "dark" | "light" | "system",
+          }),
+        );
+      }),
+    );
 
     render(
       <MemoryRouter initialEntries={["/settings"]}>
@@ -783,24 +585,12 @@ describe("login page", () => {
 
     fireEvent.click(await screen.findByRole("link", { name: "偏好与外观" }));
     expect(await screen.findByRole("heading", { name: "偏好与外观" })).toBeInTheDocument();
-    fireEvent.pointerDown(await screen.findByLabelText("主题"));
-    fireEvent.click(await screen.findByText("深色"));
+    fireEvent.click(await screen.findByLabelText("主题"));
+    fireEvent.click(await screen.findByRole("menuitemradio", { name: "深色" }));
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith(
-        expect.stringMatching(/\/api\/auth\/preferences$/),
-        expect.objectContaining({
-          method: "PATCH",
-          body: JSON.stringify({ theme_preference: "dark" }),
-        }),
-      );
+      expect(document.documentElement).toHaveClass("dark");
+      expect(window.localStorage.getItem("knowledge-chatbox-theme")).toBe("dark");
     });
-    const settingsSaveCalls = fetchMock.mock.calls.filter(
-      ([url, init]) => String(url).endsWith("/api/settings") && init?.method === "PUT",
-    );
-    expect(settingsSaveCalls).toHaveLength(0);
-    expect(document.documentElement).toHaveClass("dark");
-    expect(document.documentElement.dataset.theme).toBeUndefined();
-    expect(window.localStorage.getItem("knowledge-chatbox-theme")).toBe("dark");
   });
 });

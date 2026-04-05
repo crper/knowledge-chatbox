@@ -55,40 +55,53 @@ const composerControlSurfaceClassName =
 const composerTouchControlClassName =
   "min-h-[2.625rem] focus-visible:border-ring focus-visible:bg-input focus-visible:ring-3 focus-visible:ring-ring/42 md:min-h-9";
 
-function getPastedFileExtension(file: File) {
+/** 根据 MIME 类型获取文件扩展名 */
+function getPastedFileExtension(file: File): string {
   const mimeType = file.type.toLowerCase();
-  if (mimeType === "image/jpeg") {
-    return "jpg";
-  }
-  if (mimeType === "image/webp") {
-    return "webp";
-  }
+  if (mimeType === "image/jpeg") return "jpg";
+  if (mimeType === "image/webp") return "webp";
   return "png";
 }
 
-function normalizeClipboardFile(file: File) {
-  if (file.name.trim()) {
-    return file;
-  }
+/** 规范化剪贴板文件（为无名文件生成默认名称） */
+function normalizeClipboardFile(file: File): File {
+  if (file.name.trim()) return file;
 
-  return new File([file], `${PASTED_FILE_NAME_FALLBACK}.${getPastedFileExtension(file)}`, {
+  const extension = getPastedFileExtension(file);
+  return new File([file], `${PASTED_FILE_NAME_FALLBACK}.${extension}`, {
     type: file.type,
     lastModified: file.lastModified,
   });
 }
 
-function getClipboardFiles(event: ClipboardEvent<HTMLTextAreaElement>) {
-  const itemFiles = Array.from(event.clipboardData.items)
+/** 从剪贴板事件中提取文件 */
+function getClipboardFiles(event: ClipboardEvent<HTMLTextAreaElement>): File[] {
+  const items = Array.from(event.clipboardData.items);
+  const filesFromItems = items
     .filter((item) => item.kind === "file")
     .map((item) => item.getAsFile())
     .filter((file): file is File => file instanceof File)
     .map(normalizeClipboardFile);
 
-  if (itemFiles.length > 0) {
-    return itemFiles;
-  }
+  if (filesFromItems.length > 0) return filesFromItems;
 
   return Array.from(event.clipboardData.files).map(normalizeClipboardFile);
+}
+
+/** 获取附件状态显示文本 */
+function useAttachmentStatusLabels() {
+  const { t } = useTranslation("chat");
+
+  return useMemo(
+    () => ({
+      uploading: (progress: number | undefined) =>
+        `${t("attachmentUploadingStatus")} ${progress ?? 0}%`,
+      uploaded: t("attachmentUploadedStatus"),
+      failed: t("attachmentFailedStatus"),
+      queued: t("attachmentQueuedStatus"),
+    }),
+    [t],
+  );
 }
 
 /**
@@ -115,106 +128,115 @@ export function MessageInput({
   const { t } = useTranslation("chat");
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const reasoningModeLabel = t("reasoningModeLabel", { defaultValue: "思考模式" });
-  const reasoningModeDefaultLabel = t("reasoningModeDefaultOption", { defaultValue: "默认" });
-  const reasoningModeOffLabel = t("reasoningModeOffOption", { defaultValue: "关闭" });
-  const reasoningModeOnLabel = t("reasoningModeOnOption", { defaultValue: "开启" });
+  const statusLabels = useAttachmentStatusLabels();
+
+  // 计算派生状态
+  const reasoningLabels = useMemo(
+    () => ({
+      label: t("reasoningModeLabel", { defaultValue: "思考模式" }),
+      default: t("reasoningModeDefaultOption", { defaultValue: "默认" }),
+      off: t("reasoningModeOffOption", { defaultValue: "关闭" }),
+      on: t("reasoningModeOnOption", { defaultValue: "开启" }),
+    }),
+    [t],
+  );
+
   const hasSendableAttachment = hasSendableChatAttachments(attachments);
   const hasContextControls = Boolean(
     activeModelActionLabel || activeModelLabel || reasoningModeVisible,
   );
   const canSubmit = (draft.trim().length > 0 || hasSendableAttachment) && !submitPending;
+
+  // 图片查看器数据
   const imageViewerItems = useMemo(() => buildComposerImageViewerItems(attachments), [attachments]);
   const previewIndexes = useMemo(
     () => buildAttachmentPreviewIndexes(imageViewerItems),
     [imageViewerItems],
   );
-  const attachmentListItems = useMemo(
-    () =>
-      buildComposerAttachmentListItems({
-        attachments,
-        getStatusLabel: renderAttachmentStatus,
-        onPreview: (attachmentId) => {
-          const nextIndex = previewIndexes.get(attachmentId);
-          if (typeof nextIndex === "number") {
-            setViewerIndex(nextIndex);
-          }
-        },
-        onRemove: onRemoveAttachment,
-      }),
-    [attachments, onRemoveAttachment, previewIndexes],
+
+  // 附件列表项
+  const attachmentListItems = useMemo(() => {
+    const getStatusLabel = (attachment: ChatAttachmentItem) => {
+      switch (attachment.status) {
+        case "uploading":
+          return statusLabels.uploading(attachment.progress);
+        case "uploaded":
+          return statusLabels.uploaded;
+        case "failed":
+          return statusLabels.failed;
+        default:
+          return statusLabels.queued;
+      }
+    };
+
+    return buildComposerAttachmentListItems({
+      attachments,
+      getStatusLabel,
+      onPreview: (attachmentId) => {
+        const index = previewIndexes.get(attachmentId);
+        if (typeof index === "number") setViewerIndex(index);
+      },
+      onRemove: onRemoveAttachment,
+    });
+  }, [attachments, onRemoveAttachment, previewIndexes, statusLabels]);
+
+  // 提交处理
+  const triggerSubmit = useCallback(() => {
+    void Promise.resolve(onSubmit()).catch(() => {});
+  }, [onSubmit]);
+
+  const handleSubmit = useCallback(
+    (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      if (canSubmit) triggerSubmit();
+    },
+    [canSubmit, triggerSubmit],
   );
 
-  const triggerSubmit = () => {
-    void Promise.resolve(onSubmit()).catch(() => {});
-  };
+  // 键盘事件处理
+  const handleKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLTextAreaElement>) => {
+      const isComposing =
+        event.nativeEvent.isComposing ||
+        (event as KeyboardEvent<HTMLTextAreaElement> & { isComposing?: boolean }).isComposing;
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!canSubmit) {
-      return;
-    }
-    triggerSubmit();
-  };
+      if (isComposing) return;
 
-  const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    const isComposing =
-      event.nativeEvent.isComposing ||
-      Boolean(
-        (event as KeyboardEvent<HTMLTextAreaElement> & { isComposing?: boolean }).isComposing,
-      );
-    if (isComposing) {
-      return;
-    }
+      const shouldSubmit =
+        sendShortcut === "enter"
+          ? event.key === "Enter" && !event.shiftKey
+          : event.key === "Enter" && event.shiftKey;
 
-    const shouldSubmit =
-      sendShortcut === "enter"
-        ? event.key === "Enter" && !event.shiftKey
-        : event.key === "Enter" && event.shiftKey;
+      if (!shouldSubmit) return;
 
-    if (!shouldSubmit) {
-      return;
-    }
+      event.preventDefault();
+      if (canSubmit) triggerSubmit();
+    },
+    [canSubmit, sendShortcut, triggerSubmit],
+  );
 
-    event.preventDefault();
-    if (!canSubmit) {
-      return;
-    }
-    triggerSubmit();
-  };
+  // 粘贴处理
+  const handlePaste = useCallback(
+    (event: ClipboardEvent<HTMLTextAreaElement>) => {
+      const files = getClipboardFiles(event);
+      if (files.length === 0) return;
 
-  const handlePaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
-    const files = getClipboardFiles(event);
-    if (files.length === 0) {
-      return;
-    }
+      event.preventDefault();
+      onAttachFiles?.(files);
+    },
+    [onAttachFiles],
+  );
 
-    event.preventDefault();
-    onAttachFiles?.(files);
-  };
-
+  // 失焦处理
   const blurTextareaIfFocused = useCallback(() => {
-    if (typeof document === "undefined") {
-      return;
-    }
-
+    if (typeof document === "undefined") return;
     if (document.activeElement === textareaRef.current) {
       textareaRef.current?.blur();
     }
   }, []);
 
-  function renderAttachmentStatus(attachment: ChatAttachmentItem) {
-    if (attachment.status === "uploading") {
-      return `${t("attachmentUploadingStatus")} ${attachment.progress ?? 0}%`;
-    }
-    if (attachment.status === "uploaded") {
-      return t("attachmentUploadedStatus");
-    }
-    if (attachment.status === "failed") {
-      return t("attachmentFailedStatus");
-    }
-    return t("attachmentQueuedStatus");
-  }
+  // 渲染附件错误
+  const attachmentErrors = useMemo(() => attachments.filter((a) => a.errorMessage), [attachments]);
 
   return (
     <FileDropzone
@@ -230,63 +252,89 @@ export function MessageInput({
           <div
             {...getRootProps({
               className: cn(
-                "surface-liquid rounded-[1.5rem] p-2.5 transition-colors sm:rounded-[1.7rem] sm:p-3",
-                isDragActive && "border-primary/35 bg-primary/8",
-                isDragAccept && "border-primary/45 bg-primary/9",
-                isDragReject && "border-destructive/40 bg-destructive/10",
+                "surface-elevated rounded-2xl p-2.5 transition-[color,border-color,background,box-shadow] duration-200 ease-out sm:rounded-3xl sm:p-3",
+                isDragActive &&
+                  "border-primary/40 bg-primary/7 scale-[1.005] shadow-[0_16px_36px_-20px_hsl(var(--primary)/0.2)]",
+                isDragAccept &&
+                  "border-primary/50 bg-primary/9 scale-[1.008] shadow-[0_18px_40px_-22px_hsl(var(--primary)/0.24)]",
+                isDragReject && "border-destructive/42 bg-destructive/10 scale-[0.998]",
               ),
               "data-testid": "message-input-shell",
             })}
           >
             <input {...getInputProps({ "aria-label": t("attachResourceAction") })} />
-            {attachments.length > 0 ? (
+
+            {/* 附件列表 */}
+            {attachments.length > 0 && (
               <div className="space-y-2.5">
                 <div className="space-y-2" data-testid="message-input-attachments">
                   <AttachmentList
                     defaultCollapsed={false}
-                    expandOnItemAdd={true}
+                    expandOnItemAdd
                     items={attachmentListItems}
                     testId="composer-attachment-list"
                   />
                 </div>
-                {attachments.some((attachment) => attachment.errorMessage) ? (
+                {attachmentErrors.length > 0 && (
                   <div className="space-y-1 px-1">
-                    {attachments
-                      .filter((attachment) => attachment.errorMessage)
-                      .map((attachment) => (
-                        <p
-                          key={`${attachment.id}-error`}
-                          className="text-xs leading-5 text-destructive"
-                        >
-                          {attachment.errorMessage}
-                        </p>
-                      ))}
+                    {attachmentErrors.map((attachment) => (
+                      <p
+                        key={`${attachment.id}-error`}
+                        className="text-ui-caption text-destructive"
+                      >
+                        {attachment.errorMessage}
+                      </p>
+                    ))}
                   </div>
-                ) : null}
+                )}
               </div>
-            ) : null}
-            {attachmentScopeHint ? (
-              <p className="mt-2.5 px-1 text-xs leading-5 text-muted-foreground">
+            )}
+
+            {/* 模型操作提示 */}
+            {activeModelActionLabel && (
+              <div className="surface-light flex items-center gap-2.5 rounded-xl px-3 py-2">
+                <span className="text-ui-caption text-muted-foreground">
+                  {t("providerSetupInlineHint")}
+                </span>
+                <Button
+                  className="h-auto px-0 text-ui-caption"
+                  onClick={onActiveModelAction}
+                  size="xs"
+                  type="button"
+                  variant="link"
+                >
+                  {activeModelActionLabel}
+                </Button>
+              </div>
+            )}
+
+            {/* 附件范围提示 */}
+            {attachmentScopeHint && (
+              <p className="mt-2.5 px-1 text-ui-caption text-muted-foreground">
                 {attachmentScopeHint}
               </p>
-            ) : null}
-            {isDragActive ? (
+            )}
+
+            {/* 拖拽状态提示 */}
+            {isDragActive && (
               <p
                 className={cn(
-                  "mb-3 px-1 text-xs",
+                  "mb-3 px-1 text-ui-caption",
                   isDragReject ? "text-destructive" : "text-primary",
                 )}
               >
                 {isDragReject ? t("attachmentDropRejectHint") : t("attachmentDropActiveHint")}
               </p>
-            ) : null}
+            )}
+
+            {/* 文本输入区 */}
             <div
-              className={cn("min-w-0", attachments.length > 0 ? "mt-3" : "")}
+              className={cn("min-w-0", attachments.length > 0 && "mt-3")}
               data-testid="message-input-body"
             >
               <Textarea
                 aria-label={t("messageInputLabel")}
-                className="text-ui-body min-h-20 resize-none border-0 bg-transparent px-2 py-1.5 shadow-none placeholder:text-[0.92rem] placeholder:leading-7 placeholder:text-muted-foreground/85 focus-visible:ring-0 sm:min-h-24 sm:px-2.5 sm:py-2 sm:placeholder:text-ui-caption"
+                className="text-ui-body min-h-20 resize-none border-0 bg-transparent px-2 py-1.5 shadow-none placeholder:text-sm placeholder:leading-7 placeholder:text-muted-foreground/85 focus-visible:ring-0 focus-visible:outline-none sm:min-h-24 sm:px-2.5 sm:py-2 sm:placeholder:text-ui-caption"
                 disabled={submitPending}
                 id="chat-message"
                 onChange={(event) => onChange(event.target.value)}
@@ -297,11 +345,14 @@ export function MessageInput({
                 value={draft}
               />
             </div>
+
+            {/* 操作按钮区 */}
             <div
               className="mt-2.5 grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-2 gap-y-1.5 border-t border-border/60 pt-2.5 sm:mt-3 sm:gap-x-2.5 sm:gap-y-2 sm:pt-3"
               data-testid="message-input-actions"
               onPointerDownCapture={blurTextareaIfFocused}
             >
+              {/* 附件按钮 */}
               <Button
                 aria-label={t("attachResourceAction")}
                 className={cn(
@@ -317,58 +368,80 @@ export function MessageInput({
               >
                 <PaperclipIcon className="size-4 md:size-3.5" />
               </Button>
-              {hasContextControls ? (
+
+              {/* 上下文控制区 */}
+              {hasContextControls && (
                 <div className="col-start-2 row-start-1 grid min-w-0 gap-2 sm:flex sm:min-w-0 sm:flex-1 sm:flex-row sm:items-center sm:gap-2">
+                  {/* 模型标签/操作 */}
                   {activeModelActionLabel ? (
-                    <button
+                    <Button
                       className={cn(
                         composerControlSurfaceClassName,
                         composerTouchControlClassName,
-                        "flex w-full min-w-0 cursor-pointer select-none items-center rounded-[1rem] px-2.5 py-1.5 text-[0.74rem] text-foreground hover:bg-background/34 hover:text-foreground sm:max-w-[min(48vw,20rem)] sm:px-3 sm:py-2 sm:text-[0.82rem]",
+                        "w-full min-w-0 justify-start rounded-xl px-2.5 py-1.5 text-ui-caption text-foreground shadow-none hover:bg-background/34 hover:text-foreground sm:max-w-[min(48vw,20rem)] sm:px-3 sm:py-2",
                       )}
                       onClick={onActiveModelAction}
+                      size="sm"
                       title={activeModelActionLabel}
                       type="button"
+                      variant="ghost"
                     >
                       <span className="truncate">{activeModelActionLabel}</span>
-                    </button>
+                    </Button>
                   ) : activeModelLabel ? (
                     <div
                       className={cn(
                         composerControlSurfaceClassName,
                         composerTouchControlClassName,
-                        "flex w-full min-w-0 select-none items-center rounded-[1rem] px-2.5 py-1.5 text-[0.74rem] text-foreground sm:max-w-[min(48vw,20rem)] sm:px-3 sm:py-2 sm:text-[0.82rem]",
+                        "flex w-full min-w-0 select-none items-center rounded-xl px-2.5 py-1.5 text-ui-caption text-foreground sm:max-w-[min(48vw,20rem)] sm:px-3 sm:py-2",
                       )}
                       title={activeModelLabel}
                     >
                       <span className="truncate">{activeModelLabel}</span>
                     </div>
                   ) : null}
-                  {reasoningModeVisible ? (
+
+                  {/* 推理模式选择 */}
+                  {reasoningModeVisible && (
                     <Select
                       disabled={submitPending}
+                      items={[
+                        { label: reasoningLabels.default, value: "default" },
+                        { label: reasoningLabels.off, value: "off" },
+                        { label: reasoningLabels.on, value: "on" },
+                      ]}
                       onValueChange={(value) => onReasoningModeChange?.(value as ChatReasoningMode)}
                       value={reasoningMode}
                     >
                       <SelectTrigger
-                        aria-label={reasoningModeLabel}
+                        aria-label={reasoningLabels.label}
                         className={cn(
                           composerControlSurfaceClassName,
                           composerTouchControlClassName,
-                          "w-full min-w-0 rounded-[1rem] px-2.5 text-[0.74rem] sm:min-w-28 sm:w-auto sm:px-3 sm:text-[0.8rem]",
+                          "w-full min-w-0 rounded-xl px-2.5 text-ui-caption sm:min-w-28 sm:w-auto sm:px-3",
                         )}
                       >
-                        <SelectValue />
+                        <SelectValue>
+                          {() =>
+                            reasoningMode === "default"
+                              ? reasoningLabels.default
+                              : reasoningMode === "off"
+                                ? reasoningLabels.off
+                                : reasoningLabels.on
+                          }
+                        </SelectValue>
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="default">{reasoningModeDefaultLabel}</SelectItem>
-                        <SelectItem value="off">{reasoningModeOffLabel}</SelectItem>
-                        <SelectItem value="on">{reasoningModeOnLabel}</SelectItem>
+                        <SelectItem value="default">{reasoningLabels.default}</SelectItem>
+                        <SelectItem value="off">{reasoningLabels.off}</SelectItem>
+                        <SelectItem value="on">{reasoningLabels.on}</SelectItem>
                       </SelectContent>
                     </Select>
-                  ) : null}
+                  )}
                 </div>
-              ) : null}
+              )}
+
+              {/* 发送按钮 */}
               <Button
                 aria-label={submitPending ? t("sendingAction") : t("sendAction")}
                 className="col-start-3 row-start-1 size-[2.625rem] self-start rounded-full md:size-9"
@@ -382,7 +455,9 @@ export function MessageInput({
                   <SendHorizontalIcon aria-hidden="true" className="size-4" />
                 )}
               </Button>
-              {submitPending ? (
+
+              {/* 发送状态提示（屏幕阅读器） */}
+              {submitPending && (
                 <span
                   aria-atomic="true"
                   aria-label={t("sendingAction")}
@@ -392,16 +467,16 @@ export function MessageInput({
                 >
                   {t("sendingAction")}
                 </span>
-              ) : null}
+              )}
             </div>
           </div>
+
+          {/* 图片查看器 */}
           <ImageViewerDialog
             initialIndex={viewerIndex ?? 0}
             items={imageViewerItems}
             onOpenChange={(open) => {
-              if (!open) {
-                setViewerIndex(null);
-              }
+              if (!open) setViewerIndex(null);
             }}
             open={viewerIndex !== null && imageViewerItems.length > 0}
           />

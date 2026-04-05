@@ -193,7 +193,7 @@ export const MessageRow = memo(function MessageRow({
       data-message-width={isCompactLayout ? "full" : "adaptive"}
       data-testid={`chat-message-row-${message.id}`}
       className={cn(
-        "flex w-full min-w-0 flex-col gap-2",
+        "flex w-full min-w-0 flex-col gap-2.5",
         isUserMessage ? "items-end" : "items-start",
         enableContainment ? "contain-layout contain-paint" : "",
         isCompactLayout
@@ -216,7 +216,7 @@ export const MessageRow = memo(function MessageRow({
         {!isUserMessage ? (
           <Badge
             className={cn(
-              "rounded-full px-2.5 py-1 text-[0.7rem] tracking-[0.08em]",
+              "rounded-full px-2.5 py-1 text-ui-caption",
               isAssistantMessage ? "bg-secondary/80" : "bg-muted/62 text-foreground/82",
             )}
             data-message-label-style={messageLabelStyle}
@@ -227,7 +227,7 @@ export const MessageRow = memo(function MessageRow({
         ) : null}
         <span
           className={cn(
-            "inline-flex items-center gap-2 text-[0.76rem] font-medium tracking-[0.02em]",
+            "inline-flex items-center gap-2 text-ui-caption font-medium",
             statusMeta.tone === "error"
               ? "text-destructive"
               : statusMeta.tone === "pending"
@@ -251,7 +251,7 @@ export const MessageRow = memo(function MessageRow({
         </span>
         {isUserMessage ? (
           <Badge
-            className="rounded-full px-2.5 py-1 text-[0.7rem] tracking-[0.08em]"
+            className="rounded-full px-2.5 py-1 text-ui-caption"
             data-message-label-style={messageLabelStyle}
             variant="outline"
           >
@@ -261,14 +261,14 @@ export const MessageRow = memo(function MessageRow({
       </div>
       <div
         className={cn(
-          "surface-liquid min-w-0 max-w-full overflow-hidden rounded-[1.45rem]",
+          "surface-elevated min-w-0 max-w-full overflow-hidden rounded-2xl",
           bubbleWidthMode === "adaptive" ? "w-full" : "w-fit",
           isUserMessage ? "border-primary/16" : "",
         )}
         data-message-bubble-width={bubbleWidthMode}
         data-testid={`chat-message-bubble-${message.id}`}
       >
-        <div className="space-y-3 px-4 py-4 md:px-5">
+        <div className="space-y-3.5 px-4 py-4.5 md:px-5 md:py-5">
           {isAssistantMessage ? (
             <MarkdownMessage
               content={assistantContent}
@@ -349,7 +349,7 @@ export const MessageList = memo(function MessageList({
 
   return (
     <div
-      className="flex flex-col gap-4"
+      className="flex flex-col gap-5"
       data-chat-contained={shouldContainMessages ? "true" : "false"}
     >
       {messages.map((message) => (

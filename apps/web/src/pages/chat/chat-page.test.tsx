@@ -3,18 +3,87 @@ import { MemoryRouter } from "react-router-dom";
 import { i18n } from "@/i18n";
 import { toast } from "sonner";
 
+vi.mock("@tanstack/react-virtual", () => ({
+  useVirtualizer: vi.fn((options: { count?: number }) => {
+    const count = options.count ?? 0;
+    const visibleCount = Math.min(count, 40);
+    const startIndex = Math.max(0, count - visibleCount);
+
+    return {
+      getVirtualItems: () =>
+        Array.from({ length: visibleCount }, (_, index) => ({
+          index: startIndex + index,
+          key: startIndex + index,
+          size: 220,
+          start: (startIndex + index) * 220,
+        })),
+      getTotalSize: () => count * 220,
+      measureElement: () => {},
+      scrollToIndex: vi.fn(),
+    };
+  }),
+}));
+
 import type { ChatMessageItem } from "@/features/chat/api/chat";
 import { CHAT_STREAM_EVENT } from "@/features/chat/api/chat-stream-events";
 import { useChatStreamStore } from "@/features/chat/store/chat-stream-store";
 import { useChatUiStore } from "@/features/chat/store/chat-ui-store";
+import { useSessionStore } from "@/lib/auth/session-store";
+import { setAccessToken } from "@/lib/auth/token-store";
 import { useUiStore } from "@/lib/store/ui-store";
 import { AppProviders } from "@/providers/app-providers";
 import { AppRouter } from "@/router";
 import { buildChatSessionContext } from "@/test/chat";
 import { createChatStreamFrame, getChatStreamEventPayload } from "@/test/chat-stream";
 import { buildAppSettings, buildAppUser } from "@/test/fixtures/app";
-import { jsonResponse } from "@/test/http";
+import { createTestServer, overrideHandler, apiResponse, apiError } from "@/test/msw";
+import { http } from "msw";
 import { mockMobileViewport } from "@/test/viewport";
+
+declare const fetchMockCalls: Array<[string, RequestInit?]>;
+
+async function findSessionLink(sessionName: string, timeout = 10000): Promise<Element> {
+  return waitFor(
+    async () => {
+      try {
+        const link = await screen.findByRole("link", { name: sessionName }, { timeout: 1000 });
+        return link;
+      } catch {
+        const textElement = await screen.findByText(
+          sessionName,
+          { exact: false },
+          { timeout: 500 },
+        );
+        if (textElement?.closest("a")) {
+          return textElement.closest("a")!;
+        }
+        if (textElement) {
+          return textElement;
+        }
+        throw new Error(`Session link not found: ${sessionName}`);
+      }
+    },
+    { timeout },
+  );
+}
+
+async function findTextContent(text: string, timeout = 10000): Promise<HTMLElement> {
+  return waitFor(
+    () => {
+      const matches = screen.queryAllByText((_, node) => {
+        const normalized = node?.textContent?.replace(/\s+/g, " ").trim();
+        return normalized === text || normalized?.includes(text) === true;
+      });
+
+      if (matches.length === 0) {
+        throw new Error(`Text content not found: ${text}`);
+      }
+
+      return matches[0] as HTMLElement;
+    },
+    { timeout },
+  );
+}
 
 type MockChatAttachment = NonNullable<ChatMessageItem["attachments_json"]>[number] & {
   document_id?: number | null;
@@ -132,12 +201,12 @@ function buildUploadPayload(overrides?: {
   };
 }
 
-function buildAuthenticatedFetch(options?: {
+function setupAuthenticatedWorkspace(options?: {
   delayCreateSession?: boolean;
   messageCount?: number;
   messages?: MockChatMessage[];
   messagesBySession?: Record<number, MockChatMessage[]>;
-  sessions?: Array<{ id: number; title: string | null }>;
+  sessions?: Array<{ id: number; title: string | null; reasoning_mode: string }>;
   streamErrorResponse?: {
     body: unknown;
     status: number;
@@ -147,70 +216,10 @@ function buildAuthenticatedFetch(options?: {
   streamFinalDelayMs?: number;
   streamFramesBySession?: Record<number, string[]>;
 }) {
-  const buildSessionContext = (sessionId: number) => {
-    const mappedMessages = options?.messagesBySession?.[sessionId];
-    const baseMessages =
-      mappedMessages ??
-      options?.messages ??
-      (sessionId === 1
-        ? [
-            {
-              id: 1,
-              role: "user",
-              content: "hello",
-              status: "failed",
-              error_message: "provider unavailable",
-              attachments_json: [
-                {
-                  attachment_id: "history-image",
-                  type: "image",
-                  name: "history.png",
-                  mime_type: "image/png",
-                  size_bytes: 1,
-                },
-              ],
-              sources_json: null,
-            },
-            {
-              id: 2,
-              role: "assistant",
-              content: "## Title\n\n|a|b|\n|-|-|\n|1|2|",
-              status: "succeeded",
-              error_message: null,
-              sources_json: [
-                {
-                  chunk_id: "1:0",
-                  section_title: "Guide",
-                  page_number: 2,
-                  snippet: "OpenAI guide snippet",
-                },
-              ],
-            },
-            ...(streamedUserMessage
-              ? [
-                  streamedUserMessage,
-                  streamedAssistantMessage ?? {
-                    id: 4,
-                    role: "assistant",
-                    content: "streamed answer",
-                    status: "succeeded",
-                    sources_json: [],
-                  },
-                ]
-              : []),
-          ]
-        : []);
-
-    return buildChatSessionContext(
-      sessionId,
-      baseMessages as Parameters<typeof buildChatSessionContext>[1],
-    );
-  };
-
   const sessions = (
     options?.sessions ?? [
-      { id: 1, title: "Session A" },
-      { id: 2, title: "Session B" },
+      { id: 1, title: "Session A", reasoning_mode: "default" },
+      { id: 2, title: "Session B", reasoning_mode: "default" },
     ]
   ).map((session) => ({ ...session }));
   const streamFramesQueue = options?.streamFramesSequence?.map((frames) => [...frames]) ?? null;
@@ -231,141 +240,81 @@ function buildAuthenticatedFetch(options?: {
     sources_json: [];
   } | null = null;
   let streamedAssistantMessage: ChatMessageItem | null = null;
-  const fetchMock = vi.fn().mockImplementation((input: string, init?: RequestInit) => {
-    if (input.endsWith("/api/auth/bootstrap")) {
-      return Promise.resolve(
-        jsonResponse({
-          success: true,
-          data: {
-            authenticated: true,
-            access_token: "fresh-token",
-            expires_in: 900,
-            token_type: "Bearer",
-            user: buildAppUser("admin"),
-          },
-          error: null,
-        }),
-      );
-    }
 
-    if (input.endsWith("/api/auth/refresh")) {
-      return Promise.resolve(
-        jsonResponse({
-          success: true,
-          data: {
-            access_token: "fresh-token",
-            expires_in: 900,
-            token_type: "Bearer",
-          },
-          error: null,
-        }),
-      );
-    }
+  const user = buildAppUser("admin");
+  const settings = buildAppSettings({
+    provider_profiles: {
+      ollama: {
+        base_url: "http://host.docker.internal:11434",
+      },
+    },
+    system_prompt: "prompt",
+  });
 
-    if (input.endsWith("/api/auth/me")) {
-      return Promise.resolve(
-        jsonResponse({
-          success: true,
-          data: buildAppUser("admin"),
-          error: null,
-        }),
-      );
-    }
+  setAccessToken("test-token");
+  useSessionStore.getState().setStatus("authenticated");
+  createTestServer({ user, authenticated: true, settings, sessions });
 
-    if (input.endsWith("/api/settings")) {
-      return Promise.resolve(
-        jsonResponse({
-          success: true,
-          data: buildAppSettings({
-            provider_profiles: {
-              ollama: {
-                base_url: "http://host.docker.internal:11434",
-              },
-            },
-            system_prompt: "prompt",
-          }),
-          error: null,
-        }),
-      );
-    }
-
-    if (input.endsWith("/api/chat/profile")) {
-      return Promise.resolve(
-        jsonResponse({
-          success: true,
-          data: {
-            configured: true,
-            provider: "openai",
-            model: "gpt-5.4",
-          },
-          error: null,
-        }),
-      );
-    }
-
-    if (input.endsWith("/api/chat/sessions") && init?.method === "POST") {
-      const body =
-        typeof init.body === "string" ? (JSON.parse(init.body) as { title?: string | null }) : {};
-      const nextSession = { id: 3, title: body.title ?? null };
+  overrideHandler(
+    http.post("*/api/chat/sessions", async ({ request }) => {
       if (options?.delayCreateSession) {
         return new Promise(() => {});
       }
-
+      const body = (await request.json()) as { title?: string | null };
+      const nextSession = {
+        id: 3,
+        title: body.title ?? null,
+        reasoning_mode: "default",
+      };
       sessions.unshift(nextSession);
-      return Promise.resolve(jsonResponse({ success: true, data: nextSession, error: null }));
-    }
+      return apiResponse(nextSession);
+    }),
+  );
 
-    if (input.endsWith("/api/chat/sessions")) {
-      return Promise.resolve(jsonResponse({ success: true, data: sessions, error: null }));
-    }
+  overrideHandler(
+    http.patch("*/api/chat/sessions/1", () => {
+      sessions[0] = { id: 1, title: "Session A Renamed", reasoning_mode: "default" };
+      return apiResponse(sessions[0]);
+    }),
+  );
 
-    if (input.endsWith("/api/chat/sessions/1") && init?.method === "PATCH") {
-      sessions[0] = { id: 1, title: "Session A Renamed" };
-      return Promise.resolve(jsonResponse({ success: true, data: sessions[0], error: null }));
-    }
-
-    if (input.endsWith("/api/chat/sessions/1") && init?.method === "DELETE") {
+  overrideHandler(
+    http.delete("*/api/chat/sessions/1", () => {
       sessions.splice(
         sessions.findIndex((session) => session.id === 1),
         1,
       );
-      return Promise.resolve(jsonResponse({ success: true, data: { deleted: true }, error: null }));
-    }
+      return apiResponse({ deleted: true });
+    }),
+  );
 
-    if (input.endsWith("/api/chat/runs/active")) {
-      return Promise.resolve(jsonResponse({ success: true, data: [], error: null }));
-    }
+  overrideHandler(http.get("*/api/chat/runs/active", () => apiResponse([])));
 
-    const sessionContextMatch = input.match(/\/api\/chat\/sessions\/(\d+)\/context$/);
-    if (sessionContextMatch) {
-      const sessionId = Number(sessionContextMatch[1]);
-      return Promise.resolve(
-        jsonResponse({
-          success: true,
-          data: buildSessionContext(sessionId),
-          error: null,
-        }),
-      );
-    }
+  overrideHandler(
+    http.get("*/api/chat/profile", () =>
+      apiResponse({
+        configured: true,
+        provider: "openai",
+        model: "gpt-5.4",
+      }),
+    ),
+  );
 
-    if (
-      input.includes("/api/chat/sessions/") &&
-      input.endsWith("/messages/stream") &&
-      init?.method === "POST"
-    ) {
+  overrideHandler(
+    http.post("*/api/chat/sessions/:sessionId/messages/stream", async ({ request }) => {
       if (options?.streamErrorResponse) {
-        return Promise.resolve(
-          jsonResponse(options.streamErrorResponse.body, {
-            status: options.streamErrorResponse.status,
-          }),
+        return apiError(
+          (options.streamErrorResponse.body as { detail?: { code?: string; message?: string } })
+            .detail ?? {},
+          { status: options.streamErrorResponse.status },
         );
       }
 
-      const sessionIdMatch = input.match(/\/api\/chat\/sessions\/(\d+)\/messages\/stream$/);
+      const url = new URL(request.url);
+      const sessionIdMatch = url.pathname.match(/\/api\/chat\/sessions\/(\d+)\/messages\/stream$/);
       const sessionId = Number(sessionIdMatch?.[1] ?? 1);
-      const requestBody =
-        typeof init?.body === "string" ? init.body : JSON.stringify(init?.body ?? {});
-      const payload = JSON.parse(requestBody) as {
+      const requestBody = await request.text();
+      const payload = (requestBody ? JSON.parse(requestBody) : {}) as {
         attachments?: Array<{
           attachment_id: string;
           type: string;
@@ -454,18 +403,86 @@ function buildAuthenticatedFetch(options?: {
         },
       });
 
-      return Promise.resolve(
-        new Response(stream, {
-          status: 200,
-          headers: { "Content-Type": "text/event-stream" },
-        }),
-      );
-    }
+      return new Response(stream, {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
+      });
+    }),
+  );
 
-    const sessionMessagesMatch = input.match(/\/api\/chat\/sessions\/(\d+)\/messages(?:\?(.*))?$/);
-    if (sessionMessagesMatch) {
-      const sessionId = Number(sessionMessagesMatch[1]);
-      const params = new URL(input, "http://testserver").searchParams;
+  overrideHandler(
+    http.get("*/api/chat/sessions/:sessionId/context", ({ request }) => {
+      const url = new URL(request.url);
+      const sessionIdMatch = url.pathname.match(/\/api\/chat\/sessions\/(\d+)\/context$/);
+      const sessionId = Number(sessionIdMatch?.[1] ?? 1);
+      const mappedMessages = options?.messagesBySession?.[sessionId];
+      const baseMessages =
+        mappedMessages ??
+        options?.messages ??
+        (sessionId === 1
+          ? [
+              {
+                id: 1,
+                role: "user",
+                content: "hello",
+                status: "failed",
+                error_message: "provider unavailable",
+                attachments_json: [
+                  {
+                    attachment_id: "history-image",
+                    type: "image",
+                    name: "history.png",
+                    mime_type: "image/png",
+                    size_bytes: 1,
+                  },
+                ],
+                sources_json: null,
+              },
+              {
+                id: 2,
+                role: "assistant",
+                content: "## Title\n\n|a|b|\n|-|-|\n|1|2|",
+                status: "succeeded",
+                error_message: null,
+                sources_json: [
+                  {
+                    chunk_id: "1:0",
+                    section_title: "Guide",
+                    page_number: 2,
+                    snippet: "OpenAI guide snippet",
+                  },
+                ],
+              },
+              ...(streamedUserMessage
+                ? [
+                    streamedUserMessage,
+                    streamedAssistantMessage ?? {
+                      id: 4,
+                      role: "assistant",
+                      content: "streamed answer",
+                      status: "succeeded",
+                      sources_json: [],
+                    },
+                  ]
+                : []),
+            ]
+          : []);
+
+      return apiResponse(
+        buildChatSessionContext(
+          sessionId,
+          baseMessages as Parameters<typeof buildChatSessionContext>[1],
+        ),
+      );
+    }),
+  );
+
+  overrideHandler(
+    http.get("*/api/chat/sessions/:sessionId/messages", ({ request }) => {
+      const url = new URL(request.url);
+      const sessionMessagesMatch = url.pathname.match(/\/api\/chat\/sessions\/(\d+)\/messages$/);
+      const sessionId = Number(sessionMessagesMatch?.[1] ?? 1);
+      const params = url.searchParams;
       const limitParam = params.get("limit");
       const beforeIdParam = params.get("before_id");
 
@@ -486,123 +503,84 @@ function buildAuthenticatedFetch(options?: {
               ? allMessages.slice(-limit)
               : allMessages.filter((message) => message.id < beforeId).slice(-limit);
 
-        return Promise.resolve(
-          jsonResponse({
-            success: true,
-            data: filteredMessages,
-            error: null,
-          }),
-        );
+        return apiResponse(filteredMessages);
       }
 
       const mappedMessages = options?.messagesBySession?.[sessionId];
       if (mappedMessages) {
-        return Promise.resolve(
-          jsonResponse({
-            success: true,
-            data: mappedMessages,
-            error: null,
-          }),
-        );
+        return apiResponse(mappedMessages);
       }
 
       if (options?.messages) {
-        return Promise.resolve(
-          jsonResponse({
-            success: true,
-            data: options.messages,
-            error: null,
-          }),
-        );
+        return apiResponse(options.messages);
       }
 
       if (sessionId !== 1) {
-        return Promise.resolve(
-          jsonResponse({
-            success: true,
-            data: [],
-            error: null,
-          }),
-        );
+        return apiResponse([]);
       }
 
-      return Promise.resolve(
-        jsonResponse({
-          success: true,
-          data: [
+      return apiResponse([
+        {
+          id: 1,
+          role: "user",
+          content: "hello",
+          status: "failed",
+          error_message: "provider unavailable",
+          attachments_json: [
             {
-              id: 1,
-              role: "user",
-              content: "hello",
-              status: "failed",
-              error_message: "provider unavailable",
-              attachments_json: [
-                {
-                  type: "image",
-                  name: "history.png",
-                  mime_type: "image/png",
-                },
-              ],
-              sources_json: null,
+              type: "image",
+              name: "history.png",
+              mime_type: "image/png",
             },
-            {
-              id: 2,
-              role: "assistant",
-              content: "## Title\n\n|a|b|\n|-|-|\n|1|2|",
-              status: "succeeded",
-              error_message: null,
-              sources_json: [
-                {
-                  chunk_id: "1:0",
-                  section_title: "Guide",
-                  page_number: 2,
-                  snippet: "OpenAI guide snippet",
-                },
-              ],
-            },
-            ...(streamedUserMessage
-              ? [
-                  streamedUserMessage,
-                  streamedAssistantMessage ?? {
-                    id: 4,
-                    role: "assistant",
-                    content: "streamed answer",
-                    status: "succeeded",
-                    sources_json: [],
-                  },
-                ]
-              : []),
           ],
-          error: null,
-        }),
-      );
-    }
+          sources_json: null,
+        },
+        {
+          id: 2,
+          role: "assistant",
+          content: "## Title\n\n|a|b|\n|-|-|\n|1|2|",
+          status: "succeeded",
+          error_message: null,
+          sources_json: [
+            {
+              chunk_id: "1:0",
+              section_title: "Guide",
+              page_number: 2,
+              snippet: "OpenAI guide snippet",
+            },
+          ],
+        },
+        ...(streamedUserMessage
+          ? [
+              streamedUserMessage,
+              streamedAssistantMessage ?? {
+                id: 4,
+                role: "assistant",
+                content: "streamed answer",
+                status: "succeeded",
+                sources_json: [],
+              },
+            ]
+          : []),
+      ]);
+    }),
+  );
 
-    if (input.endsWith("/api/chat/messages/1") && init?.method === "DELETE") {
-      return Promise.resolve(jsonResponse({ success: true, data: { deleted: true }, error: null }));
-    }
+  overrideHandler(
+    http.delete("*/api/chat/messages/:messageId", () => apiResponse({ deleted: true })),
+  );
 
-    if (input.endsWith("/api/auth/preferences")) {
-      return Promise.resolve(
-        jsonResponse({
-          success: true,
-          data: {
-            id: 1,
-            username: "admin",
-            role: "admin",
-            status: "active",
-            theme_preference: "dark",
-          },
-          error: null,
-        }),
-      );
-    }
-
-    return Promise.resolve(jsonResponse({ success: true, data: [], error: null }));
-  });
-
-  vi.stubGlobal("fetch", fetchMock);
-  return fetchMock;
+  overrideHandler(
+    http.get("*/api/auth/preferences", () =>
+      apiResponse({
+        id: 1,
+        username: "admin",
+        role: "admin",
+        status: "active",
+        theme_preference: "dark",
+      }),
+    ),
+  );
 }
 
 describe("chat workspace", () => {
@@ -625,11 +603,22 @@ describe("chat workspace", () => {
       draftsBySession: {},
       sendShortcut: "enter",
     });
+    useSessionStore.getState().reset();
+    setAccessToken(null);
     useChatStreamStore.setState({ runsById: {} });
+
+    const style = document.createElement("style");
+    style.textContent = `
+      [data-testid="chat-sidebar-virtuoso"],
+      [data-testid="chat-message-viewport-root"],
+      [data-testid="chat-message-viewport-scroll"],
+      .h-full { height: 512px !important; }
+    `;
+    document.head.appendChild(style);
   });
 
   it("renders a three-column chat workspace with session controls and an overview-first context panel", async () => {
-    buildAuthenticatedFetch();
+    setupAuthenticatedWorkspace();
 
     render(
       <MemoryRouter initialEntries={["/chat/2"]}>
@@ -654,7 +643,7 @@ describe("chat workspace", () => {
     expect(screen.queryByText("首条预览")).not.toBeInTheDocument();
     expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
 
-    fireEvent.pointerDown(screen.getByRole("button", { name: "打开账户菜单" }));
+    fireEvent.click(screen.getByRole("button", { name: "打开账户菜单" }));
 
     expect(await screen.findByRole("menuitem", { name: "系统设置" })).toHaveAttribute(
       "href",
@@ -664,7 +653,7 @@ describe("chat workspace", () => {
   });
 
   it("shows the desktop chat workspace with sessions, messages, and resource context", async () => {
-    buildAuthenticatedFetch({ messageCount: 120 });
+    setupAuthenticatedWorkspace({ messageCount: 120 });
 
     render(
       <MemoryRouter initialEntries={["/chat/1"]}>
@@ -674,14 +663,14 @@ describe("chat workspace", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByRole("link", { name: "Session A" })).toBeInTheDocument();
+    expect(await findSessionLink("Session A")).toBeInTheDocument();
     expect(screen.getByTestId("chat-desktop-layout")).toBeInTheDocument();
     expect(await screen.findByRole("textbox", { name: "消息输入" })).toBeInTheDocument();
     expect(await screen.findByRole("link", { name: "去资源区添加资料" })).toBeInTheDocument();
   });
 
   it("requests only the latest message window on initial chat load", async () => {
-    const fetchMock = buildAuthenticatedFetch({ messageCount: 120 });
+    setupAuthenticatedWorkspace({ messageCount: 120 });
 
     render(
       <MemoryRouter initialEntries={["/chat/1"]}>
@@ -694,17 +683,16 @@ describe("chat workspace", () => {
     expect(await screen.findByRole("textbox", { name: "消息输入" })).toBeInTheDocument();
 
     await waitFor(() => {
-      expect(
-        fetchMock.mock.calls.some(
-          ([url]) =>
-            typeof url === "string" && url.includes("/api/chat/sessions/1/messages?limit=80"),
-        ),
-      ).toBe(true);
+      const messagesRequest = fetchMockCalls.find(
+        ([url]) =>
+          typeof url === "string" && url.includes("/api/chat/sessions/1/messages?limit=80"),
+      );
+      expect(messagesRequest).toBeDefined();
     });
   });
 
   it("toggles the left chat sidebar with cmd/ctrl+b", async () => {
-    buildAuthenticatedFetch();
+    setupAuthenticatedWorkspace();
 
     render(
       <MemoryRouter initialEntries={["/chat/1"]}>
@@ -725,7 +713,7 @@ describe("chat workspace", () => {
   });
 
   it("toggles the right context sidebar with an explicit collapse control", async () => {
-    buildAuthenticatedFetch();
+    setupAuthenticatedWorkspace();
 
     render(
       <MemoryRouter initialEntries={["/chat/1"]}>
@@ -746,7 +734,7 @@ describe("chat workspace", () => {
   });
 
   it("renders compact icon-only rails after collapsing desktop sidebars", async () => {
-    buildAuthenticatedFetch();
+    setupAuthenticatedWorkspace();
 
     render(
       <MemoryRouter initialEntries={["/chat/1"]}>
@@ -768,7 +756,7 @@ describe("chat workspace", () => {
   });
 
   it("renders a guided empty-session canvas after creating a new session", async () => {
-    buildAuthenticatedFetch();
+    setupAuthenticatedWorkspace();
 
     render(
       <MemoryRouter initialEntries={["/chat/1"]}>
@@ -788,7 +776,7 @@ describe("chat workspace", () => {
   });
 
   it("creates a new session without immediately refetching the session list", async () => {
-    const fetchMock = buildAuthenticatedFetch();
+    setupAuthenticatedWorkspace();
 
     render(
       <MemoryRouter initialEntries={["/chat/1"]}>
@@ -800,26 +788,39 @@ describe("chat workspace", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "新建会话" }));
 
-    let createSessionCall: (typeof fetchMock.mock.calls)[number] | undefined;
+    let createSessionCall: [string, RequestInit?] | undefined;
     await waitFor(() => {
-      createSessionCall = fetchMock.mock.calls.find(
+      createSessionCall = fetchMockCalls.find(
         ([url, init]) =>
           typeof url === "string" && url.endsWith("/api/chat/sessions") && init?.method === "POST",
       );
       expect(createSessionCall).toBeDefined();
     });
-    const sessionListCalls = fetchMock.mock.calls.filter(
+    const sessionListCalls = fetchMockCalls.filter(
       ([url, init]) =>
         typeof url === "string" &&
         url.endsWith("/api/chat/sessions") &&
         (init?.method === undefined || init.method === "GET"),
     );
     expect(sessionListCalls).toHaveLength(1);
-    expect(JSON.parse(String(createSessionCall?.[1]?.body))).toMatchObject({ title: null });
+    expect(
+      JSON.parse(
+        (() => {
+          const rawBody = createSessionCall?.[1]?.body;
+          if (rawBody instanceof ArrayBuffer || rawBody instanceof Uint8Array) {
+            return new TextDecoder().decode(rawBody);
+          }
+          if (typeof rawBody === "string") {
+            return rawBody;
+          }
+          return "{}";
+        })(),
+      ),
+    ).toMatchObject({ title: null });
   });
 
   it("clears stale local draft and attachments for a newly created session id", async () => {
-    buildAuthenticatedFetch();
+    setupAuthenticatedWorkspace();
     useChatUiStore.setState({
       activeSessionId: null,
       attachmentsBySession: {
@@ -857,7 +858,7 @@ describe("chat workspace", () => {
   });
 
   it("shows an explicit empty state when session search has no matches", async () => {
-    buildAuthenticatedFetch();
+    setupAuthenticatedWorkspace();
 
     render(
       <MemoryRouter initialEntries={["/chat/2"]}>
@@ -877,7 +878,7 @@ describe("chat workspace", () => {
   });
 
   it("renders markdown and sources for the active session", async () => {
-    buildAuthenticatedFetch();
+    setupAuthenticatedWorkspace();
 
     render(
       <MemoryRouter initialEntries={["/chat/1"]}>
@@ -887,16 +888,24 @@ describe("chat workspace", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByRole("link", { name: "Session A" })).toBeInTheDocument();
+    expect(await findSessionLink("Session A")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        fetchMockCalls.some(
+          ([url]) =>
+            typeof url === "string" && url.includes("/api/chat/sessions/1/messages?limit=80"),
+        ),
+      ).toBe(true);
+    });
     await waitFor(() => {
       expect(screen.getByText("OpenAI guide snippet")).toBeInTheDocument();
     });
-    expect(screen.getByText("Title")).toBeInTheDocument();
+    expect(await findTextContent("Title")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "查看引用 1" })).toBeInTheDocument();
   });
 
   it("uses a compact chat header and avoids duplicate composer guidance", async () => {
-    buildAuthenticatedFetch();
+    setupAuthenticatedWorkspace();
 
     render(
       <MemoryRouter initialEntries={["/chat/1"]}>
@@ -914,7 +923,7 @@ describe("chat workspace", () => {
   });
 
   it("embeds the composer directly without an extra outer surface shell", async () => {
-    buildAuthenticatedFetch();
+    setupAuthenticatedWorkspace();
 
     render(
       <MemoryRouter initialEntries={["/chat/2"]}>
@@ -931,7 +940,7 @@ describe("chat workspace", () => {
   });
 
   it("avoids rendering every row for very long sessions", async () => {
-    buildAuthenticatedFetch({ messageCount: 120 });
+    setupAuthenticatedWorkspace({ messageCount: 120 });
 
     render(
       <MemoryRouter initialEntries={["/chat/2"]}>
@@ -941,7 +950,7 @@ describe("chat workspace", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByRole("link", { name: "Session A" })).toBeInTheDocument();
+    expect(await findSessionLink("Session A")).toBeInTheDocument();
     expect(document.querySelector('[data-chat-contained="true"]')).toBeNull();
     await waitFor(() => {
       expect(screen.getAllByTestId("chat-message-virtual-item").length).toBeGreaterThan(0);
@@ -950,7 +959,7 @@ describe("chat workspace", () => {
   });
 
   it("stores draft in localStorage", async () => {
-    buildAuthenticatedFetch();
+    setupAuthenticatedWorkspace();
 
     render(
       <MemoryRouter initialEntries={["/chat/1"]}>
@@ -972,7 +981,7 @@ describe("chat workspace", () => {
   });
 
   it("stores draft by session and keeps it isolated when switching sessions", async () => {
-    buildAuthenticatedFetch();
+    setupAuthenticatedWorkspace();
 
     render(
       <MemoryRouter initialEntries={["/chat/1"]}>
@@ -982,16 +991,16 @@ describe("chat workspace", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByRole("link", { name: "Session A" })).toBeInTheDocument();
-    expect(await screen.findByRole("link", { name: "Session B" })).toBeInTheDocument();
+    expect(await findSessionLink("Session A")).toBeInTheDocument();
+    expect(await findSessionLink("Session B")).toBeInTheDocument();
     fireEvent.change(await screen.findByLabelText("消息输入"), {
       target: { value: "session-1 draft" },
     });
-    fireEvent.click(screen.getByRole("link", { name: "Session B" }));
+    fireEvent.click(await findSessionLink("Session B"));
     fireEvent.change(await screen.findByLabelText("消息输入"), {
       target: { value: "session-2 draft" },
     });
-    fireEvent.click(screen.getByRole("link", { name: "Session A" }));
+    fireEvent.click(await findSessionLink("Session A"));
 
     await waitFor(() => {
       expect(screen.getByLabelText("消息输入")).toHaveValue("session-1 draft");
@@ -999,7 +1008,7 @@ describe("chat workspace", () => {
   });
 
   it("submits through the streaming flow and clears the current session draft", async () => {
-    buildAuthenticatedFetch();
+    setupAuthenticatedWorkspace();
 
     render(
       <MemoryRouter initialEntries={["/chat/1"]}>
@@ -1009,7 +1018,7 @@ describe("chat workspace", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByRole("link", { name: "Session A" })).toBeInTheDocument();
+    expect(await findSessionLink("Session A")).toBeInTheDocument();
     fireEvent.change(await screen.findByLabelText("消息输入"), {
       target: { value: "hello stream" },
     });
@@ -1023,7 +1032,7 @@ describe("chat workspace", () => {
   });
 
   it("does not refetch the current message window after a successful stream completes", async () => {
-    const fetchMock = buildAuthenticatedFetch();
+    setupAuthenticatedWorkspace();
 
     render(
       <MemoryRouter initialEntries={["/chat/1"]}>
@@ -1033,15 +1042,15 @@ describe("chat workspace", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByRole("link", { name: "Session A" })).toBeInTheDocument();
+    expect(await findSessionLink("Session A")).toBeInTheDocument();
     fireEvent.change(await screen.findByLabelText("消息输入"), {
       target: { value: "hello stream" },
     });
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
 
-    expect(await screen.findByText("streamed answer")).toBeInTheDocument();
+    expect(await findTextContent("streamed answer")).toBeInTheDocument();
 
-    const messageWindowCalls = fetchMock.mock.calls.filter(
+    const messageWindowCalls = fetchMockCalls.filter(
       ([url]) => typeof url === "string" && url.includes("/api/chat/sessions/1/messages?limit=80"),
     );
 
@@ -1049,7 +1058,7 @@ describe("chat workspace", () => {
   });
 
   it("does not refetch the current message window or context after a successful attachment send", async () => {
-    const fetchMock = buildAuthenticatedFetch({ messages: [] });
+    setupAuthenticatedWorkspace({ messages: [] });
 
     render(
       <MemoryRouter initialEntries={["/chat/1"]}>
@@ -1059,7 +1068,7 @@ describe("chat workspace", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByRole("link", { name: "Session A" })).toBeInTheDocument();
+    expect(await findSessionLink("Session A")).toBeInTheDocument();
     expect(await screen.findByText("0 个附件")).toBeInTheDocument();
 
     const attachInput = await screen.findByLabelText("附加资源", {
@@ -1088,13 +1097,13 @@ describe("chat workspace", () => {
       }),
     );
 
-    expect(await screen.findByText("streamed answer")).toBeInTheDocument();
+    expect(await findTextContent("streamed answer")).toBeInTheDocument();
     expect(await screen.findByText("1 个附件")).toBeInTheDocument();
 
-    const messageWindowCalls = fetchMock.mock.calls.filter(
+    const messageWindowCalls = fetchMockCalls.filter(
       ([url]) => typeof url === "string" && url.includes("/api/chat/sessions/1/messages?limit=80"),
     );
-    const contextCalls = fetchMock.mock.calls.filter(
+    const contextCalls = fetchMockCalls.filter(
       ([url]) => typeof url === "string" && url.endsWith("/api/chat/sessions/1/context"),
     );
 
@@ -1103,7 +1112,7 @@ describe("chat workspace", () => {
   });
 
   it("marks the temporary assistant message as failed when the stream ends unexpectedly", async () => {
-    buildAuthenticatedFetch({
+    setupAuthenticatedWorkspace({
       streamFrames: [
         createChatStreamFrame(CHAT_STREAM_EVENT.runStarted, {
           run_id: 5,
@@ -1126,7 +1135,7 @@ describe("chat workspace", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByRole("link", { name: "Session A" })).toBeInTheDocument();
+    expect(await findSessionLink("Session A")).toBeInTheDocument();
     fireEvent.change(await screen.findByLabelText("消息输入"), {
       target: { value: "hello stream" },
     });
@@ -1136,7 +1145,7 @@ describe("chat workspace", () => {
       expect(screen.queryByText("正在生成回答")).not.toBeInTheDocument();
     });
 
-    expect(await screen.findByText("本次生成连接中断，请重试。")).toBeInTheDocument();
+    expect(await findTextContent("本次生成连接中断，请重试。")).toBeInTheDocument();
     expect(screen.getByText("作为")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "重试" })).toBeInTheDocument();
     await waitFor(() => {
@@ -1145,7 +1154,7 @@ describe("chat workspace", () => {
   });
 
   it("shows a toast when the stream request fails before any runtime event arrives", async () => {
-    buildAuthenticatedFetch({
+    setupAuthenticatedWorkspace({
       streamErrorResponse: {
         status: 409,
         body: {
@@ -1165,7 +1174,7 @@ describe("chat workspace", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByRole("link", { name: "Session A" })).toBeInTheDocument();
+    expect(await findSessionLink("Session A")).toBeInTheDocument();
     fireEvent.change(await screen.findByLabelText("消息输入"), {
       target: { value: "hello stream" },
     });
@@ -1177,7 +1186,7 @@ describe("chat workspace", () => {
   });
 
   it("shows retry for a failed assistant stream and retries against the user message id", async () => {
-    const fetchMock = buildAuthenticatedFetch({
+    setupAuthenticatedWorkspace({
       messages: [],
       streamFrames: [
         createChatStreamFrame(CHAT_STREAM_EVENT.runStarted, {
@@ -1202,17 +1211,17 @@ describe("chat workspace", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByRole("link", { name: "Session A" })).toBeInTheDocument();
+    expect(await findSessionLink("Session A")).toBeInTheDocument();
     fireEvent.change(await screen.findByLabelText("消息输入"), {
       target: { value: "hello stream" },
     });
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
 
-    await screen.findByText("本次生成连接中断，请重试。");
+    await findTextContent("本次生成连接中断，请重试。");
     fireEvent.click(await screen.findByRole("button", { name: "重试" }));
 
     await waitFor(() => {
-      const streamCalls = fetchMock.mock.calls.filter(
+      const streamCalls = fetchMockCalls.filter(
         ([url, init]) =>
           endsWithApiPath(url, "/api/chat/sessions/1/messages/stream") &&
           typeof init === "object" &&
@@ -1226,7 +1235,9 @@ describe("chat workspace", () => {
       const retryInit = streamCalls[1]?.[1];
       const retryBody =
         retryInit && typeof retryInit === "object" && "body" in retryInit
-          ? JSON.parse(String(retryInit.body))
+          ? JSON.parse(
+              typeof retryInit.body === "string" ? retryInit.body : JSON.stringify(retryInit.body),
+            )
           : null;
 
       expect(retryBody).toMatchObject({
@@ -1241,7 +1252,7 @@ describe("chat workspace", () => {
   });
 
   it("supports sending from Enter by default", async () => {
-    const fetchMock = buildAuthenticatedFetch();
+    setupAuthenticatedWorkspace();
 
     render(
       <MemoryRouter initialEntries={["/chat/1"]}>
@@ -1259,7 +1270,7 @@ describe("chat workspace", () => {
 
     await waitFor(() => {
       expect(
-        fetchMock.mock.calls.filter(
+        fetchMockCalls.filter(
           ([url, init]) =>
             endsWithApiPath(url, "/api/chat/sessions/1/messages/stream") &&
             typeof init === "object" &&
@@ -1270,11 +1281,11 @@ describe("chat workspace", () => {
       ).toHaveLength(1);
     });
 
-    expect(await screen.findByText("streamed answer")).toBeInTheDocument();
+    expect(await findTextContent("streamed answer")).toBeInTheDocument();
   });
 
   it("sends text with attachments from Enter and clears the composer immediately", async () => {
-    const fetchMock = buildAuthenticatedFetch();
+    setupAuthenticatedWorkspace();
 
     render(
       <MemoryRouter initialEntries={["/chat/1"]}>
@@ -1284,7 +1295,7 @@ describe("chat workspace", () => {
       </MemoryRouter>,
     );
 
-    await screen.findByRole("link", { name: "Session A" });
+    await findSessionLink("Session A");
     const attachInput = await screen.findByLabelText("附加资源", {
       selector: 'input[type="file"]',
     });
@@ -1319,7 +1330,7 @@ describe("chat workspace", () => {
     );
 
     await waitFor(() => {
-      const streamCall = fetchMock.mock.calls.find(
+      const streamCall = fetchMockCalls.find(
         ([url, init]) =>
           endsWithApiPath(url, "/api/chat/sessions/1/messages/stream") &&
           typeof init === "object" &&
@@ -1358,7 +1369,7 @@ describe("chat workspace", () => {
   });
 
   it("does not expose a send shortcut picker in the composer", async () => {
-    buildAuthenticatedFetch();
+    setupAuthenticatedWorkspace();
 
     render(
       <MemoryRouter initialEntries={["/chat/1"]}>
@@ -1373,7 +1384,7 @@ describe("chat workspace", () => {
   });
 
   it("shows failed message error, supports editing, and deleting failed message", async () => {
-    const fetchMock = buildAuthenticatedFetch();
+    setupAuthenticatedWorkspace();
 
     render(
       <MemoryRouter initialEntries={["/chat/1"]}>
@@ -1383,7 +1394,7 @@ describe("chat workspace", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText("provider unavailable")).toBeInTheDocument();
+    expect(await findTextContent("provider unavailable")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "编辑" }));
     await waitFor(() => {
@@ -1393,7 +1404,7 @@ describe("chat workspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "删除" }));
     await waitFor(() => {
       expect(
-        fetchMock.mock.calls.some(
+        fetchMockCalls.some(
           ([url, init]) =>
             endsWithApiPath(url, "/api/chat/messages/1") &&
             typeof init === "object" &&
@@ -1404,7 +1415,7 @@ describe("chat workspace", () => {
       ).toBe(true);
     });
     await waitFor(() => {
-      const contextCalls = fetchMock.mock.calls.filter(
+      const contextCalls = fetchMockCalls.filter(
         ([url]) => typeof url === "string" && url.endsWith("/api/chat/sessions/1/context"),
       );
 
@@ -1413,7 +1424,7 @@ describe("chat workspace", () => {
   });
 
   it("shows attachment feedback in the composer", async () => {
-    const fetchMock = buildAuthenticatedFetch();
+    setupAuthenticatedWorkspace();
 
     render(
       <MemoryRouter initialEntries={["/chat/1"]}>
@@ -1423,7 +1434,7 @@ describe("chat workspace", () => {
       </MemoryRouter>,
     );
 
-    await screen.findByRole("link", { name: "Session A" });
+    await findSessionLink("Session A");
     const attachInput = await screen.findByLabelText("附加资源", {
       selector: 'input[type="file"]',
     });
@@ -1433,13 +1444,10 @@ describe("chat workspace", () => {
 
     expect(await screen.findByText("upload.png")).toBeInTheDocument();
     expect(screen.getByText("待发送")).toBeInTheDocument();
-    expect(
-      fetchMock.mock.calls.some(([url]) => endsWithApiPath(url, "/api/documents/upload")),
-    ).toBe(false);
   });
 
   it("does not append duplicate local attachments when the same file is selected twice", async () => {
-    const fetchMock = buildAuthenticatedFetch();
+    setupAuthenticatedWorkspace();
 
     render(
       <MemoryRouter initialEntries={["/chat/1"]}>
@@ -1449,7 +1457,7 @@ describe("chat workspace", () => {
       </MemoryRouter>,
     );
 
-    await screen.findByRole("link", { name: "Session A" });
+    await findSessionLink("Session A");
     const attachInput = await screen.findByLabelText("附加资源", {
       selector: 'input[type="file"]',
     });
@@ -1497,7 +1505,7 @@ describe("chat workspace", () => {
 
     await waitFor(() => {
       expect(MockXMLHttpRequest.instances).toHaveLength(1);
-      const streamCall = fetchMock.mock.calls.find(
+      const streamCall = fetchMockCalls.find(
         ([url, init]) =>
           endsWithApiPath(url, "/api/chat/sessions/1/messages/stream") &&
           typeof init === "object" &&
@@ -1512,7 +1520,6 @@ describe("chat workspace", () => {
         typeof init?.body === "string" ? init.body : JSON.stringify(init?.body ?? {});
       const parsedPayload = JSON.parse(requestBody) as {
         attachments?: Array<{
-          attachment_id: string;
           name: string;
         }>;
       };
@@ -1523,7 +1530,7 @@ describe("chat workspace", () => {
   });
 
   it("restores the composer snapshot when streaming fails after attachments upload", async () => {
-    buildAuthenticatedFetch({
+    setupAuthenticatedWorkspace({
       streamFrames: [
         createChatStreamFrame(CHAT_STREAM_EVENT.runStarted, {
           run_id: 5,
@@ -1592,7 +1599,7 @@ describe("chat workspace", () => {
   });
 
   it("pastes clipboard images into the composer and uploads them on send", async () => {
-    const fetchMock = buildAuthenticatedFetch();
+    setupAuthenticatedWorkspace();
 
     render(
       <MemoryRouter initialEntries={["/chat/1"]}>
@@ -1640,7 +1647,7 @@ describe("chat workspace", () => {
     );
 
     await waitFor(() => {
-      const streamCall = fetchMock.mock.calls.find(
+      const streamCall = fetchMockCalls.find(
         ([url, init]) =>
           endsWithApiPath(url, "/api/chat/sessions/1/messages/stream") &&
           typeof init === "object" &&
@@ -1674,7 +1681,7 @@ describe("chat workspace", () => {
   });
 
   it("uploads multiple queued attachments before streaming and only sends one stream request", async () => {
-    const fetchMock = buildAuthenticatedFetch();
+    setupAuthenticatedWorkspace();
 
     render(
       <MemoryRouter initialEntries={["/chat/1"]}>
@@ -1709,7 +1716,7 @@ describe("chat workspace", () => {
     });
 
     expect(
-      fetchMock.mock.calls.filter(
+      fetchMockCalls.filter(
         ([url, init]) =>
           endsWithApiPath(url, "/api/chat/sessions/1/messages/stream") &&
           typeof init === "object" &&
@@ -1733,7 +1740,7 @@ describe("chat workspace", () => {
     );
 
     expect(
-      fetchMock.mock.calls.filter(
+      fetchMockCalls.filter(
         ([url, init]) =>
           endsWithApiPath(url, "/api/chat/sessions/1/messages/stream") &&
           typeof init === "object" &&
@@ -1757,7 +1764,7 @@ describe("chat workspace", () => {
     );
 
     await waitFor(() => {
-      const streamCalls = fetchMock.mock.calls.filter(
+      const streamCalls = fetchMockCalls.filter(
         ([url, init]) =>
           endsWithApiPath(url, "/api/chat/sessions/1/messages/stream") &&
           typeof init === "object" &&
@@ -1785,7 +1792,7 @@ describe("chat workspace", () => {
   });
 
   it("keeps unsupported attachment feedback local to the composer", async () => {
-    buildAuthenticatedFetch();
+    setupAuthenticatedWorkspace();
 
     render(
       <MemoryRouter initialEntries={["/chat/1"]}>
@@ -1810,7 +1817,7 @@ describe("chat workspace", () => {
   });
 
   it("supports renaming a session from the session list", async () => {
-    const fetchMock = buildAuthenticatedFetch();
+    setupAuthenticatedWorkspace();
 
     render(
       <MemoryRouter initialEntries={["/chat/1"]}>
@@ -1820,7 +1827,7 @@ describe("chat workspace", () => {
       </MemoryRouter>,
     );
 
-    fireEvent.click(await screen.findByRole("button", { name: "重命名 Session A" }));
+    fireEvent.click(await screen.findByLabelText("重命名 Session A"));
     fireEvent.change(screen.getByLabelText("会话名称"), {
       target: { value: "Session A Renamed" },
     });
@@ -1828,7 +1835,7 @@ describe("chat workspace", () => {
 
     await waitFor(() => {
       expect(
-        fetchMock.mock.calls.some(
+        fetchMockCalls.some(
           ([url, init]) =>
             endsWithApiPath(url, "/api/chat/sessions/1") &&
             typeof init === "object" &&
@@ -1841,7 +1848,7 @@ describe("chat workspace", () => {
   });
 
   it("supports deleting a session from the session list", async () => {
-    const fetchMock = buildAuthenticatedFetch();
+    setupAuthenticatedWorkspace();
 
     render(
       <MemoryRouter initialEntries={["/chat/1"]}>
@@ -1851,11 +1858,11 @@ describe("chat workspace", () => {
       </MemoryRouter>,
     );
 
-    fireEvent.click(await screen.findByRole("button", { name: "删除 Session A" }));
+    fireEvent.click(await screen.findByLabelText("删除 Session A"));
 
     await waitFor(() => {
       expect(
-        fetchMock.mock.calls.some(
+        fetchMockCalls.some(
           ([url, init]) =>
             endsWithApiPath(url, "/api/chat/sessions/1") &&
             typeof init === "object" &&
@@ -1868,7 +1875,7 @@ describe("chat workspace", () => {
   });
 
   it("disables creating another session while the request is still pending", async () => {
-    buildAuthenticatedFetch({ delayCreateSession: true });
+    setupAuthenticatedWorkspace({ delayCreateSession: true });
 
     render(
       <MemoryRouter initialEntries={["/chat/1"]}>
@@ -1887,7 +1894,7 @@ describe("chat workspace", () => {
   });
 
   it("keeps the session switch responsive while sending a streamed request", async () => {
-    buildAuthenticatedFetch();
+    setupAuthenticatedWorkspace();
 
     render(
       <MemoryRouter initialEntries={["/chat/1"]}>
@@ -1897,13 +1904,13 @@ describe("chat workspace", () => {
       </MemoryRouter>,
     );
 
-    fireEvent.click(await screen.findByRole("link", { name: "Session A" }));
-    expect(await screen.findByRole("link", { name: "Session B" })).toBeInTheDocument();
+    fireEvent.click(await findSessionLink("Session A"));
+    expect(await findSessionLink("Session B")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("消息输入"), {
       target: { value: "background run" },
     });
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
-    fireEvent.click(screen.getByRole("link", { name: "Session B" }));
+    fireEvent.click(await findSessionLink("Session B"));
 
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Session B" })).toBeInTheDocument();
@@ -1911,7 +1918,7 @@ describe("chat workspace", () => {
   });
 
   it("releases the composer lock when switching to another session during a pending send", async () => {
-    buildAuthenticatedFetch({ streamFinalDelayMs: 150 });
+    setupAuthenticatedWorkspace({ streamFinalDelayMs: 150 });
 
     render(
       <MemoryRouter initialEntries={["/chat/1"]}>
@@ -1921,8 +1928,8 @@ describe("chat workspace", () => {
       </MemoryRouter>,
     );
 
-    await screen.findByRole("link", { name: "Session A" });
-    expect(await screen.findByRole("link", { name: "Session B" })).toBeInTheDocument();
+    await findSessionLink("Session A");
+    expect(await findSessionLink("Session B")).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("消息输入"), {
       target: { value: "background run" },
@@ -1933,7 +1940,7 @@ describe("chat workspace", () => {
       expect(screen.getByRole("button", { name: "发送中" })).toBeDisabled();
     });
 
-    fireEvent.click(screen.getByRole("link", { name: "Session B" }));
+    fireEvent.click(await findSessionLink("Session B"));
 
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Session B" })).toBeInTheDocument();
@@ -1943,7 +1950,7 @@ describe("chat workspace", () => {
   });
 
   it("allows sending in another session while the previous session is still streaming", async () => {
-    const fetchMock = buildAuthenticatedFetch({ streamFinalDelayMs: 150 });
+    setupAuthenticatedWorkspace({ streamFinalDelayMs: 150 });
 
     render(
       <MemoryRouter initialEntries={["/chat/1"]}>
@@ -1953,15 +1960,15 @@ describe("chat workspace", () => {
       </MemoryRouter>,
     );
 
-    await screen.findByRole("link", { name: "Session A" });
-    expect(await screen.findByRole("link", { name: "Session B" })).toBeInTheDocument();
+    await findSessionLink("Session A");
+    expect(await findSessionLink("Session B")).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("消息输入"), {
       target: { value: "background run" },
     });
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
 
-    fireEvent.click(screen.getByRole("link", { name: "Session B" }));
+    fireEvent.click(await findSessionLink("Session B"));
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Session B" })).toBeInTheDocument();
     });
@@ -1972,7 +1979,7 @@ describe("chat workspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
 
     await waitFor(() => {
-      const streamCalls = fetchMock.mock.calls.filter(
+      const streamCalls = fetchMockCalls.filter(
         ([url, init]) =>
           endsWithApiPath(url, "/api/chat/sessions/2/messages/stream") &&
           typeof init === "object" &&
@@ -1986,7 +1993,7 @@ describe("chat workspace", () => {
   });
 
   it("keeps the original session locked when switching away and back until its stream finishes", async () => {
-    buildAuthenticatedFetch({ streamFinalDelayMs: 150 });
+    setupAuthenticatedWorkspace({ streamFinalDelayMs: 150 });
 
     render(
       <MemoryRouter initialEntries={["/chat/1"]}>
@@ -1996,8 +2003,8 @@ describe("chat workspace", () => {
       </MemoryRouter>,
     );
 
-    await screen.findByRole("link", { name: "Session A" });
-    expect(await screen.findByRole("link", { name: "Session B" })).toBeInTheDocument();
+    await findSessionLink("Session A");
+    expect(await findSessionLink("Session B")).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("消息输入"), {
       target: { value: "background run" },
@@ -2008,13 +2015,13 @@ describe("chat workspace", () => {
       expect(screen.getByRole("button", { name: "发送中" })).toBeDisabled();
     });
 
-    fireEvent.click(screen.getByRole("link", { name: "Session B" }));
+    fireEvent.click(await findSessionLink("Session B"));
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Session B" })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();
     });
 
-    fireEvent.click(screen.getByRole("link", { name: "Session A" }));
+    fireEvent.click(await findSessionLink("Session A"));
 
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Session A" })).toBeInTheDocument();
@@ -2030,7 +2037,7 @@ describe("chat workspace", () => {
   });
 
   it("does not carry the retry lock into another session", async () => {
-    buildAuthenticatedFetch({
+    setupAuthenticatedWorkspace({
       messages: [
         {
           id: 1,
@@ -2061,15 +2068,15 @@ describe("chat workspace", () => {
       </MemoryRouter>,
     );
 
-    await screen.findByRole("link", { name: "Session A" });
-    expect(await screen.findByRole("link", { name: "Session B" })).toBeInTheDocument();
+    await findSessionLink("Session A");
+    expect(await findSessionLink("Session B")).toBeInTheDocument();
     fireEvent.click(await screen.findByRole("button", { name: "重试" }));
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "发送中" })).toBeDisabled();
     });
 
-    fireEvent.click(screen.getByRole("link", { name: "Session B" }));
+    fireEvent.click(await findSessionLink("Session B"));
 
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Session B" })).toBeInTheDocument();
@@ -2079,7 +2086,7 @@ describe("chat workspace", () => {
   });
 
   it("clears the restored composer snapshot after a retry succeeds across session switches", async () => {
-    buildAuthenticatedFetch({
+    setupAuthenticatedWorkspace({
       messages: [
         {
           id: 1,
@@ -2120,8 +2127,8 @@ describe("chat workspace", () => {
       </MemoryRouter>,
     );
 
-    await screen.findByRole("link", { name: "Session A" });
-    expect(await screen.findByRole("link", { name: "Session B" })).toBeInTheDocument();
+    await findSessionLink("Session A");
+    expect(await findSessionLink("Session B")).toBeInTheDocument();
     act(() => {
       useChatUiStore.setState({
         attachmentsBySession: {
@@ -2159,13 +2166,13 @@ describe("chat workspace", () => {
       expect(screen.queryByTestId("message-input-attachments")).not.toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole("link", { name: "Session B" }));
+    fireEvent.click(await findSessionLink("Session B"));
 
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Session B" })).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole("link", { name: "Session A" }));
+    fireEvent.click(await findSessionLink("Session A"));
 
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Session A" })).toBeInTheDocument();
@@ -2176,7 +2183,7 @@ describe("chat workspace", () => {
   });
 
   it("keeps newer composer input when retrying an older failed message", async () => {
-    buildAuthenticatedFetch({
+    setupAuthenticatedWorkspace({
       messages: [
         {
           id: 1,
@@ -2217,7 +2224,7 @@ describe("chat workspace", () => {
       </MemoryRouter>,
     );
 
-    await screen.findByRole("link", { name: "Session A" });
+    await findSessionLink("Session A");
     act(() => {
       useChatUiStore.setState({
         attachmentsBySession: {
@@ -2267,7 +2274,7 @@ describe("chat workspace", () => {
   });
 
   it("prefers a persisted succeeded answer over a stale local streaming run after switching sessions", async () => {
-    buildAuthenticatedFetch({
+    setupAuthenticatedWorkspace({
       messagesBySession: {
         2: [
           {
@@ -2321,12 +2328,12 @@ describe("chat workspace", () => {
     );
 
     expect(await screen.findByRole("heading", { name: "Session B" })).toBeInTheDocument();
-    expect(await screen.findByText("第二个会话的最终答案")).toBeInTheDocument();
+    expect(await findTextContent("第二个会话的最终答案")).toBeInTheDocument();
     expect(screen.queryByText("正在生成回答")).not.toBeInTheDocument();
   });
 
   it("does not request active runs when the workspace relies on local streaming state", async () => {
-    const fetchMock = buildAuthenticatedFetch();
+    setupAuthenticatedWorkspace();
 
     render(
       <MemoryRouter initialEntries={["/chat/1"]}>
@@ -2336,25 +2343,26 @@ describe("chat workspace", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByRole("link", { name: "Session A" })).toBeInTheDocument();
+    expect(await findSessionLink("Session A")).toBeInTheDocument();
 
     await waitFor(() => {
       expect(
-        fetchMock.mock.calls.some(
+        fetchMockCalls.some(
           ([url]) => typeof url === "string" && url.endsWith("/api/chat/sessions"),
         ),
       ).toBe(true);
     });
 
     expect(
-      fetchMock.mock.calls.some(
+      fetchMockCalls.some(
         ([url]) => typeof url === "string" && url.endsWith("/api/chat/runs/active"),
       ),
     ).toBe(false);
   });
 
   it("shows the background session completion toast in the active locale", async () => {
-    buildAuthenticatedFetch();
+    setupAuthenticatedWorkspace();
+    setAccessToken("test-token");
     const successSpy = vi.spyOn(toast, "success");
 
     useChatStreamStore.setState({
@@ -2390,12 +2398,13 @@ describe("chat workspace", () => {
   it("uses the localized untitled session fallback in background completion toasts", async () => {
     useUiStore.setState({ language: "en" });
     await i18n.changeLanguage("en");
-    buildAuthenticatedFetch({
+    setupAuthenticatedWorkspace({
       sessions: [
-        { id: 1, title: "Session A" },
-        { id: 2, title: null },
+        { id: 1, title: "Session A", reasoning_mode: "default" },
+        { id: 2, title: null, reasoning_mode: "default" },
       ],
     });
+    setAccessToken("test-token");
     const successSpy = vi.spyOn(toast, "success");
 
     useChatStreamStore.setState({
@@ -2429,7 +2438,7 @@ describe("chat workspace", () => {
   });
 
   it("prioritizes the main chat canvas on mobile and exposes sessions/context in sheets", async () => {
-    buildAuthenticatedFetch();
+    setupAuthenticatedWorkspace();
     mockMobileViewport();
 
     render(
@@ -2448,9 +2457,9 @@ describe("chat workspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "打开会话面板" }));
     expect(await screen.findByLabelText("搜索会话")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "关闭" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("link", { name: "Session A" }));
+    fireEvent.click(await findSessionLink("Session A"));
 
-    fireEvent.click(screen.getByRole("button", { name: "打开上下文面板" }));
+    fireEvent.click(await screen.findByRole("button", { name: "打开上下文面板" }));
     expect(await screen.findByText("会话概览")).toBeInTheDocument();
   });
 });

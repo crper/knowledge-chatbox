@@ -19,15 +19,9 @@ import {
 } from "@/components/ui/dialog";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import {
-  buildFormValidationResult,
-  formError,
-  getFirstFormError,
-  handleFormSubmitEvent,
-  minLength,
-  toFieldErrorItems,
-  trimmedRequired,
-} from "@/lib/forms";
+import { getFirstFormError, handleFormSubmitEvent, toFieldErrorItems } from "@/lib/forms";
+import { zodToTanStackFormErrors } from "@/lib/validation/form-adapter";
+import { createUserSchema } from "@/lib/validation/schemas";
 
 type CreateUserDialogProps = {
   open: boolean;
@@ -55,19 +49,12 @@ export function CreateUserDialog({ open, onClose, onSubmit }: CreateUserDialogPr
     }),
     validators: {
       onDynamic: ({ value }) => {
-        const username = trimmedRequired(value.username, "usernameRequiredError");
-        const password =
-          trimmedRequired(value.password, "initialPasswordRequiredError") ??
-          minLength(value.password, 8, "passwordLengthValidationError");
-
-        if (!username && !password) {
-          return undefined;
-        }
-
-        return buildFormValidationResult(formError("createUserValidationError"), {
-          password,
-          username,
-        });
+        const result = createUserSchema.safeParse(value);
+        return result.success
+          ? undefined
+          : zodToTanStackFormErrors(result.error, {
+              formI18nKey: "users:createUserValidationError",
+            });
       },
     },
     onSubmit: async ({ formApi, value }) => {
@@ -158,6 +145,7 @@ export function CreateUserDialog({ open, onClose, onSubmit }: CreateUserDialogPr
           <form.Subscribe selector={(state) => state.errorMap}>
             {(errorMap) => {
               const errorMessage = getFirstFormError([errorMap.onDynamic, errorMap.onSubmit], t);
+
               return errorMessage ? (
                 <Alert variant="destructive">
                   <AlertDescription>{errorMessage}</AlertDescription>

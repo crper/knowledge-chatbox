@@ -125,7 +125,7 @@ export function LoginPage() {
 
   return (
     <main className="relative min-h-[100dvh] overflow-x-hidden bg-background px-5 py-6 text-foreground md:px-6 md:py-8">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,hsl(var(--primary)/0.1),transparent_28%),radial-gradient(circle_at_bottom_right,hsl(var(--chart-2)/0.08),transparent_24%),linear-gradient(180deg,hsl(var(--background))_0%,hsl(var(--sidebar)/0.78)_100%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_72%_52%_at_top_left,hsl(var(--primary)/0.07),transparent_46%),linear-gradient(180deg,hsl(var(--background))_0%,hsl(var(--sidebar)/0.82)_100%)]" />
       <div className="relative mx-auto flex min-h-[calc(100dvh-3rem)] max-w-7xl flex-col gap-6">
         <div className="flex items-center justify-between gap-2 sm:justify-end">
           <LanguageToggle compact />
@@ -149,30 +149,30 @@ export function LoginPage() {
                     title={t("workspaceTitle", { ns: "common" })}
                   />
                   <Dialog>
-                    <DialogTrigger asChild>
-                      <Button
-                        aria-label={t("aboutWorkspaceAction")}
-                        className="rounded-full border-border/70 bg-background/62 text-muted-foreground shadow-none hover:bg-background/78 hover:text-foreground"
-                        size="icon-sm"
-                        variant="outline"
-                      >
-                        <CircleHelpIcon aria-hidden="true" className="size-4" />
-                        <span className="sr-only">{t("aboutWorkspaceAction")}</span>
-                      </Button>
+                    <DialogTrigger
+                      render={
+                        <Button
+                          aria-label={t("aboutWorkspaceAction")}
+                          className="rounded-full border-border/70 bg-background/62 text-muted-foreground shadow-none hover:bg-background/78 hover:text-foreground"
+                          size="icon-sm"
+                          variant="outline"
+                        />
+                      }
+                    >
+                      <CircleHelpIcon aria-hidden="true" className="size-4" />
+                      <span className="sr-only">{t("aboutWorkspaceAction")}</span>
                     </DialogTrigger>
                     <DialogContent
-                      className="max-w-lg gap-0 rounded-[1.5rem] p-0 sm:max-w-lg"
+                      className="max-w-lg gap-0 rounded-2xl p-0 sm:max-w-lg"
                       closeLabel={t("closeAction", { ns: "common" })}
                     >
                       <div className="border-b border-border/70 bg-sidebar/64 px-6 py-5">
-                        <span className="surface-outline inline-flex rounded-full px-3 py-1 text-xs font-medium text-muted-foreground">
+                        <span className="surface-light inline-flex rounded-full px-3 py-1 text-ui-kicker text-muted-foreground">
                           {t("aboutHighlights")}
                         </span>
                         <DialogHeader className="mt-4">
-                          <DialogTitle className="text-2xl leading-tight font-semibold tracking-tight">
-                            {t("aboutTitle")}
-                          </DialogTitle>
-                          <DialogDescription className="max-w-xl leading-6">
+                          <DialogTitle className="text-ui-heading">{t("aboutTitle")}</DialogTitle>
+                          <DialogDescription className="max-w-xl text-ui-body">
                             {t("aboutDescription")}
                           </DialogDescription>
                         </DialogHeader>
@@ -180,9 +180,9 @@ export function LoginPage() {
 
                       <div className="grid gap-3 px-6 py-6">
                         {aboutSections.map((section) => (
-                          <div key={section.title} className="surface-outline rounded-2xl p-4">
-                            <p className="text-sm font-medium">{section.title}</p>
-                            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                          <div key={section.title} className="surface-light rounded-2xl p-4">
+                            <p className="text-ui-title">{section.title}</p>
+                            <p className="mt-2 text-ui-subtle text-muted-foreground">
                               {section.description}
                             </p>
                           </div>
@@ -193,13 +193,9 @@ export function LoginPage() {
                 </div>
 
                 <div className="space-y-4">
-                  <CardDescription className="text-[0.69rem] tracking-[0.14em] uppercase">
-                    {t("brandEyebrow")}
-                  </CardDescription>
-                  <h1 className="max-w-2xl text-4xl leading-tight font-semibold tracking-tight text-balance md:text-[3.2rem]">
-                    {t("brandHeadline")}
-                  </h1>
-                  <p className="max-w-[62ch] text-base leading-7 text-muted-foreground md:text-[1.02rem]">
+                  <CardDescription className="text-ui-kicker">{t("brandEyebrow")}</CardDescription>
+                  <h1 className="max-w-2xl text-ui-display text-balance">{t("brandHeadline")}</h1>
+                  <p className="max-w-[62ch] text-ui-body text-muted-foreground">
                     {t("brandDescription")}
                   </p>
                 </div>
@@ -207,31 +203,29 @@ export function LoginPage() {
 
               <div className="space-y-4 border-t border-border/60 pt-6">
                 <div className="space-y-1">
-                  <p className="text-[0.68rem] font-medium tracking-[0.12em] text-muted-foreground uppercase">
-                    {t("entryChecklistTitle")}
-                  </p>
-                  <p className="max-w-[58ch] text-sm leading-6 text-muted-foreground">
+                  <p className="text-ui-kicker text-muted-foreground">{t("entryChecklistTitle")}</p>
+                  <p className="max-w-[58ch] text-ui-subtle text-muted-foreground">
                     {t("entryChecklistDescription")}
                   </p>
                 </div>
 
-                <ol aria-label={t("entryChecklistTitle")} className="space-y-1">
+                <ol aria-label={t("entryChecklistTitle")} className="space-y-0.5">
                   {workbenchSteps.map(({ icon: Icon, title, description }, index) => (
                     <li
                       key={title}
-                      className="grid grid-cols-[auto_minmax(0,1fr)] gap-4 py-3.5 not-last:border-b not-last:border-border/40"
+                      className="grid grid-cols-[auto_minmax(0,1fr)] gap-4 py-4 not-last:border-b not-last:border-border/36"
                     >
                       <div className="flex items-center gap-3">
-                        <span className="surface-icon flex size-10 items-center justify-center rounded-2xl text-primary">
+                        <span className="surface-light flex size-10 items-center justify-center rounded-2xl text-primary">
                           <Icon aria-hidden="true" className="size-4" />
                         </span>
-                        <span className="text-[0.68rem] font-medium tracking-[0.12em] text-muted-foreground uppercase">
+                        <span className="text-ui-kicker text-muted-foreground">
                           {`0${index + 1}`}
                         </span>
                       </div>
                       <div className="space-y-1">
-                        <p className="font-medium">{title}</p>
-                        <p className="text-sm leading-6 text-muted-foreground">{description}</p>
+                        <p className="text-ui-title">{title}</p>
+                        <p className="text-ui-subtle text-muted-foreground">{description}</p>
                       </div>
                     </li>
                   ))}
@@ -244,16 +238,14 @@ export function LoginPage() {
             aria-label={t("loginRegionLabel")}
             className="order-1 flex justify-center lg:order-2 lg:items-center lg:justify-end"
           >
-            <Card className="surface-liquid w-full max-w-md rounded-[1.95rem] py-6">
+            <Card className="surface-elevated w-full max-w-md rounded-3xl py-6">
               <CardHeader className="gap-4 border-b border-border/70 pb-6">
                 <div className="space-y-4 pl-4">
                   <Badge className="w-fit rounded-full px-3 py-1" variant="outline">
                     {t("loginHint")}
                   </Badge>
                   <div className="space-y-2">
-                    <h2 className="text-[1.75rem] leading-tight font-semibold tracking-tight">
-                      {t("loginTitle")}
-                    </h2>
+                    <h2 className="text-ui-heading">{t("loginTitle")}</h2>
                     <CardDescription>{t("controlledAccessDescription")}</CardDescription>
                   </div>
                 </div>
@@ -268,7 +260,7 @@ export function LoginPage() {
                   }}
                   onSubmit={handleSubmit}
                 />
-                <p className="border-t border-border/60 pl-4 pt-4 text-sm leading-6 text-muted-foreground">
+                <p className="border-t border-border/60 pl-4 pt-4 text-ui-subtle text-muted-foreground">
                   {t("workspaceConsistencyDescription")}
                 </p>
               </CardContent>

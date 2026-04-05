@@ -51,7 +51,7 @@ export function WorkspaceMetricCard({
             <p className="text-ui-heading text-foreground">{value}</p>
             {detail ? <p className="text-ui-subtle text-muted-foreground">{detail}</p> : null}
           </div>
-          <span className="surface-icon flex size-10 shrink-0 items-center justify-center rounded-2xl text-primary">
+          <span className="surface-light flex size-10 shrink-0 items-center justify-center rounded-2xl text-primary">
             <Icon aria-hidden="true" className="size-4" />
           </span>
         </div>
@@ -82,11 +82,13 @@ export function WorkspacePage({
   return (
     <div
       className={cn(
-        "mx-auto flex w-full flex-col px-4 py-4 lg:px-6 lg:py-6",
+        "mx-auto flex w-full flex-col",
+        // 统一的间距系统：紧凑的 4-6-8 节奏
+        "px-4 py-5 lg:px-8 lg:py-8",
         width === "content" ? "max-w-4xl" : "max-w-7xl",
         surface === "flat"
-          ? "gap-5 bg-[radial-gradient(circle_at_top,hsl(var(--primary)/0.08),transparent_32%),radial-gradient(circle_at_85%_0%,hsl(var(--chart-2)/0.08),transparent_24%)] lg:gap-6"
-          : "gap-6 lg:gap-7",
+          ? "gap-6 bg-[radial-gradient(circle_at_top,hsl(var(--primary)/0.07),transparent_32%)] lg:gap-8"
+          : "gap-6 lg:gap-8",
         className,
       )}
       data-layout-surface={surface}
@@ -95,18 +97,19 @@ export function WorkspacePage({
     >
       <section
         className={cn(
-          "flex flex-col gap-5 px-1 py-1 lg:flex-row lg:items-start lg:justify-between",
-          surface === "flat" ? "gap-4 px-0 py-0" : "",
+          // 更紧凑的 header 间距
+          "flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between",
+          surface === "flat" ? "gap-3" : "",
           headerClassName,
         )}
       >
-        <div className="space-y-3">
+        <div className="space-y-2.5">
           {badge ? (
             <Badge className="rounded-full px-3 py-1" variant="outline">
               {badge}
             </Badge>
           ) : null}
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             <h1 className="text-ui-display">{title}</h1>
             <div className="text-ui-body measure-readable text-muted-foreground">{description}</div>
           </div>
@@ -115,19 +118,28 @@ export function WorkspacePage({
       </section>
 
       {metrics ? (
-        <section className={cn("grid gap-4 md:grid-cols-3", metricsClassName)}>{metrics}</section>
+        <section
+          className={cn(
+            // 更统一的 metrics 间距
+            "grid gap-3 rounded-2xl border border-border/40 bg-muted/20 px-4 py-4 md:grid-cols-3",
+            metricsClassName,
+          )}
+        >
+          {metrics}
+        </section>
       ) : null}
 
       <section
         className={cn(
-          "grid gap-4",
-          aside ? "xl:items-start xl:grid-cols-[minmax(0,1.45fr)_320px]" : "xl:grid-cols-1",
+          // 优化主内容区域比例和间距
+          "grid gap-5",
+          aside ? "xl:items-start xl:grid-cols-[minmax(0,1fr)_300px]" : "xl:grid-cols-1",
           surface === "flat" ? "gap-6" : "",
           layoutClassName,
         )}
       >
         <div className="min-w-0">{main}</div>
-        {aside ? <div className="grid auto-rows-max gap-4">{aside}</div> : null}
+        {aside ? <aside className="grid auto-rows-max gap-4">{aside}</aside> : null}
       </section>
     </div>
   );

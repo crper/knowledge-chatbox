@@ -1,12 +1,12 @@
 import {
   buildFormValidationResult,
   formError,
-  isValidHttpUrl,
-  positiveIntegerInRange,
   trimmedRequired,
+  normalizeText,
   type FormErrorDescriptor,
   type FormValidationResult,
 } from "@/lib/forms";
+import { httpUrlSchema, positiveIntegerInRange } from "@/lib/validation/schemas";
 import type {
   AppSettings,
   EmbeddingProviderName,
@@ -80,9 +80,11 @@ export type ProviderProfileModels = {
   voyage: VoyageProfile;
 };
 
-function normalizeText(value: string | null | undefined) {
-  return typeof value === "string" ? value : "";
-}
+type ProfileModelField = "chat_model" | "embedding_model" | "vision_model";
+
+const RESPONSE_MODEL_FIELD: ProfileModelField = "chat_model";
+const EMBEDDING_MODEL_FIELD: ProfileModelField = "embedding_model";
+const VISION_MODEL_FIELD: ProfileModelField = "vision_model";
 
 function cloneProfiles(profiles: ProviderProfiles): ProviderProfileModels {
   return {
@@ -107,34 +109,34 @@ function syncRouteModelsIntoProfiles(settings: AppSettings): ProviderProfileMode
   const profiles = cloneProfiles(settings.provider_profiles);
   const effectiveEmbeddingRoute = settings.pending_embedding_route ?? settings.embedding_route;
 
-  if (settings.response_route.provider === "openai") {
-    profiles.openai.chat_model = normalizeText(settings.response_route.model);
-  }
-  if (settings.response_route.provider === "anthropic") {
-    profiles.anthropic.chat_model = normalizeText(settings.response_route.model);
-  }
-  if (settings.response_route.provider === "ollama") {
-    profiles.ollama.chat_model = normalizeText(settings.response_route.model);
-  }
+  const modelSyncEntries: Array<{
+    provider: string;
+    field: ProfileModelField;
+    model: string;
+  }> = [
+    {
+      provider: settings.response_route.provider,
+      field: RESPONSE_MODEL_FIELD,
+      model: settings.response_route.model,
+    },
+    {
+      provider: effectiveEmbeddingRoute.provider,
+      field: EMBEDDING_MODEL_FIELD,
+      model: effectiveEmbeddingRoute.model,
+    },
+    {
+      provider: settings.vision_route.provider,
+      field: VISION_MODEL_FIELD,
+      model: settings.vision_route.model,
+    },
+  ];
 
-  if (effectiveEmbeddingRoute.provider === "openai") {
-    profiles.openai.embedding_model = normalizeText(effectiveEmbeddingRoute.model);
-  }
-  if (effectiveEmbeddingRoute.provider === "voyage") {
-    profiles.voyage.embedding_model = normalizeText(effectiveEmbeddingRoute.model);
-  }
-  if (effectiveEmbeddingRoute.provider === "ollama") {
-    profiles.ollama.embedding_model = normalizeText(effectiveEmbeddingRoute.model);
-  }
-
-  if (settings.vision_route.provider === "openai") {
-    profiles.openai.vision_model = normalizeText(settings.vision_route.model);
-  }
-  if (settings.vision_route.provider === "anthropic") {
-    profiles.anthropic.vision_model = normalizeText(settings.vision_route.model);
-  }
-  if (settings.vision_route.provider === "ollama") {
-    profiles.ollama.vision_model = normalizeText(settings.vision_route.model);
+  for (const { provider, field, model } of modelSyncEntries) {
+    if (provider in profiles) {
+      (profiles[provider as keyof ProviderProfileModels] as Record<string, string | undefined>)[
+        field
+      ] = normalizeText(model);
+    }
   }
 
   return profiles;
@@ -271,10 +273,8 @@ export function validateProviderSettingsView(
     chatModel: trimmedRequired(chatModel, "chatModelRequiredError"),
     embeddingModel: trimmedRequired(defaultEmbeddingModel, "embeddingModelRequiredError"),
     primaryBaseUrl: validatePrimaryBaseUrl(view),
-    providerTimeoutSeconds: positiveIntegerInRange(
+    providerTimeoutSeconds: validatePositiveInteger(
       view.providerTimeoutSeconds,
-      1,
-      600,
       "providerTimeoutInvalidError",
     ),
     retrievalEmbeddingModel: view.retrievalOverrideEnabled
@@ -310,13 +310,26 @@ function getFirstInvalidField(
   return order.find((field) => fields[field] !== undefined) ?? "chatModel";
 }
 
+function validatePositiveInteger(value: number, errorKey: string): FormErrorDescriptor | undefined {
+  const result = positiveIntegerInRange(1, 600).safeParse(value);
+  if (!result.success) {
+    return formError(errorKey);
+  }
+  return undefined;
+}
+
 function validatePrimaryBaseUrl(view: ProviderSettingsView) {
   const baseUrl = view.providerProfiles[view.primaryProvider].base_url;
   if (view.primaryProvider === "ollama" && !normalizeText(baseUrl)) {
     return formError("providerTestOllamaBaseUrlMissing");
   }
 
-  return isValidHttpUrl(baseUrl, "baseUrlInvalidError", {
-    allowEmpty: view.primaryProvider !== "ollama",
-  });
+  // 使用 Zod schema 验证 URL
+  const urlResult = httpUrlSchema({ allowEmpty: view.primaryProvider !== "ollama" }).safeParse(
+    baseUrl ?? "",
+  );
+  if (!urlResult.success) {
+    return formError("baseUrlInvalidError");
+  }
+  return undefined;
 }

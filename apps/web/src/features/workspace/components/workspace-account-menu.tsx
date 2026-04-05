@@ -5,6 +5,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ChevronDownIcon,
+  CircleHelpIcon,
   LanguagesIcon,
   LogOutIcon,
   MonitorCogIcon,
@@ -17,10 +18,12 @@ import { Link } from "react-router-dom";
 
 import logoUrl from "@/assets/logo.png";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLinkItem,
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
@@ -93,34 +96,38 @@ export function WorkspaceAccountMenu({
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          aria-label={t("accountMenuTrigger")}
-          className={cn(
-            "surface-outline flex w-full cursor-pointer select-none items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-sidebar-accent/42 hover:text-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
-            className,
-          )}
-          type="button"
-        >
-          <Avatar className="size-10 rounded-[0.9rem]">
-            <AvatarImage alt={t("workspaceLogoAlt")} src={logoUrl} />
-            <AvatarFallback>AI</AvatarFallback>
-          </Avatar>
+      <DropdownMenuTrigger
+        render={
+          <Button
+            aria-label={t("accountMenuTrigger")}
+            className={cn(
+              "surface-light h-auto min-h-14 w-full justify-start gap-3 rounded-xl px-3 py-2.5 text-left shadow-none hover:bg-sidebar-accent/42",
+              className,
+            )}
+            size="lg"
+            type="button"
+            variant="ghost"
+          />
+        }
+      >
+        <Avatar className="size-10 rounded-xl">
+          <AvatarImage alt={t("workspaceLogoAlt")} src={logoUrl} />
+          <AvatarFallback>AI</AvatarFallback>
+        </Avatar>
 
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium text-foreground">{user.username}</p>
-            <p className="truncate text-xs text-muted-foreground">
-              {t("workspaceRoleLabel", { role: user.role })}
-            </p>
-          </div>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium text-foreground">{user.username}</p>
+          <p className="truncate text-xs text-muted-foreground">
+            {t("workspaceRoleLabel", { role: user.role })}
+          </p>
+        </div>
 
-          <ChevronDownIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
-        </button>
+        <ChevronDownIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
       </DropdownMenuTrigger>
 
       <DropdownMenuContent align="end" className="w-72 min-w-72">
         <div className="flex items-center gap-3 rounded-lg px-2 py-2">
-          <Avatar className="size-10 rounded-[0.9rem]">
+          <Avatar className="size-10 rounded-xl">
             <AvatarImage alt={t("workspaceLogoAlt")} src={logoUrl} />
             <AvatarFallback>AI</AvatarFallback>
           </Avatar>
@@ -159,13 +166,27 @@ export function WorkspaceAccountMenu({
         </DropdownMenuRadioGroup>
 
         <DropdownMenuSeparator />
-        <DropdownMenuItem asChild>
-          <Link onClick={onNavigate} to="/settings">
-            <Settings2Icon />
-            <span>{t("accountMenuMorePersonalizationAction")}</span>
-          </Link>
+        <DropdownMenuLinkItem onClick={onNavigate} render={<Link to="/settings" />}>
+          <Settings2Icon />
+          <span>{t("accountMenuMorePersonalizationAction")}</span>
+        </DropdownMenuLinkItem>
+
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          className="text-muted-foreground"
+          onClick={() => {
+            window.open(
+              "https://github.com/linqunhe/knowledge-chatbox#readme",
+              "_blank",
+              "noopener,noreferrer",
+            );
+          }}
+        >
+          <CircleHelpIcon />
+          <span>{t("helpAction")}</span>
         </DropdownMenuItem>
-        <DropdownMenuItem onSelect={handleLogoutSelect} variant="destructive">
+
+        <DropdownMenuItem onClick={handleLogoutSelect} variant="destructive">
           <LogOutIcon />
           <span>{t("logoutAction")}</span>
         </DropdownMenuItem>

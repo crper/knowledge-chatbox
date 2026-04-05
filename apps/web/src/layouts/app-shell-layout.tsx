@@ -186,13 +186,16 @@ export function AppShellLayout({ user }: { user: AppUser }) {
     return (
       <main className="min-h-[100dvh] bg-background/95 px-4 py-4 text-foreground">
         {isMobile ? (
-          <div className="flex min-h-[calc(100dvh-2rem)] flex-col gap-2.5 sm:gap-3">
-            <div className="surface-liquid grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-[1.25rem] p-1.5">
+          // 移动端：统一间距节奏
+          <div className="flex min-h-[calc(100dvh-2rem)] flex-col gap-3">
+            <div className="surface-elevated grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-xl px-2 py-1.5 transition-[background-color,border-color,box-shadow] duration-200">
               <Sheet onOpenChange={setIsMobileNavigationOpen} open={isMobileNavigationOpen}>
-                <SheetTrigger asChild>
-                  <Button aria-label={t("mobileSessionsAction")} size="icon-sm" variant="ghost">
-                    <PanelLeftIcon />
-                  </Button>
+                <SheetTrigger
+                  render={
+                    <Button aria-label={t("mobileSessionsAction")} size="icon-sm" variant="ghost" />
+                  }
+                >
+                  <PanelLeftIcon />
                 </SheetTrigger>
                 <SheetContent
                   className="w-[88vw] max-w-sm bg-background/96 p-0"
@@ -229,10 +232,12 @@ export function AppShellLayout({ user }: { user: AppUser }) {
               </div>
 
               <Sheet onOpenChange={setIsMobileContextOpen} open={isMobileContextOpen}>
-                <SheetTrigger asChild>
-                  <Button aria-label={t("mobileContextAction")} size="icon-sm" variant="ghost">
-                    <PanelRightIcon />
-                  </Button>
+                <SheetTrigger
+                  render={
+                    <Button aria-label={t("mobileContextAction")} size="icon-sm" variant="ghost" />
+                  }
+                >
+                  <PanelRightIcon />
                 </SheetTrigger>
                 <SheetContent
                   className="w-[88vw] max-w-sm bg-background/96 p-0"
@@ -250,13 +255,13 @@ export function AppShellLayout({ user }: { user: AppUser }) {
               </Sheet>
             </div>
 
-            <div className="surface-liquid flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-[1.5rem]">
+            <div className="surface-elevated flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl">
               <Outlet />
             </div>
           </div>
         ) : (
           <div
-            className="surface-liquid grid h-[calc(100dvh-2rem)] min-h-[calc(100dvh-2rem)] min-w-0 overflow-hidden rounded-[1.75rem] transition-[grid-template-columns] duration-200 ease-out"
+            className="surface-elevated grid h-[calc(100dvh-2rem)] min-h-[calc(100dvh-2rem)] min-w-0 overflow-hidden rounded-3xl transition-[grid-template-columns] duration-200 ease-out"
             data-testid="chat-desktop-layout"
             style={{
               height: "calc(100vh - 2rem)",
@@ -285,7 +290,10 @@ export function AppShellLayout({ user }: { user: AppUser }) {
               )}
             </div>
             <div className="relative flex h-full min-h-0 min-w-0 flex-col overflow-visible bg-transparent">
-              <div className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-transparent">
+              <div
+                className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-transparent"
+                id="main-content"
+              >
                 <Outlet />
                 {chatWorkspacePanels.leftCollapsed ? (
                   <CollapsedEdgeHandle
@@ -347,16 +355,18 @@ export function AppShellLayout({ user }: { user: AppUser }) {
     <main className="min-h-[100dvh] bg-background/95 px-4 py-4 text-foreground">
       {isMobile ? (
         <div className="flex min-h-[calc(100dvh-2rem)] flex-col gap-2.5 sm:gap-3">
-          <div className="surface-liquid grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-[1.25rem] p-1.5">
+          <div className="surface-elevated grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-xl px-2 py-1.5 transition-[background-color,border-color,box-shadow] duration-200">
             <Sheet onOpenChange={setIsMobileNavigationOpen} open={isMobileNavigationOpen}>
-              <SheetTrigger asChild>
-                <Button
-                  aria-label={t("mobileNavigationAction", { ns: "common" })}
-                  size="icon-sm"
-                  variant="ghost"
-                >
-                  <PanelLeftIcon />
-                </Button>
+              <SheetTrigger
+                render={
+                  <Button
+                    aria-label={t("mobileNavigationAction", { ns: "common" })}
+                    size="icon-sm"
+                    variant="ghost"
+                  />
+                }
+              >
+                <PanelLeftIcon />
               </SheetTrigger>
               <SheetContent
                 className="w-[88vw] max-w-sm bg-background/96 p-0"
@@ -392,13 +402,17 @@ export function AppShellLayout({ user }: { user: AppUser }) {
             <div className="size-11 shrink-0" />
           </div>
 
-          <div className="surface-liquid flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-[1.5rem]">
+          <div
+            className="surface-elevated flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl"
+            id="main-content"
+          >
             <Outlet />
           </div>
         </div>
       ) : (
+        // 桌面端标准布局：优化侧边栏比例
         <div
-          className="surface-liquid grid min-h-[calc(100dvh-2rem)] gap-0 overflow-hidden rounded-[1.75rem] lg:grid-cols-[280px_minmax(0,1fr)]"
+          className="surface-elevated grid min-h-[calc(100dvh-2rem)] gap-0 overflow-hidden rounded-3xl lg:grid-cols-[260px_minmax(0,1fr)]"
           data-testid="standard-desktop-layout"
         >
           <div
@@ -415,6 +429,7 @@ export function AppShellLayout({ user }: { user: AppUser }) {
           <div
             className="flex min-h-0 min-w-0 flex-col bg-background/34"
             data-testid="standard-desktop-content-rail"
+            id="main-content"
           >
             <Outlet />
           </div>

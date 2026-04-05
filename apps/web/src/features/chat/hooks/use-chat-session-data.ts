@@ -22,23 +22,9 @@ import type {
   ChatSessionItem,
 } from "../api/chat";
 import { buildDisplayMessages } from "../utils/build-display-messages";
+import type { StreamingRun } from "../store/chat-stream-store";
 
-type ChatRunsById = Record<
-  number,
-  {
-    assistantMessageId: number;
-    content: string;
-    errorMessage: string | null;
-    retryOfMessageId?: number | null;
-    runId: number;
-    sessionId: number;
-    sources: Array<Record<string, unknown>>;
-    status: "pending" | "streaming" | "succeeded" | "failed";
-    toastShown: boolean;
-    userContent: string;
-    userMessageId: number | null;
-  }
->;
+type ChatRunsById = Record<number, StreamingRun>;
 
 function buildContextAttachmentKey(attachment: PersistedChatAttachmentItem) {
   if (attachment.resource_document_id != null) {

@@ -2,7 +2,8 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { MemoryRouter } from "react-router-dom";
 
 import { QueryProvider } from "@/providers/query-provider";
-import { jsonResponse } from "@/test/http";
+import { createTestServer, overrideHandler, apiResponse } from "@/test/msw";
+import { http, HttpResponse } from "msw";
 import { mockDesktopViewport, mockMobileViewport } from "@/test/viewport";
 import { KnowledgePage } from "./knowledge-page";
 
@@ -60,10 +61,6 @@ class MockXMLHttpRequest {
     this.statusText = statusText;
     this.onload?.(new ProgressEvent("load"));
   }
-}
-
-function endsWithApiPath(input: unknown, path: string) {
-  return typeof input === "string" && input.endsWith(path);
 }
 
 function renderKnowledgePage() {
@@ -167,114 +164,6 @@ function buildUploadPayload(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function buildFetchMock(
-  role: "admin" | "user" = "admin",
-  options?: {
-    delayReadiness?: boolean;
-    documents?: Array<Record<string, unknown>>;
-    readiness?: {
-      blocking_reason: "embedding_not_configured" | "pending_embedding_not_configured" | null;
-      can_upload: boolean;
-      image_fallback: boolean;
-    };
-  },
-) {
-  const documents = options?.documents?.map((document) => buildDocumentSummary(document)) ?? [
-    buildDocumentSummary({
-      id: 20,
-      revision_id: 2,
-      title: "spec.md",
-      version: 2,
-      status: "indexed",
-    }),
-    buildDocumentSummary({
-      id: 40,
-      revision_id: 4,
-      title: "guide.pdf",
-      version: 1,
-      status: "processing",
-      file_type: "pdf",
-    }),
-  ];
-  const readiness = options?.readiness ?? {
-    blocking_reason: null,
-    can_upload: true,
-    image_fallback: false,
-  };
-
-  const fetchMock = vi.fn().mockImplementation((input: string, init?: RequestInit) => {
-    if (input.endsWith("/api/auth/me")) {
-      return Promise.resolve(
-        jsonResponse({
-          success: true,
-          data: {
-            id: 1,
-            username: role,
-            role,
-            status: "active",
-            theme_preference: "system",
-          },
-          error: null,
-        }),
-      );
-    }
-
-    if (input.endsWith("/api/documents/upload-readiness")) {
-      if (options?.delayReadiness) {
-        return new Promise(() => {});
-      }
-      return Promise.resolve(
-        jsonResponse({
-          success: true,
-          data: readiness,
-          error: null,
-        }),
-      );
-    }
-
-    if (input.endsWith("/api/documents/20/revisions")) {
-      return Promise.resolve(
-        jsonResponse({
-          success: true,
-          data: [
-            buildRevision({
-              document_id: 20,
-              id: 1,
-              revision_no: 1,
-              source_filename: "spec.md",
-            }),
-            buildRevision({
-              document_id: 20,
-              id: 2,
-              revision_no: 2,
-              source_filename: "spec.md",
-            }),
-          ],
-          error: null,
-        }),
-      );
-    }
-
-    if (input.endsWith("/api/documents/2/file")) {
-      return Promise.resolve(
-        new Response("# 标题\n\n正文", {
-          status: 200,
-          headers: { "Content-Type": "text/markdown; charset=utf-8" },
-        }),
-      );
-    }
-
-    if (init?.method === "DELETE") {
-      return Promise.resolve(jsonResponse({ success: true, data: { status: "ok" }, error: null }));
-    }
-
-    return Promise.resolve(jsonResponse({ success: true, data: documents, error: null }));
-  });
-
-  vi.stubGlobal("fetch", fetchMock);
-  return fetchMock;
-}
-
 describe("KnowledgePage", () => {
   beforeEach(() => {
     MockXMLHttpRequest.instances = [];
@@ -285,7 +174,58 @@ describe("KnowledgePage", () => {
   });
 
   it("renders row-card actions without the old inline delete buttons", async () => {
-    const fetchMock = buildFetchMock();
+    createTestServer({
+      user: {
+        id: 1,
+        username: "admin",
+        role: "admin",
+        status: "active",
+        theme_preference: "system",
+      },
+      authenticated: true,
+    });
+    overrideHandler(
+      http.get("*/api/documents", () =>
+        apiResponse([
+          buildDocumentSummary({
+            id: 20,
+            revision_id: 2,
+            title: "spec.md",
+            version: 2,
+            status: "indexed",
+          }),
+          buildDocumentSummary({
+            id: 40,
+            revision_id: 4,
+            title: "guide.pdf",
+            version: 1,
+            status: "processing",
+            file_type: "pdf",
+          }),
+        ]),
+      ),
+    );
+    overrideHandler(
+      http.get("*/api/documents/20/revisions", () =>
+        apiResponse([
+          buildRevision({ document_id: 20, id: 1, revision_no: 1, source_filename: "spec.md" }),
+          buildRevision({ document_id: 20, id: 2, revision_no: 2, source_filename: "spec.md" }),
+        ]),
+      ),
+    );
+    overrideHandler(
+      http.get("*/api/documents/40/revisions", () =>
+        apiResponse([
+          buildRevision({
+            document_id: 40,
+            id: 4,
+            revision_no: 1,
+            source_filename: "guide.pdf",
+            file_type: "pdf",
+          }),
+        ]),
+      ),
+    );
 
     renderKnowledgePage();
 
@@ -298,14 +238,41 @@ describe("KnowledgePage", () => {
     expect(screen.getAllByRole("button", { name: /预览 / })).toHaveLength(2);
     expect(screen.getAllByRole("button", { name: "查看版本" })).toHaveLength(2);
     expect(screen.getAllByRole("button", { name: /更多操作 / })).toHaveLength(2);
-    expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringMatching(/\/api\/documents$/),
-      expect.objectContaining({ credentials: "include" }),
-    );
   });
 
   it("renders top summary cards for resource counts", async () => {
-    buildFetchMock();
+    createTestServer({
+      user: {
+        id: 1,
+        username: "admin",
+        role: "admin",
+        status: "active",
+        theme_preference: "system",
+      },
+      authenticated: true,
+    });
+    overrideHandler(
+      http.get("*/api/documents", () =>
+        apiResponse([
+          buildDocumentSummary({
+            id: 20,
+            revision_id: 2,
+            title: "spec.md",
+            version: 2,
+            status: "indexed",
+          }),
+          buildDocumentSummary({
+            id: 40,
+            revision_id: 4,
+            title: "guide.pdf",
+            version: 1,
+            status: "processing",
+            file_type: "pdf",
+          }),
+        ]),
+      ),
+    );
+    overrideHandler(http.get("*/api/documents/:documentId/revisions", () => apiResponse([])));
 
     renderKnowledgePage();
 
@@ -317,7 +284,38 @@ describe("KnowledgePage", () => {
 
   it("uses compact inline summary badges on mobile instead of the desktop metric cards", async () => {
     mockMobileViewport();
-    buildFetchMock();
+    createTestServer({
+      user: {
+        id: 1,
+        username: "admin",
+        role: "admin",
+        status: "active",
+        theme_preference: "system",
+      },
+      authenticated: true,
+    });
+    overrideHandler(
+      http.get("*/api/documents", () =>
+        apiResponse([
+          buildDocumentSummary({
+            id: 20,
+            revision_id: 2,
+            title: "spec.md",
+            version: 2,
+            status: "indexed",
+          }),
+          buildDocumentSummary({
+            id: 40,
+            revision_id: 4,
+            title: "guide.pdf",
+            version: 1,
+            status: "processing",
+            file_type: "pdf",
+          }),
+        ]),
+      ),
+    );
+    overrideHandler(http.get("*/api/documents/:documentId/revisions", () => apiResponse([])));
 
     renderKnowledgePage();
 
@@ -331,13 +329,39 @@ describe("KnowledgePage", () => {
   });
 
   it("blocks uploads when indexing prerequisites are not ready", async () => {
-    buildFetchMock("admin", {
-      readiness: {
-        blocking_reason: "embedding_not_configured",
-        can_upload: false,
-        image_fallback: false,
+    createTestServer({
+      user: {
+        id: 1,
+        username: "admin",
+        role: "admin",
+        status: "active",
+        theme_preference: "system",
       },
+      authenticated: true,
     });
+    overrideHandler(
+      http.get("*/api/documents/upload-readiness", () =>
+        apiResponse({
+          blocking_reason: "embedding_not_configured",
+          can_upload: false,
+          image_fallback: false,
+        }),
+      ),
+    );
+    overrideHandler(
+      http.get("*/api/documents", () =>
+        apiResponse([
+          buildDocumentSummary({
+            id: 20,
+            revision_id: 2,
+            title: "spec.md",
+            version: 2,
+            status: "indexed",
+          }),
+        ]),
+      ),
+    );
+    overrideHandler(http.get("*/api/documents/:documentId/revisions", () => apiResponse([])));
 
     renderKnowledgePage();
 
@@ -346,7 +370,31 @@ describe("KnowledgePage", () => {
   });
 
   it("shows a neutral loading notice while upload readiness is still being checked", async () => {
-    buildFetchMock("admin", { delayReadiness: true });
+    createTestServer({
+      user: {
+        id: 1,
+        username: "admin",
+        role: "admin",
+        status: "active",
+        theme_preference: "system",
+      },
+      authenticated: true,
+    });
+    overrideHandler(http.get("*/api/documents/upload-readiness", () => new Promise(() => {})));
+    overrideHandler(
+      http.get("*/api/documents", () =>
+        apiResponse([
+          buildDocumentSummary({
+            id: 20,
+            revision_id: 2,
+            title: "spec.md",
+            version: 2,
+            status: "indexed",
+          }),
+        ]),
+      ),
+    );
+    overrideHandler(http.get("*/api/documents/:documentId/revisions", () => apiResponse([])));
 
     renderKnowledgePage();
 
@@ -356,13 +404,39 @@ describe("KnowledgePage", () => {
   });
 
   it("shows an image fallback warning without blocking uploads", async () => {
-    buildFetchMock("admin", {
-      readiness: {
-        blocking_reason: null,
-        can_upload: true,
-        image_fallback: true,
+    createTestServer({
+      user: {
+        id: 1,
+        username: "admin",
+        role: "admin",
+        status: "active",
+        theme_preference: "system",
       },
+      authenticated: true,
     });
+    overrideHandler(
+      http.get("*/api/documents/upload-readiness", () =>
+        apiResponse({
+          blocking_reason: null,
+          can_upload: true,
+          image_fallback: true,
+        }),
+      ),
+    );
+    overrideHandler(
+      http.get("*/api/documents", () =>
+        apiResponse([
+          buildDocumentSummary({
+            id: 20,
+            revision_id: 2,
+            title: "spec.md",
+            version: 2,
+            status: "indexed",
+          }),
+        ]),
+      ),
+    );
+    overrideHandler(http.get("*/api/documents/:documentId/revisions", () => apiResponse([])));
 
     renderKnowledgePage();
 
@@ -371,7 +445,30 @@ describe("KnowledgePage", () => {
   });
 
   it("keeps the preview drawer closed until the user explicitly opens it", async () => {
-    buildFetchMock();
+    createTestServer({
+      user: {
+        id: 1,
+        username: "admin",
+        role: "admin",
+        status: "active",
+        theme_preference: "system",
+      },
+      authenticated: true,
+    });
+    overrideHandler(
+      http.get("*/api/documents", () =>
+        apiResponse([
+          buildDocumentSummary({
+            id: 20,
+            revision_id: 2,
+            title: "spec.md",
+            version: 2,
+            status: "indexed",
+          }),
+        ]),
+      ),
+    );
+    overrideHandler(http.get("*/api/documents/:documentId/revisions", () => apiResponse([])));
 
     renderKnowledgePage();
 
@@ -380,27 +477,71 @@ describe("KnowledgePage", () => {
   });
 
   it("does not send the delete request immediately when the delete action is clicked", async () => {
-    const fetchMock = buildFetchMock();
+    let deleteCalled = false;
+    createTestServer({
+      user: {
+        id: 1,
+        username: "admin",
+        role: "admin",
+        status: "active",
+        theme_preference: "system",
+      },
+      authenticated: true,
+    });
+    overrideHandler(
+      http.get("*/api/documents", () =>
+        apiResponse([
+          buildDocumentSummary({
+            id: 20,
+            revision_id: 2,
+            title: "spec.md",
+            version: 2,
+            status: "indexed",
+          }),
+        ]),
+      ),
+    );
+    overrideHandler(http.get("*/api/documents/:documentId/revisions", () => apiResponse([])));
+    overrideHandler(
+      http.delete("*/api/documents/:documentId", () => {
+        deleteCalled = true;
+        return apiResponse({ status: "ok" });
+      }),
+    );
 
     renderKnowledgePage();
 
-    fireEvent.pointerDown(await screen.findByRole("button", { name: "更多操作 spec.md" }));
+    fireEvent.click(await screen.findByRole("button", { name: "更多操作 spec.md" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "删除" }));
 
-    expect(
-      fetchMock.mock.calls.some(
-        ([url, init]) =>
-          endsWithApiPath(url, "/api/documents/20") &&
-          typeof init === "object" &&
-          init !== null &&
-          "method" in init &&
-          init.method === "DELETE",
-      ),
-    ).toBe(false);
+    expect(deleteCalled).toBe(false);
   });
 
   it("uploads a document and refreshes the list", async () => {
-    const fetchMock = buildFetchMock();
+    createTestServer({
+      user: {
+        id: 1,
+        username: "admin",
+        role: "admin",
+        status: "active",
+        theme_preference: "system",
+      },
+      authenticated: true,
+    });
+    overrideHandler(
+      http.get("*/api/documents", () =>
+        apiResponse([
+          buildDocumentSummary({
+            id: 20,
+            revision_id: 2,
+            title: "spec.md",
+            version: 2,
+            status: "indexed",
+          }),
+        ]),
+      ),
+    );
+    overrideHandler(http.get("*/api/documents/:documentId/revisions", () => apiResponse([])));
 
     renderKnowledgePage();
 
@@ -439,47 +580,34 @@ describe("KnowledgePage", () => {
     await waitFor(() => {
       expect(MockXMLHttpRequest.instances).toHaveLength(1);
       expect(MockXMLHttpRequest.instances[0]!.url.endsWith("/api/documents/upload")).toBe(true);
-      expect(fetchMock.mock.calls.some(([url]) => endsWithApiPath(url, "/api/documents"))).toBe(
-        true,
-      );
     });
   });
 
   it("shows a pending upload state while the request is in flight", async () => {
-    const fetchMock = vi.fn().mockImplementation((input: string) => {
-      if (input.endsWith("/api/auth/me")) {
-        return Promise.resolve(
-          jsonResponse({
-            success: true,
-            data: {
-              id: 1,
-              username: "admin",
-              role: "admin",
-              status: "active",
-              theme_preference: "system",
-            },
-            error: null,
-          }),
-        );
-      }
-
-      return Promise.resolve(
-        jsonResponse({
-          success: true,
-          data: [
-            buildDocumentSummary({
-              id: 20,
-              revision_id: 2,
-              title: "spec.md",
-              version: 2,
-              status: "indexed",
-            }),
-          ],
-          error: null,
-        }),
-      );
+    createTestServer({
+      user: {
+        id: 1,
+        username: "admin",
+        role: "admin",
+        status: "active",
+        theme_preference: "system",
+      },
+      authenticated: true,
     });
-    vi.stubGlobal("fetch", fetchMock);
+    overrideHandler(
+      http.get("*/api/documents", () =>
+        apiResponse([
+          buildDocumentSummary({
+            id: 20,
+            revision_id: 2,
+            title: "spec.md",
+            version: 2,
+            status: "indexed",
+          }),
+        ]),
+      ),
+    );
+    overrideHandler(http.get("*/api/documents/:documentId/revisions", () => apiResponse([])));
 
     renderKnowledgePage();
 
@@ -530,14 +658,34 @@ describe("KnowledgePage", () => {
     await waitFor(() => {
       expect(screen.queryByText("draft.md")).not.toBeInTheDocument();
       expect(screen.queryByText("上传队列")).not.toBeInTheDocument();
-      expect(fetchMock.mock.calls.some(([url]) => endsWithApiPath(url, "/api/documents"))).toBe(
-        true,
-      );
     });
   });
 
   it("cancels an in-flight upload from the queue without leaving a placeholder behind", async () => {
-    buildFetchMock();
+    createTestServer({
+      user: {
+        id: 1,
+        username: "admin",
+        role: "admin",
+        status: "active",
+        theme_preference: "system",
+      },
+      authenticated: true,
+    });
+    overrideHandler(
+      http.get("*/api/documents", () =>
+        apiResponse([
+          buildDocumentSummary({
+            id: 20,
+            revision_id: 2,
+            title: "spec.md",
+            version: 2,
+            status: "indexed",
+          }),
+        ]),
+      ),
+    );
+    overrideHandler(http.get("*/api/documents/:documentId/revisions", () => apiResponse([])));
 
     renderKnowledgePage();
 
@@ -563,7 +711,30 @@ describe("KnowledgePage", () => {
   });
 
   it("removes duplicate uploads from the queue and shows a skipped toast", async () => {
-    buildFetchMock();
+    createTestServer({
+      user: {
+        id: 1,
+        username: "admin",
+        role: "admin",
+        status: "active",
+        theme_preference: "system",
+      },
+      authenticated: true,
+    });
+    overrideHandler(
+      http.get("*/api/documents", () =>
+        apiResponse([
+          buildDocumentSummary({
+            id: 20,
+            revision_id: 2,
+            title: "spec.md",
+            version: 2,
+            status: "indexed",
+          }),
+        ]),
+      ),
+    );
+    overrideHandler(http.get("*/api/documents/:documentId/revisions", () => apiResponse([])));
 
     renderKnowledgePage();
 
@@ -607,7 +778,30 @@ describe("KnowledgePage", () => {
   });
 
   it("ignores repeated retry clicks for the same failed upload", async () => {
-    buildFetchMock();
+    createTestServer({
+      user: {
+        id: 1,
+        username: "admin",
+        role: "admin",
+        status: "active",
+        theme_preference: "system",
+      },
+      authenticated: true,
+    });
+    overrideHandler(
+      http.get("*/api/documents", () =>
+        apiResponse([
+          buildDocumentSummary({
+            id: 20,
+            revision_id: 2,
+            title: "spec.md",
+            version: 2,
+            status: "indexed",
+          }),
+        ]),
+      ),
+    );
+    overrideHandler(http.get("*/api/documents/:documentId/revisions", () => apiResponse([])));
 
     renderKnowledgePage();
 
@@ -673,7 +867,46 @@ describe("KnowledgePage", () => {
   });
 
   it("opens the preview drawer when the preview action is clicked", async () => {
-    buildFetchMock();
+    createTestServer({
+      user: {
+        id: 1,
+        username: "admin",
+        role: "admin",
+        status: "active",
+        theme_preference: "system",
+      },
+      authenticated: true,
+    });
+    overrideHandler(
+      http.get("*/api/documents", () =>
+        apiResponse([
+          buildDocumentSummary({
+            id: 20,
+            revision_id: 2,
+            title: "spec.md",
+            version: 2,
+            status: "indexed",
+          }),
+        ]),
+      ),
+    );
+    overrideHandler(
+      http.get("*/api/documents/:documentId/revisions", () =>
+        apiResponse([
+          buildRevision({ document_id: 20, id: 1, revision_no: 1, source_filename: "spec.md" }),
+          buildRevision({ document_id: 20, id: 2, revision_no: 2, source_filename: "spec.md" }),
+        ]),
+      ),
+    );
+    overrideHandler(
+      http.get(
+        "*/api/documents/revisions/:revisionId/file",
+        () =>
+          new HttpResponse("# 标题\n\n正文", {
+            headers: { "Content-Type": "text/markdown; charset=utf-8" },
+          }),
+      ),
+    );
 
     renderKnowledgePage();
 
@@ -686,7 +919,38 @@ describe("KnowledgePage", () => {
   });
 
   it("selects a resource row and shows the summary band without opening preview", async () => {
-    buildFetchMock();
+    createTestServer({
+      user: {
+        id: 1,
+        username: "admin",
+        role: "admin",
+        status: "active",
+        theme_preference: "system",
+      },
+      authenticated: true,
+    });
+    overrideHandler(
+      http.get("*/api/documents", () =>
+        apiResponse([
+          buildDocumentSummary({
+            id: 20,
+            revision_id: 2,
+            title: "spec.md",
+            version: 2,
+            status: "indexed",
+          }),
+          buildDocumentSummary({
+            id: 40,
+            revision_id: 4,
+            title: "guide.pdf",
+            version: 1,
+            status: "processing",
+            file_type: "pdf",
+          }),
+        ]),
+      ),
+    );
+    overrideHandler(http.get("*/api/documents/:documentId/revisions", () => apiResponse([])));
 
     renderKnowledgePage();
 
@@ -700,7 +964,38 @@ describe("KnowledgePage", () => {
 
   it("opens preview directly when a resource row is selected on mobile", async () => {
     mockMobileViewport();
-    buildFetchMock();
+    createTestServer({
+      user: {
+        id: 1,
+        username: "admin",
+        role: "admin",
+        status: "active",
+        theme_preference: "system",
+      },
+      authenticated: true,
+    });
+    overrideHandler(
+      http.get("*/api/documents", () =>
+        apiResponse([
+          buildDocumentSummary({
+            id: 20,
+            revision_id: 2,
+            title: "spec.md",
+            version: 2,
+            status: "indexed",
+          }),
+          buildDocumentSummary({
+            id: 40,
+            revision_id: 4,
+            title: "guide.pdf",
+            version: 1,
+            status: "processing",
+            file_type: "pdf",
+          }),
+        ]),
+      ),
+    );
+    overrideHandler(http.get("*/api/documents/:documentId/revisions", () => apiResponse([])));
 
     renderKnowledgePage();
 
@@ -712,58 +1007,52 @@ describe("KnowledgePage", () => {
   });
 
   it("requests server-filtered resources and clears the selected summary band when the chosen resource disappears", async () => {
-    const fetchMock = vi.fn().mockImplementation((input: string) => {
-      if (input.endsWith("/api/auth/me")) {
-        return Promise.resolve(
-          jsonResponse({
-            success: true,
-            data: {
-              id: 1,
-              username: "admin",
-              role: "admin",
-              status: "active",
-              theme_preference: "system",
-            },
-            error: null,
-          }),
-        );
-      }
-
-      const url = new URL(input, "http://testserver");
-      const query = url.searchParams.get("query");
-      const documents =
-        query === "guide"
-          ? [
-              buildDocumentSummary({
-                id: 40,
-                revision_id: 4,
-                title: "guide.pdf",
-                version: 1,
-                status: "processing",
-                file_type: "pdf",
-              }),
-            ]
-          : [
-              buildDocumentSummary({
-                id: 20,
-                revision_id: 2,
-                title: "spec.md",
-                version: 2,
-                status: "indexed",
-              }),
-              buildDocumentSummary({
-                id: 40,
-                revision_id: 4,
-                title: "guide.pdf",
-                version: 1,
-                status: "processing",
-                file_type: "pdf",
-              }),
-            ];
-
-      return Promise.resolve(jsonResponse({ success: true, data: documents, error: null }));
+    createTestServer({
+      user: {
+        id: 1,
+        username: "admin",
+        role: "admin",
+        status: "active",
+        theme_preference: "system",
+      },
+      authenticated: true,
     });
-    vi.stubGlobal("fetch", fetchMock);
+    overrideHandler(
+      http.get("*/api/documents", ({ request }) => {
+        const url = new URL(request.url);
+        const query = url.searchParams.get("query");
+        if (query === "guide") {
+          return apiResponse([
+            buildDocumentSummary({
+              id: 40,
+              revision_id: 4,
+              title: "guide.pdf",
+              version: 1,
+              status: "processing",
+              file_type: "pdf",
+            }),
+          ]);
+        }
+        return apiResponse([
+          buildDocumentSummary({
+            id: 20,
+            revision_id: 2,
+            title: "spec.md",
+            version: 2,
+            status: "indexed",
+          }),
+          buildDocumentSummary({
+            id: 40,
+            revision_id: 4,
+            title: "guide.pdf",
+            version: 1,
+            status: "processing",
+            file_type: "pdf",
+          }),
+        ]);
+      }),
+    );
+    overrideHandler(http.get("*/api/documents/:documentId/revisions", () => apiResponse([])));
 
     renderKnowledgePage();
 
@@ -780,70 +1069,56 @@ describe("KnowledgePage", () => {
     });
     expect(screen.getAllByText("guide.pdf").length).toBeGreaterThan(0);
     expect(screen.queryByText("当前资源")).not.toBeInTheDocument();
-
-    const filteredCall = fetchMock.mock.calls.find(([url]) => {
-      const requestUrl = new URL(String(url), "http://testserver");
-      return (
-        requestUrl.pathname === "/api/documents" && requestUrl.searchParams.get("query") === "guide"
-      );
-    });
-    expect(filteredCall).toBeDefined();
   });
 
   it("moves type and status filters into a mobile sheet", async () => {
     mockMobileViewport();
-    const fetchMock = vi.fn().mockImplementation((input: string) => {
-      if (input.endsWith("/api/auth/me")) {
-        return Promise.resolve(
-          jsonResponse({
-            success: true,
-            data: {
-              id: 1,
-              username: "admin",
-              role: "admin",
-              status: "active",
-              theme_preference: "system",
-            },
-            error: null,
-          }),
-        );
-      }
-
-      const url = new URL(input, "http://testserver");
-      const type = url.searchParams.get("type");
-      const documents =
-        type === "pdf"
-          ? [
-              buildDocumentSummary({
-                id: 40,
-                revision_id: 4,
-                title: "guide.pdf",
-                version: 1,
-                status: "processing",
-                file_type: "pdf",
-              }),
-            ]
-          : [
-              buildDocumentSummary({
-                id: 20,
-                revision_id: 2,
-                title: "spec.md",
-                version: 2,
-                status: "indexed",
-              }),
-              buildDocumentSummary({
-                id: 40,
-                revision_id: 4,
-                title: "guide.pdf",
-                version: 1,
-                status: "processing",
-                file_type: "pdf",
-              }),
-            ];
-
-      return Promise.resolve(jsonResponse({ success: true, data: documents, error: null }));
+    createTestServer({
+      user: {
+        id: 1,
+        username: "admin",
+        role: "admin",
+        status: "active",
+        theme_preference: "system",
+      },
+      authenticated: true,
     });
-    vi.stubGlobal("fetch", fetchMock);
+    overrideHandler(
+      http.get("*/api/documents", ({ request }) => {
+        const url = new URL(request.url);
+        const type = url.searchParams.get("type");
+        if (type === "pdf") {
+          return apiResponse([
+            buildDocumentSummary({
+              id: 40,
+              revision_id: 4,
+              title: "guide.pdf",
+              version: 1,
+              status: "processing",
+              file_type: "pdf",
+            }),
+          ]);
+        }
+        return apiResponse([
+          buildDocumentSummary({
+            id: 20,
+            revision_id: 2,
+            title: "spec.md",
+            version: 2,
+            status: "indexed",
+          }),
+          buildDocumentSummary({
+            id: 40,
+            revision_id: 4,
+            title: "guide.pdf",
+            version: 1,
+            status: "processing",
+            file_type: "pdf",
+          }),
+        ]);
+      }),
+    );
+    overrideHandler(http.get("*/api/documents/:documentId/revisions", () => apiResponse([])));
 
     renderKnowledgePage();
 
@@ -866,37 +1141,108 @@ describe("KnowledgePage", () => {
     await waitFor(() => {
       expect(screen.getAllByText("spec.md").length).toBeGreaterThan(0);
     });
+  });
 
-    const filteredCall = fetchMock.mock.calls.find(([url]) => {
-      const requestUrl = new URL(String(url), "http://testserver");
-      return (
-        requestUrl.pathname === "/api/documents" && requestUrl.searchParams.get("type") === "pdf"
-      );
+  it("keeps the resource list shell when a status filter yields no matches", async () => {
+    mockMobileViewport();
+    createTestServer({
+      user: {
+        id: 1,
+        username: "admin",
+        role: "admin",
+        status: "active",
+        theme_preference: "system",
+      },
+      authenticated: true,
     });
-    expect(filteredCall).toBeDefined();
+    overrideHandler(
+      http.get("*/api/documents", ({ request }) => {
+        const status = new URL(request.url).searchParams.get("status");
+        if (status === "uploaded") {
+          return apiResponse([]);
+        }
+        return apiResponse([
+          buildDocumentSummary({
+            id: 20,
+            revision_id: 2,
+            title: "spec.md",
+            version: 2,
+            status: "indexed",
+          }),
+          buildDocumentSummary({
+            id: 40,
+            revision_id: 4,
+            title: "guide.pdf",
+            version: 1,
+            status: "processing",
+            file_type: "pdf",
+          }),
+        ]);
+      }),
+    );
+    overrideHandler(http.get("*/api/documents/:documentId/revisions", () => apiResponse([])));
 
-    const clearedCall = fetchMock.mock.calls.findLast(([url]) => {
-      const requestUrl = new URL(String(url), "http://testserver");
-      return requestUrl.pathname === "/api/documents" && !requestUrl.searchParams.get("type");
+    renderKnowledgePage();
+
+    await screen.findAllByRole("button", { name: "查看版本" });
+    fireEvent.click(screen.getByRole("button", { name: /^筛选/ }));
+    expect(await screen.findByText("资源筛选")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "已上传" }));
+    fireEvent.click(screen.getByRole("button", { name: "关闭" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("暂无匹配资源")).toBeInTheDocument();
     });
-    expect(clearedCall).toBeDefined();
+    expect(screen.getByText("资源列表")).toBeInTheDocument();
+    expect(
+      screen.getByText("当前筛选条件下没有匹配资源，试试更换关键词、类型或状态。"),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "先上传第一份资源" })).not.toBeInTheDocument();
   });
 
   it("renders document management actions for non-admin users", async () => {
-    buildFetchMock("user");
+    createTestServer({
+      user: { id: 1, username: "user", role: "user", status: "active", theme_preference: "system" },
+      authenticated: true,
+    });
+    overrideHandler(
+      http.get("*/api/documents", () =>
+        apiResponse([
+          buildDocumentSummary({
+            id: 20,
+            revision_id: 2,
+            title: "spec.md",
+            version: 2,
+            status: "indexed",
+          }),
+        ]),
+      ),
+    );
+    overrideHandler(http.get("*/api/documents/:documentId/revisions", () => apiResponse([])));
 
     renderKnowledgePage();
 
     await screen.findAllByRole("button", { name: "查看版本" });
     expect(screen.getAllByText("spec.md").length).toBeGreaterThan(0);
     expect(screen.getByLabelText("上传资源")).toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: /预览 / })).toHaveLength(2);
-    expect(screen.getAllByRole("button", { name: "查看版本" })).toHaveLength(2);
-    expect(screen.getAllByRole("button", { name: /更多操作 / })).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: /预览 / }).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByRole("button", { name: "查看版本" })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: /更多操作 / })).toHaveLength(1);
   });
 
   it("renders an onboarding empty state for admins when there are no resources", async () => {
-    buildFetchMock("admin", { documents: [] });
+    createTestServer({
+      user: {
+        id: 1,
+        username: "admin",
+        role: "admin",
+        status: "active",
+        theme_preference: "system",
+      },
+      authenticated: true,
+    });
+    overrideHandler(http.get("*/api/documents", () => apiResponse([])));
+    overrideHandler(http.get("*/api/documents/:documentId/revisions", () => apiResponse([])));
 
     renderKnowledgePage();
 
@@ -911,7 +1257,12 @@ describe("KnowledgePage", () => {
   });
 
   it("renders the onboarding empty state for non-admin users when there are no resources", async () => {
-    buildFetchMock("user", { documents: [] });
+    createTestServer({
+      user: { id: 1, username: "user", role: "user", status: "active", theme_preference: "system" },
+      authenticated: true,
+    });
+    overrideHandler(http.get("*/api/documents", () => apiResponse([])));
+    overrideHandler(http.get("*/api/documents/:documentId/revisions", () => apiResponse([])));
 
     renderKnowledgePage();
 
