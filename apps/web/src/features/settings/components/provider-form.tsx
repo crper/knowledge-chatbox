@@ -8,15 +8,21 @@ import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Form } from "@/components/ui/form";
+import { getFormErrorMessage } from "@/lib/form/form-feedback";
+import { useAppForm } from "@/lib/form/use-app-form";
+import { handleFormSubmitEvent } from "@/lib/forms";
 import type { AppSettings, ProviderConnectionResult } from "../api/settings";
 import {
   buildProviderSettingsView,
   type ProviderSettingsFieldName,
-  type ProviderSettingsValidationResult,
   type ProviderSettingsView,
   toSettingsPayload,
-  validateProviderSettingsView,
 } from "./provider-form-state";
+import {
+  getFirstInvalidProviderField,
+  validateProviderSettingsForm,
+} from "./provider-form.validation";
 import { PrimaryProviderSection } from "./primary-provider-section";
 import { ProviderStatusSummary } from "./provider-status-summary";
 import { getCapabilityHealthMessage } from "./provider-form-shared";
@@ -24,7 +30,6 @@ import { SettingsActionBar } from "./provider-form-sections";
 import { ProviderTimeoutSection } from "./provider-timeout-section";
 import { RetrievalOverrideSection } from "./retrieval-override-section";
 import { TemplateEditorSection } from "./template-editor-section";
-import { getFirstFormError } from "@/lib/forms";
 
 type ProviderFormProps = {
   initialValues: AppSettings;
@@ -57,55 +62,64 @@ export function ProviderForm({
   onTestProvider,
 }: ProviderFormProps) {
   const { t } = useTranslation("settings");
-  const [draft, setDraft] = useState<ProviderSettingsView>(() =>
-    buildProviderSettingsView(initialValues),
-  );
   const [advancedOpen, setAdvancedOpen] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [notice, setNotice] = useState<FormNotice | null>(null);
-  const [validationResult, setValidationResult] = useState<ProviderSettingsValidationResult | null>(
-    null,
-  );
   const [pendingScrollField, setPendingScrollField] = useState<ProviderSettingsFieldName | null>(
     null,
   );
-  const fieldRefs = useRef<Partial<Record<ProviderSettingsFieldName, HTMLInputElement | null>>>({});
+  const [validationResult, setValidationResult] = useState<ReturnType<
+    typeof validateProviderSettingsForm
+  > | null>(null);
+  const fieldRefs = useRef<Partial<Record<ProviderSettingsFieldName, HTMLElement | null>>>({});
   const chatModelLabel = t("chatModelLabel");
   const embeddingModelLabel = t("embeddingModelLabel");
   const visionModelLabel = t("visionModelLabel");
   const retrievalEmbeddingModelLabel = t("retrievalEmbeddingModelLabel");
 
+  const form = useAppForm<ProviderSettingsView, ProviderSettingsFieldName>({
+    defaultValues: buildProviderSettingsView(initialValues),
+    onSubmit: async ({ formApi, value }) => {
+      try {
+        const result = await onSave(toSettingsPayload(value));
+        const nextDraft = buildProviderSettingsView(result);
+        form.reset(nextDraft);
+        formApi.setErrorMap({ onDynamic: undefined, onSubmit: undefined });
+        setAdvancedOpen(false);
+        setNotice({
+          title: t("saveNoticeTitle"),
+          message: result.rebuild_started
+            ? t("backgroundRebuildStartedNotice")
+            : result.index_rebuild_status === "running"
+              ? t("backgroundRebuildRunningNotice")
+              : t("saveSuccessNotice"),
+        });
+      } catch (error) {
+        formApi.setErrorMap({
+          onSubmit: {
+            fields: {},
+            form: error instanceof Error ? error.message : t("saveFailedNotice"),
+          },
+        });
+        throw error;
+      }
+    },
+    validator: validateProviderSettingsForm,
+  });
+
   useEffect(() => {
     const nextDraft = buildProviderSettingsView(initialValues);
-    setDraft(nextDraft);
+    form.reset(nextDraft);
+    form.setErrorMap({ onDynamic: undefined, onSubmit: undefined });
     setAdvancedOpen(false);
-    setErrorMessage(null);
     setNotice(null);
-    setValidationResult(null);
     setPendingScrollField(null);
-  }, [initialValues]);
-
-  const ollamaBaseUrl = draft.providerProfiles.ollama.base_url;
+    setValidationResult(null);
+  }, [form, initialValues]);
 
   const clearFeedback = () => {
-    setErrorMessage(null);
     setNotice(null);
     setValidationResult(null);
-  };
-
-  const fieldErrorMessages = {
-    chatModel: getFirstFormError([validationResult?.fields?.chatModel], t),
-    embeddingModel: getFirstFormError([validationResult?.fields?.embeddingModel], t),
-    primaryBaseUrl: getFirstFormError([validationResult?.fields?.primaryBaseUrl], t),
-    providerTimeoutSeconds: getFirstFormError(
-      [validationResult?.fields?.providerTimeoutSeconds],
-      t,
-    ),
-    retrievalEmbeddingModel: getFirstFormError(
-      [validationResult?.fields?.retrievalEmbeddingModel],
-      t,
-    ),
-    visionModel: getFirstFormError([validationResult?.fields?.visionModel], t),
+    form.setErrorMap({ onDynamic: undefined, onSubmit: undefined });
   };
 
   const scrollToField = (field: ProviderSettingsFieldName) => {
@@ -139,58 +153,52 @@ export function ProviderForm({
 
   const handleViewChange = (updater: (current: ProviderSettingsView) => ProviderSettingsView) => {
     clearFeedback();
-    setDraft((current) => updater(current));
+    const nextValues = updater(form.state.values);
+
+    form.setFieldValue("primaryProvider", nextValues.primaryProvider);
+    form.setFieldValue("providerProfiles", nextValues.providerProfiles);
+    form.setFieldValue("providerTimeoutSeconds", nextValues.providerTimeoutSeconds);
+    form.setFieldValue("retrievalOverrideEnabled", nextValues.retrievalOverrideEnabled);
+    form.setFieldValue("retrievalProvider", nextValues.retrievalProvider);
+    form.setFieldValue("templateProvider", nextValues.templateProvider);
   };
 
-  const validateDraft = () => {
-    const validation = validateProviderSettingsView(draft);
-    if (!validation) {
-      return false;
-    }
-
-    setValidationResult(validation);
-    setErrorMessage(getFirstFormError([validation.form], t));
-    scrollToField(validation.firstInvalidField);
-    return true;
-  };
-
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     clearFeedback();
-
-    if (validateDraft()) {
+    const currentValues = form.state.values;
+    const validation = validateProviderSettingsForm(currentValues);
+    if (validation) {
+      setValidationResult(validation);
+      const firstInvalidField = getFirstInvalidProviderField(currentValues);
+      if (firstInvalidField) {
+        scrollToField(firstInvalidField);
+      }
+      event.preventDefault();
       return;
     }
 
-    try {
-      const result = await onSave(toSettingsPayload(draft));
-      const nextDraft = buildProviderSettingsView(result);
-      setDraft(nextDraft);
-      setAdvancedOpen(false);
-      setNotice({
-        title: t("saveNoticeTitle"),
-        message: result.rebuild_started
-          ? t("backgroundRebuildStartedNotice")
-          : result.index_rebuild_status === "running"
-            ? t("backgroundRebuildRunningNotice")
-            : t("saveSuccessNotice"),
-      });
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : t("saveFailedNotice"));
-    }
+    void handleFormSubmitEvent(event, () => form.handleSubmit());
   };
 
   const handleTest = async () => {
     clearFeedback();
 
-    if (validateDraft()) {
+    const currentValues = form.state.values;
+    const validation = validateProviderSettingsForm(currentValues);
+    if (validation) {
+      setValidationResult(validation);
+      const firstInvalidField = getFirstInvalidProviderField(currentValues);
+      if (firstInvalidField) {
+        scrollToField(firstInvalidField);
+      }
       return;
     }
 
     try {
-      const result = await onTestProvider(toSettingsPayload(draft));
+      const result = await onTestProvider(toSettingsPayload(currentValues));
       const allHealthy =
         result.response.healthy && result.embedding.healthy && result.vision.healthy;
+      const ollamaBaseUrl = currentValues.providerProfiles.ollama.base_url;
       const items = [
         {
           healthy: result.response.healthy,
@@ -217,85 +225,124 @@ export function ProviderForm({
         variant: allHealthy ? "default" : "destructive",
       });
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : t("testConnectionFailedNotice"));
+      form.setErrorMap({
+        onSubmit: {
+          fields: {},
+          form: error instanceof Error ? error.message : t("testConnectionFailedNotice"),
+        },
+      });
     }
   };
 
   return (
-    <form className="flex flex-col gap-6" noValidate onSubmit={handleSubmit}>
-      <ProviderStatusSummary initialValues={initialValues} t={t} />
+    <Form className="flex flex-col gap-6" noValidate onSubmit={handleSubmit}>
+      <form.Subscribe selector={(state) => ({ draft: state.values, errorMap: state.errorMap })}>
+        {({ draft, errorMap }) => {
+          const fieldErrorMessages = {
+            chatModel: getFormErrorMessage([validationResult?.fields?.chatModel], t),
+            embeddingModel: getFormErrorMessage([validationResult?.fields?.embeddingModel], t),
+            primaryBaseUrl: getFormErrorMessage([validationResult?.fields?.primaryBaseUrl], t),
+            providerTimeoutSeconds: getFormErrorMessage(
+              [validationResult?.fields?.providerTimeoutSeconds],
+              t,
+            ),
+            retrievalEmbeddingModel: getFormErrorMessage(
+              [validationResult?.fields?.retrievalEmbeddingModel],
+              t,
+            ),
+            visionModel: getFormErrorMessage([validationResult?.fields?.visionModel], t),
+          };
+          const errorMessage = getFormErrorMessage([validationResult?.form, errorMap.onSubmit], t);
 
-      <PrimaryProviderSection
-        chatModelLabel={chatModelLabel}
-        draft={draft}
-        fieldErrorMessages={{
-          chatModel: fieldErrorMessages.chatModel ?? undefined,
-          embeddingModel: fieldErrorMessages.embeddingModel ?? undefined,
-          primaryBaseUrl: fieldErrorMessages.primaryBaseUrl ?? undefined,
-          visionModel: fieldErrorMessages.visionModel ?? undefined,
+          return (
+            <>
+              <ProviderStatusSummary initialValues={initialValues} t={t} />
+
+              <PrimaryProviderSection
+                chatModelLabel={chatModelLabel}
+                draft={draft}
+                embeddingModelLabel={embeddingModelLabel}
+                fieldErrorMessages={{
+                  chatModel: fieldErrorMessages.chatModel ?? undefined,
+                  embeddingModel: fieldErrorMessages.embeddingModel ?? undefined,
+                  primaryBaseUrl: fieldErrorMessages.primaryBaseUrl ?? undefined,
+                  visionModel: fieldErrorMessages.visionModel ?? undefined,
+                }}
+                fieldRefs={fieldRefs}
+                handleViewChange={handleViewChange}
+                t={t}
+                visionModelLabel={visionModelLabel}
+              />
+
+              <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
+                <section className="rounded-2xl border border-border/60 bg-background/55 px-5 py-5">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <h2 className="text-sm font-medium">{t("advancedSettingsTitle")}</h2>
+                    </div>
+                    <CollapsibleTrigger
+                      render={
+                        <Button
+                          aria-expanded={advancedOpen}
+                          size="sm"
+                          type="button"
+                          variant={advancedOpen ? "secondary" : "outline"}
+                        />
+                      }
+                    >
+                      {advancedOpen
+                        ? t("advancedSettingsCloseAction")
+                        : t("advancedSettingsOpenAction")}
+                    </CollapsibleTrigger>
+                  </div>
+
+                  <CollapsibleContent className="mt-5 space-y-5">
+                    <RetrievalOverrideSection
+                      draft={draft}
+                      fieldErrorMessages={{
+                        retrievalEmbeddingModel:
+                          fieldErrorMessages.retrievalEmbeddingModel ?? undefined,
+                      }}
+                      fieldRefs={fieldRefs}
+                      handleViewChange={handleViewChange}
+                      retrievalEmbeddingModelLabel={retrievalEmbeddingModelLabel}
+                      t={t}
+                    />
+
+                    <TemplateEditorSection
+                      draft={draft}
+                      handleViewChange={handleViewChange}
+                      t={t}
+                    />
+
+                    <ProviderTimeoutSection
+                      draft={draft}
+                      fieldErrorMessages={{
+                        providerTimeoutSeconds:
+                          fieldErrorMessages.providerTimeoutSeconds ?? undefined,
+                      }}
+                      fieldRefs={fieldRefs}
+                      handleViewChange={handleViewChange}
+                      t={t}
+                    />
+                  </CollapsibleContent>
+                </section>
+              </Collapsible>
+
+              <SettingsActionBar
+                errorMessage={errorMessage}
+                notice={notice}
+                onTest={() => {
+                  void handleTest();
+                }}
+                savePending={savePending}
+                t={t}
+                testPending={testPending}
+              />
+            </>
+          );
         }}
-        fieldRefs={fieldRefs}
-        handleViewChange={handleViewChange}
-        t={t}
-        visionModelLabel={visionModelLabel}
-        embeddingModelLabel={embeddingModelLabel}
-      />
-
-      <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
-        <section className="rounded-2xl border border-border/60 bg-background/55 px-5 py-5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-sm font-medium">{t("advancedSettingsTitle")}</h2>
-            </div>
-            <CollapsibleTrigger
-              render={
-                <Button
-                  aria-expanded={advancedOpen}
-                  size="sm"
-                  type="button"
-                  variant={advancedOpen ? "secondary" : "outline"}
-                />
-              }
-            >
-              {advancedOpen ? t("advancedSettingsCloseAction") : t("advancedSettingsOpenAction")}
-            </CollapsibleTrigger>
-          </div>
-
-          <CollapsibleContent className="mt-5 space-y-5">
-            <RetrievalOverrideSection
-              draft={draft}
-              fieldErrorMessages={{
-                retrievalEmbeddingModel: fieldErrorMessages.retrievalEmbeddingModel ?? undefined,
-              }}
-              fieldRefs={fieldRefs}
-              handleViewChange={handleViewChange}
-              retrievalEmbeddingModelLabel={retrievalEmbeddingModelLabel}
-              t={t}
-            />
-
-            <TemplateEditorSection draft={draft} handleViewChange={handleViewChange} t={t} />
-
-            <ProviderTimeoutSection
-              draft={draft}
-              fieldErrorMessages={{
-                providerTimeoutSeconds: fieldErrorMessages.providerTimeoutSeconds ?? undefined,
-              }}
-              fieldRefs={fieldRefs}
-              handleViewChange={handleViewChange}
-              t={t}
-            />
-          </CollapsibleContent>
-        </section>
-      </Collapsible>
-
-      <SettingsActionBar
-        errorMessage={errorMessage}
-        notice={notice}
-        onTest={() => void handleTest()}
-        savePending={savePending}
-        t={t}
-        testPending={testPending}
-      />
-    </form>
+      </form.Subscribe>
+    </Form>
   );
 }

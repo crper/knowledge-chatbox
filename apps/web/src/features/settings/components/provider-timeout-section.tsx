@@ -4,7 +4,7 @@
 
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { toFieldErrorItems } from "@/lib/forms";
+import { getFieldErrorItems } from "@/lib/form/form-feedback";
 import type { ProviderSettingsView } from "./provider-form-state";
 import {
   providerFormControlClassName,
@@ -22,7 +22,7 @@ export function ProviderTimeoutSection({
   fieldErrorMessages: {
     providerTimeoutSeconds?: string;
   };
-  fieldRefs: React.RefObject<Partial<Record<string, HTMLInputElement | null>>>;
+  fieldRefs: React.RefObject<Partial<Record<string, HTMLElement | null>>>;
   handleViewChange: (updater: (current: ProviderSettingsView) => ProviderSettingsView) => void;
   t: (key: string, params?: Record<string, unknown>) => string;
 }) {
@@ -56,11 +56,7 @@ export function ProviderTimeoutSection({
           />
           <FieldDescription>{t("providerTimeoutHint")}</FieldDescription>
           <FieldError
-            errors={toFieldErrorItems(
-              [],
-              undefined,
-              fieldErrorMessages.providerTimeoutSeconds ?? undefined,
-            )}
+            errors={getFieldErrorItems([], undefined, fieldErrorMessages.providerTimeoutSeconds)}
           />
         </Field>
       </FieldGroup>

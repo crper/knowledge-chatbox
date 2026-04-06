@@ -1,12 +1,4 @@
-import {
-  buildFormValidationResult,
-  formError,
-  trimmedRequired,
-  normalizeText,
-  type FormErrorDescriptor,
-  type FormValidationResult,
-} from "@/lib/forms";
-import { httpUrlSchema, positiveIntegerInRange } from "@/lib/validation/schemas";
+import { normalizeText } from "@/lib/forms";
 import type {
   AppSettings,
   EmbeddingProviderName,
@@ -33,10 +25,6 @@ export type ProviderSettingsFieldName =
   | "primaryBaseUrl"
   | "retrievalEmbeddingModel"
   | "providerTimeoutSeconds";
-
-export type ProviderSettingsValidationResult = FormValidationResult<ProviderSettingsFieldName> & {
-  firstInvalidField: ProviderSettingsFieldName;
-};
 
 export const PRIMARY_PROVIDER_OPTIONS: PrimaryProviderName[] = ["ollama", "openai", "anthropic"];
 export const TEMPLATE_PROVIDER_OPTIONS: TemplateProviderName[] = [
@@ -260,76 +248,4 @@ export function toSettingsPayload(view: ProviderSettingsView) {
     },
     provider_timeout_seconds: view.providerTimeoutSeconds,
   } satisfies Partial<AppSettings>;
-}
-
-export function validateProviderSettingsView(
-  view: ProviderSettingsView,
-): ProviderSettingsValidationResult | undefined {
-  const chatModel = getPrimaryChatModel(view);
-  const defaultEmbeddingModel = getDefaultEmbeddingModel(view);
-  const retrievalEmbeddingModel = getRetrievalEmbeddingModel(view);
-  const visionModel = getPrimaryVisionModel(view);
-  const fields: Partial<Record<ProviderSettingsFieldName, FormErrorDescriptor | undefined>> = {
-    chatModel: trimmedRequired(chatModel, "chatModelRequiredError"),
-    embeddingModel: trimmedRequired(defaultEmbeddingModel, "embeddingModelRequiredError"),
-    primaryBaseUrl: validatePrimaryBaseUrl(view),
-    providerTimeoutSeconds: validatePositiveInteger(
-      view.providerTimeoutSeconds,
-      "providerTimeoutInvalidError",
-    ),
-    retrievalEmbeddingModel: view.retrievalOverrideEnabled
-      ? trimmedRequired(retrievalEmbeddingModel, "retrievalEmbeddingModelRequiredError")
-      : undefined,
-    visionModel: trimmedRequired(visionModel, "visionModelRequiredError"),
-  };
-
-  const result = buildFormValidationResult(formError("providerValidationSummaryError"), fields);
-
-  if (!result) {
-    return undefined;
-  }
-
-  return {
-    ...result,
-    firstInvalidField: getFirstInvalidField(fields),
-  };
-}
-
-function getFirstInvalidField(
-  fields: Partial<Record<ProviderSettingsFieldName, FormErrorDescriptor | undefined>>,
-): ProviderSettingsFieldName {
-  const order: ProviderSettingsFieldName[] = [
-    "chatModel",
-    "embeddingModel",
-    "visionModel",
-    "primaryBaseUrl",
-    "retrievalEmbeddingModel",
-    "providerTimeoutSeconds",
-  ];
-
-  return order.find((field) => fields[field] !== undefined) ?? "chatModel";
-}
-
-function validatePositiveInteger(value: number, errorKey: string): FormErrorDescriptor | undefined {
-  const result = positiveIntegerInRange(1, 600).safeParse(value);
-  if (!result.success) {
-    return formError(errorKey);
-  }
-  return undefined;
-}
-
-function validatePrimaryBaseUrl(view: ProviderSettingsView) {
-  const baseUrl = view.providerProfiles[view.primaryProvider].base_url;
-  if (view.primaryProvider === "ollama" && !normalizeText(baseUrl)) {
-    return formError("providerTestOllamaBaseUrlMissing");
-  }
-
-  // 使用 Zod schema 验证 URL
-  const urlResult = httpUrlSchema({ allowEmpty: view.primaryProvider !== "ollama" }).safeParse(
-    baseUrl ?? "",
-  );
-  if (!urlResult.success) {
-    return formError("baseUrlInvalidError");
-  }
-  return undefined;
 }

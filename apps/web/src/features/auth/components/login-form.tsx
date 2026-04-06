@@ -2,16 +2,16 @@
  * @file 认证相关界面组件模块。
  */
 
-import { revalidateLogic, useForm } from "@tanstack/react-form";
 import type { FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Form } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { getFirstFormError, handleFormSubmitEvent, toFieldErrorItems } from "@/lib/forms";
-import { zodToTanStackFormErrors } from "@/lib/validation/form-adapter";
+import { FormErrorAlert, getFieldErrorItems, getFormErrorMessage } from "@/lib/form/form-feedback";
+import { useAppForm } from "@/lib/form/use-app-form";
+import { handleFormSubmitEvent } from "@/lib/forms";
 import { loginSchema } from "@/lib/validation/schemas";
 
 type LoginFormProps = {
@@ -25,31 +25,19 @@ type LoginFormProps = {
  */
 export function LoginForm({ errorMessage = null, onFieldChange, onSubmit }: LoginFormProps) {
   const { t } = useTranslation("auth");
-  const form = useForm({
+  const form = useAppForm({
     defaultValues: {
       password: "",
       username: "",
     },
-    validationLogic: revalidateLogic({
-      mode: "submit",
-      modeAfterSubmission: "blur",
-    }),
-    validators: {
-      onDynamic: ({ value }) => {
-        const result = loginSchema.safeParse(value);
-        return result.success
-          ? undefined
-          : zodToTanStackFormErrors(result.error, {
-              formI18nKey: "auth:loginValidationError",
-            });
-      },
-    },
+    formI18nKey: "auth:loginValidationError",
     onSubmit: async ({ value }) => {
       await onSubmit({
         password: value.password,
         username: value.username.trim(),
       });
     },
+    schema: loginSchema,
   });
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -57,7 +45,7 @@ export function LoginForm({ errorMessage = null, onFieldChange, onSubmit }: Logi
   };
 
   return (
-    <form className="flex flex-col gap-5" onSubmit={handleSubmit}>
+    <Form className="flex flex-col gap-5" onSubmit={handleSubmit}>
       <FieldGroup className="gap-4">
         <form.Field name="username">
           {(field) => (
@@ -82,7 +70,7 @@ export function LoginForm({ errorMessage = null, onFieldChange, onSubmit }: Logi
                 placeholder={t("usernameLabel")}
                 value={field.state.value}
               />
-              <FieldError errors={toFieldErrorItems(field.state.meta.errors, t)} />
+              <FieldError errors={getFieldErrorItems(field.state.meta.errors, t)} />
             </Field>
           )}
         </form.Field>
@@ -110,14 +98,14 @@ export function LoginForm({ errorMessage = null, onFieldChange, onSubmit }: Logi
                 type="password"
                 value={field.state.value}
               />
-              <FieldError errors={toFieldErrorItems(field.state.meta.errors, t)} />
+              <FieldError errors={getFieldErrorItems(field.state.meta.errors, t)} />
             </Field>
           )}
         </form.Field>
       </FieldGroup>
       <form.Subscribe selector={(state) => state.errorMap.onDynamic}>
         {(dynamicError) => {
-          const formErrorMessage = getFirstFormError([dynamicError], t);
+          const formErrorMessage = getFormErrorMessage([dynamicError], t);
           const feedbackMessage = formErrorMessage || errorMessage;
 
           return (
@@ -127,11 +115,7 @@ export function LoginForm({ errorMessage = null, onFieldChange, onSubmit }: Logi
               className="min-h-4"
               data-slot="login-feedback"
             >
-              {feedbackMessage ? (
-                <Alert variant="destructive">
-                  <AlertDescription>{feedbackMessage}</AlertDescription>
-                </Alert>
-              ) : null}
+              <FormErrorAlert message={feedbackMessage} />
             </div>
           );
         }}
@@ -148,6 +132,6 @@ export function LoginForm({ errorMessage = null, onFieldChange, onSubmit }: Logi
           </Button>
         )}
       </form.Subscribe>
-    </form>
+    </Form>
   );
 }

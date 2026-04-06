@@ -4,8 +4,8 @@
 
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { getFieldErrorItems } from "@/lib/form/form-feedback";
 import { formatProviderProfile } from "@/lib/provider-display";
-import { toFieldErrorItems } from "@/lib/forms";
 import type { AppSettings, CapabilityHealthResult } from "../api/settings";
 import {
   TEMPLATE_PROVIDER_OPTIONS,
@@ -105,7 +105,7 @@ export function renderProfileFields({
   t,
 }: {
   includeModelFields: boolean;
-  inputRef?: (key: ProfileFieldDefinition["key"], node: HTMLInputElement | null) => void;
+  inputRef?: (key: ProfileFieldDefinition["key"], node: HTMLElement | null) => void;
   manualFieldErrors?: Partial<Record<ProfileFieldDefinition["key"], string>>;
   onChange: (key: ProfileFieldDefinition["key"], value: string) => void;
   profile: ProviderProfileModels[TemplateProviderName];
@@ -131,7 +131,7 @@ export function renderProfileFields({
             value={getProfileFieldValue(profile, field.key)}
           />
           {field.hint ? <FieldDescription>{t(field.hint)}</FieldDescription> : null}
-          <FieldError errors={toFieldErrorItems([], undefined, manualFieldErrors?.[field.key])} />
+          <FieldError errors={getFieldErrorItems([], undefined, manualFieldErrors?.[field.key])} />
         </Field>
       ))}
     </FieldGroup>

@@ -2,7 +2,6 @@ import {
   buildProviderSettingsView,
   toSettingsPayload,
   updatePrimaryProvider,
-  validateProviderSettingsView,
   toggleRetrievalOverride,
   getPrimaryChatModel,
   getPrimaryVisionModel,
@@ -10,6 +9,7 @@ import {
   getRetrievalEmbeddingModel,
   getDefaultEmbeddingProvider,
 } from "./provider-form-state";
+import { validateProviderSettingsForm } from "./provider-form.validation";
 import type { AppSettings } from "../api/settings";
 
 function buildSettings(overrides: Partial<AppSettings> = {}): AppSettings {
@@ -103,7 +103,7 @@ describe("provider-form-state validation", () => {
       }),
     );
 
-    const result = validateProviderSettingsView({
+    const result = validateProviderSettingsForm({
       ...view,
       providerTimeoutSeconds: 601,
       providerProfiles: {
@@ -117,10 +117,10 @@ describe("provider-form-state validation", () => {
 
     expect(result).toMatchObject({
       fields: {
-        primaryBaseUrl: { i18nKey: "baseUrlInvalidError" },
-        providerTimeoutSeconds: { i18nKey: "providerTimeoutInvalidError" },
+        primaryBaseUrl: { i18nKey: "settings:baseUrlInvalidError" },
+        providerTimeoutSeconds: { i18nKey: "settings:providerTimeoutInvalidError" },
       },
-      firstInvalidField: "primaryBaseUrl",
+      form: { i18nKey: "settings:providerValidationSummaryError" },
     });
   });
 
@@ -144,7 +144,7 @@ describe("provider-form-state validation", () => {
       );
 
       expect(
-        validateProviderSettingsView({
+        validateProviderSettingsForm({
           ...view,
           providerProfiles: {
             ...view.providerProfiles,
@@ -156,9 +156,8 @@ describe("provider-form-state validation", () => {
         }),
       ).toMatchObject({
         fields: {
-          primaryBaseUrl: { i18nKey: "baseUrlInvalidError" },
+          primaryBaseUrl: { i18nKey: "settings:baseUrlInvalidError" },
         },
-        firstInvalidField: "primaryBaseUrl",
       });
     }
   });
@@ -175,7 +174,7 @@ describe("provider-form-state validation", () => {
     );
 
     expect(
-      validateProviderSettingsView({
+      validateProviderSettingsForm({
         ...openAiView,
         providerProfiles: {
           ...openAiView.providerProfiles,
@@ -198,7 +197,7 @@ describe("provider-form-state validation", () => {
     );
 
     expect(
-      validateProviderSettingsView({
+      validateProviderSettingsForm({
         ...ollamaView,
         providerProfiles: {
           ...ollamaView.providerProfiles,
@@ -207,9 +206,8 @@ describe("provider-form-state validation", () => {
       }),
     ).toMatchObject({
       fields: {
-        primaryBaseUrl: { i18nKey: "providerTestOllamaBaseUrlMissing" },
+        primaryBaseUrl: { i18nKey: "settings:providerTestOllamaBaseUrlMissing" },
       },
-      firstInvalidField: "primaryBaseUrl",
     });
   });
 
@@ -217,14 +215,14 @@ describe("provider-form-state validation", () => {
     const view = buildProviderSettingsView(buildSettings());
 
     expect(
-      validateProviderSettingsView({
+      validateProviderSettingsForm({
         ...view,
         retrievalOverrideEnabled: false,
       }),
     ).toBeUndefined();
 
     expect(
-      validateProviderSettingsView({
+      validateProviderSettingsForm({
         ...view,
         retrievalOverrideEnabled: true,
         retrievalProvider: "voyage",
@@ -238,9 +236,8 @@ describe("provider-form-state validation", () => {
       }),
     ).toMatchObject({
       fields: {
-        retrievalEmbeddingModel: { i18nKey: "retrievalEmbeddingModelRequiredError" },
+        retrievalEmbeddingModel: { i18nKey: "settings:retrievalEmbeddingModelRequiredError" },
       },
-      firstInvalidField: "retrievalEmbeddingModel",
     });
   });
 

@@ -3,11 +3,9 @@
  */
 
 import { useEffect } from "react";
-import { revalidateLogic, useForm } from "@tanstack/react-form";
 import type { FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -18,9 +16,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Form } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { getFirstFormError, handleFormSubmitEvent, toFieldErrorItems } from "@/lib/forms";
-import { zodToTanStackFormErrors } from "@/lib/validation/form-adapter";
+import { FormErrorAlert, getFieldErrorItems, getFormErrorMessage } from "@/lib/form/form-feedback";
+import { useAppForm } from "@/lib/form/use-app-form";
+import { handleFormSubmitEvent } from "@/lib/forms";
 import { createUserSchema } from "@/lib/validation/schemas";
 
 type CreateUserDialogProps = {
@@ -38,25 +38,13 @@ type CreateUserDialogProps = {
  */
 export function CreateUserDialog({ open, onClose, onSubmit }: CreateUserDialogProps) {
   const { t } = useTranslation(["users", "common"]);
-  const form = useForm({
+  const form = useAppForm({
     defaultValues: {
       password: "",
+      role: "user" as const,
       username: "",
     },
-    validationLogic: revalidateLogic({
-      mode: "submit",
-      modeAfterSubmission: "blur",
-    }),
-    validators: {
-      onDynamic: ({ value }) => {
-        const result = createUserSchema.safeParse(value);
-        return result.success
-          ? undefined
-          : zodToTanStackFormErrors(result.error, {
-              formI18nKey: "users:createUserValidationError",
-            });
-      },
-    },
+    formI18nKey: "users:createUserValidationError",
     onSubmit: async ({ formApi, value }) => {
       try {
         await onSubmit({ password: value.password, role: "user", username: value.username.trim() });
@@ -71,12 +59,14 @@ export function CreateUserDialog({ open, onClose, onSubmit }: CreateUserDialogPr
         throw error;
       }
     },
+    schema: createUserSchema,
   });
 
   useEffect(() => {
     if (!open) {
       form.reset({
         password: "",
+        role: "user",
         username: "",
       });
       form.setErrorMap({ onSubmit: undefined });
@@ -94,7 +84,7 @@ export function CreateUserDialog({ open, onClose, onSubmit }: CreateUserDialogPr
           <DialogTitle>{t("createUserTitle")}</DialogTitle>
           <DialogDescription>{t("createUserDescription")}</DialogDescription>
         </DialogHeader>
-        <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
+        <Form className="flex flex-col gap-4" onSubmit={handleSubmit}>
           <FieldGroup>
             <form.Field name="username">
               {(field) => (
@@ -113,7 +103,7 @@ export function CreateUserDialog({ open, onClose, onSubmit }: CreateUserDialogPr
                     onBlur={() => field.handleBlur()}
                     value={field.state.value}
                   />
-                  <FieldError errors={toFieldErrorItems(field.state.meta.errors, t)} />
+                  <FieldError errors={getFieldErrorItems(field.state.meta.errors, t)} />
                 </Field>
               )}
             </form.Field>
@@ -137,20 +127,16 @@ export function CreateUserDialog({ open, onClose, onSubmit }: CreateUserDialogPr
                     type="password"
                     value={field.state.value}
                   />
-                  <FieldError errors={toFieldErrorItems(field.state.meta.errors, t)} />
+                  <FieldError errors={getFieldErrorItems(field.state.meta.errors, t)} />
                 </Field>
               )}
             </form.Field>
           </FieldGroup>
           <form.Subscribe selector={(state) => state.errorMap}>
             {(errorMap) => {
-              const errorMessage = getFirstFormError([errorMap.onDynamic, errorMap.onSubmit], t);
+              const errorMessage = getFormErrorMessage([errorMap.onDynamic, errorMap.onSubmit], t);
 
-              return errorMessage ? (
-                <Alert variant="destructive">
-                  <AlertDescription>{errorMessage}</AlertDescription>
-                </Alert>
-              ) : null;
+              return <FormErrorAlert message={errorMessage} />;
             }}
           </form.Subscribe>
           <DialogFooter>
@@ -173,7 +159,7 @@ export function CreateUserDialog({ open, onClose, onSubmit }: CreateUserDialogPr
               )}
             </form.Subscribe>
           </DialogFooter>
-        </form>
+        </Form>
       </DialogContent>
     </Dialog>
   );
