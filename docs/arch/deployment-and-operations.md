@@ -155,6 +155,7 @@ flowchart LR
 - 日志驱动统一限制大小，避免宿主机被容器日志打满
 - Docker 单机模式把 API 收敛到同源 `/api`，优先避免 refresh cookie、SSE 和受保护文件落到跨源链路
 - Docker 单机模式下，大文件上传的第一层限制来自 `web` 容器里的 `nginx client_max_body_size`，当前已放宽到 `2g`；第二层则是 API 自身的磁盘空间与标准化/索引耗时，而不是 Python 进程是否还能容纳整份请求体
+- 聊天执行后端当前已统一收口到 `ChatWorkflow + PydanticAI`；本地开发态和 Docker Compose 都直接走这条路径
 - 前端构建期 API 地址仍然是固化值；改了相关构建参数后必须重新 build
 
 ## 4. `scripts/docker-deploy.sh` 怎么用

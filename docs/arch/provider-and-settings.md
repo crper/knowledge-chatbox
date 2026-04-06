@@ -56,6 +56,7 @@
 - 保存后立即生效
 - 会同步更新对应 provider 的 `chat_model`
 - 不触发索引重建
+- `response_route` 当前直接服务 `ChatWorkflow + PydanticAI` 聊天执行链路；同步和流式问答都消费同一份 `ProviderRuntimeSettings`
 - 附件输入整形发生在真正调用 provider 前：图片会按 `document_revision_id` 重读并统一转成稳定图片 payload，文档附件会读取标准化文本并拼进当前轮上下文
 - 这层只负责输入整形与 provider 调用，不维护一份前端可用的“模型是否支持看图”静态表
 - 更细的附件输入链路与多附件检索语义，统一看 [runtime-flows.md](./runtime-flows.md)
@@ -178,6 +179,9 @@
 - `apps/api/src/knowledge_chatbox_api/services/settings/runtime_settings.py`
 - `apps/api/src/knowledge_chatbox_api/services/settings/settings_service.py`
 - `apps/api/src/knowledge_chatbox_api/api/routes/settings.py`
+- `apps/api/src/knowledge_chatbox_api/services/chat/workflow/model_factory.py`
+- `apps/api/src/knowledge_chatbox_api/services/chat/workflow/agent.py`
+- `apps/api/src/knowledge_chatbox_api/services/chat/workflow/chat_workflow.py`
 - `apps/api/src/knowledge_chatbox_api/services/documents/rebuild_service.py`
 - `apps/web/src/features/settings/components/provider-form-state.ts`
 - `apps/web/src/features/settings/components/provider-form.tsx`

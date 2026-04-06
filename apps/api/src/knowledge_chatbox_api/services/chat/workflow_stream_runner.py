@@ -1,0 +1,332 @@
+"""Workflow-backed chat stream execution."""
+
+from __future__ import annotations
+
+import asyncio
+from collections.abc import AsyncIterator, Coroutine
+from typing import Any, cast
+
+from pydantic_ai import AgentRunResultEvent
+
+from knowledge_chatbox_api.core.logging import get_logger
+from knowledge_chatbox_api.services.chat.chat_persistence_service import ChatPersistenceService
+from knowledge_chatbox_api.services.chat.stream_events import (
+    MESSAGE_COMPLETED_EVENT,
+    PART_TEXT_DELTA_EVENT,
+    PART_TEXT_END_EVENT,
+    PART_TEXT_START_EVENT,
+    RUN_COMPLETED_EVENT,
+    RUN_FAILED_EVENT,
+    USAGE_FINAL_EVENT,
+    StreamEventBatchItem,
+    StreamEventEnvelope,
+    StreamEventName,
+    StreamEventPayload,
+)
+from knowledge_chatbox_api.services.chat.workflow.event_bridge import ChatWorkflowEventBridge
+
+STREAM_INTERRUPTED_ERROR_MESSAGE = "本次生成连接中断，请重试。"
+PROVIDER_STREAM_ENDED_EARLY_ERROR_MESSAGE = "provider stream ended before completion"
+logger = get_logger(__name__)
+
+
+class WorkflowStreamRunner:
+    def __init__(
+        self,
+        *,
+        session,
+        chat_run_event_repository,
+        presenter,
+        workflow,
+        workflow_deps,
+        settings,
+        run,
+        assistant_message,
+        user_message,
+    ) -> None:
+        self.session = session
+        self.chat_run_event_repository = chat_run_event_repository
+        self.presenter = presenter
+        self.workflow = workflow
+        self.workflow_deps = workflow_deps
+        self.settings = settings
+        self.run = run
+        self.assistant_message = assistant_message
+        self.user_message = user_message
+        self.persistence = ChatPersistenceService(session)
+        self.bridge = ChatWorkflowEventBridge()
+
+    def stream(
+        self,
+        *,
+        session_id: int,
+        question: str,
+        attachments: list[dict[str, Any]] | None,
+        current_seq: int,
+    ):
+        async_events = cast(
+            AsyncIterator[object],
+            self.workflow.run_stream_events(
+                deps=self.workflow_deps,
+                session_id=session_id,
+                question=question,
+                attachments=attachments,
+            ),
+        )
+        event_seq = current_seq
+        started_text = False
+        sources: list[dict[str, Any]] = []
+        with asyncio.Runner() as runner:
+            try:
+                while True:
+                    try:
+                        workflow_event = runner.run(
+                            cast(Coroutine[Any, Any, object], async_events.__anext__())
+                        )
+                    except StopAsyncIteration:
+                        break
+
+                    if isinstance(workflow_event, AgentRunResultEvent):
+                        output, usage = self.bridge.extract_result(workflow_event)
+                        if not started_text and isinstance(output, str) and output:
+                            self.assistant_message.content = output
+                        event_seq, completion_events = self._complete_run(
+                            current_seq=event_seq,
+                            session_id=session_id,
+                            sources=sources,
+                            started_text=started_text,
+                            usage=vars(usage) if usage is not None else {},
+                        )
+                        for event in completion_events:
+                            yield event
+                        return
+
+                    extracted_sources = self.bridge.extract_sources(
+                        getattr(getattr(workflow_event, "result", None), "content", None)
+                    )
+                    if extracted_sources:
+                        sources = self._merge_sources(sources, extracted_sources)
+
+                    for event_name, payload in self.bridge.map_event(
+                        workflow_event,
+                        run_id=self.run.id,
+                        assistant_message_id=self.assistant_message.id,
+                    ):
+                        if event_name == PART_TEXT_START_EVENT:
+                            self.persistence.mark_run_running(self.run, self.assistant_message)
+                            started_text = True
+                            event_seq, event = self._append_event(event_seq, event_name, payload)
+                        elif event_name == PART_TEXT_DELTA_EVENT:
+                            delta = payload.get("delta", "") or ""
+                            self.persistence.append_text_delta(self.assistant_message, delta)
+                            event_seq, event = self._append_event(
+                                event_seq,
+                                event_name,
+                                payload,
+                                commit=False,
+                            )
+                        else:
+                            event_seq, event = self._append_event(event_seq, event_name, payload)
+                        yield event
+
+                event_seq, event = self._record_failed_run(
+                    current_seq=event_seq,
+                    error_message=PROVIDER_STREAM_ENDED_EARLY_ERROR_MESSAGE,
+                    failure_type="workflow_stream_ended_early",
+                    session_id=session_id,
+                    sources=sources,
+                )
+                yield event
+            except (GeneratorExit, asyncio.CancelledError):
+                self._record_failed_run(
+                    current_seq=event_seq,
+                    error_message=STREAM_INTERRUPTED_ERROR_MESSAGE,
+                    failure_type="stream_interrupted",
+                    session_id=session_id,
+                    sources=sources,
+                )
+                raise
+            except Exception as exc:  # noqa: BLE001
+                event_seq, event = self._record_failed_run(
+                    current_seq=event_seq,
+                    error_message=str(exc),
+                    failure_type="workflow_error",
+                    session_id=session_id,
+                    sources=sources,
+                )
+                yield event
+            finally:
+                aclose = getattr(async_events, "aclose", None)
+                if callable(aclose):
+                    runner.run(cast(Coroutine[Any, Any, object], aclose()))
+
+    def _complete_run(
+        self,
+        *,
+        current_seq: int,
+        session_id: int,
+        sources: list[dict[str, Any]],
+        started_text: bool,
+        usage: dict | None,
+    ) -> tuple[int, list[StreamEventEnvelope]]:
+        completion_events: list[StreamEventBatchItem] = []
+        if started_text:
+            completion_events.append(
+                (
+                    PART_TEXT_END_EVENT,
+                    {
+                        "run_id": self.run.id,
+                        "assistant_message_id": self.assistant_message.id,
+                    },
+                )
+            )
+        completion_events.append(
+            (
+                USAGE_FINAL_EVENT,
+                {
+                    "run_id": self.run.id,
+                    "usage": usage or {},
+                },
+            )
+        )
+        next_seq, presented_completion_events = self._append_event_batch(
+            current_seq,
+            completion_events,
+        )
+        self.persistence.complete_run(self.run, self.assistant_message, sources, usage)
+        logger.info(
+            "chat_stream_run_completed",
+            run_id=self.run.id,
+            session_id=session_id,
+            assistant_message_id=self.assistant_message.id,
+            source_count=len(sources),
+            response_provider=self.settings.response_route.provider,
+            response_model=self.settings.response_route.model,
+        )
+        next_seq, terminal_events = self._append_event_batch(
+            next_seq,
+            [
+                (
+                    MESSAGE_COMPLETED_EVENT,
+                    {
+                        "run_id": self.run.id,
+                        "assistant_message_id": self.assistant_message.id,
+                        "status": "succeeded",
+                    },
+                ),
+                (
+                    RUN_COMPLETED_EVENT,
+                    {
+                        "run_id": self.run.id,
+                        "assistant_message_id": self.assistant_message.id,
+                    },
+                ),
+            ],
+        )
+        return next_seq, [*presented_completion_events, *terminal_events]
+
+    def _record_failed_run(
+        self,
+        *,
+        current_seq: int,
+        error_message: str,
+        failure_type: str,
+        session_id: int,
+        sources: list[dict[str, Any]] | None = None,
+    ) -> tuple[int, StreamEventEnvelope]:
+        self.user_message.status = "failed"
+        self.user_message.error_message = error_message
+        self.persistence.fail_run(
+            self.run,
+            self.assistant_message,
+            error_message,
+            sources=sources,
+        )
+        logger.warning(
+            "chat_stream_run_failed",
+            run_id=self.run.id,
+            session_id=session_id,
+            response_provider=self.settings.response_route.provider,
+            response_model=self.settings.response_route.model,
+            failure_type=failure_type,
+            error_message=error_message,
+        )
+        return self._append_event(
+            current_seq,
+            RUN_FAILED_EVENT,
+            {
+                "run_id": self.run.id,
+                "assistant_message_id": self.assistant_message.id,
+                "error_message": error_message,
+            },
+        )
+
+    def _append_event(
+        self,
+        current_seq: int,
+        event_name: StreamEventName,
+        data: StreamEventPayload,
+        *,
+        commit: bool = True,
+    ) -> tuple[int, StreamEventEnvelope]:
+        next_seq = current_seq + 1
+        self.chat_run_event_repository.append_event(
+            run_id=self.run.id,
+            seq=next_seq,
+            event_type=event_name,
+            payload_json=data,
+            flush=commit,
+        )
+        if commit:
+            self.session.commit()
+        return next_seq, self.presenter.event(event_name, data)
+
+    def _append_event_batch(
+        self,
+        current_seq: int,
+        events: list[StreamEventBatchItem],
+    ) -> tuple[int, list[StreamEventEnvelope]]:
+        if not events:
+            return current_seq, []
+
+        next_seq = current_seq
+        presented_events: list[StreamEventEnvelope] = []
+        for event_name, data in events:
+            next_seq += 1
+            self.chat_run_event_repository.append_event(
+                run_id=self.run.id,
+                seq=next_seq,
+                event_type=event_name,
+                payload_json=data,
+                flush=False,
+            )
+            presented_events.append(self.presenter.event(event_name, data))
+
+        self.session.commit()
+        return next_seq, presented_events
+
+    def _merge_sources(
+        self,
+        current_sources: list[dict[str, Any]],
+        new_sources: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        merged: list[dict[str, Any]] = list(current_sources)
+        seen = {
+            (
+                source.get("document_revision_id"),
+                source.get("chunk_id"),
+                source.get("snippet"),
+            )
+            for source in current_sources
+        }
+        for source in new_sources:
+            key = (
+                source.get("document_revision_id"),
+                source.get("chunk_id"),
+                source.get("snippet"),
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            merged.append(source)
+        return merged

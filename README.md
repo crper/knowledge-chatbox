@@ -23,6 +23,7 @@
 | 🧾 来源引用回看   | 已支持 | 回答内容带来源片段；右侧上下文栏走独立会话摘要接口，不再依赖整段消息重拉              |
 | 🔎 检索兜底       | 已支持 | `Chroma` 向量召回优先，`SQLite FTS5` 负责词法候选兜底                                 |
 | 🧠 三路模型路由   | 已支持 | `response / embedding / vision` 独立配置与切换                                        |
+| 🤖 ChatWorkflow 后端 | 已支持 | 聊天执行当前统一由 `ChatWorkflow + PydanticAI` 驱动，同步和流式共用同一路径 |
 | 🔌 多 Provider    | 已支持 | `OpenAI / Anthropic / Voyage / Ollama`                                                |
 | 🌐 中英双语       | 已支持 | 前端内置 `zh-CN / en` 文案与切换能力                                                  |
 | 🌓 主题切换       | 已支持 | `light / dark / system` 三种主题偏好                                                  |

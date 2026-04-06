@@ -3,6 +3,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from tests.fixtures.factories import UserFactory
+from tests.fixtures.stubs import make_adapter_backed_chat_workflow_class
 
 from knowledge_chatbox_api.core.config import get_settings
 from knowledge_chatbox_api.repositories.chat_repository import ChatRepository
@@ -46,13 +47,15 @@ def test_chat_run_service_persists_runtime_events_and_updates_message_projection
         chat_run_event_repository=ChatRunEventRepository(migrated_db_session),
         retry_service=RetryService(chat_repository, migrated_db_session),
         chroma_store=InMemoryChromaStore(),
-        response_adapter=StreamingProviderStub(),
         embedding_adapter=None,
         settings=SimpleNamespace(
             response_route={"provider": "openai", "model": "gpt-5.4"},
             embedding_route={"provider": "openai", "model": "text-embedding-3-small"},
             system_prompt=None,
             active_index_generation=1,
+        ),
+        workflow_factory=make_adapter_backed_chat_workflow_class(
+            response_adapter=StreamingProviderStub(),
         ),
         presenter=ChatStreamPresenter(),
     )

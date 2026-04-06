@@ -79,6 +79,7 @@ class SettingsService:
         self.session = session
         self.settings = settings
         self.repository = SettingsRepository(session)
+        self._settings_record_cache: AppSettings | None = None
 
     def get_or_create_settings(self) -> SettingsRead:
         settings_record = self.get_or_create_settings_record()
@@ -127,12 +128,16 @@ class SettingsService:
         )
 
     def get_or_create_settings_record(self) -> AppSettings:
+        if self._settings_record_cache is not None:
+            return self._settings_record_cache
+
         settings_record = self.repository.get()
         if settings_record is None:
             settings_record = self._build_initial_settings_record()
             self.repository.save(settings_record)
             self.session.commit()
             self.session.refresh(settings_record)
+        self._settings_record_cache = settings_record
         return settings_record
 
     def update_settings(
@@ -145,9 +150,7 @@ class SettingsService:
             raise AuthorizationError("Admin permission required.")
 
         update_request = self._normalize_update_request(payload)
-        settings_record = self.repository.get()
-        if settings_record is None:
-            settings_record = self.repository.save(self._build_initial_settings_record())
+        settings_record = self.get_or_create_settings_record()
 
         previous_effective_embedding_route = self._effective_embedding_route(settings_record)
         (
@@ -195,6 +198,7 @@ class SettingsService:
         settings_record.updated_by_user_id = actor.id
         self.session.commit()
         self.session.refresh(settings_record)
+        self._settings_record_cache = settings_record
         return self._to_read(
             settings_record,
             rebuild_started=rebuild_started,

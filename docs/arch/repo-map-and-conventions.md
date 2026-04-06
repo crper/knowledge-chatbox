@@ -123,6 +123,7 @@ knowledge-chatbox/
 | `schemas`                                    | 请求/响应模型                                            |
 | `repositories`                               | 数据访问                                                 |
 | `services`                                   | 用例编排和事务边界                                       |
+| `services/chat/workflow`                     | `ChatWorkflow + PydanticAI` 的聊天执行 owner、工具、bridge |
 | `providers`                                  | OpenAI / Anthropic / Voyage / Ollama capability adapters |
 | `tasks`                                      | 启动补偿任务                                             |
 | `utils`                                      | 文件、哈希、Chroma 等工具                                |
@@ -135,6 +136,7 @@ knowledge-chatbox/
 | provider 配置或重建索引语义            | `services/settings/settings_service.py`、`services/documents/rebuild_service.py`、`api/routes/settings.py` |
 | 上传、内容哈希去重、标准化、切块、索引 | `services/documents/*`                                                                                     |
 | 聊天、SSE、失败恢复、活跃 run 补偿     | `services/chat/*`、`tasks/document_jobs.py`、`main.py`                                                     |
+| `ChatWorkflow` / `PydanticAI` 聊天执行 | `services/chat/workflow/*`、`services/chat/chat_application_service.py`、`services/chat/chat_run_service.py` |
 | 认证、会话、用户管理                   | `services/auth/*`、`api/routes/auth.py`、`api/routes/users.py`                                             |
 | personal space bootstrap               | `repositories/space_repository.py`、`main.py`                                                              |
 
@@ -151,6 +153,7 @@ knowledge-chatbox/
 
 - 改检索、索引或 provider 语义时，先看 `app_settings` 上的 `embedding_route_json / pending_embedding_route_json / active_index_generation / building_index_generation`，再看 [provider-and-settings.md](./provider-and-settings.md) 和 [runtime-flows.md](./runtime-flows.md)
 - 改聊天检索限域时，当前真相是“`services/chat/chat_service.py` 负责组合 `space_id + document_revision_id` 条件；`utils/chroma.py` 负责向量召回；`repositories/retrieval_chunk_repository.py` 负责 SQLite `FTS5` 词法候选兜底”；不要在各调用方自己手拼不同方言，也不要恢复整代索引的全量词法扫描
+- 改聊天执行 owner 时，当前真相是“同步和流式问答统一由 `services/chat/workflow/*` 驱动”；不要在 route、repository 或 provider 层再平行塞第二套聊天执行状态机
 - 改认证与会话链路时，当前真相是“前端只在内存保存 access token，refresh session 继续走 HttpOnly cookie，`/api/auth/me` 等受保护读取接口在鉴权阶段保持纯读”；不要把 access token 落进 `localStorage`，也不要把 session 心跳重新塞回高频读路径
 - 改认证与会话链路时，启动期匿名探测与业务请求续期当前已经分开：前端用 `/api/auth/bootstrap` 处理“是否能恢复已有 refresh session”，匿名态返回 `200 + authenticated=false`；业务请求里的 `401` 续期仍走 `/api/auth/refresh`；更细时序统一看 [auth-and-session-flow.md](./auth-and-session-flow.md)
 - 改前端 API 基址或开发态鉴权链路时，当前真相是“浏览器开发态优先走同源 `/api`，由 `apps/web/vite.config.ts` 代理到本机 `8000`；只有显式指向独立后端时，才填 `VITE_API_BASE_URL`”；不要把页面开在 `127.0.0.1:3000`，却把 API 固定到 `http://localhost:8000`
@@ -207,6 +210,8 @@ just docker-health
 ```
 
 首次 clone、前端 `pnpm-lock.yaml` 变更，或后端 `uv.lock` 变更后，先按根 `README.md` 执行 `just init-env -> just setup -> just dev`；其中 `just dev` 不负责补装依赖，但会把当前 `API_PORT / WEB_PORT` 透传给共享开发脚本，先拉起 API、等待 `/api/health` ready，再启动 Web，并在终端打印对应访问地址。默认会给 API 一段启动补偿时间，慢机器可通过 `DEV_API_READY_MAX_ATTEMPTS` 放宽等待预算。前端 `vp` 运行时版本当前由 `apps/web/.node-version` 固定到 `24.14.1`，避免每次启动都先依赖远端 `lts` 解析。`just repo-check` 负责校验 README / 包级 README 与 `justfile` 的关键入口约束。如果只是补齐本地数据库 schema、不想直接启动 API，优先在仓库根执行 `just api-migrate`。
+
+当前聊天执行后端已经统一收口到 `services/chat/workflow/*`；本地开发和 Docker 单机模式都直接走这条路径。
 
 只有当你明确需要子项目独立运行时，再进入 `apps/web` 或 `apps/api` 执行细分命令。
 
