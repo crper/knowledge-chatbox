@@ -77,4 +77,29 @@ describe("provider-form.validation", () => {
     });
     expect(getFirstInvalidProviderField(values)).toBe("providerTimeoutSeconds");
   });
+
+  it("prefers the top-level provider fields when multiple sections are invalid", () => {
+    const baseValues = buildProviderSettingsView(buildAppSettings());
+    const values = {
+      ...baseValues,
+      providerTimeoutSeconds: 601,
+      providerProfiles: {
+        ...baseValues.providerProfiles,
+        openai: {
+          ...baseValues.providerProfiles.openai,
+          chat_model: "   ",
+        },
+      },
+    };
+
+    const validation = validateProviderSettingsForm(values);
+
+    expect(validation?.fields?.chatModel).toEqual({
+      i18nKey: "settings:chatModelRequiredError",
+    });
+    expect(validation?.fields?.providerTimeoutSeconds).toEqual({
+      i18nKey: "settings:providerTimeoutInvalidError",
+    });
+    expect(getFirstInvalidProviderField(values)).toBe("chatModel");
+  });
 });

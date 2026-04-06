@@ -5,6 +5,15 @@ import { providerSettingsSchema } from "@/lib/validation/schemas";
 import type { ProviderSettingsFieldName, ProviderSettingsView } from "./provider-form-state";
 import { getDefaultEmbeddingProvider } from "./provider-form-state";
 
+const providerFieldOrder: ProviderSettingsFieldName[] = [
+  "chatModel",
+  "embeddingModel",
+  "visionModel",
+  "primaryBaseUrl",
+  "retrievalEmbeddingModel",
+  "providerTimeoutSeconds",
+];
+
 function mapProviderIssueToField(
   issue: Pick<ZodIssue, "path">,
   values: ProviderSettingsView,
@@ -59,18 +68,10 @@ export function validateProviderSettingsForm(values: ProviderSettingsView) {
 export function getFirstInvalidProviderField(
   values: ProviderSettingsView,
 ): ProviderSettingsFieldName | null {
-  const result = providerSettingsSchema.safeParse(values);
-
-  if (result.success) {
+  const validation = validateProviderSettingsForm(values);
+  if (!validation?.fields) {
     return null;
   }
 
-  for (const issue of result.error.issues) {
-    const field = mapProviderIssueToField(issue, values);
-    if (field) {
-      return field;
-    }
-  }
-
-  return null;
+  return providerFieldOrder.find((field) => validation.fields?.[field] !== undefined) ?? null;
 }
