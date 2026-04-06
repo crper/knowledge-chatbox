@@ -128,9 +128,7 @@ export const ResourceDocumentList = memo(function ResourceDocumentList({
   }
 
   return (
-    <section
-      className={cn("surface-panel-subtle min-h-0 overflow-hidden rounded-2xl", className)}
-    >
+    <section className={cn("surface-panel-subtle min-h-0 overflow-hidden rounded-2xl", className)}>
       <ScrollArea className="h-full min-h-0 p-3 md:p-4">
         <div className="space-y-2.5">
           {documents.map((document) => (

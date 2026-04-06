@@ -3,7 +3,7 @@
  */
 
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
+import { NumberField } from "@/components/ui/number-field";
 import { getFieldErrorItems } from "@/lib/form/form-feedback";
 import type { ProviderSettingsView } from "./provider-form-state";
 import {
@@ -37,22 +37,21 @@ export function ProviderTimeoutSection({
       <FieldGroup className="mt-4">
         <Field>
           <FieldLabel>{t("providerTimeoutLabel")}</FieldLabel>
-          <Input
-            aria-label={t("providerTimeoutLabel")}
-            aria-invalid={Boolean(fieldErrorMessages.providerTimeoutSeconds)}
+          <NumberField
+            allowOutOfRange
             className={providerFormControlClassName}
-            min="1"
-            onChange={(event) =>
+            id="provider-timeout-seconds"
+            inputClassName="w-full"
+            onValueChange={(value) =>
               handleViewChange((current) => ({
                 ...current,
-                providerTimeoutSeconds: Number(event.target.value || "0"),
+                providerTimeoutSeconds: value ?? 0,
               }))
             }
-            ref={(node) => {
+            inputRef={(node) => {
               fieldRefs.current.providerTimeoutSeconds = node;
             }}
-            type="number"
-            value={String(draft.providerTimeoutSeconds)}
+            value={draft.providerTimeoutSeconds}
           />
           <FieldDescription>{t("providerTimeoutHint")}</FieldDescription>
           <FieldError
