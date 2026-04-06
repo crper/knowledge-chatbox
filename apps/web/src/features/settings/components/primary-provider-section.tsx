@@ -4,6 +4,7 @@
 
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { getFieldErrorItems } from "@/lib/form/form-feedback";
 import {
   Select,
   SelectContent,
@@ -12,7 +13,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { getProviderLabel } from "@/lib/provider-display";
-import { toFieldErrorItems } from "@/lib/forms";
 import {
   getDefaultEmbeddingModel,
   getDefaultEmbeddingProvider,
@@ -49,7 +49,7 @@ export function PrimaryProviderSection({
     primaryBaseUrl?: string;
     visionModel?: string;
   };
-  fieldRefs: React.RefObject<Partial<Record<string, HTMLInputElement | null>>>;
+  fieldRefs: React.RefObject<Partial<Record<string, HTMLElement | null>>>;
   handleViewChange: (updater: (current: ProviderSettingsView) => ProviderSettingsView) => void;
   t: (key: string, params?: Record<string, unknown>) => string;
   visionModelLabel: string;
@@ -112,9 +112,7 @@ export function PrimaryProviderSection({
             }}
             value={getPrimaryChatModel(draft)}
           />
-          <FieldError
-            errors={toFieldErrorItems([], undefined, fieldErrorMessages.chatModel ?? undefined)}
-          />
+          <FieldError errors={getFieldErrorItems([], undefined, fieldErrorMessages.chatModel)} />
         </Field>
         <Field>
           <FieldLabel>{embeddingModelLabel}</FieldLabel>
@@ -139,11 +137,7 @@ export function PrimaryProviderSection({
             value={getDefaultEmbeddingModel(draft)}
           />
           <FieldError
-            errors={toFieldErrorItems(
-              [],
-              undefined,
-              fieldErrorMessages.embeddingModel ?? undefined,
-            )}
+            errors={getFieldErrorItems([], undefined, fieldErrorMessages.embeddingModel)}
           />
         </Field>
         <Field>
@@ -163,9 +157,7 @@ export function PrimaryProviderSection({
             value={getPrimaryVisionModel(draft)}
           />
           <FieldDescription>{t("visionModelHint")}</FieldDescription>
-          <FieldError
-            errors={toFieldErrorItems([], undefined, fieldErrorMessages.visionModel ?? undefined)}
-          />
+          <FieldError errors={getFieldErrorItems([], undefined, fieldErrorMessages.visionModel)} />
         </Field>
         {primaryConnectionFields.map((field) => (
           <Field key={`primary-${field.key}`}>
@@ -190,11 +182,7 @@ export function PrimaryProviderSection({
             {field.hint ? <FieldDescription>{t(field.hint)}</FieldDescription> : null}
             {field.key === "base_url" ? (
               <FieldError
-                errors={toFieldErrorItems(
-                  [],
-                  undefined,
-                  fieldErrorMessages.primaryBaseUrl ?? undefined,
-                )}
+                errors={getFieldErrorItems([], undefined, fieldErrorMessages.primaryBaseUrl)}
               />
             ) : null}
           </Field>

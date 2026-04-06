@@ -3,11 +3,9 @@
  */
 
 import { useEffect, useState } from "react";
-import { revalidateLogic, useForm } from "@tanstack/react-form";
 import type { FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -18,9 +16,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Form } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { ApiRequestError, getApiErrorMessage } from "@/lib/api/client";
-import { getFirstFormError, handleFormSubmitEvent, toFieldErrorItems } from "@/lib/forms";
+import { FormErrorAlert, getFieldErrorItems, getFormErrorMessage } from "@/lib/form/form-feedback";
+import { useAppForm } from "@/lib/form/use-app-form";
+import { handleFormSubmitEvent } from "@/lib/forms";
 import { zodToTanStackFormErrors } from "@/lib/validation/form-adapter";
 import { changePasswordSchema } from "@/lib/validation/schemas";
 
@@ -36,35 +37,10 @@ type ChangePasswordDialogProps = {
 export function ChangePasswordDialog({ open, onClose, onSubmit }: ChangePasswordDialogProps) {
   const { t } = useTranslation(["auth", "common"]);
   const [submitError, setSubmitError] = useState<unknown>(null);
-  const form = useForm({
+  const form = useAppForm({
     defaultValues: {
       currentPassword: "",
       newPassword: "",
-    },
-    validationLogic: revalidateLogic({
-      mode: "submit",
-      modeAfterSubmission: "blur",
-    }),
-    validators: {
-      onDynamic: ({ value }) => {
-        const result = changePasswordSchema.safeParse(value);
-        if (result.success) {
-          return undefined;
-        }
-
-        const fieldNames = new Set(
-          result.error.issues
-            .map((issue) => issue.path[0])
-            .filter((fieldName): fieldName is string => typeof fieldName === "string"),
-        );
-
-        return zodToTanStackFormErrors(result.error, {
-          formI18nKey:
-            !fieldNames.has("currentPassword") && fieldNames.has("newPassword")
-              ? "auth:changePasswordValidationError"
-              : undefined,
-        });
-      },
     },
     onSubmit: async ({ formApi, value }) => {
       try {
@@ -76,6 +52,25 @@ export function ChangePasswordDialog({ open, onClose, onSubmit }: ChangePassword
         formApi.setErrorMap({ onSubmit: undefined });
         throw error;
       }
+    },
+    validator: (value) => {
+      const result = changePasswordSchema.safeParse(value);
+      if (result.success) {
+        return undefined;
+      }
+
+      const fieldNames = new Set(
+        result.error.issues
+          .map((issue) => issue.path[0])
+          .filter((fieldName): fieldName is string => typeof fieldName === "string"),
+      );
+
+      return zodToTanStackFormErrors(result.error, {
+        formI18nKey:
+          !fieldNames.has("currentPassword") && fieldNames.has("newPassword")
+            ? "auth:changePasswordValidationError"
+            : undefined,
+      });
     },
   });
 
@@ -113,7 +108,7 @@ export function ChangePasswordDialog({ open, onClose, onSubmit }: ChangePassword
           <DialogTitle>{t("changePasswordTitle")}</DialogTitle>
           <DialogDescription>{t("changePasswordDescription")}</DialogDescription>
         </DialogHeader>
-        <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
+        <Form className="flex flex-col gap-4" onSubmit={handleSubmit}>
           <FieldGroup>
             <form.Field name="currentPassword">
               {(field) => (
@@ -133,7 +128,7 @@ export function ChangePasswordDialog({ open, onClose, onSubmit }: ChangePassword
                     type="password"
                     value={field.state.value}
                   />
-                  <FieldError errors={toFieldErrorItems(field.state.meta.errors, t)} />
+                  <FieldError errors={getFieldErrorItems(field.state.meta.errors, t)} />
                 </Field>
               )}
             </form.Field>
@@ -155,21 +150,17 @@ export function ChangePasswordDialog({ open, onClose, onSubmit }: ChangePassword
                     type="password"
                     value={field.state.value}
                   />
-                  <FieldError errors={toFieldErrorItems(field.state.meta.errors, t)} />
+                  <FieldError errors={getFieldErrorItems(field.state.meta.errors, t)} />
                 </Field>
               )}
             </form.Field>
           </FieldGroup>
           <form.Subscribe selector={(state) => state.errorMap.onDynamic}>
             {(dynamicError) => {
-              const errorMessage = getFirstFormError([dynamicError], t);
+              const errorMessage = getFormErrorMessage([dynamicError], t);
               const submitErrorMessage = getSubmitErrorMessage();
               const displayError = errorMessage || submitErrorMessage;
-              return displayError ? (
-                <Alert variant="destructive">
-                  <AlertDescription>{displayError}</AlertDescription>
-                </Alert>
-              ) : null;
+              return <FormErrorAlert message={displayError} />;
             }}
           </form.Subscribe>
           <DialogFooter>
@@ -192,7 +183,7 @@ export function ChangePasswordDialog({ open, onClose, onSubmit }: ChangePassword
               )}
             </form.Subscribe>
           </DialogFooter>
-        </form>
+        </Form>
       </DialogContent>
     </Dialog>
   );

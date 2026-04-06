@@ -38,6 +38,7 @@ just dev
 
 - `just setup` 是非破坏性的依赖安装入口
 - `just dev` 只负责启动，不会自动补装前端依赖
+- `just dev` 会先等 `/api/health` ready 再启动 Web；如果本机启动补偿较慢，可临时调大 `DEV_API_READY_MAX_ATTEMPTS`
 - `just reset-dev` 会清空本地数据，只用于“环境已经乱掉，需要一键回到干净状态”
 - 首次接手仓库时，不建议把 `just reset-dev` 当成初始化入口
 - `apps/web/README.md` 和 `apps/api/README.md` 只补充包内命令，不再重复定义仓库级启动流程

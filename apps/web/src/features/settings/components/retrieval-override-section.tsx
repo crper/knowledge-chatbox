@@ -5,6 +5,7 @@
 import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { getFieldErrorItems } from "@/lib/form/form-feedback";
 import {
   Select,
   SelectContent,
@@ -13,7 +14,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { getProviderLabel } from "@/lib/provider-display";
-import { toFieldErrorItems } from "@/lib/forms";
 import type { EmbeddingProviderName } from "../api/settings";
 import {
   getRetrievalEmbeddingModel,
@@ -38,7 +38,7 @@ export function RetrievalOverrideSection({
   fieldErrorMessages: {
     retrievalEmbeddingModel?: string;
   };
-  fieldRefs: React.RefObject<Partial<Record<string, HTMLInputElement | null>>>;
+  fieldRefs: React.RefObject<Partial<Record<string, HTMLElement | null>>>;
   handleViewChange: (updater: (current: ProviderSettingsView) => ProviderSettingsView) => void;
   retrievalEmbeddingModelLabel: string;
   t: (key: string, params?: Record<string, unknown>) => string;
@@ -119,11 +119,7 @@ export function RetrievalOverrideSection({
               value={getRetrievalEmbeddingModel(draft)}
             />
             <FieldError
-              errors={toFieldErrorItems(
-                [],
-                undefined,
-                fieldErrorMessages.retrievalEmbeddingModel ?? undefined,
-              )}
+              errors={getFieldErrorItems([], undefined, fieldErrorMessages.retrievalEmbeddingModel)}
             />
           </Field>
         </FieldGroup>

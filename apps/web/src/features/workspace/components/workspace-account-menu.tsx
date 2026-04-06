@@ -176,7 +176,7 @@ export function WorkspaceAccountMenu({
           className="text-muted-foreground"
           onClick={() => {
             window.open(
-              "https://github.com/linqunhe/knowledge-chatbox#readme",
+              "https://github.com/crper/knowledge-chatbox#readme",
               "_blank",
               "noopener,noreferrer",
             );

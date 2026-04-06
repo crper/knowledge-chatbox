@@ -23,7 +23,8 @@
 
 - 首次 clone 或依赖刚更新时，先执行：`just init-env` -> `just setup`
 - 依赖已安装后的推荐入口：仓库根目录 `just dev`
-- `just dev` / `just reset-dev` 会把当前 `API_PORT / WEB_PORT` 传给共享开发脚本，并在终端打印 Web、API health、docs、redoc 和 OpenAPI 地址
+- `just dev` / `just reset-dev` 会把当前 `API_PORT / WEB_PORT` 传给共享开发脚本；脚本会先拉起 API、等待 `GET /api/health` ready，再启动 Web，并在终端打印 Web、API health、docs、redoc 和 OpenAPI 地址
+- 共享开发脚本默认会给 API 一段启动补偿时间；如果本机恢复文档 / chat run / 索引状态较慢，可临时调大 `DEV_API_READY_MAX_ATTEMPTS` 再执行 `just dev`
 - 前端 `vp` 当前通过 `apps/web/.node-version` 固定到 `24.14.1`；这样 `vp dev / check / test / build` 会优先直接使用本地已安装版本，而不是每次都先走远端 `lts` 解析
 - 只需要手动补齐本地数据库 schema 时，优先使用仓库根目录 `just api-migrate`
 - 后端本地静态检查入口：仓库根目录 `just api-check`，内部会执行 `ruff check`、`ruff format --check` 和 `basedpyright`

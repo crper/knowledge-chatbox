@@ -84,6 +84,14 @@ exit 1
 """,
     )
 
+    write_executable(
+        fake_bin / "curl",
+        """#!/usr/bin/env bash
+set -Eeuo pipefail
+exit 0
+""",
+    )
+
     env = os.environ.copy()
     env["PATH"] = f"{fake_bin}:{env['PATH']}"
     env["API_DIR"] = str(api_dir)
@@ -111,6 +119,218 @@ exit 1
     assert "http://localhost:18080/docs" in output
     assert "http://localhost:18080/redoc" in output
     assert "http://localhost:18080/openapi.json" in output
+
+
+def test_dev_run_waits_for_api_health_before_starting_web(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    api_dir = tmp_path / "api"
+    web_dir = tmp_path / "web"
+    api_dir.mkdir()
+    web_dir.mkdir()
+    curl_state = tmp_path / "curl-count.txt"
+    vp_state = tmp_path / "vp-started.txt"
+
+    write_executable(
+        fake_bin / "uv",
+        """#!/usr/bin/env bash
+set -Eeuo pipefail
+
+if [[ \
+  "${1:-}" == "run" \
+  && "${2:-}" == "python" \
+  && "${3:-}" == "-m" \
+  && "${4:-}" == "alembic" \
+]]; then
+  exit 0
+fi
+
+if [[ "${1:-}" == "run" && "${2:-}" == "-m" && "${3:-}" == "uvicorn" ]]; then
+  trap 'exit 0' INT TERM
+  while true; do
+    sleep 0.1
+  done
+fi
+
+echo "[fake-uv] unexpected args: $*" >&2
+exit 1
+""",
+    )
+
+    write_executable(
+        fake_bin / "curl",
+        f"""#!/usr/bin/env bash
+set -Eeuo pipefail
+
+state_file="{curl_state}"
+count=0
+if [[ -f "$state_file" ]]; then
+  count=$(cat "$state_file")
+fi
+count=$((count + 1))
+printf '%s' "$count" >"$state_file"
+
+if (( count < 3 )); then
+  exit 22
+fi
+
+exit 0
+""",
+    )
+
+    write_executable(
+        fake_bin / "vp",
+        f"""#!/usr/bin/env bash
+set -Eeuo pipefail
+
+if [[ "${{1:-}}" == "dev" ]]; then
+  printf 'started' >"{vp_state}"
+  trap 'exit 0' INT TERM
+  while true; do
+    sleep 0.1
+  done
+fi
+
+echo "[fake-vp] unexpected args: $*" >&2
+exit 1
+""",
+    )
+
+    env = os.environ.copy()
+    env["PATH"] = f"{fake_bin}:{env['PATH']}"
+    env["API_DIR"] = str(api_dir)
+    env["WEB_DIR"] = str(web_dir)
+    env["API_PORT"] = "18081"
+    env["WEB_PORT"] = "13001"
+
+    process = subprocess.Popen(
+        ["bash", str(DEV_RUN_SCRIPT)],
+        cwd=REPO_ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+
+    try:
+        output = read_output_until(process, timeout_seconds=2.0)
+    finally:
+        terminate_process(process)
+
+    assert curl_state.read_text(encoding="utf-8") == "3"
+    assert vp_state.read_text(encoding="utf-8") == "started"
+    assert "API 已就绪" in output
+
+
+def test_dev_run_default_ready_budget_tolerates_slow_api_startup(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    api_dir = tmp_path / "api"
+    web_dir = tmp_path / "web"
+    api_dir.mkdir()
+    web_dir.mkdir()
+    curl_state = tmp_path / "curl-count.txt"
+    vp_state = tmp_path / "vp-started.txt"
+
+    write_executable(
+        fake_bin / "uv",
+        """#!/usr/bin/env bash
+set -Eeuo pipefail
+
+if [[ \
+  "${1:-}" == "run" \
+  && "${2:-}" == "python" \
+  && "${3:-}" == "-m" \
+  && "${4:-}" == "alembic" \
+]]; then
+  exit 0
+fi
+
+if [[ "${1:-}" == "run" && "${2:-}" == "-m" && "${3:-}" == "uvicorn" ]]; then
+  trap 'exit 0' INT TERM
+  while true; do
+    sleep 0.1
+  done
+fi
+
+echo "[fake-uv] unexpected args: $*" >&2
+exit 1
+""",
+    )
+
+    write_executable(
+        fake_bin / "curl",
+        f"""#!/usr/bin/env bash
+set -Eeuo pipefail
+
+state_file="{curl_state}"
+count=0
+if [[ -f "$state_file" ]]; then
+  count=$(cat "$state_file")
+fi
+count=$((count + 1))
+printf '%s' "$count" >"$state_file"
+
+if (( count < 80 )); then
+  exit 22
+fi
+
+exit 0
+""",
+    )
+
+    write_executable(
+        fake_bin / "sleep",
+        """#!/usr/bin/env bash
+set -Eeuo pipefail
+exit 0
+""",
+    )
+
+    write_executable(
+        fake_bin / "vp",
+        f"""#!/usr/bin/env bash
+set -Eeuo pipefail
+
+if [[ "${{1:-}}" == "dev" ]]; then
+  printf 'started' >"{vp_state}"
+  trap 'exit 0' INT TERM
+  while true; do
+    sleep 0.1
+  done
+fi
+
+echo "[fake-vp] unexpected args: $*" >&2
+exit 1
+""",
+    )
+
+    env = os.environ.copy()
+    env["PATH"] = f"{fake_bin}:{env['PATH']}"
+    env["API_DIR"] = str(api_dir)
+    env["WEB_DIR"] = str(web_dir)
+    env["API_PORT"] = "18082"
+    env["WEB_PORT"] = "13002"
+
+    process = subprocess.Popen(
+        ["bash", str(DEV_RUN_SCRIPT)],
+        cwd=REPO_ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+
+    try:
+        output = read_output_until(process, timeout_seconds=5.0)
+    finally:
+        terminate_process(process)
+
+    assert curl_state.read_text(encoding="utf-8") == "80"
+    assert vp_state.read_text(encoding="utf-8") == "started"
+    assert "API 已就绪" in output
 
 
 def test_docker_deploy_wait_for_http_retries_quietly_until_final_failure() -> None:

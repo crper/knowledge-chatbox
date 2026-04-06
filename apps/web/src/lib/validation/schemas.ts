@@ -115,6 +115,12 @@ export const resetPasswordSchema = z.object({
 
 export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
 
+export const systemPromptSchema = z.object({
+  system_prompt: z.string(),
+});
+
+export type SystemPromptInput = z.infer<typeof systemPromptSchema>;
+
 export const providerProfileOpenaiSchema = z.object({
   api_key: z.string().nullable().optional(),
   base_url: z.string().nullable().optional(),
@@ -163,6 +169,15 @@ export const visionProviderEnum = z.enum(["openai", "anthropic", "ollama"]);
 
 export const templateProviderEnum = z.enum(["ollama", "openai", "anthropic", "voyage"]);
 
+const defaultEmbeddingProviderByPrimary = {
+  anthropic: "voyage",
+  ollama: "ollama",
+  openai: "openai",
+} as const satisfies Record<
+  z.infer<typeof responseProviderEnum>,
+  z.infer<typeof embeddingProviderEnum>
+>;
+
 export const providerSettingsSchema = z
   .object({
     primaryProvider: responseProviderEnum,
@@ -170,76 +185,80 @@ export const providerSettingsSchema = z
     retrievalProvider: embeddingProviderEnum,
     templateProvider: templateProviderEnum,
     providerProfiles: providerProfilesSchema,
-    providerTimeoutSeconds: positiveIntegerInRange(1, 600),
+    providerTimeoutSeconds: positiveIntegerInRange(1, 600, "settings:providerTimeoutInvalidError"),
   })
-  .refine(
-    (data) => {
-      const profile = data.providerProfiles[data.primaryProvider];
-      const chatModel = profile?.chat_model?.trim();
-      return !!chatModel && chatModel.length > 0;
-    },
-    {
-      message: "settings:chatModelRequiredError",
-      path: ["providerProfiles", "chat_model"],
-    },
-  )
-  .refine(
-    (data) => {
-      const profile = data.providerProfiles[data.primaryProvider];
-      if (!profile) return false;
+  .superRefine((data, ctx) => {
+    const primaryProfile = data.providerProfiles[data.primaryProvider];
+    const primaryBaseUrl = primaryProfile.base_url?.trim() ?? "";
+    const primaryChatModel = primaryProfile.chat_model?.trim() ?? "";
+    const primaryVisionModel = primaryProfile.vision_model?.trim() ?? "";
+    const defaultEmbeddingProvider = defaultEmbeddingProviderByPrimary[data.primaryProvider];
+    const defaultEmbeddingModel =
+      data.providerProfiles[defaultEmbeddingProvider].embedding_model?.trim() ?? "";
 
-      if ("embedding_model" in profile) {
-        const embeddingModel = profile.embedding_model?.trim();
-        return !!embeddingModel && embeddingModel.length > 0;
+    if (!primaryChatModel) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "settings:chatModelRequiredError",
+        path: ["providerProfiles", data.primaryProvider, "chat_model"],
+      });
+    }
+
+    if (!defaultEmbeddingModel) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "settings:embeddingModelRequiredError",
+        path: ["providerProfiles", defaultEmbeddingProvider, "embedding_model"],
+      });
+    }
+
+    if (!primaryVisionModel) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "settings:visionModelRequiredError",
+        path: ["providerProfiles", data.primaryProvider, "vision_model"],
+      });
+    }
+
+    if (data.primaryProvider === "ollama" && !primaryBaseUrl) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "settings:providerTestOllamaBaseUrlMissing",
+        path: ["providerProfiles", "ollama", "base_url"],
+      });
+    }
+
+    const shouldValidatePrimaryBaseUrl = !(
+      data.primaryProvider === "ollama" && primaryBaseUrl.length === 0
+    );
+    const baseUrlResult = shouldValidatePrimaryBaseUrl
+      ? httpUrlSchema({
+          allowEmpty: data.primaryProvider !== "ollama",
+          message: "settings:baseUrlInvalidError",
+        }).safeParse(primaryBaseUrl)
+      : { success: true as const };
+
+    if (!baseUrlResult.success) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "settings:baseUrlInvalidError",
+        path: ["providerProfiles", data.primaryProvider, "base_url"],
+      });
+    }
+
+    if (data.retrievalOverrideEnabled) {
+      const retrievalEmbeddingModel =
+        data.providerProfiles[data.retrievalProvider].embedding_model?.trim() ?? "";
+
+      if (!retrievalEmbeddingModel) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "settings:retrievalEmbeddingModelRequiredError",
+          path: ["providerProfiles", data.retrievalProvider, "embedding_model"],
+        });
       }
-
-      return true;
-    },
-    {
-      message: "settings:embeddingModelRequiredError",
-      path: ["providerProfiles", "embedding_model"],
-    },
-  )
-  .refine(
-    (data) => {
-      const profile = data.providerProfiles[data.primaryProvider];
-      if (!profile) return false;
-
-      if ("vision_model" in profile) {
-        const visionModel = profile.vision_model?.trim();
-        return !!visionModel && visionModel.length > 0;
-      }
-
-      return true;
-    },
-    {
-      message: "settings:visionModelRequiredError",
-      path: ["providerProfiles", "vision_model"],
-    },
-  )
-  .refine(
-    (data) => {
-      if (data.primaryProvider !== "ollama") return true;
-      const baseUrl = data.providerProfiles.ollama?.base_url?.trim();
-      return !!baseUrl && baseUrl.length > 0;
-    },
-    {
-      message: "settings:providerTestOllamaBaseUrlMissing",
-      path: ["providerProfiles", "ollama", "base_url"],
-    },
-  )
-  .refine(
-    (data) => {
-      if (!data.retrievalOverrideEnabled) return true;
-      const profile = data.providerProfiles[data.retrievalProvider];
-      const embeddingModel = profile?.embedding_model?.trim();
-      return !!embeddingModel && embeddingModel.length > 0;
-    },
-    {
-      message: "settings:retrievalEmbeddingModelRequiredError",
-      path: ["providerProfiles", "embedding_model"],
-    },
-  );
+    }
+  });
 
 export type ProviderSettingsInput = z.infer<typeof providerSettingsSchema>;
 

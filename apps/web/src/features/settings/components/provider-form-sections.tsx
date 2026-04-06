@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
-import { toFieldErrorItems } from "@/lib/forms";
+import { getFieldErrorItems } from "@/lib/form/form-feedback";
 
 export function SystemPromptSection({
   form,
@@ -42,7 +42,7 @@ export function SystemPromptSection({
             />
             <FieldDescription>{t("systemPromptHint")}</FieldDescription>
             <FieldError
-              errors={toFieldErrorItems(
+              errors={getFieldErrorItems(
                 field.state.meta.errors,
                 t,
                 manualFieldErrors?.system_prompt,

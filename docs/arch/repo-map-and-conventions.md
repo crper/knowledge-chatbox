@@ -206,7 +206,7 @@ just docker-logs api
 just docker-health
 ```
 
-首次 clone、前端 `pnpm-lock.yaml` 变更，或后端 `uv.lock` 变更后，先按根 `README.md` 执行 `just init-env -> just setup -> just dev`；其中 `just dev` 不负责补装依赖，但会把当前 `API_PORT / WEB_PORT` 透传给共享开发脚本，并在终端打印对应访问地址。前端 `vp` 运行时版本当前由 `apps/web/.node-version` 固定到 `24.14.1`，避免每次启动都先依赖远端 `lts` 解析。`just repo-check` 负责校验 README / 包级 README 与 `justfile` 的关键入口约束。如果只是补齐本地数据库 schema、不想直接启动 API，优先在仓库根执行 `just api-migrate`。
+首次 clone、前端 `pnpm-lock.yaml` 变更，或后端 `uv.lock` 变更后，先按根 `README.md` 执行 `just init-env -> just setup -> just dev`；其中 `just dev` 不负责补装依赖，但会把当前 `API_PORT / WEB_PORT` 透传给共享开发脚本，先拉起 API、等待 `/api/health` ready，再启动 Web，并在终端打印对应访问地址。默认会给 API 一段启动补偿时间，慢机器可通过 `DEV_API_READY_MAX_ATTEMPTS` 放宽等待预算。前端 `vp` 运行时版本当前由 `apps/web/.node-version` 固定到 `24.14.1`，避免每次启动都先依赖远端 `lts` 解析。`just repo-check` 负责校验 README / 包级 README 与 `justfile` 的关键入口约束。如果只是补齐本地数据库 schema、不想直接启动 API，优先在仓库根执行 `just api-migrate`。
 
 只有当你明确需要子项目独立运行时，再进入 `apps/web` 或 `apps/api` 执行细分命令。
 

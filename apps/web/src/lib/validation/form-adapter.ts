@@ -3,8 +3,6 @@ import { z } from "zod";
 import type { FormErrorDescriptor, FormValidationResult } from "@/lib/forms";
 import { buildFormValidationResult, formError } from "@/lib/forms";
 
-type FieldErrorItem = { message?: string; type?: string };
-
 type LooseZodIssue = {
   code: string;
   path: (string | number)[];
@@ -12,6 +10,11 @@ type LooseZodIssue = {
   errors?: unknown[];
   unionErrors?: unknown[];
 };
+
+type IssueFieldMapper<TFieldName extends string, TValues> = (
+  issue: LooseZodIssue,
+  values: TValues,
+) => TFieldName | null;
 
 function zodIssueToFormError(
   issue: { message: string },
@@ -21,10 +24,12 @@ function zodIssueToFormError(
   return formError(translate ? translate(message) : message);
 }
 
-function collectFieldErrors(
+function collectFieldErrors<TValues = unknown>(
   issues: LooseZodIssue[],
   parentPath = "",
   translate?: (key: string) => string,
+  values?: TValues,
+  mapIssueToField?: IssueFieldMapper<string, TValues>,
 ): Record<string, FormErrorDescriptor> {
   const errors: Record<string, FormErrorDescriptor> = {};
 
@@ -42,14 +47,23 @@ function collectFieldErrors(
         ) {
           Object.assign(
             errors,
-            collectFieldErrors(unionIssue.issues as LooseZodIssue[], parentPath, translate),
+            collectFieldErrors(
+              unionIssue.issues as LooseZodIssue[],
+              parentPath,
+              translate,
+              values,
+              mapIssueToField,
+            ),
           );
         }
       }
       continue;
     }
 
-    const fieldPath = issue.path.length > 0 ? issue.path.map(String).join(".") : parentPath;
+    const mappedFieldPath =
+      values !== undefined && mapIssueToField ? mapIssueToField(issue, values) : null;
+    const fieldPath =
+      mappedFieldPath ?? (issue.path.length > 0 ? issue.path.map(String).join(".") : parentPath);
 
     if (fieldPath) {
       errors[fieldPath] = zodIssueToFormError(issue, translate);
@@ -59,14 +73,21 @@ function collectFieldErrors(
   return errors;
 }
 
-export function zodToTanStackFormErrors<TFieldName extends string>(
+export function zodToTanStackFormErrors<TFieldName extends string, TValues = unknown>(
   zodError: z.ZodError,
-  options?: { formI18nKey?: string; translate?: (key: string) => string },
+  options?: {
+    formI18nKey?: string;
+    mapIssueToField?: IssueFieldMapper<TFieldName, TValues>;
+    translate?: (key: string) => string;
+    values?: TValues;
+  },
 ): FormValidationResult<TFieldName> | undefined {
   const fieldErrors = collectFieldErrors(
     zodError.issues as unknown as LooseZodIssue[],
     "",
     options?.translate,
+    options?.values,
+    options?.mapIssueToField as IssueFieldMapper<string, TValues> | undefined,
   );
 
   const formErrorDescriptor = options?.formI18nKey ? formError(options.formI18nKey) : undefined;
@@ -81,8 +102,8 @@ export function createZodValidator<TInput, TFieldName extends string>(
   schema: z.ZodType<TInput>,
   options?: {
     formI18nKey?: string;
+    mapIssueToField?: IssueFieldMapper<TFieldName, TInput>;
     translate?: (key: string) => string;
-    transform?: (value: TInput) => TInput;
   },
 ) {
   return (values: unknown): FormValidationResult<TFieldName> | undefined => {
@@ -92,62 +113,9 @@ export function createZodValidator<TInput, TFieldName extends string>(
       return undefined;
     }
 
-    return zodToTanStackFormErrors<TFieldName>(result.error, options);
-  };
-}
-
-export function zodToFieldErrorItems(
-  error: unknown,
-  translate?: (key: string) => string,
-): FieldErrorItem[] {
-  if (!(error instanceof z.ZodError)) {
-    if (
-      error &&
-      typeof error === "object" &&
-      "issues" in error &&
-      Array.isArray((error as { issues: unknown }).issues)
-    ) {
-      const zodLikeError = error as {
-        issues: Array<{ message?: string; path?: (string | number)[] }>;
-      };
-      return zodLikeError.issues.flatMap((issue) =>
-        issue.message ? [{ message: translate ? translate(issue.message) : issue.message }] : [],
-      );
-    }
-    return [];
-  }
-
-  return error.issues.flatMap((issue) => [
-    { message: translate ? translate(issue.message) : issue.message },
-  ]);
-}
-
-export function adaptZodErrorForTanStack(_zodError: z.ZodError): {
-  form?: { message: string };
-  fields: Partial<Record<string, FieldErrorItem[]>>;
-} {
-  const fieldErrors: Partial<Record<string, FieldErrorItem[]>> = {};
-  let formErrorMessage: string | null = null;
-
-  for (const issue of _zodError.issues) {
-    if (issue.path.length === 0) {
-      formErrorMessage ??= issue.message;
-      continue;
-    }
-
-    const fieldName = String(issue.path[0]);
-    if (!fieldErrors[fieldName]) {
-      fieldErrors[fieldName] = [];
-    }
-
-    fieldErrors[fieldName]!.push({
-      message: issue.message,
-      type: "ZodValidationError",
+    return zodToTanStackFormErrors<TFieldName, TInput>(result.error, {
+      ...options,
+      values: values as TInput,
     });
-  }
-
-  return {
-    form: formErrorMessage ? { message: formErrorMessage } : undefined,
-    fields: fieldErrors,
   };
 }

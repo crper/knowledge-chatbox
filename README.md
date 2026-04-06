@@ -51,7 +51,8 @@ just dev
 
 - 这条路径是仓库唯一官方开发主线
 - `apps/web/README.md` 和 `apps/api/README.md` 只补充各自包内命令，不再重复定义仓库级启动流程
-- `just dev` 启动后会在终端统一打印 Web / API 的访问地址；若覆盖了 `API_PORT` / `WEB_PORT`，这里显示的链接也会同步变化
+- `just dev` 会先拉起 API，等 `/api/health` ready 后再启动 Web，并在终端统一打印 Web / API 的访问地址；若覆盖了 `API_PORT` / `WEB_PORT`，这里显示的链接也会同步变化
+- 默认会给 API 约 60 秒完成启动补偿；如果你的机器更慢，可临时调大 `DEV_API_READY_MAX_ATTEMPTS` 后再执行 `just dev`
 - 前端开发态默认建议把 `VITE_API_BASE_URL` 留空，统一走同源 `/api`；`vp dev` 会通过 Vite proxy 转发到本机 API
 - 如果你只想先理解接手顺序和提交前要求，再看 [CONTRIBUTING.md](./CONTRIBUTING.md)
 
@@ -106,7 +107,7 @@ just setup
 | 首次安装依赖       | `just setup`       | 同步后端虚拟环境和前端依赖                                     |
 | 看仓库入口         | `just --list`      | 查看当前保留的高频命令                                         |
 | 手动执行数据库迁移 | `just api-migrate` | 只补齐本地 API schema，不启动服务                              |
-| 本地开发           | `just dev`         | 依赖已安装后启动前后端，并打印访问地址                         |
+| 本地开发           | `just dev`         | 依赖已安装后先启动 API、等健康检查 ready，再启动 Web 并打印访问地址 |
 | 检查仓库表面约束   | `just repo-check`  | 校验 README / 包级 README 和 `justfile` 的关键入口是否保持一致 |
 | 只跑后端           | `just api-dev`     | FastAPI 开发态                                                 |
 | 只跑前端           | `just web-dev`     | Web 开发态                                                     |
@@ -119,7 +120,7 @@ just setup
 1. **清空本地数据**：删除 `data/uploads/`、`data/normalized/`、`data/chroma/` 目录内容，以及 `data/sqlite/ai_qa.db`（含 `-wal` / `-shm` 副本）
 2. **重建数据库 schema**：通过 Alembic migration 重新创建空表结构
 3. **重装依赖**：后端 `uv sync --all-groups`，前端 `vp install`
-4. **重启开发态**：前后端一起拉起，终端打印访问地址
+4. **重启开发态**：先拉起 API，等健康检查 ready 后再启动 Web，终端打印访问地址
 
 只适合“环境已经乱掉，需要一键回到干净状态”的场景，**不作为首次启动入口**（首次请用 `just init-env && just setup && just dev`）。
 

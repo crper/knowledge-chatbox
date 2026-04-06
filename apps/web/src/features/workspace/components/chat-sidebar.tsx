@@ -9,6 +9,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { PencilLineIcon, PlusIcon, SearchIcon, Trash2Icon } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { NavLink, useNavigate } from "react-router-dom";
+import { z } from "zod";
 
 import { BrandMark } from "@/components/shared/brand-mark";
 import { Button } from "@/components/ui/button";
@@ -33,6 +34,8 @@ import {
 } from "@/features/chat/utils/chat-session-route";
 import type { AppUser } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/query-keys";
+import { useAppForm } from "@/lib/form/use-app-form";
+import { handleFormSubmitEvent } from "@/lib/forms";
 import { cn } from "@/lib/utils";
 import { WorkspaceModeSwitcher } from "./standard-sidebar";
 import { WorkspaceAccountMenu } from "./workspace-account-menu";
@@ -53,17 +56,20 @@ function isInputComposing(event: KeyboardEvent<HTMLInputElement>) {
   );
 }
 
+const sessionRenameSchema = z.object({
+  title: z.string(),
+});
+
 type SessionRowProps = {
   activeSessionId: number | null;
   editingSessionId: number | null;
-  editingTitle: string;
   isRenamePending: boolean;
   onBeginRename: (sessionId: number, title: string | null) => void;
   onDeleteSession: (sessionId: number) => void;
   onRenameInputKeyDown: (event: KeyboardEvent<HTMLInputElement>) => void;
   onRenameSubmit: (sessionId: number) => (event: FormEvent<HTMLFormElement>) => void;
   onSelectSession?: () => void;
-  onSetEditingTitle: (value: string) => void;
+  renameForm: any;
   session: { id: number; title: string | null };
   sessionTitleFallback: string;
   t: ReturnType<typeof useTranslation>["t"];
@@ -72,14 +78,13 @@ type SessionRowProps = {
 const SessionRow = memo(function SessionRow({
   activeSessionId,
   editingSessionId,
-  editingTitle,
   isRenamePending,
   onBeginRename,
   onDeleteSession,
   onRenameInputKeyDown,
   onRenameSubmit,
   onSelectSession,
-  onSetEditingTitle,
+  renameForm,
   session,
   sessionTitleFallback,
   t,
@@ -95,14 +100,19 @@ const SessionRow = memo(function SessionRow({
           noValidate
           onSubmit={onRenameSubmit(session.id)}
         >
-          <SidebarInput
-            aria-label={t("sessionRenameLabel", { ns: "chat" })}
-            className="h-9 rounded-lg bg-background"
-            disabled={isRenamePending}
-            onChange={(event) => onSetEditingTitle(event.target.value)}
-            onKeyDown={onRenameInputKeyDown}
-            value={editingTitle}
-          />
+          <renameForm.Field name="title">
+            {(field: any) => (
+              <SidebarInput
+                aria-label={t("sessionRenameLabel", { ns: "chat" })}
+                className="h-9 rounded-lg bg-background"
+                disabled={isRenamePending}
+                name={field.name}
+                onChange={(event) => field.handleChange(event.target.value)}
+                onKeyDown={onRenameInputKeyDown}
+                value={field.state.value}
+              />
+            )}
+          </renameForm.Field>
           <Button
             aria-label={t("saveSessionRenameAction", { ns: "chat" })}
             className="shrink-0"
@@ -201,12 +211,18 @@ export function ChatSidebar({
 }) {
   const { t } = useTranslation(["chat", "common"]);
   const [editingSessionId, setEditingSessionId] = useState<number | null>(null);
-  const [editingTitle, setEditingTitle] = useState("");
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const activeSessionId = parseChatSessionIdFromPathname(pathname);
   const deferredSearchValue = useDeferredValue(searchValue);
   const sessionTitleFallback = t("sessionTitleFallback", { ns: "chat" });
+  const renameForm = useAppForm({
+    defaultValues: {
+      title: "",
+    },
+    onSubmit: async () => {},
+    schema: sessionRenameSchema,
+  });
 
   const sessionsQuery = useQuery(chatSessionsQueryOptions());
   const renameSessionMutation = useMutation({
@@ -239,24 +255,36 @@ export function ChatSidebar({
     );
   }, [deferredSearchValue, sessionTitleFallback, sessions]);
 
-  const beginRename = useCallback((sessionId: number, title: string | null) => {
-    setEditingSessionId(sessionId);
-    setEditingTitle(title ?? "");
-  }, []);
+  const beginRename = useCallback(
+    (sessionId: number, title: string | null) => {
+      setEditingSessionId(sessionId);
+      renameForm.reset({ title: title ?? "" });
+    },
+    [renameForm],
+  );
 
-  const submitRename = async (sessionId: number) => {
+  const submitRename = async (sessionId: number, title: string) => {
     if (renameSessionMutation.isPending) {
       return;
     }
 
-    const normalizedTitle = editingTitle.trim();
+    const normalizedTitle = title.trim();
     try {
       await renameSessionMutation.mutateAsync({
         sessionId,
         title: normalizedTitle ? normalizedTitle : null,
       });
+      queryClient.setQueryData(
+        queryKeys.chat.sessions,
+        (current: Array<{ id: number; title: string | null }> | undefined) =>
+          current?.map((session) =>
+            session.id === sessionId
+              ? { ...session, title: normalizedTitle ? normalizedTitle : null }
+              : session,
+          ) ?? current,
+      );
       setEditingSessionId(null);
-      setEditingTitle("");
+      renameForm.reset({ title: "" });
     } catch {}
   };
 
@@ -269,8 +297,9 @@ export function ChatSidebar({
 
   const handleRenameSubmit = useCallback(
     (sessionId: number) => (event: FormEvent<HTMLFormElement>) => {
-      event.preventDefault();
-      void submitRename(sessionId);
+      const titleInput = event.currentTarget.querySelector("input");
+      const title = titleInput?.value ?? "";
+      void handleFormSubmitEvent(event, () => submitRename(sessionId, title));
     },
     [submitRename],
   );
@@ -282,10 +311,6 @@ export function ChatSidebar({
 
     event.preventDefault();
     event.currentTarget.form?.requestSubmit();
-  }, []);
-
-  const handleSetEditingTitle = useCallback((value: string) => {
-    setEditingTitle(value);
   }, []);
 
   const handleBeginRename = useCallback(
@@ -435,14 +460,13 @@ export function ChatSidebar({
                           <SessionRow
                             activeSessionId={activeSessionId}
                             editingSessionId={editingSessionId}
-                            editingTitle={editingTitle}
                             isRenamePending={renameSessionMutation.isPending}
                             onBeginRename={handleBeginRename}
                             onDeleteSession={handleDeleteSession}
                             onRenameInputKeyDown={handleRenameInputKeyDown}
                             onRenameSubmit={handleRenameSubmit}
                             onSelectSession={onSelectSession}
-                            onSetEditingTitle={handleSetEditingTitle}
+                            renameForm={renameForm}
                             session={session}
                             sessionTitleFallback={sessionTitleFallback}
                             t={t}

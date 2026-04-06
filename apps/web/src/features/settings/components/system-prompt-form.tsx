@@ -3,13 +3,16 @@
  */
 
 import { useEffect, useState } from "react";
-import { useForm } from "@tanstack/react-form";
 import type { FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { AppSettings } from "../api/settings";
 import { SettingsActionBar, SystemPromptSection } from "./provider-form-sections";
-import { getFirstFormError, handleFormSubmitEvent } from "@/lib/forms";
+import { Form } from "@/components/ui/form";
+import { getFormErrorMessage } from "@/lib/form/form-feedback";
+import { useAppForm } from "@/lib/form/use-app-form";
+import { handleFormSubmitEvent } from "@/lib/forms";
+import { systemPromptSchema } from "@/lib/validation/schemas";
 
 type SystemPromptFormProps = {
   initialValues: AppSettings;
@@ -37,7 +40,7 @@ export function SystemPromptForm({
 }: SystemPromptFormProps) {
   const { t } = useTranslation("settings");
   const [notice, setNotice] = useState<FormNotice | null>(null);
-  const form = useForm({
+  const form = useAppForm({
     defaultValues: {
       system_prompt: initialValues.system_prompt ?? "",
     },
@@ -59,6 +62,7 @@ export function SystemPromptForm({
         throw error;
       }
     },
+    schema: systemPromptSchema,
   });
 
   useEffect(() => {
@@ -74,12 +78,12 @@ export function SystemPromptForm({
   };
 
   return (
-    <form className="flex flex-col gap-6" noValidate onSubmit={handleSubmit}>
+    <Form className="flex flex-col gap-6" noValidate onSubmit={handleSubmit}>
       <SystemPromptSection form={form} onValueChange={() => setNotice(null)} t={t} />
       <form.Subscribe selector={(state) => state.errors}>
         {(errors) => (
           <SettingsActionBar
-            errorMessage={getFirstFormError(errors, t)}
+            errorMessage={getFormErrorMessage(errors, t)}
             notice={notice}
             onTest={() => {}}
             savePending={savePending}
@@ -88,6 +92,6 @@ export function SystemPromptForm({
           />
         )}
       </form.Subscribe>
-    </form>
+    </Form>
   );
 }
