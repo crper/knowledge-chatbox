@@ -64,6 +64,7 @@ knowledge-chatbox/
 - `apps/web/src/router/bootstrap-gate.tsx`
 - `apps/web/src/router/route-shells.tsx`
 - `apps/web/src/layouts/app-shell-layout.tsx`
+- `apps/web/src/providers/tanstack-devtools-provider.tsx`
 
 ### 3.2 分层约定
 
@@ -75,7 +76,7 @@ knowledge-chatbox/
 | `features`          | 业务模块、API 调用、query/mutation 配置、局部状态、页面级编排 |
 | `components/ui`     | 基础 UI 组件                                                  |
 | `components/shared` | 跨 feature 复用的共享组件                                     |
-| `providers`         | Query、i18n、theme 等顶层 provider                            |
+| `providers`         | Query、i18n、theme、Router 与开发态 Devtools 等顶层 provider  |
 | `lib`               | API 客户端、环境变量、hooks、store、utils                     |
 | `i18n`              | 多语言文案                                                    |
 
@@ -94,6 +95,7 @@ knowledge-chatbox/
 - `features/knowledge/route-search.ts` 负责 `/knowledge` 的 route search 契约、query/type/status 归一化和 canonical search path 生成
 - `test/render-route.tsx` 负责整页 / 路由契约测试，直接挂真实 TanStack Router route tree
 - `test/test-router.tsx` 负责组件级 path / params / search 上下文，不再为测试维护第二套路由实现
+- `providers/tanstack-devtools-provider.tsx` 负责开发态 TanStack Devtools 聚合面板；统一收口 Query / Router / Form 调试入口，只在开发环境启用，不进入 Vitest 或生产构建
 - `features/knowledge/components/upload-queue-summary.tsx` 负责资源页专用的紧凑上传队列；它不直接复用聊天附件面板，但沿用“标题 + 条目 + 行内操作”的信息结构
 - 工作台标准侧栏和会话侧栏骨架优先复用 `components/ui/sidebar`；账户中枢与全局偏好切换优先复用 `components/ui/dropdown-menu`；设置页状态提示优先复用 `components/ui/alert`；会话行辅助动作当前是标题区 + 水平动作 rail，不要再为同语义容器平行造一套业务样式组件
 - `components/ui/*` 当前统一基于 `Base UI` 组装；自定义包装组件优先暴露 `render` 而不是 `asChild`；链接样式统一直接复用 `buttonVariants`，不要把 `<a>` 再包进按钮语义里

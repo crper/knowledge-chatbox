@@ -8,6 +8,7 @@ import { RouterProvider } from "@tanstack/react-router";
 
 import { useSessionStore } from "@/lib/auth/session-store";
 import { createAppRouter } from "@/tanstack-router";
+import { TanStackDevtoolsProvider } from "./tanstack-devtools-provider";
 
 /**
  * 为后续 runtime cutover 准备的 TanStack Router Provider。
@@ -21,5 +22,10 @@ export function TanStackRouterProvider() {
     void router.invalidate();
   }, [router, status]);
 
-  return <RouterProvider context={{ queryClient }} router={router} />;
+  return (
+    <>
+      <RouterProvider context={{ queryClient }} router={router} />
+      <TanStackDevtoolsProvider queryClient={queryClient} router={router} />
+    </>
+  );
 }

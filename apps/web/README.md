@@ -40,6 +40,7 @@
 - TanStack Router
 - TanStack Query
 - TanStack Form
+- TanStack Devtools（开发态）
 - react-virtuoso
 - Zustand
 - openapi-typescript / openapi-fetch
@@ -73,6 +74,7 @@ vp build
 - `vp run api:check` / `just web-check` 如果提示 OpenAPI snapshot 或生成类型过期，标准修复入口就是 `vp run api:generate`
 - `vp test` 跑前端测试
 - `vp build` 产出生产构建
+- `vp dev` 当前会自动挂载 TanStack Devtools 聚合面板，统一查看 Query / Router / Form 状态；Vitest 和生产构建里不会渲染这层开发工具
 
 如果你要的是本地单机稳定运行，不要继续把 `vp dev` 当成部署入口，请回到仓库根目录看 [README.md](../../README.md) 的 Docker / 单机部署部分，入口是 `just docker-up`。
 
@@ -118,7 +120,7 @@ apps/web/
     routeTree.gen.ts           # TanStack Router plugin 生成的 route tree
     routes/                    # file-based routes，定义 URL 契约、redirect、guard
     router/                    # 启动门禁与共享 route shell
-    providers/                 # Query / Theme / i18n / Router provider
+    providers/                 # Query / Theme / i18n / Router / Devtools provider
     layouts/                   # 应用壳层与面板编排
     pages/                     # 路由入口与页面装配层
     features/
