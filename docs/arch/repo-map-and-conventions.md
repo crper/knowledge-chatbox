@@ -193,6 +193,7 @@ knowledge-chatbox/
 典型例子：
 
 - provider 配置首次可由环境变量 bootstrap，但长期真相源是数据库
+- `.env.example` 当前给本地开发主线预置的是 Ollama bootstrap：`response / embedding / vision` 都默认走 Ollama，`INITIAL_OLLAMA_BASE_URL` 默认是 `http://localhost:11434`
 - provider 连接信息与 capability route 现在都落在 `app_settings` 的强类型 JSON 字段里；真正的活动能力由 `response_route / embedding_route / vision_route` 决定，embedding 切换中的目标由 `pending_embedding_route` 表示
 - 语言、主题、聊天草稿、发送快捷键和按会话隔离的发送中状态属于前端偏好 / UI 协调层；其中主题还会同步到用户账号偏好，但不要混进系统级 provider 配置
 

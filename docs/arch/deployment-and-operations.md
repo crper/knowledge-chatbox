@@ -102,7 +102,9 @@ flowchart LR
 - `api` 容器和 `web` 容器都是单机部署态的一部分，不是开发态的替代品
 - `api` 启动期除了默认数据 bootstrap，还会补偿残留的 `processing` 文档、`pending / running` chat run，以及 `running` 的索引重建状态；其中图片文档的 `processing` 记录会优先尝试恢复后台补全
 - provider 相关 bootstrap 现在会在单条 `app_settings` 记录里同时种入 `provider_profiles_json`、`response_route_json`、`embedding_route_json`、`vision_route_json`，并把 `pending_embedding_route_json` 初始化为空
-- 默认 Ollama bootstrap 当前对齐为 `qwen3.5:4b` 作为 chat / vision 模板值，避免设置页首屏和连接测试看到的默认模型不一致
+- `.env.example` 面向本地 `just dev` 主线时，默认会把三条 capability route 都 bootstrap 到 Ollama，并把 `INITIAL_OLLAMA_BASE_URL` 设为 `http://localhost:11434`
+- 如果改走 Docker Compose 且 Ollama 仍跑在宿主机，需要把 `.env` 里的 `INITIAL_OLLAMA_BASE_URL` 改成 `http://host.docker.internal:11434`
+- 默认 Ollama bootstrap 当前对齐为 `qwen3.5:4b` 作为 chat / vision 模板值，embedding 则对齐为 `nomic-embed-text`，避免设置页首屏和连接测试看到的默认模型不一致
 - API 响应头默认附带 `X-Request-ID`，日志里同样会输出 `request_id`
 - SQLite 连接默认开启 `WAL` 和 `busy_timeout=30000`，降低流式事件写入与标准页面读取并发时直接触发锁错误的概率
 - 文档索引当前拆成两层：`Chroma` 保存向量索引，SQLite 同库保存 `FTS5` 词法候选兜底索引；重置本地 SQLite 文件会一并清掉这部分派生数据

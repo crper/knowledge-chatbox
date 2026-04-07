@@ -111,7 +111,7 @@ class Settings(BaseSettings):
     initial_anthropic_base_url: str = "https://api.anthropic.com"
     initial_voyage_api_key: SecretStr | None = None
     initial_voyage_base_url: str = "https://api.voyageai.com/v1"
-    initial_ollama_base_url: str = "http://host.docker.internal:11434"
+    initial_ollama_base_url: str = "http://localhost:11434"
     initial_openai_chat_model: str = "gpt-5.4"
     initial_openai_embedding_model: str = "text-embedding-3-small"
     initial_openai_vision_model: str = "gpt-5.4"
@@ -121,12 +121,12 @@ class Settings(BaseSettings):
     initial_ollama_chat_model: str = "qwen3.5:4b"
     initial_ollama_embedding_model: str = "nomic-embed-text"
     initial_ollama_vision_model: str = "qwen3.5:4b"
-    initial_response_provider: ResponseProviderLiteral = "openai"
-    initial_response_model: str = "gpt-5.4"
-    initial_embedding_provider: EmbeddingProviderLiteral = "openai"
-    initial_embedding_model: str = "text-embedding-3-small"
-    initial_vision_provider: VisionProviderLiteral = "openai"
-    initial_vision_model: str = "gpt-5.4"
+    initial_response_provider: ResponseProviderLiteral = "ollama"
+    initial_response_model: str = "qwen3.5:4b"
+    initial_embedding_provider: EmbeddingProviderLiteral = "ollama"
+    initial_embedding_model: str = "nomic-embed-text"
+    initial_vision_provider: VisionProviderLiteral = "ollama"
+    initial_vision_model: str = "qwen3.5:4b"
     initial_provider_timeout_seconds: PositiveInt = 60
     project_root: Path = Field(default_factory=lambda: PROJECT_ROOT)
     data_dir: Path = Field(default=Path("data"))

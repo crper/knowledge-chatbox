@@ -31,13 +31,13 @@ def login_admin(api_client: TestClient) -> None:
     )
     assert response.status_code == 200
 
-    def ensure_openai_key(provider_profiles, settings_record) -> None:
-        provider_profiles["openai"]["api_key"] = "test-openai-key"
+    def ensure_ollama_url(provider_profiles, settings_record) -> None:
+        provider_profiles["ollama"]["base_url"] = "http://localhost:11434"
         settings_record.pending_embedding_route_json = None
         settings_record.index_rebuild_status = "idle"
         settings_record.building_index_generation = None
 
-    update_provider_profiles(ensure_openai_key)
+    update_provider_profiles(ensure_ollama_url)
 
 
 def build_png_bytes() -> bytes:
@@ -163,10 +163,10 @@ def test_upload_readiness_blocks_when_active_embedding_is_not_configured(
 ) -> None:
     login_admin(api_client)
 
-    def clear_openai_key(provider_profiles, _settings_record) -> None:
-        provider_profiles["openai"]["api_key"] = None
+    def clear_ollama_url(provider_profiles, _settings_record) -> None:
+        provider_profiles["ollama"]["base_url"] = ""
 
-    update_provider_profiles(clear_openai_key)
+    update_provider_profiles(clear_ollama_url)
 
     response = api_client.get("/api/documents/upload-readiness")
 
@@ -269,8 +269,8 @@ def test_upload_document_writes_to_building_generation_when_rebuild_running(
         service = SettingsService(session, settings)
         settings_record = service.get_or_create_settings_record()
         settings_record.pending_embedding_route_json = {
-            "provider": "openai",
-            "model": "text-embedding-3-large",
+            "provider": "ollama",
+            "model": "nomic-embed-text",
         }
         settings_record.index_rebuild_status = INDEX_REBUILD_STATUS_RUNNING
         settings_record.building_index_generation = settings_record.active_index_generation + 1
@@ -301,10 +301,10 @@ def test_upload_document_returns_conflict_before_saving_file_when_embedding_is_n
         {path.name for path in upload_dir.iterdir()} if upload_dir.exists() else set()
     )
 
-    def clear_openai_key(provider_profiles, _settings_record) -> None:
-        provider_profiles["openai"]["api_key"] = None
+    def clear_ollama_url(provider_profiles, _settings_record) -> None:
+        provider_profiles["ollama"]["base_url"] = ""
 
-    update_provider_profiles(clear_openai_key)
+    update_provider_profiles(clear_ollama_url)
 
     response = api_client.post(
         "/api/documents/upload",

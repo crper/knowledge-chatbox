@@ -56,6 +56,12 @@
 
 这些模板字段会在保存 route 后同步回 profile，保证设置页再次打开时看到的是“当前真实会生效的模型值”。
 
+当前 bootstrap 约定：
+
+- 本地 `just dev` 主线默认使用 `.env.example`，会把 `response / embedding / vision` 三条 route 都种到 Ollama
+- `.env.example` 里的 `INITIAL_OLLAMA_BASE_URL` 默认是 `http://localhost:11434`
+- 如果改走 Docker Compose 且 Ollama 仍跑在宿主机，需要把 `.env` 里的 `INITIAL_OLLAMA_BASE_URL` 改成 `http://host.docker.internal:11434`
+
 ## 3. route 语义
 
 ### response

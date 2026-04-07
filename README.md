@@ -100,6 +100,8 @@ just setup
 - 后端会执行 `uv sync --all-groups`
 - 前端会执行 `vp install`
 - `just dev` 专注于启动服务，不会自动安装依赖；推荐先执行 `just setup` 再运行 `just dev`
+- `.env.example` 当前默认把 `response / embedding / vision` bootstrap 都指向本机 Ollama，并把 `INITIAL_OLLAMA_BASE_URL` 设为 `http://localhost:11434`
+- 如果改走 Docker Compose，且 Ollama 仍跑在宿主机，请把 `.env` 里的 `INITIAL_OLLAMA_BASE_URL` 改成 `http://host.docker.internal:11434`
 
 ### 4. 选择运行方式
 
