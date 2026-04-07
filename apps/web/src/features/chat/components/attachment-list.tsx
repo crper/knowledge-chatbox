@@ -92,12 +92,13 @@ export function AttachmentList({
           data-testid={testId}
           id={contentId}
         >
-          {items.map((item) => {
+          {items.map((item, index) => {
             const AttachmentIcon = getAttachmentIcon(item.kind);
+            const itemKey = `${item.id}:${item.rawName ?? item.displayName}:${index}`;
 
             return (
               <li
-                key={item.id}
+                key={itemKey}
                 className="flex min-w-0 items-center gap-2 px-2.5 py-1.5"
                 title={item.rawName ?? item.displayName}
               >

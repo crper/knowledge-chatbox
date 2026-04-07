@@ -5,6 +5,13 @@ import type { ChatMessageItem } from "@/features/chat/api/chat";
 import { TestRouter } from "@/test/test-router";
 import { ChatPage } from "./chat-page";
 
+vi.mock("@/features/chat/api/chat-query", () => ({
+  chatProfileQueryOptions: () => ({
+    queryKey: ["chat", "profile"],
+    queryFn: async () => null,
+  }),
+}));
+
 const messageViewportRenderSpy = vi.fn();
 
 const mockWorkspaceState: {
