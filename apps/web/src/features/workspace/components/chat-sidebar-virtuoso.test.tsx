@@ -1,6 +1,5 @@
 import { render, screen } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { MemoryRouter } from "react-router-dom";
 
 import type { AppUser } from "@/lib/api/client";
 import { I18nProvider } from "@/providers/i18n-provider";
@@ -8,6 +7,7 @@ import { ThemeProvider } from "@/providers/theme-provider";
 import { http } from "msw";
 import { apiResponse, overrideHandler } from "@/test/msw";
 import { createTestQueryClient } from "@/test/query-client";
+import { TestRouter } from "@/test/test-router";
 import { ChatSidebar } from "./chat-sidebar";
 
 vi.mock("@tanstack/react-virtual", () => ({
@@ -55,7 +55,7 @@ function renderSidebar(initialEntry = "/chat/1") {
   });
 
   return render(
-    <MemoryRouter initialEntries={[initialEntry]}>
+    <TestRouter initialEntry={initialEntry}>
       <I18nProvider>
         <ThemeProvider>
           <QueryClientProvider client={queryClient}>
@@ -72,7 +72,7 @@ function renderSidebar(initialEntry = "/chat/1") {
           </QueryClientProvider>
         </ThemeProvider>
       </I18nProvider>
-    </MemoryRouter>,
+    </TestRouter>,
   );
 }
 

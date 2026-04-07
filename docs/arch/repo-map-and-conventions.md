@@ -59,15 +59,18 @@ knowledge-chatbox/
 
 - `apps/web/src/main.tsx`
 - `apps/web/src/app.tsx`
-- `apps/web/src/router.tsx`
+- `apps/web/src/tanstack-router.tsx`
+- `apps/web/src/routes/*`
 - `apps/web/src/router/bootstrap-gate.tsx`
-- `apps/web/src/router/guards.tsx`
+- `apps/web/src/router/route-shells.tsx`
 - `apps/web/src/layouts/app-shell-layout.tsx`
 
 ### 3.2 分层约定
 
 | 目录                | 责任                                                          |
 | ------------------- | ------------------------------------------------------------- |
+| `routes`            | TanStack Router file-based routes，负责 URL 契约、redirect、guard |
+| `router`            | 启动门禁与共享 route shell                                    |
 | `pages`             | 路由入口和页面装配                                            |
 | `features`          | 业务模块、API 调用、query/mutation 配置、局部状态、页面级编排 |
 | `components/ui`     | 基础 UI 组件                                                  |
@@ -88,6 +91,9 @@ knowledge-chatbox/
 - `features/chat/utils/patch-paged-chat-messages.ts` 负责把流式完成 / 失败态优先 patch 进当前已加载消息窗口
 - `features/chat/utils/upload-chat-attachments.ts` 负责聊天区待发送附件的有限并发上传与顺序保持
 - `features/chat/utils/chat-session-recovery.ts` 负责最近访问聊天会话的本地持久化与恢复决策；`/chat` 入口恢复逻辑优先收敛在这里，不要把同一语义分散到多个路由守卫或页面副作用里，也不要在页面里先落空态再补跳转
+- `features/knowledge/route-search.ts` 负责 `/knowledge` 的 route search 契约、query/type/status 归一化和 canonical search path 生成
+- `test/render-route.tsx` 负责整页 / 路由契约测试，直接挂真实 TanStack Router route tree
+- `test/test-router.tsx` 负责组件级 path / params / search 上下文，不再为测试维护第二套路由实现
 - `features/knowledge/components/upload-queue-summary.tsx` 负责资源页专用的紧凑上传队列；它不直接复用聊天附件面板，但沿用“标题 + 条目 + 行内操作”的信息结构
 - 工作台标准侧栏和会话侧栏骨架优先复用 `components/ui/sidebar`；账户中枢与全局偏好切换优先复用 `components/ui/dropdown-menu`；设置页状态提示优先复用 `components/ui/alert`；会话行辅助动作当前是标题区 + 水平动作 rail，不要再为同语义容器平行造一套业务样式组件
 - `components/ui/*` 当前统一基于 `Base UI` 组装；自定义包装组件优先暴露 `render` 而不是 `asChild`；链接样式统一直接复用 `buttonVariants`，不要把 `<a>` 再包进按钮语义里
@@ -319,7 +325,7 @@ just reset-dev
 
 1. `apps/web/README.md`
 2. `docs/arch/frontend-workspace.md`
-3. `apps/web/src/router.tsx`
+3. `apps/web/src/routes/*`
 
 ### 先改后端
 

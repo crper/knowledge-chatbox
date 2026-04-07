@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 import { AppProviders } from "@/providers/app-providers";
+import { TestRouter } from "@/test/test-router";
 import { ChatPage } from "./chat-page";
 
 let chatProfileData: { model: string; provider: "anthropic" | "ollama" | "openai" } | undefined;
@@ -58,18 +58,11 @@ vi.mock("@/features/chat/components/message-input", () => ({
 describe("ChatPage model indicator", () => {
   function renderChatPage(initialEntry = "/chat/1") {
     return render(
-      <MemoryRouter initialEntries={[initialEntry]}>
-        <Routes>
-          <Route
-            element={
-              <AppProviders>
-                <ChatPage />
-              </AppProviders>
-            }
-            path="/chat/:sessionId"
-          />
-        </Routes>
-      </MemoryRouter>,
+      <TestRouter initialEntry={initialEntry} path="/chat/:sessionId">
+        <AppProviders>
+          <ChatPage />
+        </AppProviders>
+      </TestRouter>,
     );
   }
 
@@ -98,7 +91,7 @@ describe("ChatPage model indicator", () => {
 
     renderChatPage();
 
-    fireEvent.click(screen.getByRole("button", { name: "submit" }));
+    fireEvent.click(await screen.findByRole("button", { name: "submit" }));
 
     expect(await screen.findByTestId("message-input-active-model")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "submit" })).toBeInTheDocument();

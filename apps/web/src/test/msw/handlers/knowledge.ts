@@ -30,6 +30,22 @@ export function createKnowledgeHandlers(options: KnowledgeHandlersOptions = {}) 
       });
     }),
 
+    http.get("*/api/documents/upload-readiness", () => {
+      return apiResponse({
+        can_upload: true,
+        blocking_reason: null,
+        image_fallback: null,
+      });
+    }),
+
+    http.get("*/api/documents/summary", () => {
+      return apiResponse({
+        pending_count: 2,
+        indexed_count: 8,
+        total_count: 10,
+      });
+    }),
+
     http.get("*/api/documents/:documentId", ({ params }) => {
       const documentId = Number(params.documentId);
       const document = documents.find((d) => d.id === documentId);
@@ -55,22 +71,6 @@ export function createKnowledgeHandlers(options: KnowledgeHandlersOptions = {}) 
 
     http.get("*/api/documents/:documentId/revisions", ({ params: _params }) => {
       return apiResponse([]);
-    }),
-
-    http.get("*/api/documents/upload-readiness", () => {
-      return apiResponse({
-        can_upload: true,
-        blocking_reason: null,
-        image_fallback: null,
-      });
-    }),
-
-    http.get("*/api/documents/summary", () => {
-      return apiResponse({
-        pending_count: 2,
-        indexed_count: 8,
-        total_count: 10,
-      });
     }),
   ];
 }

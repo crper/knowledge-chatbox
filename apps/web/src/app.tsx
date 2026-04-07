@@ -3,7 +3,7 @@
  */
 
 import { AppProviders } from "./providers/app-providers";
-import { RouterProvider } from "./providers/router-provider";
+import { TanStackRouterProvider } from "./providers/tanstack-router-provider";
 
 /**
  * 渲染应用根组件。
@@ -11,7 +11,7 @@ import { RouterProvider } from "./providers/router-provider";
 export function AppShell() {
   return (
     <AppProviders>
-      <RouterProvider />
+      <TanStackRouterProvider />
     </AppProviders>
   );
 }

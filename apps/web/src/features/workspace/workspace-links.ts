@@ -42,7 +42,7 @@ export function getWorkspaceLabelKey(pathname: string): WorkspaceLabelKey {
   if (pathname.startsWith("/settings")) {
     return "navSettings";
   }
-  if (pathname.startsWith("/users")) {
+  if (pathname.startsWith("/admin/users") || pathname.startsWith("/users")) {
     return "navUsers";
   }
   return "navChat";

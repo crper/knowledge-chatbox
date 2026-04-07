@@ -26,6 +26,12 @@ type ResetSessionScopedClientStateOptions = {
   preserveChatRecovery?: boolean;
 };
 
+type EnsureSessionBootstrapOptions = {
+  isLoginPage?: boolean;
+};
+
+let pendingBootstrapPromise: Promise<AppUser | null> | null = null;
+
 function resetChatUiSessionState() {
   const sendShortcut = useChatUiStore.getState().sendShortcut;
   useChatUiStore.persist.clearStorage();
@@ -112,6 +118,33 @@ export async function bootstrapSession(queryClient: QueryClient) {
 
   useSessionStore.getState().setStatus(user ? "authenticated" : "anonymous");
   return user;
+}
+
+export async function ensureSessionBootstrap(
+  queryClient: QueryClient,
+  options: EnsureSessionBootstrapOptions = {},
+) {
+  if (useSessionStore.getState().status !== "bootstrapping") {
+    return null;
+  }
+
+  if (pendingBootstrapPromise === null) {
+    pendingBootstrapPromise = bootstrapSession(queryClient)
+      .catch(() => {
+        if (options.isLoginPage) {
+          markSessionAnonymous();
+          return null;
+        }
+
+        markSessionDegraded();
+        return null;
+      })
+      .finally(() => {
+        pendingBootstrapPromise = null;
+      });
+  }
+
+  return pendingBootstrapPromise;
 }
 
 /**

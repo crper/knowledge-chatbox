@@ -1,6 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
 
 import { i18n } from "@/i18n";
 import type { AppUser } from "@/lib/api/client";
@@ -11,6 +10,7 @@ import { ThemeProvider } from "@/providers/theme-provider";
 import { http } from "msw";
 import { apiResponse, overrideHandler } from "@/test/msw";
 import { createTestQueryClient } from "@/test/query-client";
+import { TestRouter } from "@/test/test-router";
 import { StandardSidebar } from "./standard-sidebar";
 
 function buildUser(role: "admin" | "user"): AppUser {
@@ -35,7 +35,7 @@ function renderStandardSidebar(pathname = "/chat", user: AppUser = buildUser("ad
   queryClient.setQueryData(queryKeys.auth.me, user);
 
   const result = render(
-    <MemoryRouter initialEntries={[pathname]}>
+    <TestRouter initialEntry={pathname}>
       <I18nProvider>
         <ThemeProvider>
           <QueryClientProvider client={queryClient}>
@@ -43,7 +43,7 @@ function renderStandardSidebar(pathname = "/chat", user: AppUser = buildUser("ad
           </QueryClientProvider>
         </ThemeProvider>
       </I18nProvider>
-    </MemoryRouter>,
+    </TestRouter>,
   );
 
   return {
@@ -60,26 +60,26 @@ describe("StandardSidebar", () => {
   });
 
   it("renders workspace links, settings links, and account menu on settings routes", async () => {
-    renderStandardSidebar("/settings?section=security");
+    renderStandardSidebar("/settings/security");
 
-    expect(screen.getByRole("link", { name: "对话" })).toHaveAttribute("href", "/chat");
+    expect(await screen.findByRole("link", { name: "对话" })).toHaveAttribute("href", "/chat");
     expect(screen.getByRole("link", { name: "资源" })).toHaveAttribute("href", "/knowledge");
     expect(screen.getByRole("link", { name: "提供商配置" })).toHaveAttribute(
       "href",
-      "/settings?section=providers",
+      "/settings/providers",
     );
     expect(screen.getByRole("link", { name: "系统提示词" })).toHaveAttribute(
       "href",
-      "/settings?section=prompt",
+      "/settings/prompt",
     );
     expect(screen.getByRole("link", { name: "账号安全" })).toHaveAttribute(
       "href",
-      "/settings?section=security",
+      "/settings/security",
     );
     expect(screen.getByText("admin")).toBeInTheDocument();
     expect(screen.getByText("角色：admin")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "打开账户菜单" }));
+    fireEvent.click(await screen.findByRole("button", { name: "打开账户菜单" }));
 
     expect(await screen.findByText("外观")).toBeInTheDocument();
     expect(screen.getByRole("menuitemradio", { name: "浅色" })).toBeInTheDocument();
@@ -87,14 +87,17 @@ describe("StandardSidebar", () => {
     expect(screen.getByRole("menuitemradio", { name: "跟随系统" })).toBeInTheDocument();
     expect(screen.getByRole("menuitemradio", { name: "简体中文" })).toBeInTheDocument();
     expect(screen.getByRole("menuitemradio", { name: "English" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "系统设置" })).toHaveAttribute("href", "/settings");
+    expect(screen.getByRole("menuitem", { name: "系统设置" })).toHaveAttribute(
+      "href",
+      "/settings/providers",
+    );
     expect(screen.getByRole("menuitem", { name: "退出登录" })).toBeInTheDocument();
   });
 
-  it("hides settings section links outside settings routes", () => {
+  it("hides settings section links outside settings routes", async () => {
     renderStandardSidebar("/chat", buildUser("user"));
 
-    expect(screen.getByRole("link", { name: "对话" })).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: "对话" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "提供商配置" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "用户管理" })).not.toBeInTheDocument();
   });
@@ -112,7 +115,7 @@ describe("StandardSidebar", () => {
 
     const { queryClient } = renderStandardSidebar("/chat", buildUser("admin"));
 
-    fireEvent.click(screen.getByRole("button", { name: "打开账户菜单" }));
+    fireEvent.click(await screen.findByRole("button", { name: "打开账户菜单" }));
     fireEvent.click(await screen.findByRole("menuitemradio", { name: "深色" }));
 
     await waitFor(() => expect(document.documentElement.classList.contains("dark")).toBe(true));
@@ -125,7 +128,7 @@ describe("StandardSidebar", () => {
   it("switches language locally without calling the preferences api", async () => {
     renderStandardSidebar("/chat", buildUser("admin"));
 
-    fireEvent.click(screen.getByRole("button", { name: "打开账户菜单" }));
+    fireEvent.click(await screen.findByRole("button", { name: "打开账户菜单" }));
     fireEvent.click(await screen.findByRole("menuitemradio", { name: "English" }));
 
     await waitFor(() => expect(i18n.language).toBe("en"));
@@ -135,7 +138,7 @@ describe("StandardSidebar", () => {
   it("triggers logout from the account menu", async () => {
     const { onLogout } = renderStandardSidebar("/chat", buildUser("admin"));
 
-    fireEvent.click(screen.getByRole("button", { name: "打开账户菜单" }));
+    fireEvent.click(await screen.findByRole("button", { name: "打开账户菜单" }));
     fireEvent.click(await screen.findByRole("menuitem", { name: "退出登录" }));
 
     await waitFor(() => expect(onLogout).toHaveBeenCalledTimes(1));

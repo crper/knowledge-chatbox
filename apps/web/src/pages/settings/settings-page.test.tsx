@@ -1,6 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
 
 import { i18n } from "@/i18n";
 import * as settingsApi from "@/features/settings/api/settings";
@@ -9,6 +8,7 @@ import type { AppUser } from "@/lib/api/client";
 import { ThemeProvider } from "@/providers/theme-provider";
 import { buildAppSettings, buildAppUser, buildProviderConnectionResult } from "@/test/fixtures/app";
 import { createTestQueryClient } from "@/test/query-client";
+import { TestRouter } from "@/test/test-router";
 import { mockDesktopViewport } from "@/test/viewport";
 import { SettingsPage } from "./settings-page";
 
@@ -25,7 +25,10 @@ vi.mock("@/features/settings/api/settings", async () => {
   };
 });
 
-function renderSettingsPage(user: AppUser = buildAppUser("admin"), initialEntry = "/settings") {
+function renderSettingsPage(
+  user: AppUser = buildAppUser("admin"),
+  initialEntry = user.role === "admin" ? "/settings/providers" : "/settings/preferences",
+) {
   const queryClient = createTestQueryClient({
     defaultOptions: {
       queries: {
@@ -36,13 +39,16 @@ function renderSettingsPage(user: AppUser = buildAppUser("admin"), initialEntry 
   });
 
   return render(
-    <MemoryRouter initialEntries={[initialEntry]}>
+    <TestRouter
+      initialEntry={initialEntry}
+      path={initialEntry.startsWith("/settings/") ? "/settings/:section" : "/settings"}
+    >
       <ThemeProvider>
         <QueryClientProvider client={queryClient}>
           <SettingsPage user={user} />
         </QueryClientProvider>
       </ThemeProvider>
-    </MemoryRouter>,
+    </TestRouter>,
   );
 }
 
@@ -92,7 +98,7 @@ describe("SettingsPage", () => {
 
     renderSettingsPage();
 
-    expect(screen.getByRole("heading", { name: "提供商配置" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "提供商配置" })).toBeInTheDocument();
     expect(await screen.findByText("当前状态概览")).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "主 Provider" })).toHaveTextContent("OpenAI");
     expect(screen.getByLabelText("Chat Model")).toHaveValue("gpt-5.4");
@@ -453,7 +459,7 @@ describe("SettingsPage", () => {
   });
 
   it("shows only self-service sections for non-admin users without loading system settings", async () => {
-    renderSettingsPage(buildAppUser("user"), "/settings?section=preferences");
+    renderSettingsPage(buildAppUser("user"), "/settings/preferences");
 
     expect(await screen.findByRole("heading", { name: "偏好与外观" })).toBeInTheDocument();
     expect(screen.queryByRole("combobox", { name: "主 Provider" })).not.toBeInTheDocument();

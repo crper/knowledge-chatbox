@@ -2,12 +2,11 @@
  * @file 聊天页面模块。
  */
 
-import { useCallback, useEffect, useLayoutEffect } from "react";
+import { useCallback, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { FilePlus2Icon, MessageSquareDashedIcon } from "lucide-react";
-import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -19,7 +18,6 @@ import type { ChatProfileItem } from "@/features/chat/api/chat";
 import {
   clearLastVisitedChatSessionId,
   readLastVisitedChatSessionId,
-  resolveRestorableChatSessionId,
   writeLastVisitedChatSessionId,
 } from "@/features/chat/utils/chat-session-recovery";
 import {
@@ -34,10 +32,12 @@ import { AssistantWaitingCard } from "@/features/chat/components/markdown-messag
 import { MessageInput } from "@/features/chat/components/message-input";
 import { useChatWorkspace } from "@/features/chat/hooks/use-chat-workspace";
 import type { ChatMessageItem } from "@/features/chat/api/chat";
-import { buildChatSessionPath, parseChatSessionId } from "@/features/chat/utils/chat-session-route";
+import { parseChatSessionId } from "@/features/chat/utils/chat-session-route";
 import { resolveSessionTitle } from "@/features/chat/utils/session-title";
 import { getProviderLabel } from "@/lib/provider-display";
 import { queryKeys } from "@/lib/api/query-keys";
+import { useNavigate, useParams } from "@/lib/app-router";
+import { buildSettingsPath, KNOWLEDGE_INDEX_PATH } from "@/lib/routes";
 
 function formatActiveModelLabel(profile: ChatProfileItem | undefined, tSettings: TFunction) {
   if (!profile || !profile.configured) {
@@ -93,7 +93,6 @@ export function ChatPage() {
     scrollToLatestRequestKey,
     sendShortcut,
     activeSessionId,
-    sessions,
     sessionsReady,
     setDraft,
     submitMessage,
@@ -114,11 +113,11 @@ export function ChatPage() {
   );
 
   const handleNavigateToSettings = useCallback(() => {
-    void navigate("/settings?section=providers");
+    void navigate(buildSettingsPath("providers"));
   }, [navigate]);
 
   const handleNavigateToKnowledge = useCallback(() => {
-    void navigate("/knowledge");
+    void navigate(KNOWLEDGE_INDEX_PATH);
   }, [navigate]);
 
   const handleDraftChange = useCallback(
@@ -151,63 +150,32 @@ export function ChatPage() {
     void submitMessage();
   }, [activeProfileConfigured, submitMessage, t]);
 
-  useLayoutEffect(() => {
-    if (sessionIdParam) {
-      return;
-    }
-
-    if (!isSessionsReady) {
-      return;
-    }
-
-    const preferredSessionId = readLastVisitedChatSessionId();
-    const nextSessionId = resolveRestorableChatSessionId(sessions, preferredSessionId);
-    if (nextSessionId === null) {
-      clearLastVisitedChatSessionId();
-      return;
-    }
-
-    if (preferredSessionId !== nextSessionId) {
-      writeLastVisitedChatSessionId(nextSessionId);
-    }
-
-    void navigate(buildChatSessionPath(nextSessionId), { replace: true });
-  }, [isSessionsReady, navigate, sessionIdParam, sessions]);
-
   useEffect(() => {
     if (!sessionIdParam) {
       return;
     }
 
-    if (routeSessionId === null) {
-      void navigate("/chat", { replace: true });
-      return;
-    }
-
     if (!isSessionsReady) {
       return;
     }
 
-    if (activeSessionId !== null) {
-      writeLastVisitedChatSessionId(activeSessionId);
-      return;
+    if (activeSessionId === null) {
+      const redirectTimer = window.setTimeout(() => {
+        if (routeSessionId !== null && readLastVisitedChatSessionId() === routeSessionId) {
+          clearLastVisitedChatSessionId();
+        }
+        void navigate("/chat", { replace: true });
+      }, 0);
+
+      return () => window.clearTimeout(redirectTimer);
     }
 
-    const redirectTimer = window.setTimeout(() => {
-      if (readLastVisitedChatSessionId() === routeSessionId) {
-        clearLastVisitedChatSessionId();
-      }
-      void navigate("/chat", { replace: true });
-    }, 0);
-
-    return () => window.clearTimeout(redirectTimer);
+    writeLastVisitedChatSessionId(activeSessionId);
   }, [activeSessionId, isSessionsReady, navigate, routeSessionId, sessionIdParam]);
 
   const shouldShowResolvingState =
     (!sessionIdParam && !isSessionsReady) ||
-    (!sessionIdParam && isSessionsReady && sessions.length > 0 && activeSessionId === null) ||
-    (Boolean(sessionIdParam) &&
-      (routeSessionId === null || !isSessionsReady || activeSessionId === null));
+    (Boolean(sessionIdParam) && (!isSessionsReady || activeSessionId === null));
   const shouldShowPendingEmptyState = submitPending && !hasMessages;
 
   if (shouldShowResolvingState) {

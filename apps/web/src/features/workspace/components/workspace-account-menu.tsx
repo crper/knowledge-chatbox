@@ -14,11 +14,10 @@ import {
   SunMediumIcon,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { Link } from "react-router-dom";
-
 import logoUrl from "@/assets/logo.png";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { Link } from "@/lib/app-router";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -31,8 +30,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { updatePreferencesMutationOptions } from "@/features/auth/api/auth-query";
+import { resolveSettingsSection } from "@/features/settings/settings-sections";
 import type { AppUser } from "@/lib/api/client";
 import { type AppLanguage, type ThemeMode } from "@/lib/config/constants";
+import { buildSettingsPath } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import { useUiStore } from "@/lib/store/ui-store";
 import { useTheme } from "@/providers/theme-provider";
@@ -74,6 +75,7 @@ export function WorkspaceAccountMenu({
 }: WorkspaceAccountMenuProps) {
   const { t } = useTranslation("common");
   const queryClient = useQueryClient();
+  const settingsPath = buildSettingsPath(resolveSettingsSection(null, user));
   const language = useUiStore((state) => state.language);
   const setLanguage = useUiStore((state) => state.setLanguage);
   const { setTheme, theme } = useTheme();
@@ -166,7 +168,7 @@ export function WorkspaceAccountMenu({
         </DropdownMenuRadioGroup>
 
         <DropdownMenuSeparator />
-        <DropdownMenuLinkItem onClick={onNavigate} render={<Link to="/settings" />}>
+        <DropdownMenuLinkItem onClick={onNavigate} render={<Link to={settingsPath} />}>
           <Settings2Icon />
           <span>{t("accountMenuMorePersonalizationAction")}</span>
         </DropdownMenuLinkItem>

@@ -7,7 +7,9 @@ describe("workspace-links", () => {
     expect(getWorkspaceLabelKey("/chat")).toBe("navChat");
     expect(getWorkspaceLabelKey("/chat/123")).toBe("navChat");
     expect(getWorkspaceLabelKey("/knowledge")).toBe("navKnowledge");
+    expect(getWorkspaceLabelKey("/settings/security")).toBe("navSettings");
     expect(getWorkspaceLabelKey("/settings?section=security")).toBe("navSettings");
+    expect(getWorkspaceLabelKey("/admin/users")).toBe("navUsers");
     expect(getWorkspaceLabelKey("/users")).toBe("navUsers");
   });
 });

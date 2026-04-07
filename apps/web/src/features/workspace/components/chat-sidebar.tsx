@@ -8,10 +8,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { PencilLineIcon, PlusIcon, SearchIcon, Trash2Icon } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { NavLink, useNavigate } from "react-router-dom";
 import { z } from "zod";
 
 import { BrandMark } from "@/components/shared/brand-mark";
+import { NavLink, useNavigate } from "@/lib/app-router";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import {

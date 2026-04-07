@@ -1,24 +1,23 @@
 /**
- * @file 前端模块。
+ * @file 路由壳层共享模块。
  */
 
 import { lazy, Suspense, useEffect, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { Navigate, Route, Routes } from "react-router-dom";
 
 import { currentUserQueryOptions } from "@/features/auth/api/auth-query";
 import type { AppUser } from "@/lib/api/client";
-import { useSessionStore } from "@/lib/auth/session-store";
+import { useLocation, useNavigate, Navigate } from "@/lib/app-router";
 import { markSessionExpired } from "@/lib/auth/session-manager";
-import { LoginPage } from "@/pages/auth/login-page";
+import { useSessionStore } from "@/lib/auth/session-store";
 import { AuthDegradedPage } from "@/pages/system/auth-degraded-page";
-import { ForbiddenPage } from "@/pages/system/forbidden-page";
-import { AppBootstrapGate } from "@/router/bootstrap-gate";
-import { ProtectedRoute, PublicRoute, RoleRoute } from "@/router/guards";
 
 const AppShellLayout = lazy(async () => ({
   default: (await import("@/layouts/app-shell-layout")).AppShellLayout,
+}));
+const LoginPage = lazy(async () => ({
+  default: (await import("@/pages/auth/login-page")).LoginPage,
 }));
 const ChatPage = lazy(async () => ({
   default: (await import("@/pages/chat/chat-page")).ChatPage,
@@ -33,24 +32,45 @@ const UsersPage = lazy(async () => ({
   default: (await import("@/pages/users/users-page")).UsersPage,
 }));
 
-function LoadingState() {
+export function LoadingState() {
   const { t } = useTranslation("common");
 
   return <div className="p-6 text-sm text-muted-foreground">{t("loading")}</div>;
 }
 
-function RouteSuspense({ children }: { children: ReactNode }) {
+export function RouteSuspense({ children }: { children: ReactNode }) {
   return <Suspense fallback={<LoadingState />}>{children}</Suspense>;
 }
 
-function CurrentUserBoundary({ children }: { children: (user: AppUser) => ReactNode }) {
+export function CurrentUserBoundary({ children }: { children: (user: AppUser) => ReactNode }) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const setRedirectTo = useSessionStore((state) => state.setRedirectTo);
   const status = useSessionStore((state) => state.status);
   const currentUserQuery = useQuery({
     ...currentUserQueryOptions(),
+    enabled: status === "authenticated",
     retry: false,
   });
+  const shouldRedirectToLogin = status === "anonymous" || status === "expired";
   const shouldExpireSession =
     status === "authenticated" && currentUserQuery.isSuccess && !currentUserQuery.data;
+
+  useEffect(() => {
+    if (!shouldRedirectToLogin) {
+      return;
+    }
+
+    setRedirectTo(`${location.pathname}${location.search}${location.hash}`);
+  }, [location.hash, location.pathname, location.search, setRedirectTo, shouldRedirectToLogin]);
+
+  useEffect(() => {
+    if (!shouldRedirectToLogin) {
+      return;
+    }
+
+    void navigate("/login", { replace: true });
+  }, [navigate, shouldRedirectToLogin]);
 
   useEffect(() => {
     if (!shouldExpireSession) {
@@ -58,7 +78,12 @@ function CurrentUserBoundary({ children }: { children: (user: AppUser) => ReactN
     }
 
     markSessionExpired();
-  }, [shouldExpireSession]);
+    void navigate("/login", { replace: true });
+  }, [navigate, shouldExpireSession]);
+
+  if (shouldRedirectToLogin) {
+    return <LoadingState />;
+  }
 
   if (currentUserQuery.isPending || shouldExpireSession) {
     return <LoadingState />;
@@ -75,7 +100,7 @@ function CurrentUserBoundary({ children }: { children: (user: AppUser) => ReactN
   return children(currentUserQuery.data);
 }
 
-function ProtectedLayout() {
+export function ProtectedLayout() {
   return (
     <CurrentUserBoundary>
       {(user) => (
@@ -87,7 +112,7 @@ function ProtectedLayout() {
   );
 }
 
-function SettingsRoute() {
+export function SettingsPageRoute() {
   return (
     <CurrentUserBoundary>
       {(user) => (
@@ -99,68 +124,48 @@ function SettingsRoute() {
   );
 }
 
-/**
- * 定义应用路由树。
- */
-export function AppRouter() {
+export function UsersPageRoute() {
   return (
-    <AppBootstrapGate>
-      <Routes>
-        <Route
-          path="/login"
-          element={
-            <PublicRoute>
-              <LoginPage />
-            </PublicRoute>
-          }
-        />
-        <Route
-          element={
-            <ProtectedRoute>
-              <ProtectedLayout />
-            </ProtectedRoute>
-          }
-        >
-          <Route path="/" element={<Navigate replace to="/chat" />} />
-          <Route
-            path="/knowledge"
-            element={
-              <RouteSuspense>
-                <KnowledgePage />
-              </RouteSuspense>
-            }
-          />
-          <Route
-            path="/chat"
-            element={
-              <RouteSuspense>
-                <ChatPage />
-              </RouteSuspense>
-            }
-          />
-          <Route
-            path="/chat/:sessionId"
-            element={
-              <RouteSuspense>
-                <ChatPage />
-              </RouteSuspense>
-            }
-          />
-          <Route path="/settings" element={<SettingsRoute />} />
-          <Route
-            path="/users"
-            element={
-              <RoleRoute role="admin">
-                <RouteSuspense>
-                  <UsersPage />
-                </RouteSuspense>
-              </RoleRoute>
-            }
-          />
-        </Route>
-        <Route path="/403" element={<ForbiddenPage />} />
-        <Route path="*" element={<Navigate replace to="/chat" />} />
-      </Routes>
-    </AppBootstrapGate>
+    <CurrentUserBoundary>
+      {() => (
+        <RouteSuspense>
+          <UsersPage />
+        </RouteSuspense>
+      )}
+    </CurrentUserBoundary>
   );
+}
+
+export function PublicLoginRoute() {
+  const status = useSessionStore((state) => state.status);
+
+  if (status === "authenticated") {
+    return <Navigate replace to="/chat" />;
+  }
+
+  return (
+    <RouteSuspense>
+      <LoginPage />
+    </RouteSuspense>
+  );
+}
+
+export function ChatPageRoute() {
+  return (
+    <RouteSuspense>
+      <ChatPage />
+    </RouteSuspense>
+  );
+}
+
+export function KnowledgePageRoute() {
+  return (
+    <RouteSuspense>
+      <KnowledgePage />
+    </RouteSuspense>
+  );
+}
+
+export function AuthedIndexRedirectRoute() {
+  return <Navigate replace to="/chat" />;
 }

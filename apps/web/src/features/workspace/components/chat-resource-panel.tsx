@@ -6,9 +6,8 @@ import { useMemo, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { BookOpenTextIcon, ScanSearchIcon, UploadIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { NavLink, useParams } from "react-router-dom";
-
 import { CardDescription, CardTitle } from "@/components/ui/card";
+import { NavLink, useParams } from "@/lib/app-router";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { chatContextQueryOptions } from "@/features/chat/api/chat-query";

@@ -151,7 +151,7 @@ just setup
 
 ## 开发入口
 
-- 前端在 `apps/web`，统一使用 `vp`；如果改了后端 route / schema，先执行 `vp run api:generate`。详细命令见 [apps/web/README.md](./apps/web/README.md)。
+- 前端在 `apps/web`，统一使用 `vp`；当前前端 URL 契约已经收敛到 TanStack Router file-based routes，页面组件默认只消费 canonical path。如果改了后端 route / schema，先执行 `vp run api:generate`。详细命令见 [apps/web/README.md](./apps/web/README.md)。
 - 后端在 `apps/api`，统一使用 `uv`。详细命令见 [apps/api/README.md](./apps/api/README.md)。
 
 ## Docker 单机部署

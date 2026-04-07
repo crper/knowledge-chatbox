@@ -5,10 +5,10 @@
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { PanelLeftIcon, PanelRightIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Outlet, useLocation, useNavigate } from "@/lib/app-router";
 import {
   Sheet,
   SheetContent,

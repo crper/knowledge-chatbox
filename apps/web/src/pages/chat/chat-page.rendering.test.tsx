@@ -1,8 +1,8 @@
 import { render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 import { AppProviders } from "@/providers/app-providers";
 import type { ChatMessageItem } from "@/features/chat/api/chat";
+import { TestRouter } from "@/test/test-router";
 import { ChatPage } from "./chat-page";
 
 const messageViewportRenderSpy = vi.fn();
@@ -99,21 +99,18 @@ vi.mock("@/features/chat/components/chat-message-viewport", async () => {
 });
 
 describe("ChatPage rendering", () => {
-  function renderChatPage(initialEntry = "/chat/1") {
-    return render(
-      <MemoryRouter initialEntries={[initialEntry]}>
-        <Routes>
-          <Route
-            element={
-              <AppProviders>
-                <ChatPage />
-              </AppProviders>
-            }
-            path="/chat/:sessionId"
-          />
-        </Routes>
-      </MemoryRouter>,
+  function renderChatPageTree(initialEntry = "/chat/1") {
+    return (
+      <TestRouter initialEntry={initialEntry} path="/chat/:sessionId">
+        <AppProviders>
+          <ChatPage />
+        </AppProviders>
+      </TestRouter>
     );
+  }
+
+  function renderChatPage(initialEntry = "/chat/1") {
+    return render(renderChatPageTree(initialEntry));
   }
 
   beforeEach(() => {
@@ -156,20 +153,7 @@ describe("ChatPage rendering", () => {
       submitPending: true,
     };
 
-    view.rerender(
-      <MemoryRouter initialEntries={["/chat/1"]}>
-        <Routes>
-          <Route
-            element={
-              <AppProviders>
-                <ChatPage />
-              </AppProviders>
-            }
-            path="/chat/:sessionId"
-          />
-        </Routes>
-      </MemoryRouter>,
-    );
+    view.rerender(renderChatPageTree("/chat/1"));
 
     expect(messageViewportRenderSpy).toHaveBeenCalledTimes(renderCountAfterMount);
   });
@@ -187,20 +171,7 @@ describe("ChatPage rendering", () => {
       scrollToLatestRequestKey: 1,
     };
 
-    view.rerender(
-      <MemoryRouter initialEntries={["/chat/1"]}>
-        <Routes>
-          <Route
-            element={
-              <AppProviders>
-                <ChatPage />
-              </AppProviders>
-            }
-            path="/chat/:sessionId"
-          />
-        </Routes>
-      </MemoryRouter>,
-    );
+    view.rerender(renderChatPageTree("/chat/1"));
 
     await waitFor(() => {
       expect(messageViewportRenderSpy).toHaveBeenCalledTimes(renderCountAfterMount + 1);
