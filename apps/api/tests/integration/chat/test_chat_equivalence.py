@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import json
+from collections.abc import AsyncIterator
 
 from fastapi.testclient import TestClient
+from pydantic_ai.messages import PartDeltaEvent, PartStartEvent, TextPart, TextPartDelta
+from tests.fixtures.stubs import make_adapter_backed_chat_workflow_class
 
 
 class UnifiedResponseAdapterStub:
@@ -80,12 +83,26 @@ def pick_user_and_assistant(messages: list[dict]) -> tuple[dict, dict]:
 
 
 def comparable_message_fields(message: dict) -> dict:
+    sources = []
+    for source in message["sources_json"] or []:
+        sources.append(
+            {
+                "chunk_id": source.get("chunk_id"),
+                "document_id": source.get("document_id"),
+                "document_revision_id": source.get("document_revision_id"),
+                "document_name": source.get("document_name"),
+                "page_number": source.get("page_number"),
+                "score": source.get("score"),
+                "section_title": source.get("section_title"),
+                "snippet": source.get("snippet"),
+            }
+        )
     return {
         "attachments_json": message["attachments_json"],
         "content": message["content"],
         "error_message": message["error_message"],
         "role": message["role"],
-        "sources_json": message["sources_json"],
+        "sources_json": sources,
         "status": message["status"],
     }
 
@@ -97,13 +114,33 @@ def test_sync_and_stream_chat_produce_equivalent_successful_messages_and_sources
 ) -> None:
     del configure_upload_provider
     stub_document_index_embedding(monkeypatch)
-    monkeypatch.setattr(
-        "knowledge_chatbox_api.services.chat.chat_application_service.build_response_adapter_from_settings",
-        lambda _settings_record: UnifiedResponseAdapterStub(),
+    workflow_cls = make_adapter_backed_chat_workflow_class(
+        response_adapter=UnifiedResponseAdapterStub(),
+        sync_answer="统一回答",
+        sync_sources=[
+            {
+                "chunk_id": "doc-1:0",
+                "document_id": 1,
+                "document_name": "guide.txt",
+                "snippet": "统一来源",
+            }
+        ],
+        stream_sources=[
+            {
+                "chunk_id": "doc-1:0",
+                "document_id": 1,
+                "document_name": "guide.txt",
+                "snippet": "统一来源",
+            }
+        ],
     )
     monkeypatch.setattr(
-        "knowledge_chatbox_api.services.chat.chat_application_service.build_embedding_adapter_from_settings",
-        lambda _settings_record: EmbeddingAdapterStub(),
+        "knowledge_chatbox_api.services.chat.chat_application_service.ChatWorkflow",
+        workflow_cls,
+    )
+    monkeypatch.setattr(
+        "knowledge_chatbox_api.services.chat.chat_run_service.ChatWorkflow",
+        workflow_cls,
     )
 
     login_admin(api_client)
@@ -164,13 +201,36 @@ def test_sync_and_stream_chat_produce_equivalent_failure_messages(
     monkeypatch,
 ) -> None:
     stub_document_index_embedding(monkeypatch)
+
+    class FailingChatWorkflow:
+        def run_sync(self, *, deps, session_id: int, question: str, attachments=None):
+            del deps, session_id, question, attachments
+            raise RuntimeError("provider backend unavailable")
+
+        def run_stream_events(
+            self,
+            *,
+            deps,
+            session_id: int,
+            question: str,
+            attachments=None,
+        ) -> AsyncIterator[object]:
+            del deps, session_id, question, attachments
+
+            async def _events():
+                yield PartStartEvent(index=0, part=TextPart(""))
+                yield PartDeltaEvent(index=0, delta=TextPartDelta(""))
+                raise RuntimeError("provider backend unavailable")
+
+            return _events()
+
     monkeypatch.setattr(
-        "knowledge_chatbox_api.services.chat.chat_application_service.build_response_adapter_from_settings",
-        lambda _settings_record: UnifiedFailingResponseAdapterStub(),
+        "knowledge_chatbox_api.services.chat.chat_application_service.ChatWorkflow",
+        FailingChatWorkflow,
     )
     monkeypatch.setattr(
-        "knowledge_chatbox_api.services.chat.chat_application_service.build_embedding_adapter_from_settings",
-        lambda _settings_record: EmbeddingAdapterStub(),
+        "knowledge_chatbox_api.services.chat.chat_run_service.ChatWorkflow",
+        FailingChatWorkflow,
     )
 
     login_admin(api_client)

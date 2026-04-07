@@ -300,6 +300,31 @@ def test_ollama_response_health_check_prefers_show_over_chat() -> None:
     assert result.healthy is True
 
 
+def test_ollama_response_health_check_strips_v1_suffix_for_sdk_host() -> None:
+    class FakeClient:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        def show(self, model: str):
+            assert model == "qwen3.5:4b"
+            assert self.kwargs["host"] == "http://localhost:11434"
+            return {"model": model, "capabilities": ["completion"]}
+
+    adapter = OllamaResponseAdapter(client_factory=FakeClient)
+    settings = make_runtime_settings(
+        response_route={"provider": "ollama", "model": "qwen3.5:4b"},
+        provider_profiles={
+            "ollama": {
+                "base_url": "http://localhost:11434/v1/",
+            }
+        },
+    )
+
+    result = adapter.health_check(settings)
+
+    assert result.healthy is True
+
+
 def test_ollama_embedding_health_check_prefers_show_over_embed() -> None:
     class FakeClient:
         def __init__(self, **kwargs):

@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from knowledge_chatbox_api.models.auth import User
 from knowledge_chatbox_api.models.document import Document, DocumentRevision
 from knowledge_chatbox_api.models.space import Space
+from knowledge_chatbox_api.services.chat.workflow.output import ChatWorkflowResult
 
 
 def login_as_admin(api_client: TestClient) -> None:
@@ -96,42 +97,43 @@ def test_chat_context_api_returns_deduplicated_attachments_and_latest_assistant_
     monkeypatch,
     sqlite_path,
 ) -> None:
-    def fake_answer_question(self, session_id, question, attachments=None):  # type: ignore[no-untyped-def]
-        del self, session_id, attachments
-        if question == "第二条消息":
-            return {
-                "answer": "第二次回答",
-                "sources": [
-                    {
-                        "chunk_id": "doc-2:0",
-                        "document_id": 2,
-                        "document_name": "新文档",
-                        "snippet": "新片段 A",
-                    },
-                    {
-                        "chunk_id": "doc-2:1",
-                        "document_id": 2,
-                        "document_name": "新文档",
-                        "snippet": "新片段 B",
-                    },
-                ],
-            }
+    class ContextWorkflowStub:
+        def run_sync(self, *, deps, session_id: int, question: str, attachments=None):
+            del deps, session_id, attachments
+            if question == "第二条消息":
+                return ChatWorkflowResult(
+                    answer="第二次回答",
+                    sources=[
+                        {
+                            "chunk_id": "doc-2:0",
+                            "document_id": 2,
+                            "document_name": "新文档",
+                            "snippet": "新片段 A",
+                        },
+                        {
+                            "chunk_id": "doc-2:1",
+                            "document_id": 2,
+                            "document_name": "新文档",
+                            "snippet": "新片段 B",
+                        },
+                    ],
+                )
 
-        return {
-            "answer": "第一次回答",
-            "sources": [
-                {
-                    "chunk_id": "doc-1:0",
-                    "document_id": 1,
-                    "document_name": "旧文档",
-                    "snippet": "旧片段",
-                }
-            ],
-        }
+            return ChatWorkflowResult(
+                answer="第一次回答",
+                sources=[
+                    {
+                        "chunk_id": "doc-1:0",
+                        "document_id": 1,
+                        "document_name": "旧文档",
+                        "snippet": "旧片段",
+                    }
+                ],
+            )
 
     monkeypatch.setattr(
-        "knowledge_chatbox_api.services.chat.chat_application_service.ChatService.answer_question",
-        fake_answer_question,
+        "knowledge_chatbox_api.services.chat.chat_application_service.ChatWorkflow",
+        ContextWorkflowStub,
     )
 
     login_as_admin(api_client)
@@ -230,13 +232,21 @@ def test_chat_context_api_returns_deduplicated_attachments_and_latest_assistant_
         {
             "chunk_id": "doc-2:0",
             "document_id": 2,
+            "document_revision_id": None,
             "document_name": "新文档",
+            "page_number": None,
+            "score": None,
+            "section_title": None,
             "snippet": "新片段 A",
         },
         {
             "chunk_id": "doc-2:1",
             "document_id": 2,
+            "document_revision_id": None,
             "document_name": "新文档",
+            "page_number": None,
+            "score": None,
+            "section_title": None,
             "snippet": "新片段 B",
         },
     ]

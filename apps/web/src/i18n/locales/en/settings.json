@@ -76,6 +76,7 @@
   "openAiBaseUrlHint": "Supports official and proxy endpoints that follow the OpenAI API. If you enter only the root URL, the system will append /v1 automatically.",
   "claudeBaseUrlHint": "Claude uses the Anthropic Messages API by default. If you provide only the root URL, the system will append /v1/messages automatically.",
   "voyageBaseUrlHint": "Voyage is used for the Claude embedding path. If you provide only the root URL, the system will append /v1/embeddings automatically.",
+  "ollamaBaseUrlHint": "Enter the Ollama service address, for example http://localhost:11434. The app handles the compatibility path automatically, so you do not need to add /v1 manually.",
   "voyageEmbeddingHint": "Claude retrieval uses Voyage embeddings. Related changes go through the background rebuild flow.",
   "visionModelHint": "Connection tests include a Vision model check for the current draft.",
   "systemPromptCategoryTab": "System Prompt",

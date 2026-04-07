@@ -14,6 +14,7 @@ from knowledge_chatbox_api.models.settings import (
     DEFAULT_PROVIDER_PROFILES,
     AppSettings,
 )
+from knowledge_chatbox_api.providers.ollama_url import normalize_ollama_base_url
 from knowledge_chatbox_api.repositories.settings_repository import SettingsRepository
 from knowledge_chatbox_api.schemas._validators import ReasoningModeLiteral
 from knowledge_chatbox_api.schemas.settings import (
@@ -267,7 +268,9 @@ class SettingsService:
         provider_profiles["voyage"]["embedding_model"] = (
             self.settings.initial_voyage_embedding_model
         )
-        provider_profiles["ollama"]["base_url"] = self.settings.initial_ollama_base_url
+        provider_profiles["ollama"]["base_url"] = normalize_ollama_base_url(
+            self.settings.initial_ollama_base_url
+        )
         provider_profiles["ollama"]["chat_model"] = self.settings.initial_ollama_chat_model
         provider_profiles["ollama"]["embedding_model"] = (
             self.settings.initial_ollama_embedding_model
@@ -420,6 +423,9 @@ class SettingsService:
             if not isinstance(provider_payload, dict):
                 continue
             normalized.setdefault(provider_name, {}).update(provider_payload)
+        normalized["ollama"]["base_url"] = normalize_ollama_base_url(
+            normalized["ollama"].get("base_url")
+        )
         return normalized
 
     def _sync_route_models_to_profiles(

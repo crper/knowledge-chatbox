@@ -108,11 +108,7 @@ class ChatWorkflowEventBridge:
 
     def extract_sources(self, content: Any) -> list[dict[str, Any]]:
         raw_sources = self._extract_sources(content)
-        return [
-            source
-            for source in raw_sources
-            if isinstance(source, dict)
-        ]
+        return [source for source in raw_sources if isinstance(source, dict)]
 
     def _extract_sources(self, content: Any) -> list[dict[str, Any]]:
         if isinstance(content, dict):

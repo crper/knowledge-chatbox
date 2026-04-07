@@ -212,6 +212,7 @@ def stub_embedding_adapter():
     """提供嵌入适配器 Stub"""
     return EmbeddingAdapterStub()
 
+
 @pytest.fixture
 def mock_pydanticai_chat_workflow(monkeypatch):
     chat_workflow_cls = make_adapter_backed_chat_workflow_class(

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from typing import cast
+
 from pydantic_ai.messages import ModelRequest, ModelResponse, TextPart
+from pydantic_ai.settings import ModelSettings
 
 from knowledge_chatbox_api.services.chat.workflow.agent import (
     build_chat_agent,
@@ -67,7 +70,7 @@ class ChatWorkflow:
                 message_history.append(ModelResponse(parts=[TextPart(message.content)]))
         return message_history
 
-    def _build_model_settings(self, runtime_settings) -> dict[str, object]:
+    def _build_model_settings(self, runtime_settings) -> ModelSettings:
         route = runtime_settings.response_route
         reasoning_mode = getattr(runtime_settings, "reasoning_mode", "default")
         model_settings: dict[str, object] = {
@@ -90,11 +93,10 @@ class ChatWorkflow:
         elif reasoning_mode == "off":
             model_settings["openai_reasoning_effort"] = "none"
 
-        return {
-            key: value
-            for key, value in model_settings.items()
-            if value is not None
-        }
+        return cast(
+            ModelSettings,
+            {key: value for key, value in model_settings.items() if value is not None},
+        )
 
     def _reset_workflow_state(self, deps) -> None:
         workflow_state = getattr(deps, "workflow_state", None)

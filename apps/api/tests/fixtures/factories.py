@@ -97,15 +97,6 @@ class SpaceFactory(SQLAlchemyFactory[Space], _PersistedFactoryMixin):
     name = Use(lambda: f"Space {_fake.word()}")
     kind = "personal"
 
-    @classmethod
-    def _create_model_instance(cls, **kwargs: Any) -> Space:
-        _skip = ("created_by_user_id", "updated_by_user_id")
-        return super()._create_model_instance(
-            created_by_user_id=kwargs.get("owner_user_id"),
-            updated_by_user_id=kwargs.get("owner_user_id"),
-            **{k: v for k, v in kwargs.items() if k not in _skip},
-        )
-
 
 class ChatSessionFactory(SQLAlchemyFactory[ChatSession], _PersistedFactoryMixin):
     __model__ = ChatSession
@@ -130,13 +121,13 @@ class ChatMessageFactory(SQLAlchemyFactory[ChatMessage], _PersistedFactoryMixin)
     sources_json = None
 
     @classmethod
-    def _create_model_instance(cls, **kwargs: Any) -> ChatMessage:
+    def process_kwargs(cls, **kwargs: Any) -> dict[str, Any]:
         role = kwargs.get("role", "user")
         if role in ("assistant", "system"):
             kwargs["client_request_id"] = None
         else:
             kwargs.setdefault("client_request_id", uuid4().hex[:24])
-        return super()._create_model_instance(**kwargs)
+        return super().process_kwargs(**kwargs)
 
 
 class ChatMessageAttachmentFactory(
@@ -215,12 +206,12 @@ class DocumentRevisionFactory(SQLAlchemyFactory[DocumentRevision], _PersistedFac
     updated_by_user_id = Use(_random_int)
 
     @classmethod
-    def _create_model_instance(cls, **kwargs: Any) -> DocumentRevision:
+    def process_kwargs(cls, **kwargs: Any) -> dict[str, Any]:
         file_type = kwargs.get("file_type", "md")
         from knowledge_chatbox_api.utils.document_types import guess_mime_type
 
         kwargs["mime_type"] = guess_mime_type(file_type)
-        return super()._create_model_instance(**kwargs)
+        return super().process_kwargs(**kwargs)
 
 
 class AppSettingsFactory(SQLAlchemyFactory[AppSettings], _PersistedFactoryMixin):

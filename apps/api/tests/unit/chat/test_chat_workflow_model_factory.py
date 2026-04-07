@@ -19,7 +19,7 @@ class DummyProfiles:
         base_url = "https://api.anthropic.com"
 
     class Ollama:
-        base_url = "http://localhost:11434/v1"
+        base_url = "http://localhost:11434"
 
     openai = OpenAI()
     anthropic = Anthropic()
@@ -46,4 +46,17 @@ def test_build_chat_agent_model_supports_anthropic() -> None:
 def test_build_chat_agent_model_supports_ollama_as_openai_compatible() -> None:
     settings = DummySettings()
     settings.response_route = DummyRoute("ollama", "qwen3.5:4b")
-    assert build_chat_agent_model(settings) is not None
+    model = build_chat_agent_model(settings)
+
+    assert model is not None
+    assert model.base_url.rstrip("/") == "http://localhost:11434/v1"
+
+
+def test_build_chat_agent_model_normalizes_ollama_v1_input_once() -> None:
+    settings = DummySettings()
+    settings.response_route = DummyRoute("ollama", "qwen3.5:4b")
+    settings.provider_profiles.ollama.base_url = "http://localhost:11434/v1/"
+
+    model = build_chat_agent_model(settings)
+
+    assert model.base_url.rstrip("/") == "http://localhost:11434/v1"

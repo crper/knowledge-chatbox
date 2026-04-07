@@ -5,6 +5,8 @@ from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.anthropic import AnthropicProvider
 from pydantic_ai.providers.openai import OpenAIProvider
 
+from knowledge_chatbox_api.providers.ollama_url import build_ollama_openai_base_url
+
 
 def _strip_or_none(value: str | None) -> str | None:
     if value is None:
@@ -30,7 +32,7 @@ def build_chat_agent_model(runtime_settings):
         return OpenAIChatModel(
             route.model,
             provider=OpenAIProvider(
-                base_url=_strip_or_none(profiles.ollama.base_url),
+                base_url=build_ollama_openai_base_url(profiles.ollama.base_url),
                 api_key="ollama",
             ),
         )

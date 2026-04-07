@@ -47,6 +47,12 @@
 - `ollama`
   - `base_url / chat_model / embedding_model / vision_model`
 
+补充约定：
+
+- `ollama.base_url` 对外始终表示 Ollama 服务根地址，例如 `http://localhost:11434`
+- 如果用户误填了 `.../v1`，服务端会在读写设置和运行时统一收口回根地址
+- 聊天主链路内部再从这个根地址派生 OpenAI 兼容端点 `.../v1`；原生 Ollama SDK 与健康检查继续使用根地址
+
 这些模板字段会在保存 route 后同步回 profile，保证设置页再次打开时看到的是“当前真实会生效的模型值”。
 
 ## 3. route 语义
@@ -157,6 +163,7 @@
 - 主区保留当前状态摘要、主配置表单和必要操作入口；高级区只承载检索覆盖、备用模板和 Timeout
 - 本地校验 helper 只返回稳定的 validation key；具体文案在组件层通过 i18n 翻译
 - 本地校验只负责字段完整性和基础数值约束；provider 可达性、鉴权和模型存在性仍通过 `POST /api/settings/test-routes` 判断
+- 设置页里的 `Ollama Base URL` 只提示填写服务根地址，不暴露内部 OpenAI 兼容 `/v1` 细节
 - `system_prompt` 的默认值当前是“知识工作台助手”聚焦版：强调先给结论、再给依据、优先引用资料事实；如果管理员明确清空并保存空字符串，后续对话就不再附带默认 system prompt
 - `账号安全` 分组里的修改密码弹窗沿用同一原则：前端先做字段校验，后端保留 `invalid_credentials` 这类稳定语义码；修改密码成功后当前登录状态立即失效，前端回到登录页要求重新登录
 - 设置中心的页面组织与交互边界，统一看 [frontend-workspace.md](./frontend-workspace.md)

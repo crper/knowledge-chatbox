@@ -47,7 +47,7 @@ export const PROFILE_FIELDS: Record<TemplateProviderName, ProfileFieldDefinition
     { hint: "voyageEmbeddingHint", key: "embedding_model", label: "Voyage Embedding Model" },
   ],
   ollama: [
-    { key: "base_url", label: "Ollama Base URL" },
+    { hint: "ollamaBaseUrlHint", key: "base_url", label: "Ollama Base URL" },
     { key: "chat_model", label: "Ollama Chat Model" },
     { key: "embedding_model", label: "Ollama Embedding Model" },
     { key: "vision_model", label: "Ollama Vision Model" },

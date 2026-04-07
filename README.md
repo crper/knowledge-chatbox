@@ -153,6 +153,7 @@ just setup
 
 - 前端在 `apps/web`，统一使用 `vp`；当前前端 URL 契约已经收敛到 TanStack Router file-based routes，页面组件默认只消费 canonical path。如果改了后端 route / schema，先执行 `vp run api:generate`。详细命令见 [apps/web/README.md](./apps/web/README.md)。
 - 后端在 `apps/api`，统一使用 `uv`。详细命令见 [apps/api/README.md](./apps/api/README.md)。
+- 模型设置里的 `Ollama Base URL` 只填写服务根地址，例如 `http://localhost:11434`；系统内部会自动派生兼容接口路径，不需要手动补 `/v1`。
 
 ## Docker 单机部署
 

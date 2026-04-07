@@ -76,9 +76,7 @@ def test_event_bridge_maps_text_events() -> None:
         run_id=7,
         assistant_message_id=11,
     )
-    assert start == [
-        ("part.text.start", {"run_id": 7, "assistant_message_id": 11})
-    ]
+    assert start == [("part.text.start", {"run_id": 7, "assistant_message_id": 11})]
     assert delta == [
         ("part.text.delta", {"run_id": 7, "assistant_message_id": 11, "delta": "你好"})
     ]

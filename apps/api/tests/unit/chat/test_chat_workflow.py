@@ -194,10 +194,7 @@ def test_chat_workflow_run_sync_passes_history_and_model_settings(
 
     assert result.answer == "捕获成功"
     assert captured["user_prompt"] == (
-        "session_id=1\n"
-        "question=继续刚才的话题\n"
-        "attachments=[]\n"
-        "请在必要时调用工具后给出最终答案。"
+        "session_id=1\nquestion=继续刚才的话题\nattachments=[]\n请在必要时调用工具后给出最终答案。"
     )
     assert captured["model_settings"] == {
         "openai_reasoning_effort": "medium",
