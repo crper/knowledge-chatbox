@@ -8,13 +8,23 @@ import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/api/query-keys";
 import type { StreamingRun } from "../store/chat-stream-store";
 import { MessageStatus } from "../constants";
+import { createStreamRunCleanupScheduler } from "../utils/stream-run-cleanup";
 import { getStreamRunsBySession } from "../utils/stream-run-query";
+
+const STREAM_RUN_CLEANUP_DELAY_MS = 5 * 60 * 1000;
 
 /**
  * 管理聊天流式运行的临时状态。
  */
 export function useChatStreamRun() {
   const queryClient = useQueryClient();
+  const cleanupScheduler = useMemo(
+    () =>
+      createStreamRunCleanupScheduler((runId) => {
+        queryClient.removeQueries({ queryKey: queryKeys.chat.streamRun(runId) });
+      }, STREAM_RUN_CLEANUP_DELAY_MS),
+    [queryClient],
+  );
 
   const startRun = useCallback(
     ({
@@ -32,6 +42,7 @@ export function useChatStreamRun() {
       userMessageId: number | null;
       userContent: string;
     }) => {
+      cleanupScheduler.cancel(runId);
       queryClient.setQueryData(queryKeys.chat.streamRun(runId), {
         runId,
         sessionId,
@@ -46,7 +57,7 @@ export function useChatStreamRun() {
         toastShown: false,
       } as StreamingRun);
     },
-    [queryClient],
+    [cleanupScheduler, queryClient],
   );
 
   const appendDelta = useCallback(
@@ -89,13 +100,7 @@ export function useChatStreamRun() {
         queryKeys.chat.streamRun(runId),
         (current) => {
           if (!current) return current;
-          // 设置自动清理：5 分钟后移除已完成的 run
-          setTimeout(
-            () => {
-              queryClient.removeQueries({ queryKey: queryKeys.chat.streamRun(runId) });
-            },
-            5 * 60 * 1000,
-          );
+          cleanupScheduler.schedule(runId);
           return {
             ...current,
             errorMessage: null,
@@ -104,7 +109,7 @@ export function useChatStreamRun() {
         },
       );
     },
-    [queryClient],
+    [cleanupScheduler, queryClient],
   );
 
   const failRun = useCallback(
@@ -113,13 +118,7 @@ export function useChatStreamRun() {
         queryKeys.chat.streamRun(runId),
         (current) => {
           if (!current) return current;
-          // 设置自动清理：5 分钟后移除失败的 run
-          setTimeout(
-            () => {
-              queryClient.removeQueries({ queryKey: queryKeys.chat.streamRun(runId) });
-            },
-            5 * 60 * 1000,
-          );
+          cleanupScheduler.schedule(runId);
           return {
             ...current,
             errorMessage,
@@ -128,7 +127,7 @@ export function useChatStreamRun() {
         },
       );
     },
-    [queryClient],
+    [cleanupScheduler, queryClient],
   );
 
   const markToastShown = useCallback(
@@ -149,18 +148,20 @@ export function useChatStreamRun() {
 
   const removeRun = useCallback(
     (runId: number) => {
+      cleanupScheduler.cancel(runId);
       queryClient.removeQueries({ queryKey: queryKeys.chat.streamRun(runId) });
     },
-    [queryClient],
+    [cleanupScheduler, queryClient],
   );
 
   const pruneRuns = useCallback(
     (runIds: number[]) => {
+      cleanupScheduler.cancelMany(runIds);
       runIds.forEach((runId) => {
         queryClient.removeQueries({ queryKey: queryKeys.chat.streamRun(runId) });
       });
     },
-    [queryClient],
+    [cleanupScheduler, queryClient],
   );
 
   const getRun = useCallback(
@@ -193,6 +194,7 @@ export function useChatStreamRun() {
     [
       appendDelta,
       addSource,
+      cleanupScheduler,
       completeRun,
       failRun,
       getAllRunsForSession,
