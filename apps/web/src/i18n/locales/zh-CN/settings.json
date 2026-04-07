@@ -76,6 +76,7 @@
   "openAiBaseUrlHint": "兼容 OpenAI API 的官方或中转端点；如果只填写根地址，系统会自动补全为 /v1。",
   "claudeBaseUrlHint": "Claude 默认走 Anthropic Messages API；如果填写的是根地址，系统会自动拼接 /v1/messages。",
   "voyageBaseUrlHint": "Voyage 用于 Claude 路径下的 embedding 配置；根地址会自动拼接 /v1/embeddings。",
+  "ollamaBaseUrlHint": "填写 Ollama 服务地址，例如 http://localhost:11434；系统会自动处理兼容接口路径，无需手动添加 /v1。",
   "voyageEmbeddingHint": "Claude 检索路径实际使用 Voyage embedding；相关变更会走后台重建流程。",
   "visionModelHint": "当前连接测试会包含 Vision 模型检查。",
   "systemPromptCategoryTab": "系统提示词",

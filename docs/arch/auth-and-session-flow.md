@@ -177,7 +177,8 @@ Browser
   - `apps/web/src/lib/auth/session-manager.ts`
   - `apps/web/src/lib/api/authenticated-fetch.ts`
   - `apps/web/src/router/bootstrap-gate.tsx`
-  - `apps/web/src/router/guards.tsx`
+  - `apps/web/src/router/route-shells.tsx`
+  - `apps/web/src/routes/*`
   - `apps/web/src/features/auth/api/auth.ts`
 - 后端：
   - `apps/api/src/knowledge_chatbox_api/api/routes/auth.py`

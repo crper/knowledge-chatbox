@@ -5,7 +5,7 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { Link } from "react-router-dom";
+import { Link } from "@/lib/app-router";
 
 import { getDocumentFileUrl } from "@/features/chat/utils/document-file-url";
 import { Badge } from "@/components/ui/badge";

@@ -1,15 +1,13 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 
 import { i18n } from "@/i18n";
 import { THEME_SYNC_ON_LOGIN_STORAGE_KEY } from "@/lib/config/constants";
 import { useSessionStore } from "@/lib/auth/session-store";
 import { setAccessToken } from "@/lib/auth/token-store";
-import { AppProviders } from "@/providers/app-providers";
-import { AppRouter } from "@/router";
 import { buildAppUser } from "@/test/fixtures/app";
 import { http } from "msw";
 import { createTestServer, overrideHandler, apiResponse, apiError } from "@/test/msw";
+import { renderRoute } from "@/test/render-route";
 
 const sonnerMocks = vi.hoisted(() => ({
   error: vi.fn(),
@@ -47,13 +45,7 @@ describe("login page", () => {
   });
 
   it("validates required login fields before submitting", async () => {
-    render(
-      <MemoryRouter initialEntries={["/login"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderRoute("/login");
 
     fireEvent.click(await screen.findByRole("button", { name: "登录" }));
 
@@ -61,13 +53,7 @@ describe("login page", () => {
   });
 
   it("keeps login validation visible until the corrected fields blur", async () => {
-    render(
-      <MemoryRouter initialEntries={["/login"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderRoute("/login");
 
     fireEvent.click(await screen.findByRole("button", { name: "登录" }));
 
@@ -94,13 +80,7 @@ describe("login page", () => {
   });
 
   it("shows login page for unauthenticated users", async () => {
-    render(
-      <MemoryRouter initialEntries={["/chat"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderRoute("/chat");
 
     expect(await screen.findByRole("heading", { name: "登录" })).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "Knowledge Chatbox 标志" })).toBeInTheDocument();
@@ -118,13 +98,7 @@ describe("login page", () => {
   });
 
   it("exposes distinct intro and login entry regions for unauthenticated users", async () => {
-    render(
-      <MemoryRouter initialEntries={["/login"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderRoute("/login");
 
     const introRegion = await screen.findByLabelText("工作台入口说明");
     const loginRegion = screen.getByLabelText("登录入口");
@@ -135,13 +109,7 @@ describe("login page", () => {
   });
 
   it("keeps vertical scrolling available on mobile login layouts", async () => {
-    render(
-      <MemoryRouter initialEntries={["/login"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderRoute("/login");
 
     const loginHeading = await screen.findByRole("heading", { name: "登录" });
     const loginPageMain = loginHeading.closest("main");
@@ -152,13 +120,7 @@ describe("login page", () => {
   });
 
   it("opens workspace about dialog from the help entry", async () => {
-    render(
-      <MemoryRouter initialEntries={["/login"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderRoute("/login");
 
     fireEvent.click(await screen.findByRole("button", { name: "查看工作台说明" }));
 
@@ -185,13 +147,7 @@ describe("login page", () => {
       }),
     );
 
-    render(
-      <MemoryRouter initialEntries={["/login"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderRoute("/login");
 
     fireEvent.change(await screen.findByLabelText("用户名"), {
       target: { value: "admin" },
@@ -227,16 +183,10 @@ describe("login page", () => {
       }),
     );
 
-    render(
-      <MemoryRouter initialEntries={["/login"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderRoute("/login");
 
     window.sessionStorage.setItem(THEME_SYNC_ON_LOGIN_STORAGE_KEY, "dark");
-    fireEvent.change(screen.getByLabelText("用户名"), {
+    fireEvent.change(await screen.findByLabelText("用户名"), {
       target: { value: "admin" },
     });
     fireEvent.change(screen.getByLabelText("密码"), {
@@ -269,13 +219,7 @@ describe("login page", () => {
       }),
     );
 
-    render(
-      <MemoryRouter initialEntries={["/login"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderRoute("/login");
 
     fireEvent.click(await screen.findByRole("button", { name: "主题" }));
     fireEvent.click(await screen.findByRole("menuitemradio", { name: "深色" }));
@@ -303,13 +247,7 @@ describe("login page", () => {
       }),
     );
 
-    render(
-      <MemoryRouter initialEntries={["/login"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderRoute("/login");
 
     fireEvent.change(await screen.findByLabelText("用户名"), {
       target: { value: "admin" },
@@ -347,13 +285,7 @@ describe("login page", () => {
       }),
     );
 
-    render(
-      <MemoryRouter initialEntries={["/login"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderRoute("/login");
 
     fireEvent.change(await screen.findByLabelText("用户名"), {
       target: { value: "admin" },
@@ -376,13 +308,7 @@ describe("login page", () => {
       }),
     );
 
-    render(
-      <MemoryRouter initialEntries={["/login"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderRoute("/login");
 
     fireEvent.change(await screen.findByLabelText("用户名"), {
       target: { value: "admin" },
@@ -413,13 +339,7 @@ describe("login page", () => {
       }),
     );
 
-    render(
-      <MemoryRouter initialEntries={["/login"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderRoute("/login");
 
     fireEvent.change(await screen.findByLabelText("用户名"), {
       target: { value: "admin" },
@@ -442,13 +362,7 @@ describe("login page", () => {
       }),
     );
 
-    render(
-      <MemoryRouter initialEntries={["/login"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderRoute("/login");
 
     fireEvent.change(await screen.findByLabelText("用户名"), { target: { value: "admin" } });
     fireEvent.change(screen.getByLabelText("密码"), { target: { value: "secret" } });
@@ -471,13 +385,7 @@ describe("login page", () => {
     );
     overrideHandler(profileHandler);
 
-    render(
-      <MemoryRouter initialEntries={["/chat"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderRoute("/chat");
 
     const accountTrigger = await screen.findByRole("button", { name: "打开账户菜单" });
     expect(accountTrigger).toBeInTheDocument();
@@ -504,13 +412,7 @@ describe("login page", () => {
       }),
     );
 
-    render(
-      <MemoryRouter initialEntries={["/settings?section=security"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderRoute("/settings/security");
 
     fireEvent.click(await screen.findByRole("button", { name: "修改密码" }));
     fireEvent.change(await screen.findByLabelText("当前密码"), {
@@ -527,13 +429,7 @@ describe("login page", () => {
   });
 
   it("allows theme switching on login page", async () => {
-    render(
-      <MemoryRouter initialEntries={["/login"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderRoute("/login");
 
     fireEvent.click(await screen.findByRole("button", { name: "主题" }));
     fireEvent.click(await screen.findByRole("menuitemradio", { name: "深色" }));
@@ -543,13 +439,7 @@ describe("login page", () => {
   });
 
   it("allows language switching on login page", async () => {
-    render(
-      <MemoryRouter initialEntries={["/login"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderRoute("/login");
 
     fireEvent.click(await screen.findByRole("button", { name: "语言" }));
     fireEvent.click(await screen.findByRole("menuitemradio", { name: "English" }));
@@ -575,13 +465,7 @@ describe("login page", () => {
       }),
     );
 
-    render(
-      <MemoryRouter initialEntries={["/settings"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderRoute("/settings");
 
     fireEvent.click(await screen.findByRole("link", { name: "偏好与外观" }));
     expect(await screen.findByRole("heading", { name: "偏好与外观" })).toBeInTheDocument();

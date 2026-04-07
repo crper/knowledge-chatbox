@@ -3,7 +3,6 @@
  */
 
 import { useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -17,6 +16,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { useNavigate } from "@/lib/app-router";
 import {
   Dialog,
   DialogContent,

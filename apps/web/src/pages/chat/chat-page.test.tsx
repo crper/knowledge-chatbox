@@ -1,5 +1,4 @@
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { i18n } from "@/i18n";
 import { toast } from "sonner";
 
@@ -31,16 +30,19 @@ import { useChatUiStore } from "@/features/chat/store/chat-ui-store";
 import { useSessionStore } from "@/lib/auth/session-store";
 import { setAccessToken } from "@/lib/auth/token-store";
 import { useUiStore } from "@/lib/store/ui-store";
-import { AppProviders } from "@/providers/app-providers";
-import { AppRouter } from "@/router";
 import { buildChatSessionContext } from "@/test/chat";
 import { createChatStreamFrame, getChatStreamEventPayload } from "@/test/chat-stream";
 import { buildAppSettings, buildAppUser } from "@/test/fixtures/app";
 import { createTestServer, overrideHandler, apiResponse, apiError } from "@/test/msw";
+import { renderRoute } from "@/test/render-route";
 import { http } from "msw";
 import { mockMobileViewport } from "@/test/viewport";
 
 declare const fetchMockCalls: Array<[string, RequestInit?]>;
+
+function renderChatRoute(initialEntry = "/chat/1") {
+  return renderRoute(initialEntry);
+}
 
 async function findSessionLink(sessionName: string, timeout = 10000): Promise<Element> {
   return waitFor(
@@ -620,13 +622,7 @@ describe("chat workspace", () => {
   it("renders a three-column chat workspace with session controls and an overview-first context panel", async () => {
     setupAuthenticatedWorkspace();
 
-    render(
-      <MemoryRouter initialEntries={["/chat/2"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderChatRoute("/chat/2");
 
     expect(await screen.findByRole("button", { name: "新建会话" })).toBeInTheDocument();
     expect(screen.getByText("会话")).toBeInTheDocument();
@@ -647,7 +643,7 @@ describe("chat workspace", () => {
 
     expect(await screen.findByRole("menuitem", { name: "系统设置" })).toHaveAttribute(
       "href",
-      "/settings",
+      "/settings/providers",
     );
     expect(screen.getByRole("menuitem", { name: "退出登录" })).toBeInTheDocument();
   });
@@ -655,13 +651,7 @@ describe("chat workspace", () => {
   it("shows the desktop chat workspace with sessions, messages, and resource context", async () => {
     setupAuthenticatedWorkspace({ messageCount: 120 });
 
-    render(
-      <MemoryRouter initialEntries={["/chat/1"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderChatRoute("/chat/1");
 
     expect(await findSessionLink("Session A")).toBeInTheDocument();
     expect(screen.getByTestId("chat-desktop-layout")).toBeInTheDocument();
@@ -672,13 +662,7 @@ describe("chat workspace", () => {
   it("requests only the latest message window on initial chat load", async () => {
     setupAuthenticatedWorkspace({ messageCount: 120 });
 
-    render(
-      <MemoryRouter initialEntries={["/chat/1"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderChatRoute("/chat/1");
 
     expect(await screen.findByRole("textbox", { name: "消息输入" })).toBeInTheDocument();
 
@@ -694,13 +678,7 @@ describe("chat workspace", () => {
   it("toggles the left chat sidebar with cmd/ctrl+b", async () => {
     setupAuthenticatedWorkspace();
 
-    render(
-      <MemoryRouter initialEntries={["/chat/1"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderChatRoute("/chat/1");
 
     expect(await screen.findByRole("textbox", { name: "搜索会话" })).toBeInTheDocument();
 
@@ -715,13 +693,7 @@ describe("chat workspace", () => {
   it("toggles the right context sidebar with an explicit collapse control", async () => {
     setupAuthenticatedWorkspace();
 
-    render(
-      <MemoryRouter initialEntries={["/chat/1"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderChatRoute("/chat/1");
 
     expect(await screen.findByText("会话概览")).toBeInTheDocument();
 
@@ -736,13 +708,7 @@ describe("chat workspace", () => {
   it("renders compact icon-only rails after collapsing desktop sidebars", async () => {
     setupAuthenticatedWorkspace();
 
-    render(
-      <MemoryRouter initialEntries={["/chat/1"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderChatRoute("/chat/1");
 
     expect(await screen.findByRole("textbox", { name: "搜索会话" })).toBeInTheDocument();
 
@@ -758,13 +724,7 @@ describe("chat workspace", () => {
   it("renders a guided empty-session canvas after creating a new session", async () => {
     setupAuthenticatedWorkspace();
 
-    render(
-      <MemoryRouter initialEntries={["/chat/1"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderChatRoute("/chat/1");
 
     fireEvent.click(await screen.findByRole("button", { name: "新建会话" }));
 
@@ -778,13 +738,7 @@ describe("chat workspace", () => {
   it("creates a new session without immediately refetching the session list", async () => {
     setupAuthenticatedWorkspace();
 
-    render(
-      <MemoryRouter initialEntries={["/chat/1"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderChatRoute("/chat/1");
 
     fireEvent.click(await screen.findByRole("button", { name: "新建会话" }));
 
@@ -841,13 +795,7 @@ describe("chat workspace", () => {
       sendShortcut: "enter",
     });
 
-    render(
-      <MemoryRouter initialEntries={["/chat/1"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderChatRoute("/chat/1");
 
     fireEvent.click(await screen.findByRole("button", { name: "新建会话" }));
 
@@ -860,13 +808,7 @@ describe("chat workspace", () => {
   it("shows an explicit empty state when session search has no matches", async () => {
     setupAuthenticatedWorkspace();
 
-    render(
-      <MemoryRouter initialEntries={["/chat/2"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderChatRoute("/chat/2");
 
     fireEvent.change(await screen.findByRole("textbox", { name: "搜索会话" }), {
       target: { value: "not-found" },
@@ -880,13 +822,7 @@ describe("chat workspace", () => {
   it("renders markdown and sources for the active session", async () => {
     setupAuthenticatedWorkspace();
 
-    render(
-      <MemoryRouter initialEntries={["/chat/1"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderChatRoute("/chat/1");
 
     expect(await findSessionLink("Session A")).toBeInTheDocument();
     await waitFor(() => {
@@ -907,13 +843,7 @@ describe("chat workspace", () => {
   it("uses a compact chat header and avoids duplicate composer guidance", async () => {
     setupAuthenticatedWorkspace();
 
-    render(
-      <MemoryRouter initialEntries={["/chat/1"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderChatRoute("/chat/1");
 
     const sessionHeading = await screen.findByRole("heading", { name: "Session A" });
     expect(sessionHeading).toBeInTheDocument();
@@ -925,13 +855,7 @@ describe("chat workspace", () => {
   it("embeds the composer directly without an extra outer surface shell", async () => {
     setupAuthenticatedWorkspace();
 
-    render(
-      <MemoryRouter initialEntries={["/chat/2"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderChatRoute("/chat/2");
 
     const composerShell = await screen.findByTestId("message-input-shell");
     const composerRegion = composerShell.closest("[data-composer-embed]");
@@ -942,13 +866,7 @@ describe("chat workspace", () => {
   it("avoids rendering every row for very long sessions", async () => {
     setupAuthenticatedWorkspace({ messageCount: 120 });
 
-    render(
-      <MemoryRouter initialEntries={["/chat/2"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderChatRoute("/chat/2");
 
     expect(await findSessionLink("Session A")).toBeInTheDocument();
     expect(document.querySelector('[data-chat-contained="true"]')).toBeNull();
@@ -961,13 +879,7 @@ describe("chat workspace", () => {
   it("stores draft in localStorage", async () => {
     setupAuthenticatedWorkspace();
 
-    render(
-      <MemoryRouter initialEntries={["/chat/1"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderChatRoute("/chat/1");
 
     fireEvent.change(await screen.findByLabelText("消息输入"), {
       target: { value: "draft question" },
@@ -983,13 +895,7 @@ describe("chat workspace", () => {
   it("stores draft by session and keeps it isolated when switching sessions", async () => {
     setupAuthenticatedWorkspace();
 
-    render(
-      <MemoryRouter initialEntries={["/chat/1"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderChatRoute("/chat/1");
 
     expect(await findSessionLink("Session A")).toBeInTheDocument();
     expect(await findSessionLink("Session B")).toBeInTheDocument();
@@ -1010,13 +916,7 @@ describe("chat workspace", () => {
   it("submits through the streaming flow and clears the current session draft", async () => {
     setupAuthenticatedWorkspace();
 
-    render(
-      <MemoryRouter initialEntries={["/chat/1"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderChatRoute("/chat/1");
 
     expect(await findSessionLink("Session A")).toBeInTheDocument();
     fireEvent.change(await screen.findByLabelText("消息输入"), {
@@ -1034,13 +934,7 @@ describe("chat workspace", () => {
   it("does not refetch the current message window after a successful stream completes", async () => {
     setupAuthenticatedWorkspace();
 
-    render(
-      <MemoryRouter initialEntries={["/chat/1"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderChatRoute("/chat/1");
 
     expect(await findSessionLink("Session A")).toBeInTheDocument();
     fireEvent.change(await screen.findByLabelText("消息输入"), {
@@ -1060,13 +954,7 @@ describe("chat workspace", () => {
   it("does not refetch the current message window or context after a successful attachment send", async () => {
     setupAuthenticatedWorkspace({ messages: [] });
 
-    render(
-      <MemoryRouter initialEntries={["/chat/1"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderChatRoute("/chat/1");
 
     expect(await findSessionLink("Session A")).toBeInTheDocument();
     expect(await screen.findByText("0 个附件")).toBeInTheDocument();
@@ -1127,13 +1015,7 @@ describe("chat workspace", () => {
       ],
     });
 
-    render(
-      <MemoryRouter initialEntries={["/chat/1"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderChatRoute("/chat/1");
 
     expect(await findSessionLink("Session A")).toBeInTheDocument();
     fireEvent.change(await screen.findByLabelText("消息输入"), {
@@ -1165,14 +1047,9 @@ describe("chat workspace", () => {
         },
       },
     });
+    const errorSpy = vi.spyOn(toast, "error");
 
-    render(
-      <MemoryRouter initialEntries={["/chat/1"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderChatRoute("/chat/1");
 
     expect(await findSessionLink("Session A")).toBeInTheDocument();
     fireEvent.change(await screen.findByLabelText("消息输入"), {
@@ -1180,7 +1057,9 @@ describe("chat workspace", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
 
-    expect(await screen.findByText("当前请求已失效，请重新发送。")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(errorSpy).toHaveBeenCalledWith("当前请求已失效，请重新发送。");
+    });
     expect(screen.getByLabelText("消息输入")).toHaveValue("hello stream");
     expect(screen.getByRole("button", { name: "发送" })).toBeEnabled();
   });
@@ -1203,13 +1082,7 @@ describe("chat workspace", () => {
       ],
     });
 
-    render(
-      <MemoryRouter initialEntries={["/chat/1"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderChatRoute("/chat/1");
 
     expect(await findSessionLink("Session A")).toBeInTheDocument();
     fireEvent.change(await screen.findByLabelText("消息输入"), {
@@ -1251,16 +1124,176 @@ describe("chat workspace", () => {
     });
   });
 
+  it("keeps only one visible retry entry for a persisted failed request pair", async () => {
+    setupAuthenticatedWorkspace({
+      messagesBySession: {
+        2: [
+          {
+            id: 23,
+            role: "user",
+            content: "hello stream",
+            status: "failed",
+            error_message: "provider unavailable",
+            sources_json: [],
+          },
+          {
+            id: 24,
+            role: "assistant",
+            content: "",
+            status: "failed",
+            error_message: "provider unavailable",
+            reply_to_message_id: 23,
+            sources_json: [],
+          },
+        ],
+      },
+      sessions: [{ id: 2, title: "Session B", reasoning_mode: "default" }],
+    });
+
+    renderChatRoute("/chat/2");
+
+    expect(await findSessionLink("Session B")).toBeInTheDocument();
+    await findTextContent("provider unavailable");
+
+    await waitFor(() => {
+      expect(screen.getAllByRole("button", { name: "重试" })).toHaveLength(1);
+    });
+    expect(screen.getByText("发送失败")).toBeInTheDocument();
+    expect(screen.queryByText("本次回复生成失败，请点击重试或重新提问。")).not.toBeInTheDocument();
+  });
+
+  it("clears the original failed user state after a retry succeeds", async () => {
+    setupAuthenticatedWorkspace({
+      messagesBySession: {
+        2: [
+          {
+            id: 23,
+            role: "user",
+            content: "hello stream",
+            status: "failed",
+            error_message: "provider unavailable",
+            sources_json: [],
+          },
+          {
+            id: 24,
+            role: "assistant",
+            content: "",
+            status: "failed",
+            error_message: "provider unavailable",
+            reply_to_message_id: 23,
+            sources_json: [],
+          },
+        ],
+      },
+      sessions: [{ id: 2, title: "Session B", reasoning_mode: "default" }],
+      streamFramesBySession: {
+        2: [
+          createChatStreamFrame(CHAT_STREAM_EVENT.runStarted, {
+            run_id: 25,
+            session_id: 2,
+            user_message_id: 27,
+            assistant_message_id: 28,
+          }),
+          createChatStreamFrame(CHAT_STREAM_EVENT.legacyMessageDelta, {
+            run_id: 25,
+            assistant_message_id: 28,
+            delta: "fixed answer",
+          }),
+          createChatStreamFrame(CHAT_STREAM_EVENT.runCompleted, {
+            run_id: 25,
+            session_id: 2,
+            assistant_message_id: 28,
+          }),
+          createChatStreamFrame(CHAT_STREAM_EVENT.done, {}),
+        ],
+      },
+    });
+
+    renderChatRoute("/chat/2");
+
+    expect(await findSessionLink("Session B")).toBeInTheDocument();
+    await findTextContent("provider unavailable");
+
+    fireEvent.click(await screen.findByRole("button", { name: "重试" }));
+
+    await findTextContent("fixed answer");
+
+    await waitFor(() => {
+      expect(screen.queryByText("发送失败")).not.toBeInTheDocument();
+      expect(screen.queryByText("provider unavailable")).not.toBeInTheDocument();
+    });
+  });
+
+  it("keeps only one visible copy of the retried question while the new answer is streaming", async () => {
+    setupAuthenticatedWorkspace({
+      messages: [
+        {
+          id: 1,
+          role: "user",
+          content: "旧问题",
+          status: "succeeded",
+          sources_json: [],
+        },
+        {
+          id: 2,
+          role: "assistant",
+          content: "",
+          status: "failed",
+          error_message: "provider unavailable",
+          reply_to_message_id: 1,
+          sources_json: [],
+        },
+        {
+          id: 7,
+          role: "user",
+          content: "后来问题",
+          status: "succeeded",
+          sources_json: [],
+        },
+        {
+          id: 8,
+          role: "assistant",
+          content: "后来答案",
+          status: "succeeded",
+          reply_to_message_id: 7,
+          sources_json: [],
+        },
+      ],
+      streamFrames: [
+        createChatStreamFrame(CHAT_STREAM_EVENT.runStarted, {
+          run_id: 9,
+          session_id: 1,
+          user_message_id: 5,
+          assistant_message_id: 6,
+        }),
+        createChatStreamFrame(CHAT_STREAM_EVENT.legacyMessageDelta, {
+          run_id: 9,
+          assistant_message_id: 6,
+          delta: "重试中的回答",
+        }),
+      ],
+      streamFinalDelayMs: 200,
+    });
+
+    renderChatRoute("/chat/1");
+
+    expect(await findSessionLink("Session A")).toBeInTheDocument();
+    expect(await findTextContent("旧问题")).toBeInTheDocument();
+    expect(await findTextContent("后来答案")).toBeInTheDocument();
+
+    fireEvent.click(await screen.findByRole("button", { name: "重试" }));
+
+    await findTextContent("重试中的回答");
+
+    await waitFor(() => {
+      expect(screen.getAllByText("旧问题")).toHaveLength(1);
+    });
+  });
+
   it("supports sending from Enter by default", async () => {
     setupAuthenticatedWorkspace();
 
-    render(
-      <MemoryRouter initialEntries={["/chat/1"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderChatRoute("/chat/1");
 
     const input = await screen.findByLabelText("消息输入");
     fireEvent.change(input, {
@@ -1287,13 +1320,7 @@ describe("chat workspace", () => {
   it("sends text with attachments from Enter and clears the composer immediately", async () => {
     setupAuthenticatedWorkspace();
 
-    render(
-      <MemoryRouter initialEntries={["/chat/1"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderChatRoute("/chat/1");
 
     await findSessionLink("Session A");
     const attachInput = await screen.findByLabelText("附加资源", {
@@ -1371,13 +1398,7 @@ describe("chat workspace", () => {
   it("does not expose a send shortcut picker in the composer", async () => {
     setupAuthenticatedWorkspace();
 
-    render(
-      <MemoryRouter initialEntries={["/chat/1"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderChatRoute("/chat/1");
 
     expect(await screen.findByLabelText("消息输入")).toBeInTheDocument();
     expect(screen.queryByRole("combobox", { name: "发送快捷键" })).not.toBeInTheDocument();
@@ -1386,13 +1407,7 @@ describe("chat workspace", () => {
   it("shows failed message error, supports editing, and deleting failed message", async () => {
     setupAuthenticatedWorkspace();
 
-    render(
-      <MemoryRouter initialEntries={["/chat/1"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderChatRoute("/chat/1");
 
     expect(await findTextContent("provider unavailable")).toBeInTheDocument();
 
@@ -1426,13 +1441,7 @@ describe("chat workspace", () => {
   it("shows attachment feedback in the composer", async () => {
     setupAuthenticatedWorkspace();
 
-    render(
-      <MemoryRouter initialEntries={["/chat/1"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderChatRoute("/chat/1");
 
     await findSessionLink("Session A");
     const attachInput = await screen.findByLabelText("附加资源", {
@@ -1449,13 +1458,7 @@ describe("chat workspace", () => {
   it("does not append duplicate local attachments when the same file is selected twice", async () => {
     setupAuthenticatedWorkspace();
 
-    render(
-      <MemoryRouter initialEntries={["/chat/1"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderChatRoute("/chat/1");
 
     await findSessionLink("Session A");
     const attachInput = await screen.findByLabelText("附加资源", {
@@ -1547,13 +1550,7 @@ describe("chat workspace", () => {
       ],
     });
 
-    render(
-      <MemoryRouter initialEntries={["/chat/1"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderChatRoute("/chat/1");
 
     const attachInput = await screen.findByLabelText("附加资源", {
       selector: 'input[type="file"]',
@@ -1601,13 +1598,7 @@ describe("chat workspace", () => {
   it("pastes clipboard images into the composer and uploads them on send", async () => {
     setupAuthenticatedWorkspace();
 
-    render(
-      <MemoryRouter initialEntries={["/chat/1"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderChatRoute("/chat/1");
 
     const composer = await screen.findByLabelText("消息输入");
     const pastedImage = new File(["hello"], "", { type: "image/png" });
@@ -1683,13 +1674,7 @@ describe("chat workspace", () => {
   it("uploads multiple queued attachments before streaming and only sends one stream request", async () => {
     setupAuthenticatedWorkspace();
 
-    render(
-      <MemoryRouter initialEntries={["/chat/1"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderChatRoute("/chat/1");
 
     const attachInput = await screen.findByLabelText("附加资源", {
       selector: 'input[type="file"]',
@@ -1794,13 +1779,7 @@ describe("chat workspace", () => {
   it("keeps unsupported attachment feedback local to the composer", async () => {
     setupAuthenticatedWorkspace();
 
-    render(
-      <MemoryRouter initialEntries={["/chat/1"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderChatRoute("/chat/1");
 
     const attachInput = await screen.findByLabelText("附加资源", {
       selector: 'input[type="file"]',
@@ -1819,13 +1798,7 @@ describe("chat workspace", () => {
   it("supports renaming a session from the session list", async () => {
     setupAuthenticatedWorkspace();
 
-    render(
-      <MemoryRouter initialEntries={["/chat/1"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderChatRoute("/chat/1");
 
     fireEvent.click(await screen.findByLabelText("重命名 Session A"));
     fireEvent.change(screen.getByLabelText("会话名称"), {
@@ -1850,13 +1823,7 @@ describe("chat workspace", () => {
   it("supports deleting a session from the session list", async () => {
     setupAuthenticatedWorkspace();
 
-    render(
-      <MemoryRouter initialEntries={["/chat/1"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderChatRoute("/chat/1");
 
     fireEvent.click(await screen.findByLabelText("删除 Session A"));
 
@@ -1877,13 +1844,7 @@ describe("chat workspace", () => {
   it("disables creating another session while the request is still pending", async () => {
     setupAuthenticatedWorkspace({ delayCreateSession: true });
 
-    render(
-      <MemoryRouter initialEntries={["/chat/1"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderChatRoute("/chat/1");
 
     const createButton = await screen.findByRole("button", { name: "新建会话" });
     fireEvent.click(createButton);
@@ -1896,13 +1857,7 @@ describe("chat workspace", () => {
   it("keeps the session switch responsive while sending a streamed request", async () => {
     setupAuthenticatedWorkspace();
 
-    render(
-      <MemoryRouter initialEntries={["/chat/1"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderChatRoute("/chat/1");
 
     fireEvent.click(await findSessionLink("Session A"));
     expect(await findSessionLink("Session B")).toBeInTheDocument();
@@ -1920,13 +1875,7 @@ describe("chat workspace", () => {
   it("releases the composer lock when switching to another session during a pending send", async () => {
     setupAuthenticatedWorkspace({ streamFinalDelayMs: 150 });
 
-    render(
-      <MemoryRouter initialEntries={["/chat/1"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderChatRoute("/chat/1");
 
     await findSessionLink("Session A");
     expect(await findSessionLink("Session B")).toBeInTheDocument();
@@ -1952,13 +1901,7 @@ describe("chat workspace", () => {
   it("allows sending in another session while the previous session is still streaming", async () => {
     setupAuthenticatedWorkspace({ streamFinalDelayMs: 150 });
 
-    render(
-      <MemoryRouter initialEntries={["/chat/1"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderChatRoute("/chat/1");
 
     await findSessionLink("Session A");
     expect(await findSessionLink("Session B")).toBeInTheDocument();
@@ -1995,13 +1938,7 @@ describe("chat workspace", () => {
   it("keeps the original session locked when switching away and back until its stream finishes", async () => {
     setupAuthenticatedWorkspace({ streamFinalDelayMs: 150 });
 
-    render(
-      <MemoryRouter initialEntries={["/chat/1"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderChatRoute("/chat/1");
 
     await findSessionLink("Session A");
     expect(await findSessionLink("Session B")).toBeInTheDocument();
@@ -2060,13 +1997,7 @@ describe("chat workspace", () => {
       streamFinalDelayMs: 150,
     });
 
-    render(
-      <MemoryRouter initialEntries={["/chat/1"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderChatRoute("/chat/1");
 
     await findSessionLink("Session A");
     expect(await findSessionLink("Session B")).toBeInTheDocument();
@@ -2119,13 +2050,7 @@ describe("chat workspace", () => {
       streamFinalDelayMs: 150,
     });
 
-    render(
-      <MemoryRouter initialEntries={["/chat/1"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderChatRoute("/chat/1");
 
     await findSessionLink("Session A");
     expect(await findSessionLink("Session B")).toBeInTheDocument();
@@ -2216,13 +2141,7 @@ describe("chat workspace", () => {
       streamFinalDelayMs: 150,
     });
 
-    render(
-      <MemoryRouter initialEntries={["/chat/1"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderChatRoute("/chat/1");
 
     await findSessionLink("Session A");
     act(() => {
@@ -2319,13 +2238,7 @@ describe("chat workspace", () => {
       },
     });
 
-    render(
-      <MemoryRouter initialEntries={["/chat/2"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderChatRoute("/chat/2");
 
     expect(await screen.findByRole("heading", { name: "Session B" })).toBeInTheDocument();
     expect(await findTextContent("第二个会话的最终答案")).toBeInTheDocument();
@@ -2335,13 +2248,7 @@ describe("chat workspace", () => {
   it("does not request active runs when the workspace relies on local streaming state", async () => {
     setupAuthenticatedWorkspace();
 
-    render(
-      <MemoryRouter initialEntries={["/chat/1"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderChatRoute("/chat/1");
 
     expect(await findSessionLink("Session A")).toBeInTheDocument();
 
@@ -2382,13 +2289,7 @@ describe("chat workspace", () => {
       },
     });
 
-    render(
-      <MemoryRouter initialEntries={["/chat/1"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderChatRoute("/chat/1");
 
     await waitFor(() => {
       expect(successSpy).toHaveBeenCalledWith("Session B 已生成完成。");
@@ -2424,13 +2325,7 @@ describe("chat workspace", () => {
       },
     });
 
-    render(
-      <MemoryRouter initialEntries={["/chat/1"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderChatRoute("/chat/1");
 
     await waitFor(() => {
       expect(successSpy).toHaveBeenCalledWith("Untitled Session is ready.");
@@ -2441,13 +2336,7 @@ describe("chat workspace", () => {
     setupAuthenticatedWorkspace();
     mockMobileViewport();
 
-    render(
-      <MemoryRouter initialEntries={["/chat/1"]}>
-        <AppProviders>
-          <AppRouter />
-        </AppProviders>
-      </MemoryRouter>,
-    );
+    renderChatRoute("/chat/1");
 
     expect(await screen.findByRole("button", { name: "打开会话面板" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "打开上下文面板" })).toBeInTheDocument();

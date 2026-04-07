@@ -5,11 +5,11 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { Link, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Link, useParams } from "@/lib/app-router";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { WorkspacePage } from "@/components/shared/workspace-page";
@@ -36,6 +36,7 @@ import type { AppUser } from "@/lib/api/client";
 import { getApiErrorMessage } from "@/lib/api/client";
 import { expireSession } from "@/lib/auth/session-manager";
 import { useIsMobile } from "@/lib/hooks/use-mobile";
+import { ADMIN_USERS_PATH, buildSettingsPath } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 
 /**
@@ -46,10 +47,10 @@ export function SettingsPage({ user }: { user: AppUser }) {
   const { t: tCommon } = useTranslation("common");
   const queryClient = useQueryClient();
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
-  const [searchParams] = useSearchParams();
+  const { section: sectionParam } = useParams<{ section?: string }>();
   const isAdmin = user.role === "admin";
   const isMobile = useIsMobile();
-  const activeSection = resolveSettingsSection(searchParams.get("section"), user);
+  const activeSection = resolveSettingsSection(sectionParam ?? null, user);
   const sections = getSettingsSections(user);
   const sectionDefinition = sections.find((section) => section.id === activeSection)!;
 
@@ -191,7 +192,7 @@ export function SettingsPage({ user }: { user: AppUser }) {
                 buttonVariants({ size: "sm", variant: isActive ? "secondary" : "outline" }),
                 "shrink-0",
               )}
-              to={`/settings?section=${section.id}`}
+              to={buildSettingsPath(section.id)}
             >
               {t(section.titleKey)}
             </Link>
@@ -258,7 +259,7 @@ export function SettingsPage({ user }: { user: AppUser }) {
         <CardDescription className="text-ui-body">{t("managementCardDescription")}</CardDescription>
       </CardHeader>
       <CardContent className="pt-6">
-        <Link className={cn(buttonVariants(), "w-full sm:w-auto")} to="/users">
+        <Link className={cn(buttonVariants(), "w-full sm:w-auto")} to={ADMIN_USERS_PATH}>
           {t("managementEntryAction")}
         </Link>
       </CardContent>

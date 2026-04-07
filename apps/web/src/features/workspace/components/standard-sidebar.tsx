@@ -3,9 +3,8 @@
  */
 
 import { useTranslation } from "react-i18next";
-import { Link, NavLink, useLocation } from "react-router-dom";
-
 import { BrandMark } from "@/components/shared/brand-mark";
+import { Link, NavLink } from "@/lib/app-router";
 import {
   Sidebar,
   SidebarContent,
@@ -19,6 +18,7 @@ import {
   SidebarSeparator,
 } from "@/components/ui/sidebar";
 import type { AppUser } from "@/lib/api/client";
+import { buildSettingsPath, normalizeSettingsSectionPath } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import { getSettingsSections, resolveSettingsSection } from "@/features/settings/settings-sections";
 import { WorkspaceAccountMenu } from "./workspace-account-menu";
@@ -81,14 +81,12 @@ function SettingsSidebarNav({
   user: AppUser;
 }) {
   const { t } = useTranslation("settings");
-  const location = useLocation();
 
   if (!pathname.startsWith("/settings")) {
     return null;
   }
 
-  const searchParams = new URLSearchParams(location.search);
-  const activeSection = resolveSettingsSection(searchParams.get("section"), user);
+  const activeSection = resolveSettingsSection(normalizeSettingsSectionPath(pathname), user);
   const sections = getSettingsSections(user);
 
   return (
@@ -110,7 +108,7 @@ function SettingsSidebarNav({
                   "data-[active=false]:text-muted-foreground data-[active=false]:hover:bg-sidebar-accent/42 data-[active=false]:hover:text-foreground",
                 )}
                 isActive={isActive}
-                render={<Link onClick={onNavigate} to={`/settings?section=${section.id}`} />}
+                render={<Link onClick={onNavigate} to={buildSettingsPath(section.id)} />}
               >
                 {t(section.titleKey)}
               </SidebarMenuButton>

@@ -17,7 +17,10 @@ from knowledge_chatbox_api.db.session import create_session_factory
 from knowledge_chatbox_api.main import create_app
 from knowledge_chatbox_api.services.settings.settings_service import SettingsService
 from knowledge_chatbox_api.utils.chroma import reset_chroma_store
-from tests.fixtures.stubs import EmbeddingAdapterStub, ResponseAdapterStub
+from tests.fixtures.stubs import (
+    EmbeddingAdapterStub,
+    make_adapter_backed_chat_workflow_class,
+)
 
 ALEMBIC_CONFIG_PATH = Path(__file__).resolve().parents[1] / "alembic.ini"
 DEFAULT_ADMIN_ENV = {
@@ -205,27 +208,47 @@ def configure_upload_provider() -> None:
 
 
 @pytest.fixture
-def stub_response_adapter():
-    """提供响应适配器 Stub"""
-    return ResponseAdapterStub()
-
-
-@pytest.fixture
 def stub_embedding_adapter():
     """提供嵌入适配器 Stub"""
     return EmbeddingAdapterStub()
 
 
 @pytest.fixture
-def mock_chat_adapters(monkeypatch, stub_response_adapter, stub_embedding_adapter):
-    """自动 mock chat 相关的 adapter"""
-    monkeypatch.setattr(
-        "knowledge_chatbox_api.services.chat.chat_application_service.build_response_adapter_from_settings",
-        lambda settings_record: stub_response_adapter,
+def mock_pydanticai_chat_workflow(monkeypatch):
+    chat_workflow_cls = make_adapter_backed_chat_workflow_class(
+        sync_answer="workflow sync answer",
+        sync_sources=[
+            {
+                "document_id": 7,
+                "document_revision_id": 11,
+                "document_name": "playbook.md",
+                "chunk_id": "chunk-1",
+                "snippet": "workflow source",
+                "page_number": None,
+                "section_title": "Intro",
+                "score": 0.82,
+            }
+        ],
+        stream_sources=[
+            {
+                "document_id": 7,
+                "document_revision_id": 11,
+                "document_name": "playbook.md",
+                "chunk_id": "chunk-1",
+                "snippet": "workflow source",
+                "page_number": None,
+                "section_title": "Intro",
+                "score": 0.82,
+            }
+        ],
     )
     monkeypatch.setattr(
-        "knowledge_chatbox_api.services.chat.chat_application_service.build_embedding_adapter_from_settings",
-        lambda settings_record: stub_embedding_adapter,
+        "knowledge_chatbox_api.services.chat.chat_application_service.ChatWorkflow",
+        chat_workflow_cls,
+    )
+    monkeypatch.setattr(
+        "knowledge_chatbox_api.services.chat.chat_run_service.ChatWorkflow",
+        chat_workflow_cls,
     )
 
 

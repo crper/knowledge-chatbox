@@ -78,4 +78,7 @@ These commands map to their corresponding tools. For example, `vp dev --port 300
 - [ ] Use `overrideHandler()` to override specific handlers for individual tests.
 - [ ] Use `apiResponse()` and `apiError()` to create mock responses.
 - [ ] Do not use deprecated test utilities: `jsonResponse`, `apiSuccessResponse`, `apiErrorResponse`, `stubFetch`, `createAuthFetchMock`.
+- [ ] Route contract / page-level routing tests should reuse `src/test/render-route.tsx`.
+- [ ] Component tests that only need path / params / search context should reuse `src/test/test-router.tsx`.
+- [ ] Do not reintroduce `react-router-dom`; runtime and routing tests are standardized on TanStack Router.
 <!--VITE PLUS END-->

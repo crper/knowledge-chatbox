@@ -23,6 +23,7 @@
 | 🧾 来源引用回看   | 已支持 | 回答内容带来源片段；右侧上下文栏走独立会话摘要接口，不再依赖整段消息重拉              |
 | 🔎 检索兜底       | 已支持 | `Chroma` 向量召回优先，`SQLite FTS5` 负责词法候选兜底                                 |
 | 🧠 三路模型路由   | 已支持 | `response / embedding / vision` 独立配置与切换                                        |
+| 🤖 ChatWorkflow 后端 | 已支持 | 聊天执行当前统一由 `ChatWorkflow + PydanticAI` 驱动，同步和流式共用同一路径 |
 | 🔌 多 Provider    | 已支持 | `OpenAI / Anthropic / Voyage / Ollama`                                                |
 | 🌐 中英双语       | 已支持 | 前端内置 `zh-CN / en` 文案与切换能力                                                  |
 | 🌓 主题切换       | 已支持 | `light / dark / system` 三种主题偏好                                                  |
@@ -150,8 +151,10 @@ just setup
 
 ## 开发入口
 
-- 前端在 `apps/web`，统一使用 `vp`；如果改了后端 route / schema，先执行 `vp run api:generate`。详细命令见 [apps/web/README.md](./apps/web/README.md)。
+- 前端在 `apps/web`，统一使用 `vp`；当前前端 URL 契约已经收敛到 TanStack Router file-based routes，页面组件默认只消费 canonical path。如果改了后端 route / schema，先执行 `vp run api:generate`。详细命令见 [apps/web/README.md](./apps/web/README.md)。
+- 前端开发态当前会自动挂载 TanStack Devtools 聚合面板，统一查看 Query / Router / Form 状态；它只在 `vp dev` 下生效，不进入生产构建。
 - 后端在 `apps/api`，统一使用 `uv`。详细命令见 [apps/api/README.md](./apps/api/README.md)。
+- 模型设置里的 `Ollama Base URL` 只填写服务根地址，例如 `http://localhost:11434`；系统内部会自动派生兼容接口路径，不需要手动补 `/v1`。
 
 ## Docker 单机部署
 

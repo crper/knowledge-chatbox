@@ -49,44 +49,86 @@ function resolveRetryRootUserMessageId(
   return currentMessageId;
 }
 
+function shouldSuppressFailedAssistantPlaceholder(
+  assistantMessage: ChatMessageItem,
+  latestUserAttempt: ChatMessageItem | undefined,
+) {
+  return (
+    latestUserAttempt?.status === "failed" &&
+    assistantMessage.status === "failed" &&
+    assistantMessage.content.trim().length === 0
+  );
+}
+
 function collapseRetryMessageAttempts(messages: ChatMessageItem[]) {
   const messageById = new Map(messages.map((message) => [message.id, message]));
+  const rootUserMessageIdCache = new Map<number, number>();
   const latestUserAttemptByRootId = new Map<number, ChatMessageItem>();
   const latestAssistantAttemptByRootId = new Map<number, ChatMessageItem>();
+  const assistantAnchorMessageIdByRootId = new Map<number, number>();
+
+  const getRootUserMessageId = (userMessageId: number) => {
+    const cachedRootUserMessageId = rootUserMessageIdCache.get(userMessageId);
+    if (cachedRootUserMessageId != null) {
+      return cachedRootUserMessageId;
+    }
+
+    const rootUserMessageId = resolveRetryRootUserMessageId(messageById, userMessageId);
+    rootUserMessageIdCache.set(userMessageId, rootUserMessageId);
+    return rootUserMessageId;
+  };
 
   messages.forEach((message) => {
     if (message.role === "user") {
-      const rootUserMessageId = resolveRetryRootUserMessageId(messageById, message.id);
+      const rootUserMessageId = getRootUserMessageId(message.id);
       latestUserAttemptByRootId.set(rootUserMessageId, message);
       return;
     }
 
     if (message.role === "assistant" && typeof message.reply_to_message_id === "number") {
-      const rootUserMessageId = resolveRetryRootUserMessageId(
-        messageById,
-        message.reply_to_message_id,
-      );
+      const rootUserMessageId = getRootUserMessageId(message.reply_to_message_id);
       latestAssistantAttemptByRootId.set(rootUserMessageId, message);
+      if (!assistantAnchorMessageIdByRootId.has(rootUserMessageId)) {
+        assistantAnchorMessageIdByRootId.set(rootUserMessageId, message.id);
+      }
     }
   });
 
+  const emittedUserRootIds = new Set<number>();
+  const emittedAssistantRootIds = new Set<number>();
+
   return messages.flatMap((message) => {
     if (message.role === "user") {
-      if (message.retry_of_message_id != null) {
+      const rootUserMessageId = getRootUserMessageId(message.id);
+      if (message.id !== rootUserMessageId || emittedUserRootIds.has(rootUserMessageId)) {
         return [];
       }
 
-      return [latestUserAttemptByRootId.get(message.id) ?? message];
+      emittedUserRootIds.add(rootUserMessageId);
+      const latestUserAttempt = latestUserAttemptByRootId.get(rootUserMessageId) ?? message;
+      return [latestUserAttempt];
     }
 
     if (message.role === "assistant" && typeof message.reply_to_message_id === "number") {
-      const rootUserMessageId = resolveRetryRootUserMessageId(
-        messageById,
-        message.reply_to_message_id,
-      );
-      return latestAssistantAttemptByRootId.get(rootUserMessageId)?.id === message.id
-        ? [message]
-        : [];
+      const rootUserMessageId = getRootUserMessageId(message.reply_to_message_id);
+      if (emittedAssistantRootIds.has(rootUserMessageId)) {
+        return [];
+      }
+
+      if (assistantAnchorMessageIdByRootId.get(rootUserMessageId) !== message.id) {
+        return [];
+      }
+
+      const latestUserAttempt = latestUserAttemptByRootId.get(rootUserMessageId);
+      const latestAssistantAttempt =
+        latestAssistantAttemptByRootId.get(rootUserMessageId) ?? message;
+      if (shouldSuppressFailedAssistantPlaceholder(latestAssistantAttempt, latestUserAttempt)) {
+        emittedAssistantRootIds.add(rootUserMessageId);
+        return [];
+      }
+
+      emittedAssistantRootIds.add(rootUserMessageId);
+      return [latestAssistantAttempt];
     }
 
     return [message];

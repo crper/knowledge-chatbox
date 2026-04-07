@@ -1,11 +1,11 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { I18nextProvider } from "react-i18next";
-import { MemoryRouter } from "react-router-dom";
 
 import { QueryProvider } from "@/providers/query-provider";
 import { i18n } from "@/i18n";
 import { createTestServer, overrideHandler } from "@/test/msw";
+import { TestRouter } from "@/test/test-router";
 import type { KnowledgeDocument } from "../api/documents";
 import { DocumentPreviewSheet } from "./document-preview-sheet";
 
@@ -41,7 +41,7 @@ function renderSheet(document: KnowledgeDocument) {
   const onOpenChange = vi.fn();
 
   render(
-    <MemoryRouter>
+    <TestRouter>
       <QueryProvider>
         <I18nextProvider i18n={i18n}>
           <DocumentPreviewSheet
@@ -54,7 +54,7 @@ function renderSheet(document: KnowledgeDocument) {
           />
         </I18nextProvider>
       </QueryProvider>
-    </MemoryRouter>,
+    </TestRouter>,
   );
 
   return { onDelete, onReindex, onShowVersions, onOpenChange };
@@ -88,7 +88,7 @@ describe("DocumentPreviewSheet", () => {
 
     renderSheet(buildDocument({}));
 
-    expect(screen.getByText("资源预览")).toBeInTheDocument();
+    expect(await screen.findByText("资源预览")).toBeInTheDocument();
     expect(screen.getByText("spec.md")).toBeInTheDocument();
     expect(screen.getByText("Markdown")).toBeInTheDocument();
     expect(screen.getAllByText("v2").length).toBeGreaterThan(0);
@@ -145,7 +145,7 @@ describe("DocumentPreviewSheet", () => {
     expect(screen.queryByTestId("markdown-preview")).not.toBeInTheDocument();
   });
 
-  it("renders a pdf fallback that opens in a new tab", () => {
+  it("renders a pdf fallback that opens in a new tab", async () => {
     renderSheet(
       buildDocument({
         id: 10,
@@ -154,11 +154,11 @@ describe("DocumentPreviewSheet", () => {
       }),
     );
 
-    expect(screen.getByText("PDF 预览将通过浏览器在新标签打开")).toBeInTheDocument();
+    expect(await screen.findByText("PDF 预览将通过浏览器在新标签打开")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "在新标签打开 PDF" })).toBeInTheDocument();
   });
 
-  it("renders an unsupported preview fallback for docx files", () => {
+  it("renders an unsupported preview fallback for docx files", async () => {
     renderSheet(
       buildDocument({
         id: 11,
@@ -167,11 +167,11 @@ describe("DocumentPreviewSheet", () => {
       }),
     );
 
-    expect(screen.getByText("当前类型暂不支持内嵌预览")).toBeInTheDocument();
+    expect(await screen.findByText("当前类型暂不支持内嵌预览")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "打开原文件" })).toBeInTheDocument();
   });
 
-  it("renders processing and failed states without requesting text preview", () => {
+  it("renders processing and failed states without requesting text preview", async () => {
     renderSheet(
       buildDocument({
         id: 12,
@@ -179,7 +179,7 @@ describe("DocumentPreviewSheet", () => {
         status: "processing",
       }),
     );
-    expect(screen.getByText("资源处理中，完成后可预览")).toBeInTheDocument();
+    expect(await screen.findByText("资源处理中，完成后可预览")).toBeInTheDocument();
 
     renderSheet(
       buildDocument({
@@ -190,7 +190,7 @@ describe("DocumentPreviewSheet", () => {
       }),
     );
 
-    expect(screen.getByText("资源预览失败")).toBeInTheDocument();
+    expect(await screen.findByText("资源预览失败")).toBeInTheDocument();
     expect(screen.getByText("解析失败")).toBeInTheDocument();
     expect(fetchMockCalls).toHaveLength(0);
   });
@@ -204,6 +204,7 @@ describe("DocumentPreviewSheet", () => {
     );
     const { onReindex, onShowVersions } = renderSheet(buildDocument({}));
 
+    expect(await screen.findByRole("button", { name: "查看版本" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "查看版本" }));
     fireEvent.click(screen.getByRole("button", { name: "重建索引" }));
 

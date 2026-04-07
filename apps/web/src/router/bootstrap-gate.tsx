@@ -6,12 +6,11 @@ import { useEffect } from "react";
 import type { PropsWithChildren } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { useLocation } from "react-router-dom";
+import { useLocation } from "@/lib/app-router";
 
 import {
-  bootstrapSession,
+  ensureSessionBootstrap,
   markSessionAnonymous,
-  markSessionDegraded,
 } from "@/lib/auth/session-manager";
 import { useSessionStore } from "@/lib/auth/session-store";
 import { AuthDegradedPage } from "@/pages/system/auth-degraded-page";
@@ -40,17 +39,14 @@ export function AppBootstrapGate({ children }: PropsWithChildren) {
 
     let cancelled = false;
 
-    void bootstrapSession(queryClient).catch(() => {
-      if (cancelled) {
+    void ensureSessionBootstrap(queryClient, { isLoginPage }).then(() => {
+      if (cancelled || !isLoginPage) {
         return;
       }
 
-      if (isLoginPage) {
+      if (useSessionStore.getState().status === "degraded") {
         markSessionAnonymous();
-        return;
       }
-
-      markSessionDegraded();
     });
 
     return () => {

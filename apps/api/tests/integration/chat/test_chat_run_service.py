@@ -1,7 +1,22 @@
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from types import SimpleNamespace
 
+from pydantic_ai import AgentRunResultEvent
+from pydantic_ai.messages import (
+    FinalResultEvent,
+    FunctionToolCallEvent,
+    FunctionToolResultEvent,
+    PartDeltaEvent,
+    PartEndEvent,
+    PartStartEvent,
+    TextPart,
+    TextPartDelta,
+    ToolCallPart,
+    ToolReturnPart,
+)
+from pydantic_ai.usage import RunUsage
 from tests.fixtures.factories import (
     ChatRunFactory,
     ChatSessionFactory,
@@ -14,7 +29,6 @@ from knowledge_chatbox_api.repositories.chat_repository import ChatRepository
 from knowledge_chatbox_api.repositories.chat_run_event_repository import ChatRunEventRepository
 from knowledge_chatbox_api.repositories.chat_run_repository import ChatRunRepository
 from knowledge_chatbox_api.schemas.chat import ActiveChatRunRead, ChatRunRead
-from knowledge_chatbox_api.services.chat import chat_run_service as chat_run_service_module
 from knowledge_chatbox_api.services.chat.chat_run_service import ChatRunService
 from knowledge_chatbox_api.services.chat.chat_stream_presenter import ChatStreamPresenter
 from knowledge_chatbox_api.services.chat.retry_service import RetryService
@@ -45,10 +59,16 @@ def build_chat_run_service(
     *,
     response_adapter,
     event_repository: ChatRunEventRepository | None = None,
+    retrieved_sources: list[dict] | None = None,
+    workflow_factory=None,
 ):
     chat_repository = ChatRepository(migrated_db_session)
     run_repository = ChatRunRepository(migrated_db_session)
     active_event_repository = event_repository or ChatRunEventRepository(migrated_db_session)
+    active_workflow_factory = workflow_factory or build_workflow_factory(
+        response_adapter,
+        retrieved_sources=retrieved_sources,
+    )
     service = ChatRunService(
         session=migrated_db_session,
         chat_repository=chat_repository,
@@ -56,7 +76,6 @@ def build_chat_run_service(
         chat_run_event_repository=active_event_repository,
         retry_service=RetryService(chat_repository, migrated_db_session),
         chroma_store=InMemoryChromaStore(),
-        response_adapter=response_adapter,
         embedding_adapter=None,
         settings=SimpleNamespace(
             response_route={"provider": "openai", "model": "gpt-5.4"},
@@ -64,9 +83,88 @@ def build_chat_run_service(
             system_prompt=None,
             active_index_generation=1,
         ),
+        workflow_factory=active_workflow_factory,
         presenter=ChatStreamPresenter(),
     )
     return service, chat_repository, run_repository, active_event_repository
+
+
+def build_workflow_factory(response_adapter, *, retrieved_sources: list[dict] | None = None):
+    class WorkflowResultStub:
+        def __init__(self, output: str, usage: dict | None = None) -> None:
+            self.output = output
+            self._usage = usage or {}
+
+        def usage(self):
+            return RunUsage(**self._usage)
+
+    class AdapterBackedChatWorkflow:
+        def run_stream_events(
+            self,
+            *,
+            deps,
+            session_id: int,
+            question: str,
+            attachments=None,
+        ) -> AsyncIterator[object]:
+            assert session_id > 0
+            assert deps.request_metadata["path"] == "stream"
+
+            async def _events():
+                yield FunctionToolCallEvent(
+                    part=ToolCallPart("knowledge_search", {"query": question}, "call-1")
+                )
+                yield FunctionToolResultEvent(
+                    result=ToolReturnPart(
+                        "knowledge_search",
+                        {
+                            "context_sections": ["Document: source"] if retrieved_sources else [],
+                            "sources": retrieved_sources or [],
+                        },
+                        "call-1",
+                    )
+                )
+                chunks = list(
+                    response_adapter.stream_response(
+                        [{"role": "user", "content": question}],
+                        deps.runtime_settings,
+                    )
+                )
+                text_parts: list[str] = []
+                started_text = False
+                for chunk in chunks:
+                    chunk_type = getattr(chunk, "type", None)
+                    if chunk_type is None and isinstance(chunk, dict):
+                        chunk_type = chunk.get("type")
+                    if chunk_type == "text_delta":
+                        delta = getattr(chunk, "delta", None)
+                        if delta is None and isinstance(chunk, dict):
+                            delta = chunk.get("delta", "")
+                        if not started_text:
+                            yield PartStartEvent(index=0, part=TextPart(""))
+                            yield FinalResultEvent(tool_name=None, tool_call_id=None)
+                            started_text = True
+                        text_parts.append(str(delta))
+                        yield PartDeltaEvent(index=0, delta=TextPartDelta(str(delta)))
+                    elif chunk_type == "completed":
+                        usage = getattr(chunk, "usage", None)
+                        if usage is None and isinstance(chunk, dict):
+                            usage = chunk.get("usage", {})
+                        if started_text:
+                            yield PartEndEvent(index=0, part=TextPart("".join(text_parts)))
+                        yield AgentRunResultEvent(
+                            result=WorkflowResultStub("".join(text_parts), usage)
+                        )
+                        return
+                    elif chunk_type == "error":
+                        error_message = getattr(chunk, "error_message", None)
+                        if error_message is None and isinstance(chunk, dict):
+                            error_message = chunk.get("error_message")
+                        raise RuntimeError(error_message or "provider stream failed")
+
+            return _events()
+
+    return AdapterBackedChatWorkflow
 
 
 def test_chat_run_supports_full_lifecycle_states(migrated_db_session) -> None:
@@ -131,7 +229,7 @@ def test_chat_run_read_schema_supports_from_attributes(migrated_db_session) -> N
     assert active_payload.id == chat_run.id
 
 
-def test_chat_run_service_streams_runtime_events_and_persists_projection(
+def test_chat_run_service_streams_runtime_events_and_persists_retrieved_sources(
     migrated_db_session,
 ) -> None:
     class StreamingAdapterStub:
@@ -175,6 +273,153 @@ def test_chat_run_service_streams_runtime_events_and_persists_projection(
     assert assistant_message.content == "hello world"
     assert assistant_message.status == "succeeded"
     assert len(persisted_events) == len(events)
+
+
+def test_chat_run_service_streams_runtime_events_and_persists_projection(
+    migrated_db_session,
+) -> None:
+    chat_session = create_user_and_session(migrated_db_session)
+    service, chat_repository, _, event_repository = build_chat_run_service(
+        migrated_db_session,
+        response_adapter=SimpleNamespace(
+            stream_response=lambda *args, **kwargs: iter(
+                [
+                    {"type": "text_delta", "delta": "hello "},
+                    {"type": "text_delta", "delta": "world"},
+                    {"type": "completed", "usage": {"output_tokens": 2}},
+                ]
+            )
+        ),
+        retrieved_sources=[
+            {
+                "document_id": 7,
+                "document_revision_id": 11,
+                "document_name": "playbook.md",
+                "chunk_id": "chunk-1",
+                "snippet": "retrieved snippet",
+                "page_number": None,
+                "section_title": "Intro",
+                "score": 0.82,
+            }
+        ],
+    )
+
+    events = list(
+        service.stream_run(
+            session_id=chat_session.id,
+            content="question",
+            client_request_id="req-stream-pydanticai-1",
+        )
+    )
+
+    messages = chat_repository.list_messages(chat_session.id)
+    assistant_message = next(message for message in messages if message.role == "assistant")
+    persisted_events = event_repository.list_for_run(events[0]["data"]["run_id"])
+
+    assert [event["event"] for event in events] == [
+        "run.started",
+        "message.started",
+        "tool.call",
+        "tool.result",
+        "part.source",
+        "part.text.start",
+        "part.text.delta",
+        "part.text.delta",
+        "part.text.end",
+        "usage.final",
+        "message.completed",
+        "run.completed",
+    ]
+    assert assistant_message.content == "hello world"
+    assert assistant_message.status == "succeeded"
+    assert assistant_message.sources_json == [
+        {
+            "document_id": 7,
+            "document_revision_id": 11,
+            "document_name": "playbook.md",
+            "chunk_id": "chunk-1",
+            "snippet": "retrieved snippet",
+            "page_number": None,
+            "section_title": "Intro",
+            "score": 0.82,
+        }
+    ]
+    assert len(persisted_events) == len(events)
+
+
+def test_chat_run_service_replays_existing_run_for_duplicate_retry_client_request_id(
+    migrated_db_session,
+) -> None:
+    class StreamingAdapterStub:
+        def __init__(self) -> None:
+            self.stream_calls = 0
+
+        def stream_response(self, messages, settings):
+            del messages, settings
+            self.stream_calls += 1
+            yield SimpleNamespace(type="text_delta", delta="hello ")
+            yield SimpleNamespace(type="text_delta", delta="again")
+            yield SimpleNamespace(type="completed", usage={"output_tokens": 2})
+
+    adapter = StreamingAdapterStub()
+    chat_session = create_user_and_session(migrated_db_session)
+    service, chat_repository, _, event_repository = build_chat_run_service(
+        migrated_db_session,
+        response_adapter=adapter,
+    )
+    original_message = chat_repository.create_message(
+        session_id=chat_session.id,
+        role="user",
+        content="question",
+        status="failed",
+        client_request_id="req-original-failed",
+    )
+    migrated_db_session.commit()
+    migrated_db_session.refresh(original_message)
+
+    first_events = list(
+        service.stream_run(
+            session_id=chat_session.id,
+            content="question",
+            client_request_id="req-retry-idempotent-1",
+            retry_of_message_id=original_message.id,
+        )
+    )
+    second_events = list(
+        service.stream_run(
+            session_id=chat_session.id,
+            content="question",
+            client_request_id="req-retry-idempotent-1",
+            retry_of_message_id=original_message.id,
+        )
+    )
+
+    first_run_id = first_events[0]["data"]["run_id"]
+    second_run_id = second_events[0]["data"]["run_id"]
+    messages = chat_repository.list_messages(chat_session.id)
+    retried_messages = [
+        message
+        for message in messages
+        if message.role == "user" and message.retry_of_message_id == original_message.id
+    ]
+    persisted_events = event_repository.list_for_run(first_run_id)
+
+    assert first_run_id == second_run_id
+    assert adapter.stream_calls == 1
+    assert len(retried_messages) == 1
+    assert [event.event_type for event in persisted_events] == [
+        "run.started",
+        "message.started",
+        "tool.call",
+        "tool.result",
+        "part.text.start",
+        "part.text.delta",
+        "part.text.delta",
+        "part.text.end",
+        "usage.final",
+        "message.completed",
+        "run.completed",
+    ]
 
 
 def test_chat_run_service_marks_run_failed_when_stream_is_closed_early(
@@ -293,34 +538,22 @@ def test_chat_run_service_keeps_retrieved_sources_when_provider_returns_error(
             del messages, settings
             yield SimpleNamespace(type="error", error_message="provider stream failed")
 
-    class FakeChatService:
-        def __init__(self, **kwargs) -> None:
-            del kwargs
-
-        def build_prompt_messages_and_sources(self, session_id, question, *, attachments=None):
-            del session_id, question, attachments
-            return (
-                [{"role": "user", "content": "question"}],
-                [
-                    {
-                        "document_id": 7,
-                        "document_revision_id": 11,
-                        "document_name": "playbook.md",
-                        "chunk_id": "chunk-1",
-                        "snippet": "retrieved snippet",
-                        "page_number": None,
-                        "section_title": "Intro",
-                        "score": 0.82,
-                    }
-                ],
-            )
-
-    monkeypatch.setattr(chat_run_service_module, "ChatService", FakeChatService)
-
     chat_session = create_user_and_session(migrated_db_session)
     service, chat_repository, run_repository, event_repository = build_chat_run_service(
         migrated_db_session,
         response_adapter=ProviderErrorStreamingAdapterStub(),
+        retrieved_sources=[
+            {
+                "document_id": 7,
+                "document_revision_id": 11,
+                "document_name": "playbook.md",
+                "chunk_id": "chunk-1",
+                "snippet": "retrieved snippet",
+                "page_number": None,
+                "section_title": "Intro",
+                "score": 0.82,
+            }
+        ],
     )
 
     events = list(
@@ -372,34 +605,22 @@ def test_chat_run_service_keeps_retrieved_sources_when_stream_is_closed_after_so
             del messages, settings
             raise AssertionError("provider stream should not start after source events are closed")
 
-    class FakeChatService:
-        def __init__(self, **kwargs) -> None:
-            del kwargs
-
-        def build_prompt_messages_and_sources(self, session_id, question, *, attachments=None):
-            del session_id, question, attachments
-            return (
-                [{"role": "user", "content": "question"}],
-                [
-                    {
-                        "document_id": 9,
-                        "document_revision_id": 13,
-                        "document_name": "notes.md",
-                        "chunk_id": "chunk-2",
-                        "snippet": "cached source snippet",
-                        "page_number": None,
-                        "section_title": "Scope",
-                        "score": 0.74,
-                    }
-                ],
-            )
-
-    monkeypatch.setattr(chat_run_service_module, "ChatService", FakeChatService)
-
     chat_session = create_user_and_session(migrated_db_session)
     service, chat_repository, run_repository, _ = build_chat_run_service(
         migrated_db_session,
         response_adapter=ShouldNotReachProviderAdapterStub(),
+        retrieved_sources=[
+            {
+                "document_id": 9,
+                "document_revision_id": 13,
+                "document_name": "notes.md",
+                "chunk_id": "chunk-2",
+                "snippet": "cached source snippet",
+                "page_number": None,
+                "section_title": "Scope",
+                "score": 0.74,
+            }
+        ],
     )
 
     stream = service.stream_run(

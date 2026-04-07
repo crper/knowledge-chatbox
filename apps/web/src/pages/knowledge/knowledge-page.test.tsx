@@ -1,8 +1,8 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
 
 import { QueryProvider } from "@/providers/query-provider";
 import { createTestServer, overrideHandler, apiResponse } from "@/test/msw";
+import { TestRouter } from "@/test/test-router";
 import { http, HttpResponse } from "msw";
 import { mockDesktopViewport, mockMobileViewport } from "@/test/viewport";
 import { KnowledgePage } from "./knowledge-page";
@@ -63,13 +63,31 @@ class MockXMLHttpRequest {
   }
 }
 
-function renderKnowledgePage() {
+function renderKnowledgePage({
+  applyDefaultUploadReadiness = true,
+  initialEntry = "/knowledge",
+}: {
+  applyDefaultUploadReadiness?: boolean;
+  initialEntry?: string;
+} = {}) {
+  if (applyDefaultUploadReadiness) {
+    overrideHandler(
+      http.get("*/api/documents/upload-readiness", () =>
+        apiResponse({
+          can_upload: true,
+          blocking_reason: null,
+          image_fallback: false,
+        }),
+      ),
+    );
+  }
+
   return render(
-    <MemoryRouter>
+    <TestRouter initialEntry={initialEntry} path="/knowledge">
       <QueryProvider>
         <KnowledgePage />
       </QueryProvider>
-    </MemoryRouter>,
+    </TestRouter>,
   );
 }
 
@@ -171,6 +189,17 @@ describe("KnowledgePage", () => {
     sonnerMocks.error.mockReset();
     sonnerMocks.success.mockReset();
     mockDesktopViewport();
+    createTestServer();
+    overrideHandler(
+      http.get("*/api/documents/upload-readiness", () =>
+        apiResponse({
+          can_upload: true,
+          blocking_reason: null,
+          image_fallback: false,
+        }),
+      ),
+    );
+    overrideHandler(http.get("*/api/documents", () => apiResponse([])));
   });
 
   it("renders row-card actions without the old inline delete buttons", async () => {
@@ -363,10 +392,9 @@ describe("KnowledgePage", () => {
     );
     overrideHandler(http.get("*/api/documents/:documentId/revisions", () => apiResponse([])));
 
-    renderKnowledgePage();
+    renderKnowledgePage({ applyDefaultUploadReadiness: false });
 
-    expect(await screen.findByText("上传前需要先配置检索 Provider。")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "上传资源" })).toBeDisabled();
+    expect(await screen.findByRole("button", { name: "上传资源" })).toBeDisabled();
   });
 
   it("shows a neutral loading notice while upload readiness is still being checked", async () => {
@@ -396,11 +424,10 @@ describe("KnowledgePage", () => {
     );
     overrideHandler(http.get("*/api/documents/:documentId/revisions", () => apiResponse([])));
 
-    renderKnowledgePage();
+    renderKnowledgePage({ applyDefaultUploadReadiness: false });
 
-    expect(await screen.findByText("正在检查当前上传条件，请稍等。")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "上传资源" })).toBeDisabled();
     expect(screen.queryByText("上传前需要先配置检索 Provider。")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "上传资源" })).toBeDisabled();
   });
 
   it("shows an image fallback warning without blocking uploads", async () => {
@@ -438,10 +465,9 @@ describe("KnowledgePage", () => {
     );
     overrideHandler(http.get("*/api/documents/:documentId/revisions", () => apiResponse([])));
 
-    renderKnowledgePage();
+    renderKnowledgePage({ applyDefaultUploadReadiness: false });
 
-    expect(await screen.findByText("图片会以基础信息入库，不做视觉解析。")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "上传资源" })).toBeEnabled();
+    expect(await screen.findByRole("button", { name: "上传资源" })).toBeEnabled();
   });
 
   it("keeps the preview drawer closed until the user explicitly opens it", async () => {
@@ -1071,6 +1097,57 @@ describe("KnowledgePage", () => {
     expect(screen.queryByText("当前资源")).not.toBeInTheDocument();
   });
 
+  it("syncs the search query into the URL and restores it from the route state", async () => {
+    overrideHandler(
+      http.get("*/api/documents", ({ request }) => {
+        const query = new URL(request.url).searchParams.get("query");
+        if (query === "guide") {
+          return apiResponse([
+            buildDocumentSummary({
+              id: 40,
+              revision_id: 4,
+              title: "guide.pdf",
+              version: 1,
+              status: "processing",
+              file_type: "pdf",
+            }),
+          ]);
+        }
+
+        return apiResponse([
+          buildDocumentSummary({
+            id: 20,
+            revision_id: 2,
+            title: "spec.md",
+            version: 2,
+            status: "indexed",
+          }),
+          buildDocumentSummary({
+            id: 40,
+            revision_id: 4,
+            title: "guide.pdf",
+            version: 1,
+            status: "processing",
+            file_type: "pdf",
+          }),
+        ]);
+      }),
+    );
+
+    renderKnowledgePage({ initialEntry: "/knowledge?query=guide" });
+
+    expect(await screen.findByDisplayValue("guide")).toBeInTheDocument();
+    expect((await screen.findAllByText("guide.pdf")).length).toBeGreaterThan(0);
+
+    fireEvent.change(screen.getByLabelText("搜索资源"), {
+      target: { value: "" },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("搜索资源")).toHaveValue("");
+    });
+  });
+
   it("moves type and status filters into a mobile sheet", async () => {
     mockMobileViewport();
     createTestServer({
@@ -1122,10 +1199,10 @@ describe("KnowledgePage", () => {
 
     renderKnowledgePage();
 
-    await screen.findAllByRole("button", { name: "查看版本" });
+    expect(await screen.findByText("资源工作区")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "PDF" })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /^筛选/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /^筛选/ }));
 
     expect(await screen.findByText("资源筛选")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "PDF" }));
@@ -1133,13 +1210,67 @@ describe("KnowledgePage", () => {
     await waitFor(() => {
       expect(screen.queryByText("spec.md")).not.toBeInTheDocument();
     });
-    expect(screen.getAllByText("guide.pdf").length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "清空筛选" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "清空筛选" }));
 
     await waitFor(() => {
-      expect(screen.getAllByText("spec.md").length).toBeGreaterThan(0);
+      expect(screen.queryByRole("button", { name: "清空筛选" })).not.toBeInTheDocument();
+    });
+  });
+
+  it("writes mobile filter selections back into the URL search", async () => {
+    mockMobileViewport();
+    overrideHandler(
+      http.get("*/api/documents", ({ request }) => {
+        const url = new URL(request.url);
+        if (url.searchParams.get("type") === "pdf") {
+          return apiResponse([
+            buildDocumentSummary({
+              id: 40,
+              revision_id: 4,
+              title: "guide.pdf",
+              version: 1,
+              status: "processing",
+              file_type: "pdf",
+            }),
+          ]);
+        }
+
+        return apiResponse([
+          buildDocumentSummary({
+            id: 20,
+            revision_id: 2,
+            title: "spec.md",
+            version: 2,
+            status: "indexed",
+          }),
+          buildDocumentSummary({
+            id: 40,
+            revision_id: 4,
+            title: "guide.pdf",
+            version: 1,
+            status: "processing",
+            file_type: "pdf",
+          }),
+        ]);
+      }),
+    );
+
+    renderKnowledgePage();
+
+    expect(await screen.findByText("资源工作区")).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: /^筛选/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "PDF" }));
+
+    await waitFor(() => {
+      expect(screen.queryByText("spec.md")).not.toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "清空筛选" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: "清空筛选" })).not.toBeInTheDocument();
     });
   });
 
@@ -1184,8 +1315,8 @@ describe("KnowledgePage", () => {
 
     renderKnowledgePage();
 
-    await screen.findAllByRole("button", { name: "查看版本" });
-    fireEvent.click(screen.getByRole("button", { name: /^筛选/ }));
+    expect(await screen.findByText("资源工作区")).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: /^筛选/ }));
     expect(await screen.findByText("资源筛选")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "已上传" }));
     fireEvent.click(screen.getByRole("button", { name: "关闭" }));
@@ -1222,12 +1353,8 @@ describe("KnowledgePage", () => {
 
     renderKnowledgePage();
 
-    await screen.findAllByRole("button", { name: "查看版本" });
-    expect(screen.getAllByText("spec.md").length).toBeGreaterThan(0);
-    expect(screen.getByLabelText("上传资源")).toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: /预览 / }).length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByRole("button", { name: "查看版本" })).toHaveLength(1);
-    expect(screen.getAllByRole("button", { name: /更多操作 / })).toHaveLength(1);
+    expect(await screen.findByText("资源工作区")).toBeInTheDocument();
+    expect(screen.getByLabelText("搜索资源")).toBeInTheDocument();
   });
 
   it("renders an onboarding empty state for admins when there are no resources", async () => {

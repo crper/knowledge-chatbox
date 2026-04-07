@@ -5,6 +5,7 @@
 import { mutationOptions, queryOptions, type QueryClient } from "@tanstack/react-query";
 
 import { queryKeys } from "@/lib/api/query-keys";
+import { useSessionStore } from "@/lib/auth/session-store";
 import { changePassword, getCurrentUser, updatePreferences } from "./auth";
 
 /**
@@ -15,6 +16,17 @@ export function currentUserQueryOptions() {
     queryKey: queryKeys.auth.me,
     queryFn: getCurrentUser,
     staleTime: 60 * 1000,
+  });
+}
+
+export async function fetchCurrentUserIfAuthenticated(queryClient: QueryClient) {
+  if (useSessionStore.getState().status !== "authenticated") {
+    return null;
+  }
+
+  return queryClient.fetchQuery({
+    ...currentUserQueryOptions(),
+    retry: false,
   });
 }
 

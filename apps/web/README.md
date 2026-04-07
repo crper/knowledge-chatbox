@@ -37,14 +37,15 @@
 - React 19
 - TypeScript
 - Vite+
-- React Router
+- TanStack Router
 - TanStack Query
 - TanStack Form
+- TanStack Devtools（开发态）
 - react-virtuoso
 - Zustand
 - openapi-typescript / openapi-fetch
 - i18next
-- shadcn/ui
+- Base UI
 - Tailwind CSS 4
 - Streamdown
 
@@ -73,6 +74,7 @@ vp build
 - `vp run api:check` / `just web-check` 如果提示 OpenAPI snapshot 或生成类型过期，标准修复入口就是 `vp run api:generate`
 - `vp test` 跑前端测试
 - `vp build` 产出生产构建
+- `vp dev` 当前会自动挂载 TanStack Devtools 聚合面板，统一查看 Query / Router / Form 状态；Vitest 和生产构建里不会渲染这层开发工具
 
 如果你要的是本地单机稳定运行，不要继续把 `vp dev` 当成部署入口，请回到仓库根目录看 [README.md](../../README.md) 的 Docker / 单机部署部分，入口是 `just docker-up`。
 
@@ -96,14 +98,14 @@ vp build
 
 ### 主要页面
 
-| 页面   | 作用                                                                     | 主要代码入口                             |
-| ------ | ------------------------------------------------------------------------ | ---------------------------------------- |
-| 登录页 | 登录、主题/语言切换、登录前后偏好衔接                                    | `src/pages/auth/login-page.tsx`          |
-| 对话页 | 会话、分页消息窗口、同步/流式问答、附件面板、图片 viewer、右栏上下文摘要 | `src/pages/chat/chat-page.tsx`           |
-| 资源页 | 上传、资源列表、预览抽屉、版本详情、重建索引                             | `src/pages/knowledge/knowledge-page.tsx` |
-| 设置页 | 提供商配置、系统提示词、偏好与账号安全                                   | `src/pages/settings/settings-page.tsx`   |
-| 用户页 | 管理员用户管理                                                           | `src/pages/users/users-page.tsx`         |
-| 系统页 | 认证降级页与 `403` 页面                                                  | `src/pages/system/*`                     |
+| 页面   | 作用                                                                                   | 主要代码入口                             |
+| ------ | -------------------------------------------------------------------------------------- | ---------------------------------------- |
+| 登录页 | 登录、主题/语言切换、登录前后偏好衔接                                                  | `src/pages/auth/login-page.tsx`          |
+| 对话页 | 会话、分页消息窗口、同步/流式问答、附件面板、图片 viewer、右栏上下文摘要               | `src/pages/chat/chat-page.tsx`           |
+| 资源页 | 上传、资源列表、预览抽屉、版本详情、重建索引，筛选状态由 `/knowledge` 路由 search 驱动 | `src/pages/knowledge/knowledge-page.tsx` |
+| 设置页 | 提供商配置、系统提示词、偏好与账号安全                                                 | `src/pages/settings/settings-page.tsx`   |
+| 用户页 | 管理员用户管理                                                                         | `src/pages/users/users-page.tsx`         |
+| 系统页 | 认证降级页与 `403` 页面                                                                | `src/pages/system/*`                     |
 
 ## 工程结构
 
@@ -114,9 +116,11 @@ apps/web/
   src/
     app.tsx                    # 应用根壳
     main.tsx                   # 浏览器入口
-    router.tsx                 # 路由与顶层守卫
-    router/                    # 启动门禁与路由守卫
-    providers/                 # Query / Theme / i18n / Router provider
+    tanstack-router.tsx        # TanStack Router 实例工厂
+    routeTree.gen.ts           # TanStack Router plugin 生成的 route tree
+    routes/                    # file-based routes，定义 URL 契约、redirect、guard
+    router/                    # 启动门禁与共享 route shell
+    providers/                 # Query / Theme / i18n / Router / Devtools provider
     layouts/                   # 应用壳层与面板编排
     pages/                     # 路由入口与页面装配层
     features/
@@ -135,7 +139,7 @@ apps/web/
                                # 其他 API / config / hooks / store / utils
     i18n/                      # 中英文文案
     styles/                    # 全局样式与设计 token
-    test/                      # 测试初始化
+    test/                      # 测试初始化与路由测试 helper
 ```
 
 ## 目录约定
@@ -191,9 +195,9 @@ apps/web/
 
 ### 想看页面怎么拼
 
-1. `src/router.tsx`
+1. `src/routes/**/*`
 2. `src/router/bootstrap-gate.tsx`
-3. `src/router/guards.tsx`
+3. `src/router/route-shells.tsx`
 4. `src/layouts/app-shell-layout.tsx`
 5. `src/pages/*`
 
@@ -226,6 +230,12 @@ apps/web/
   - `knowledge.ts` - 资源相关 handlers
 - `src/test/msw/utils.ts` - 测试工具函数
 - `src/test/setup.ts` - 测试环境设置
+
+### 路由测试约定
+
+- `src/test/render-route.tsx`：整页 / 路由契约测试，直接挂真实 TanStack Router route tree
+- `src/test/test-router.tsx`：组件级测试，只补最小 path / params / search 上下文
+- 不再引入 `react-router-dom` 作为前端运行时或测试路由容器
 
 ### 基本使用
 

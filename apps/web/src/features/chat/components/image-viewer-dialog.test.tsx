@@ -109,7 +109,7 @@ describe("ImageViewerDialog", () => {
     fireEvent.keyDown(document, { key: "Escape" });
 
     await waitFor(() => {
-      expect(onOpenChange).toHaveBeenCalledWith(false);
+      expect(onOpenChange).toHaveBeenCalledWith(false, expect.anything());
     });
   });
 });

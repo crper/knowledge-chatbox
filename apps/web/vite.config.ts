@@ -1,5 +1,6 @@
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import { defineConfig } from "vite-plus";
 
 const srcDir = new URL("./src", import.meta.url).pathname;
@@ -7,7 +8,14 @@ const srcDir = new URL("./src", import.meta.url).pathname;
 export default defineConfig({
   envDir: "../..",
   lint: { options: { typeAware: true, typeCheck: true } },
-  plugins: [react(), tailwindcss()],
+  plugins: [
+    tanstackRouter({
+      autoCodeSplitting: true,
+      target: "react",
+    }),
+    react(),
+    tailwindcss(),
+  ],
   resolve: {
     alias: {
       "@": srcDir,

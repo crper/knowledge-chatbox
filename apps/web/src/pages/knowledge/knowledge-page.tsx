@@ -11,9 +11,9 @@ import {
   SlidersHorizontalIcon,
   UploadIcon,
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
 
 import { FileDropzone } from "@/components/upload/file-dropzone";
+import { useLocation, useNavigate } from "@/lib/app-router";
 import { WorkspaceMetricCard, WorkspacePage } from "@/components/shared/workspace-page";
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
@@ -55,34 +55,31 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import type {
   KnowledgeDocument,
-  KnowledgeDocumentListType,
   KnowledgeDocumentStatus,
 } from "@/features/knowledge/api/documents";
+import { KNOWLEDGE_DOCUMENT_STATUSES } from "@/features/knowledge/api/documents";
 import { DocumentPreviewSheet } from "@/features/knowledge/components/document-preview-sheet";
 import { ResourceDocumentList } from "@/features/knowledge/components/resource-document-list";
 import { SelectedResourceBand } from "@/features/knowledge/components/selected-resource-band";
+import {
+  buildKnowledgeRoutePath,
+  KNOWLEDGE_TYPE_FILTER_VALUES,
+  normalizeKnowledgeRouteSearch,
+  readKnowledgeRouteSearch,
+} from "@/features/knowledge/route-search";
 import { UploadQueueSummary } from "@/features/knowledge/components/upload-queue-summary";
 import { useKnowledgeWorkspace } from "@/features/knowledge/hooks/use-knowledge-workspace";
 import { VersionDrawer } from "@/features/knowledge/components/version-drawer";
 import { useIsMobile } from "@/lib/hooks/use-mobile";
+import { buildSettingsPath } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 
-type ResourceTypeFilter = "all" | KnowledgeDocumentListType;
+type ResourceTypeFilter = "all" | (typeof KNOWLEDGE_TYPE_FILTER_VALUES)[number];
 
-const TYPE_FILTER_VALUES: ResourceTypeFilter[] = [
-  "all",
-  "document",
-  "image",
-  "markdown",
-  "pdf",
-  "text",
-];
+const TYPE_FILTER_VALUES: ResourceTypeFilter[] = ["all", ...KNOWLEDGE_TYPE_FILTER_VALUES];
 const STATUS_FILTER_VALUES: Array<"all" | KnowledgeDocumentStatus> = [
   "all",
-  "uploaded",
-  "processing",
-  "indexed",
-  "failed",
+  ...KNOWLEDGE_DOCUMENT_STATUSES,
 ];
 
 function getTypeFilterLabel(value: ResourceTypeFilter, t: (key: string) => string) {
@@ -101,27 +98,26 @@ function getStatusFilterLabel(value: "all" | KnowledgeDocumentStatus, t: (key: s
 export function KnowledgePage() {
   const { t } = useTranslation("knowledge");
   const isMobile = useIsMobile();
+  const location = useLocation();
   const navigate = useNavigate();
   const [pendingDeleteDocument, setPendingDeleteDocument] = useState<KnowledgeDocument | null>(
     null,
   );
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
-  const [searchValue, setSearchValue] = useState("");
+  const routeSearch = useMemo(
+    () => readKnowledgeRouteSearch(new URLSearchParams(location.search)),
+    [location.search],
+  );
+  const routeQuery = routeSearch.query ?? "";
+  const [searchValue, setSearchValue] = useState(routeQuery);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [selectedDocumentId, setSelectedDocumentId] = useState<number | null>(null);
-  const [typeFilter, setTypeFilter] = useState<ResourceTypeFilter>("all");
-  const [statusFilter, setStatusFilter] = useState<"all" | KnowledgeDocumentStatus>("all");
   const deferredSearchValue = useDeferredValue(searchValue);
   const hadDocumentsRef = useRef(false);
   const [filterTransitioning, setFilterTransitioning] = useState(false);
-  const documentFilters = useMemo(
-    () => ({
-      query: deferredSearchValue,
-      status: statusFilter === "all" ? undefined : statusFilter,
-      type: typeFilter === "all" ? undefined : typeFilter,
-    }),
-    [deferredSearchValue, statusFilter, typeFilter],
-  );
+  const typeFilter = (routeSearch.type ?? "all") as ResourceTypeFilter;
+  const statusFilter = (routeSearch.status ?? "all") as "all" | KnowledgeDocumentStatus;
+  const documentFilters = useMemo(() => normalizeKnowledgeRouteSearch(routeSearch), [routeSearch]);
   const {
     canManageDocuments,
     canManageProviderSettings,
@@ -178,6 +174,27 @@ export function KnowledgePage() {
   );
 
   useEffect(() => {
+    setSearchValue((currentValue) => (currentValue === routeQuery ? currentValue : routeQuery));
+  }, [routeQuery]);
+
+  useEffect(() => {
+    const nextQuery = deferredSearchValue.trim() || undefined;
+    if ((routeSearch.query ?? undefined) === nextQuery) {
+      return;
+    }
+
+    void navigate(
+      buildKnowledgeRoutePath(
+        normalizeKnowledgeRouteSearch({
+          ...routeSearch,
+          query: nextQuery,
+        }),
+      ),
+      { replace: true },
+    );
+  }, [deferredSearchValue, navigate, routeSearch, routeSearch.query]);
+
+  useEffect(() => {
     if (selectedDocumentId === null) {
       return;
     }
@@ -204,7 +221,7 @@ export function KnowledgePage() {
     if (hadDocumentsRef.current) {
       setFilterTransitioning(true);
     }
-  }, [documentFilters]);
+  }, [documentFilters.query, documentFilters.status, documentFilters.type]);
 
   const openPreviewForDocument = (document: KnowledgeDocument) => {
     setSelectedDocumentId(document.id);
@@ -219,8 +236,8 @@ export function KnowledgePage() {
   };
 
   const clearFilters = () => {
-    setTypeFilter("all");
-    setStatusFilter("all");
+    setSearchValue("");
+    void navigate("/knowledge");
   };
 
   const renderUploadReadinessAlert = () => {
@@ -245,7 +262,7 @@ export function KnowledgePage() {
           {canManageProviderSettings ? (
             <AlertAction>
               <Button
-                onClick={() => navigate("/settings?section=providers")}
+                onClick={() => navigate(buildSettingsPath("providers"))}
                 size="sm"
                 type="button"
                 variant="outline"
@@ -353,7 +370,16 @@ export function KnowledgePage() {
               {TYPE_FILTER_VALUES.map((value) => (
                 <Button
                   key={value}
-                  onClick={() => setTypeFilter(value)}
+                  onClick={() =>
+                    void navigate(
+                      buildKnowledgeRoutePath(
+                        normalizeKnowledgeRouteSearch({
+                          ...routeSearch,
+                          type: value === "all" ? undefined : value,
+                        }),
+                      ),
+                    )
+                  }
                   size="sm"
                   type="button"
                   variant={typeFilter === value ? "default" : "outline"}
@@ -373,7 +399,16 @@ export function KnowledgePage() {
               {STATUS_FILTER_VALUES.map((value) => (
                 <Button
                   key={value}
-                  onClick={() => setStatusFilter(value)}
+                  onClick={() =>
+                    void navigate(
+                      buildKnowledgeRoutePath(
+                        normalizeKnowledgeRouteSearch({
+                          ...routeSearch,
+                          status: value === "all" ? undefined : value,
+                        }),
+                      ),
+                    )
+                  }
                   size="sm"
                   type="button"
                   variant={statusFilter === value ? "secondary" : "outline"}
@@ -529,7 +564,16 @@ export function KnowledgePage() {
                         {TYPE_FILTER_VALUES.map((value) => (
                           <Button
                             key={value}
-                            onClick={() => setTypeFilter(value)}
+                            onClick={() =>
+                              void navigate(
+                                buildKnowledgeRoutePath(
+                                  normalizeKnowledgeRouteSearch({
+                                    ...routeSearch,
+                                    type: value === "all" ? undefined : value,
+                                  }),
+                                ),
+                              )
+                            }
                             size="xs"
                             type="button"
                             variant={typeFilter === value ? "default" : "outline"}
@@ -546,7 +590,14 @@ export function KnowledgePage() {
                         }))}
                         value={statusFilter}
                         onValueChange={(value) =>
-                          setStatusFilter(value as "all" | KnowledgeDocumentStatus)
+                          void navigate(
+                            buildKnowledgeRoutePath(
+                              normalizeKnowledgeRouteSearch({
+                                ...routeSearch,
+                                status: value === "all" ? undefined : value,
+                              }),
+                            ),
+                          )
                         }
                       >
                         <SelectTrigger

@@ -40,6 +40,38 @@ export function useChatStreamLifecycle({
   const failRun = useChatStreamStore((state) => state.failRun);
   const pruneRuns = useChatStreamStore((state) => state.pruneRuns);
 
+  const patchRetriedUserMessage = useCallback(
+    ({ sessionId, userMessageId }: { sessionId: number; userMessageId: number }) => {
+      queryClient.setQueryData<InfiniteData<ChatMessageItem[], number | null>>(
+        queryKeys.chat.messagesWindow(sessionId),
+        (current) => {
+          if (!current || typeof current !== "object" || !("pages" in current)) {
+            return current;
+          }
+
+          let patched = false;
+          const nextPages = current.pages.map((page) =>
+            page.map((message) => {
+              if (message.id !== userMessageId || message.role !== "user") {
+                return message;
+              }
+
+              patched = true;
+              return {
+                ...message,
+                error_message: null,
+                status: "succeeded",
+              } satisfies ChatMessageItem;
+            }),
+          );
+
+          return patched ? { ...current, pages: nextPages } : current;
+        },
+      );
+    },
+    [queryClient],
+  );
+
   const buildTerminalMessages = useCallback(
     ({
       errorMessage,
@@ -61,6 +93,10 @@ export function useChatStreamLifecycle({
       };
 
       if (run.userMessageId === null) {
+        return [assistantMessage];
+      }
+
+      if (run.retryOfMessageId != null) {
         return [assistantMessage];
       }
 
@@ -113,6 +149,13 @@ export function useChatStreamLifecycle({
             });
 
       if (currentRun != null) {
+        if (status === "succeeded" && currentRun.retryOfMessageId != null) {
+          patchRetriedUserMessage({
+            sessionId,
+            userMessageId: currentRun.retryOfMessageId,
+          });
+        }
+
         patchSessionContext({
           latestAssistantMessageId: currentRun.assistantMessageId,
           latestAssistantSources:
@@ -132,7 +175,14 @@ export function useChatStreamLifecycle({
         }
       });
     },
-    [buildTerminalMessages, currentSessionIdRef, patchSessionContext, pruneRuns, queryClient],
+    [
+      buildTerminalMessages,
+      currentSessionIdRef,
+      patchRetriedUserMessage,
+      patchSessionContext,
+      pruneRuns,
+      queryClient,
+    ],
   );
 
   const sendMutation = useMutation({
@@ -175,7 +225,7 @@ export function useChatStreamLifecycle({
                 userContent: content,
               });
 
-              if (userMessageId !== null) {
+              if (userMessageId !== null && retryOfMessageId == null) {
                 queryClient.setQueryData<InfiniteData<ChatMessageItem[], number | null>>(
                   queryKeys.chat.messagesWindow(sessionId),
                   (current) => {

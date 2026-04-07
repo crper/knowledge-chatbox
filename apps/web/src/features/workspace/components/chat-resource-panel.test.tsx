@@ -1,6 +1,5 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 import type {
   ChatAttachmentItem,
@@ -11,6 +10,7 @@ import { useChatUiStore } from "@/features/chat/store/chat-ui-store";
 import { http } from "msw";
 import { apiResponse, overrideHandler } from "@/test/msw";
 import { createTestQueryClient } from "@/test/query-client";
+import { TestRouter } from "@/test/test-router";
 import { ChatResourcePanel } from "./chat-resource-panel";
 
 function buildImageAttachment(name: string): ChatAttachmentItem {
@@ -77,18 +77,11 @@ function renderResourcePanel() {
   });
 
   render(
-    <MemoryRouter initialEntries={["/chat/1"]}>
-      <Routes>
-        <Route
-          element={
-            <QueryClientProvider client={queryClient}>
-              <ChatResourcePanel />
-            </QueryClientProvider>
-          }
-          path="/chat/:sessionId"
-        />
-      </Routes>
-    </MemoryRouter>,
+    <TestRouter initialEntry="/chat/1" path="/chat/:sessionId">
+      <QueryClientProvider client={queryClient}>
+        <ChatResourcePanel />
+      </QueryClientProvider>
+    </TestRouter>,
   );
 }
 
@@ -113,18 +106,11 @@ describe("ChatResourcePanel", () => {
     });
 
     render(
-      <MemoryRouter initialEntries={["/chat"]}>
-        <Routes>
-          <Route
-            element={
-              <QueryClientProvider client={queryClient}>
-                <ChatResourcePanel />
-              </QueryClientProvider>
-            }
-            path="/chat"
-          />
-        </Routes>
-      </MemoryRouter>,
+      <TestRouter initialEntry="/chat" path="/chat">
+        <QueryClientProvider client={queryClient}>
+          <ChatResourcePanel />
+        </QueryClientProvider>
+      </TestRouter>,
     );
   });
 

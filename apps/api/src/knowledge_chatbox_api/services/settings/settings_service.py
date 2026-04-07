@@ -14,6 +14,7 @@ from knowledge_chatbox_api.models.settings import (
     DEFAULT_PROVIDER_PROFILES,
     AppSettings,
 )
+from knowledge_chatbox_api.providers.ollama_url import normalize_ollama_base_url
 from knowledge_chatbox_api.repositories.settings_repository import SettingsRepository
 from knowledge_chatbox_api.schemas._validators import ReasoningModeLiteral
 from knowledge_chatbox_api.schemas.settings import (
@@ -79,6 +80,7 @@ class SettingsService:
         self.session = session
         self.settings = settings
         self.repository = SettingsRepository(session)
+        self._settings_record_cache: AppSettings | None = None
 
     def get_or_create_settings(self) -> SettingsRead:
         settings_record = self.get_or_create_settings_record()
@@ -127,12 +129,16 @@ class SettingsService:
         )
 
     def get_or_create_settings_record(self) -> AppSettings:
+        if self._settings_record_cache is not None:
+            return self._settings_record_cache
+
         settings_record = self.repository.get()
         if settings_record is None:
             settings_record = self._build_initial_settings_record()
             self.repository.save(settings_record)
             self.session.commit()
             self.session.refresh(settings_record)
+        self._settings_record_cache = settings_record
         return settings_record
 
     def update_settings(
@@ -145,9 +151,7 @@ class SettingsService:
             raise AuthorizationError("Admin permission required.")
 
         update_request = self._normalize_update_request(payload)
-        settings_record = self.repository.get()
-        if settings_record is None:
-            settings_record = self.repository.save(self._build_initial_settings_record())
+        settings_record = self.get_or_create_settings_record()
 
         previous_effective_embedding_route = self._effective_embedding_route(settings_record)
         (
@@ -195,6 +199,7 @@ class SettingsService:
         settings_record.updated_by_user_id = actor.id
         self.session.commit()
         self.session.refresh(settings_record)
+        self._settings_record_cache = settings_record
         return self._to_read(
             settings_record,
             rebuild_started=rebuild_started,
@@ -263,7 +268,9 @@ class SettingsService:
         provider_profiles["voyage"]["embedding_model"] = (
             self.settings.initial_voyage_embedding_model
         )
-        provider_profiles["ollama"]["base_url"] = self.settings.initial_ollama_base_url
+        provider_profiles["ollama"]["base_url"] = normalize_ollama_base_url(
+            self.settings.initial_ollama_base_url
+        )
         provider_profiles["ollama"]["chat_model"] = self.settings.initial_ollama_chat_model
         provider_profiles["ollama"]["embedding_model"] = (
             self.settings.initial_ollama_embedding_model
@@ -416,6 +423,9 @@ class SettingsService:
             if not isinstance(provider_payload, dict):
                 continue
             normalized.setdefault(provider_name, {}).update(provider_payload)
+        normalized["ollama"]["base_url"] = normalize_ollama_base_url(
+            normalized["ollama"].get("base_url")
+        )
         return normalized
 
     def _sync_route_models_to_profiles(

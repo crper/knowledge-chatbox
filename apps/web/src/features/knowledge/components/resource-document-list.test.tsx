@@ -104,7 +104,7 @@ describe("ResourceDocumentList", () => {
     expect(onShowVersions).toHaveBeenCalledWith(document.document_id);
   });
 
-  it("moves reindex and delete into the more menu", () => {
+  it("moves reindex and delete into the more menu", async () => {
     const onDelete = vi.fn();
     const onPreviewDocument = vi.fn();
     const onReindex = vi.fn();
@@ -125,10 +125,10 @@ describe("ResourceDocumentList", () => {
       />,
     );
 
-    fireEvent.pointerDown(screen.getByRole("button", { name: "更多操作 spec.pdf" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "重建索引" }));
-    fireEvent.pointerDown(screen.getByRole("button", { name: "更多操作 spec.pdf" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "删除" }));
+    fireEvent.click(screen.getByRole("button", { name: "更多操作 spec.pdf" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "重建索引" }));
+    fireEvent.click(screen.getByRole("button", { name: "更多操作 spec.pdf" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "删除" }));
 
     expect(onReindex).toHaveBeenCalledWith(document);
     expect(onDelete).toHaveBeenCalledWith(document);

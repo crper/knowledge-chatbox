@@ -26,6 +26,7 @@
 - `just dev` / `just reset-dev` 会把当前 `API_PORT / WEB_PORT` 传给共享开发脚本；脚本会先拉起 API、等待 `GET /api/health` ready，再启动 Web，并在终端打印 Web、API health、docs、redoc 和 OpenAPI 地址
 - 共享开发脚本默认会给 API 一段启动补偿时间；如果本机恢复文档 / chat run / 索引状态较慢，可临时调大 `DEV_API_READY_MAX_ATTEMPTS` 再执行 `just dev`
 - 前端 `vp` 当前通过 `apps/web/.node-version` 固定到 `24.14.1`；这样 `vp dev / check / test / build` 会优先直接使用本地已安装版本，而不是每次都先走远端 `lts` 解析
+- 前端开发态当前还会自动挂载 TanStack Devtools 聚合面板，统一查看 Query / Router / Form 状态；这层只在 `vp dev` 下可见，不进入 Vitest 或生产构建，也不新增任何部署变量
 - 只需要手动补齐本地数据库 schema 时，优先使用仓库根目录 `just api-migrate`
 - 后端本地静态检查入口：仓库根目录 `just api-check`，内部会执行 `ruff check`、`ruff format --check` 和 `basedpyright`
 - 后端测试目录当前按 `apps/api/tests/integration`、`apps/api/tests/unit`、`apps/api/tests/runtime`、`apps/api/tests/migrations`、`apps/api/tests/fixtures` 分层；`just api-test` / `just test` 以这套结构为准
@@ -155,6 +156,7 @@ flowchart LR
 - 日志驱动统一限制大小，避免宿主机被容器日志打满
 - Docker 单机模式把 API 收敛到同源 `/api`，优先避免 refresh cookie、SSE 和受保护文件落到跨源链路
 - Docker 单机模式下，大文件上传的第一层限制来自 `web` 容器里的 `nginx client_max_body_size`，当前已放宽到 `2g`；第二层则是 API 自身的磁盘空间与标准化/索引耗时，而不是 Python 进程是否还能容纳整份请求体
+- 聊天执行后端当前已统一收口到 `ChatWorkflow + PydanticAI`；本地开发态和 Docker Compose 都直接走这条路径
 - 前端构建期 API 地址仍然是固化值；改了相关构建参数后必须重新 build
 
 ## 4. `scripts/docker-deploy.sh` 怎么用

@@ -6,6 +6,7 @@ from threading import Event, Thread
 
 from fastapi.testclient import TestClient
 from PIL import Image
+from tests.fixtures.stubs import make_adapter_backed_chat_workflow_class
 
 
 class StreamingResponseAdapterStub:
@@ -75,16 +76,9 @@ def _extract_run_id_from_stream(body: str) -> int:
 
 def test_chat_stream_api_emits_runtime_events_and_persists_messages(
     api_client: TestClient,
-    monkeypatch,
+    mock_pydanticai_chat_workflow,
 ) -> None:
-    monkeypatch.setattr(
-        "knowledge_chatbox_api.services.chat.chat_application_service.build_response_adapter_from_settings",
-        lambda settings_record: StreamingResponseAdapterStub(),
-    )
-    monkeypatch.setattr(
-        "knowledge_chatbox_api.services.chat.chat_application_service.build_embedding_adapter_from_settings",
-        lambda settings_record: EmbeddingAdapterStub(),
-    )
+    del mock_pydanticai_chat_workflow
 
     api_client.post("/api/auth/login", json={"username": "admin", "password": "admin123456"})
     session_response = api_client.post("/api/chat/sessions", json={"title": "Stream Session"})
@@ -122,13 +116,14 @@ def test_chat_stream_api_replays_existing_run_for_duplicate_client_request_id(
     monkeypatch,
 ) -> None:
     adapter = StreamingResponseAdapterStub()
+    workflow_cls = make_adapter_backed_chat_workflow_class(response_adapter=adapter)
     monkeypatch.setattr(
-        "knowledge_chatbox_api.services.chat.chat_application_service.build_response_adapter_from_settings",
-        lambda settings_record: adapter,
+        "knowledge_chatbox_api.services.chat.chat_application_service.ChatWorkflow",
+        workflow_cls,
     )
     monkeypatch.setattr(
-        "knowledge_chatbox_api.services.chat.chat_application_service.build_embedding_adapter_from_settings",
-        lambda settings_record: EmbeddingAdapterStub(),
+        "knowledge_chatbox_api.services.chat.chat_run_service.ChatWorkflow",
+        workflow_cls,
     )
 
     api_client.post("/api/auth/login", json={"username": "admin", "password": "admin123456"})
@@ -203,13 +198,14 @@ def test_chat_stream_api_passes_unified_image_attachments_to_provider(
 ) -> None:
     del configure_upload_provider
     adapter = StreamingResponseAdapterStub()
+    workflow_cls = make_adapter_backed_chat_workflow_class(response_adapter=adapter)
     monkeypatch.setattr(
-        "knowledge_chatbox_api.services.chat.chat_application_service.build_response_adapter_from_settings",
-        lambda settings_record: adapter,
+        "knowledge_chatbox_api.services.chat.chat_application_service.ChatWorkflow",
+        workflow_cls,
     )
     monkeypatch.setattr(
-        "knowledge_chatbox_api.services.chat.chat_application_service.build_embedding_adapter_from_settings",
-        lambda settings_record: EmbeddingAdapterStub(),
+        "knowledge_chatbox_api.services.chat.chat_run_service.ChatWorkflow",
+        workflow_cls,
     )
 
     api_client.post("/api/auth/login", json={"username": "admin", "password": "admin123456"})
@@ -258,13 +254,16 @@ def test_settings_api_stays_available_while_chat_stream_is_open(
 ) -> None:
     started = Event()
     release = Event()
-    monkeypatch.setattr(
-        "knowledge_chatbox_api.services.chat.chat_application_service.build_response_adapter_from_settings",
-        lambda settings_record: BlockingStreamingResponseAdapter(started, release),
+    workflow_cls = make_adapter_backed_chat_workflow_class(
+        response_adapter=BlockingStreamingResponseAdapter(started, release)
     )
     monkeypatch.setattr(
-        "knowledge_chatbox_api.services.chat.chat_application_service.build_embedding_adapter_from_settings",
-        lambda settings_record: EmbeddingAdapterStub(),
+        "knowledge_chatbox_api.services.chat.chat_application_service.ChatWorkflow",
+        workflow_cls,
+    )
+    monkeypatch.setattr(
+        "knowledge_chatbox_api.services.chat.chat_run_service.ChatWorkflow",
+        workflow_cls,
     )
 
     api_client.post("/api/auth/login", json={"username": "admin", "password": "admin123456"})
@@ -300,13 +299,16 @@ def test_chat_session_rename_stays_available_while_chat_stream_is_open(
 ) -> None:
     started = Event()
     release = Event()
-    monkeypatch.setattr(
-        "knowledge_chatbox_api.services.chat.chat_application_service.build_response_adapter_from_settings",
-        lambda settings_record: HoldingWriteLockStreamingResponseAdapter(started, release),
+    workflow_cls = make_adapter_backed_chat_workflow_class(
+        response_adapter=HoldingWriteLockStreamingResponseAdapter(started, release)
     )
     monkeypatch.setattr(
-        "knowledge_chatbox_api.services.chat.chat_application_service.build_embedding_adapter_from_settings",
-        lambda settings_record: EmbeddingAdapterStub(),
+        "knowledge_chatbox_api.services.chat.chat_application_service.ChatWorkflow",
+        workflow_cls,
+    )
+    monkeypatch.setattr(
+        "knowledge_chatbox_api.services.chat.chat_run_service.ChatWorkflow",
+        workflow_cls,
     )
 
     api_client.post("/api/auth/login", json={"username": "admin", "password": "admin123456"})
@@ -356,13 +358,16 @@ def test_chat_session_creation_stays_available_while_chat_stream_is_open(
 ) -> None:
     started = Event()
     release = Event()
-    monkeypatch.setattr(
-        "knowledge_chatbox_api.services.chat.chat_application_service.build_response_adapter_from_settings",
-        lambda settings_record: HoldingWriteLockStreamingResponseAdapter(started, release),
+    workflow_cls = make_adapter_backed_chat_workflow_class(
+        response_adapter=HoldingWriteLockStreamingResponseAdapter(started, release)
     )
     monkeypatch.setattr(
-        "knowledge_chatbox_api.services.chat.chat_application_service.build_embedding_adapter_from_settings",
-        lambda settings_record: EmbeddingAdapterStub(),
+        "knowledge_chatbox_api.services.chat.chat_application_service.ChatWorkflow",
+        workflow_cls,
+    )
+    monkeypatch.setattr(
+        "knowledge_chatbox_api.services.chat.chat_run_service.ChatWorkflow",
+        workflow_cls,
     )
 
     api_client.post("/api/auth/login", json={"username": "admin", "password": "admin123456"})

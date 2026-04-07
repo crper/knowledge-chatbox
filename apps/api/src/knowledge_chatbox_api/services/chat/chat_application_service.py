@@ -8,10 +8,7 @@ from typing import Any
 from knowledge_chatbox_api.core.errors import AppError
 from knowledge_chatbox_api.core.logging import get_logger
 from knowledge_chatbox_api.models.auth import User
-from knowledge_chatbox_api.providers.factory import (
-    build_embedding_adapter_from_settings,
-    build_response_adapter_from_settings,
-)
+from knowledge_chatbox_api.providers.factory import build_embedding_adapter_from_settings
 from knowledge_chatbox_api.repositories.chat_repository import ChatRepository
 from knowledge_chatbox_api.repositories.chat_run_event_repository import ChatRunEventRepository
 from knowledge_chatbox_api.repositories.chat_run_repository import ChatRunRepository
@@ -19,7 +16,6 @@ from knowledge_chatbox_api.repositories.document_repository import DocumentRepos
 from knowledge_chatbox_api.schemas.chat import CreateChatMessageRequest
 from knowledge_chatbox_api.services.chat.attachment_metadata import build_attachment_metadata
 from knowledge_chatbox_api.services.chat.chat_run_service import ChatRunService
-from knowledge_chatbox_api.services.chat.chat_service import ChatService
 from knowledge_chatbox_api.services.chat.chat_stream_presenter import ChatStreamPresenter
 from knowledge_chatbox_api.services.chat.retry_service import (
     DuplicateClientRequestConflictError,
@@ -27,6 +23,7 @@ from knowledge_chatbox_api.services.chat.retry_service import (
     RetryTargetNotFoundError,
 )
 from knowledge_chatbox_api.services.chat.runtime_settings import build_chat_runtime_settings
+from knowledge_chatbox_api.services.chat.workflow import ChatWorkflow, build_chat_workflow_deps
 from knowledge_chatbox_api.services.documents.query_service import DocumentQueryService
 from knowledge_chatbox_api.services.settings.settings_service import SettingsService
 from knowledge_chatbox_api.utils.chroma import get_chroma_store
@@ -249,13 +246,10 @@ class ChatApplicationService:
             settings_record,
             reasoning_mode=chat_session.reasoning_mode,
         )
-        chat_service = ChatService(
-            session=self.session,
-            chat_repository=self.chat_repository,
-            chroma_store=get_chroma_store(),
-            response_adapter=build_response_adapter_from_settings(runtime_settings),
-            embedding_adapter=build_embedding_adapter_from_settings(settings_record),
-            settings=runtime_settings,
+        attachments_payload = (
+            [attachment.model_dump() for attachment in payload.attachments]
+            if payload.attachments
+            else None
         )
         assistant_message = existing_assistant or retry_service.create_assistant_reply(
             session_id=session_id,
@@ -264,21 +258,30 @@ class ChatApplicationService:
         )
 
         try:
-            result = chat_service.answer_question(
-                session_id,
-                user_message.content,
-                attachments=(
-                    [attachment.model_dump() for attachment in payload.attachments]
-                    if payload.attachments
-                    else None
+            result = ChatWorkflow().run_sync(
+                deps=build_chat_workflow_deps(
+                    session=self.session,
+                    actor=actor,
+                    chat_repository=self.chat_repository,
+                    chat_run_repository=self.chat_run_repository,
+                    chat_run_event_repository=self.chat_run_event_repository,
+                    chroma_store=get_chroma_store(),
+                    embedding_adapter=build_embedding_adapter_from_settings(settings_record),
+                    runtime_settings=runtime_settings,
+                    request_metadata={"path": "sync", "session_id": session_id},
                 ),
+                session_id=session_id,
+                question=user_message.content,
+                attachments=attachments_payload,
             )
+            answer = result.answer
+            sources = [source.model_dump() for source in result.sources]
             user_message.status = "succeeded"
             user_message.error_message = None
-            assistant_message.content = result["answer"]
+            assistant_message.content = answer
             assistant_message.status = "succeeded"
             assistant_message.error_message = None
-            assistant_message.sources_json = result["sources"]
+            assistant_message.sources_json = sources
         except Exception as exc:  # noqa: BLE001
             user_message.status = "failed"
             user_message.error_message = str(exc)
@@ -289,8 +292,8 @@ class ChatApplicationService:
             logger.warning(
                 "chat_sync_message_failed",
                 session_id=session_id,
-                response_provider=chat_service._response_provider_name(),
-                response_model=chat_service._response_model(),
+                response_provider=runtime_settings.response_route.provider,
+                response_model=runtime_settings.response_route.model,
                 failure_type="chat_answer_error",
                 error_message=str(exc),
             )
@@ -321,7 +324,6 @@ class ChatApplicationService:
             chat_run_event_repository=self.chat_run_event_repository,
             retry_service=RetryService(self.chat_repository, self.session),
             chroma_store=get_chroma_store(),
-            response_adapter=build_response_adapter_from_settings(runtime_settings),
             embedding_adapter=build_embedding_adapter_from_settings(settings_record),
             settings=runtime_settings,
             presenter=presenter,

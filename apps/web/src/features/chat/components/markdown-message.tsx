@@ -19,6 +19,7 @@ type AssistantWaitingCardProps = {
   caption?: string;
   compact?: boolean;
   detail?: string;
+  frame?: "plain" | "surface";
   statusLabel: string;
   testId?: string;
 };
@@ -205,6 +206,7 @@ export function AssistantWaitingCard({
   caption,
   compact = false,
   detail,
+  frame = "surface",
   statusLabel,
   testId,
 }: AssistantWaitingCardProps) {
@@ -213,11 +215,13 @@ export function AssistantWaitingCard({
       aria-label={statusLabel}
       aria-live="polite"
       className={cn(
-        "surface-light surface-waiting-card min-w-0 max-w-full text-foreground",
+        "relative min-w-0 max-w-full overflow-hidden text-foreground",
+        frame === "surface" ? "surface-light surface-waiting-card" : "rounded-[1.2rem]",
         compact ? "px-4 py-3" : "px-4 py-3.5 sm:px-5 sm:py-4",
       )}
       data-assistant-loading-state="true"
       data-testid={testId}
+      data-waiting-card-frame={frame}
       data-waiting-card-tone="assistant"
       role="status"
     >
@@ -326,7 +330,7 @@ export function MarkdownMessage({ content, isStreaming, testId }: MarkdownMessag
       data-testid={testId}
     >
       {isPreTokenLoading ? (
-        <AssistantWaitingCard compact statusLabel={t("assistantStreamingStatus")} />
+        <AssistantWaitingCard compact frame="plain" statusLabel={t("assistantStreamingStatus")} />
       ) : (
         <MarkdownRenderBoundary
           fallback={plainTextFallback}

@@ -10,6 +10,7 @@ from knowledge_chatbox_api.services.documents.ingestion_service import (
     IngestionMetrics,
     IngestionService,
 )
+from tests.fixtures.stubs import make_adapter_backed_chat_workflow_class
 
 
 class LoggerSpy:
@@ -79,146 +80,27 @@ def stub_document_index_embedding(monkeypatch) -> None:
     )
 
 
-def test_sync_chat_logs_prompt_and_response_summary(
-    api_client: TestClient,
-    configure_upload_provider,
-    monkeypatch,
-) -> None:
-    del configure_upload_provider
-    chat_logger = LoggerSpy()
-    stub_document_index_embedding(monkeypatch)
-    monkeypatch.setattr(
-        "knowledge_chatbox_api.services.chat.chat_application_service.build_response_adapter_from_settings",
-        lambda _settings_record: UnifiedResponseAdapterStub(),
-    )
-    monkeypatch.setattr(
-        "knowledge_chatbox_api.services.chat.chat_application_service.build_embedding_adapter_from_settings",
-        lambda _settings_record: EmbeddingAdapterStub(),
-    )
-    monkeypatch.setattr("knowledge_chatbox_api.services.chat.chat_service.logger", chat_logger)
-
-    login_admin(api_client)
-    upload_response = api_client.post(
-        "/api/documents/upload",
-        files={
-            "file": (
-                "guide.txt",
-                b"OpenAI provider setup guide.\nUse the API key and base URL for setup.",
-                "text/plain",
-            )
-        },
-    )
-    assert upload_response.status_code == 201
-    session_response = api_client.post("/api/chat/sessions", json={"title": "sync log session"})
-    session_id = session_response.json()["data"]["id"]
-
-    response = api_client.post(
-        f"/api/chat/sessions/{session_id}/messages",
-        json={
-            "content": "How do I set up OpenAI?",
-            "client_request_id": "req-chat-log-sync-1",
-        },
-    )
-
-    assert response.status_code == 200
-    assert chat_logger.records == [
-        {
-            "event": "chat_prompt_assembled",
-            "level": "info",
-            "attachment_count": 0,
-            "attachment_revision_scope_count": 0,
-            "response_model": "gpt-5.4",
-            "response_provider": "openai",
-            "retrieval_candidate_count": 1,
-            "retrieval_latency_ms": ANY,
-            "retrieved_source_count": 1,
-            "retrieval_strategy": "vector",
-            "session_id": session_id,
-        },
-        {
-            "event": "chat_response_completed",
-            "level": "info",
-            "answer_length": 4,
-            "attachment_count": 0,
-            "response_model": "gpt-5.4",
-            "response_provider": "openai",
-            "source_count": 1,
-            "session_id": session_id,
-        },
-    ]
-
-
-def test_sync_chat_logs_lexical_retrieval_strategy_when_embedding_generation_fails(
-    api_client: TestClient,
-    configure_upload_provider,
-    monkeypatch,
-) -> None:
-    del configure_upload_provider
-    chat_logger = LoggerSpy()
-    stub_document_index_embedding(monkeypatch)
-    monkeypatch.setattr(
-        "knowledge_chatbox_api.services.chat.chat_application_service.build_response_adapter_from_settings",
-        lambda _settings_record: UnifiedResponseAdapterStub(),
-    )
-    monkeypatch.setattr(
-        "knowledge_chatbox_api.services.chat.chat_application_service.build_embedding_adapter_from_settings",
-        lambda _settings_record: FailingEmbeddingAdapterStub(),
-    )
-    monkeypatch.setattr("knowledge_chatbox_api.services.chat.chat_service.logger", chat_logger)
-
-    login_admin(api_client)
-    upload_response = api_client.post(
-        "/api/documents/upload",
-        files={
-            "file": (
-                "guide.txt",
-                b"OpenAI provider setup guide.\nUse the API key and base URL for setup.",
-                "text/plain",
-            )
-        },
-    )
-    assert upload_response.status_code == 201
-    session_response = api_client.post("/api/chat/sessions", json={"title": "lexical log session"})
-    session_id = session_response.json()["data"]["id"]
-
-    response = api_client.post(
-        f"/api/chat/sessions/{session_id}/messages",
-        json={
-            "content": "How do I set up OpenAI?",
-            "client_request_id": "req-chat-log-sync-lexical-1",
-        },
-    )
-
-    assert response.status_code == 200
-    assert chat_logger.records[0] == {
-        "event": "chat_prompt_assembled",
-        "level": "info",
-        "attachment_count": 0,
-        "attachment_revision_scope_count": 0,
-        "response_model": "gpt-5.4",
-        "response_provider": "openai",
-        "retrieval_candidate_count": 1,
-        "retrieval_latency_ms": ANY,
-        "retrieved_source_count": 1,
-        "retrieval_strategy": "lexical",
-        "session_id": session_id,
-    }
-
-
 def test_stream_chat_logs_run_lifecycle(
     api_client: TestClient,
     monkeypatch,
 ) -> None:
     run_logger = LoggerSpy()
-    monkeypatch.setattr(
-        "knowledge_chatbox_api.services.chat.chat_application_service.build_response_adapter_from_settings",
-        lambda _settings_record: UnifiedResponseAdapterStub(),
+    workflow_cls = make_adapter_backed_chat_workflow_class(
+        response_adapter=UnifiedResponseAdapterStub(),
     )
     monkeypatch.setattr(
-        "knowledge_chatbox_api.services.chat.chat_application_service.build_embedding_adapter_from_settings",
-        lambda _settings_record: EmbeddingAdapterStub(),
+        "knowledge_chatbox_api.services.chat.chat_application_service.ChatWorkflow",
+        workflow_cls,
+    )
+    monkeypatch.setattr(
+        "knowledge_chatbox_api.services.chat.chat_run_service.ChatWorkflow",
+        workflow_cls,
     )
     monkeypatch.setattr("knowledge_chatbox_api.services.chat.chat_run_service.logger", run_logger)
+    monkeypatch.setattr(
+        "knowledge_chatbox_api.services.chat.workflow_stream_runner.logger",
+        run_logger,
+    )
 
     login_admin(api_client)
     session_response = api_client.post("/api/chat/sessions", json={"title": "stream log session"})
@@ -263,13 +145,15 @@ def test_sync_chat_logs_failure_summary(
     monkeypatch,
 ) -> None:
     sync_logger = LoggerSpy()
+
+    class FailingChatWorkflow:
+        def run_sync(self, *, deps, session_id: int, question: str, attachments=None):
+            del deps, session_id, question, attachments
+            raise RuntimeError("provider backend unavailable")
+
     monkeypatch.setattr(
-        "knowledge_chatbox_api.services.chat.chat_application_service.build_response_adapter_from_settings",
-        lambda _settings_record: FailingResponseAdapterStub(),
-    )
-    monkeypatch.setattr(
-        "knowledge_chatbox_api.services.chat.chat_application_service.build_embedding_adapter_from_settings",
-        lambda _settings_record: EmbeddingAdapterStub(),
+        "knowledge_chatbox_api.services.chat.chat_application_service.ChatWorkflow",
+        FailingChatWorkflow,
     )
     monkeypatch.setattr(
         "knowledge_chatbox_api.services.chat.chat_application_service.logger",

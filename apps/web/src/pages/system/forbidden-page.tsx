@@ -3,9 +3,8 @@
  */
 
 import { useTranslation } from "react-i18next";
-import { Link } from "react-router-dom";
-
 import { buttonVariants } from "@/components/ui/button";
+import { Link } from "@/lib/app-router";
 import { cn } from "@/lib/utils";
 
 /**

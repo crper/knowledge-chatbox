@@ -19,7 +19,7 @@ vi.mock("streamdown", async () => {
 });
 
 import * as richRendererLoader from "./rich-markdown-renderer-loader";
-import { MarkdownMessage } from "./markdown-message";
+import { AssistantWaitingCard, MarkdownMessage } from "./markdown-message";
 
 describe("MarkdownMessage", () => {
   afterEach(() => {
@@ -129,6 +129,7 @@ describe("MarkdownMessage", () => {
 
     expect(screen.getByRole("status", { name: "正在生成回答" })).toBeInTheDocument();
     expect(container.querySelector('[data-assistant-loading-state="true"]')).not.toBeNull();
+    expect(container.querySelector('[data-waiting-card-frame="plain"]')).not.toBeNull();
     expect(container.querySelector('[data-message-body="assistant"]')).toHaveAttribute(
       "aria-busy",
       "true",
@@ -136,6 +137,13 @@ describe("MarkdownMessage", () => {
     expect(container.querySelector('[data-message-body="assistant"]')).not.toHaveTextContent(
       "正在生成回答...",
     );
+  });
+
+  it("renders a framed waiting card by default for standalone loading states", () => {
+    const { container } = render(<AssistantWaitingCard statusLabel="正在生成回答" />);
+
+    expect(screen.getByRole("status", { name: "正在生成回答" })).toBeInTheDocument();
+    expect(container.querySelector('[data-waiting-card-frame="surface"]')).not.toBeNull();
   });
 
   it("falls back to plain text when markdown renderer crashes", () => {

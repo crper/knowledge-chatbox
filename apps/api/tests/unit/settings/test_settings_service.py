@@ -272,6 +272,24 @@ def test_settings_service_masks_secret_fields_in_read_model(migrated_db_session)
     assert result.provider_profiles.openai.api_key == MASKED_SECRET_VALUE
 
 
+def test_update_settings_normalizes_ollama_base_url_to_root_address(migrated_db_session) -> None:
+    admin = seed_admin(migrated_db_session)
+    service = create_settings_service(migrated_db_session)
+
+    updated = service.update_settings(
+        admin,
+        {
+            "provider_profiles": {
+                "ollama": {
+                    "base_url": "http://localhost:11434/v1/",
+                }
+            }
+        },
+    )
+
+    assert updated.provider_profiles.ollama.base_url == "http://localhost:11434"
+
+
 def test_update_settings_request_validates_capability_routes() -> None:
     payload = UpdateSettingsRequest.model_validate(
         {

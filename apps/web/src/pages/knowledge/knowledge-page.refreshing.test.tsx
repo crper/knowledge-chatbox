@@ -1,8 +1,8 @@
 import { render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import { QueryProvider } from "@/providers/query-provider";
+import { TestRouter } from "@/test/test-router";
 import { KnowledgePage } from "./knowledge-page";
 
 vi.mock("@/features/knowledge/hooks/use-knowledge-workspace", () => ({
@@ -51,11 +51,11 @@ vi.mock("@/features/knowledge/hooks/use-knowledge-workspace", () => ({
 describe("KnowledgePage refreshing hint", () => {
   it("does not show the filter-refreshing hint for background list refreshes alone", async () => {
     render(
-      <MemoryRouter>
+      <TestRouter initialEntry="/knowledge" path="/knowledge">
         <QueryProvider>
           <KnowledgePage />
         </QueryProvider>
-      </MemoryRouter>,
+      </TestRouter>,
     );
 
     expect(await screen.findByText("spec.md")).toBeInTheDocument();

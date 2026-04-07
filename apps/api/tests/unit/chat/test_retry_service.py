@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 from tests.fixtures.factories import UserFactory
+from tests.fixtures.stubs import make_adapter_backed_chat_workflow_class
 
 from knowledge_chatbox_api.repositories.chat_repository import ChatRepository
 from knowledge_chatbox_api.services.chat.retry_service import (
@@ -85,6 +86,36 @@ def test_retry_service_retry_user_message_succeeds(migrated_db_session) -> None:
 
 
 @pytest.mark.unit
+def test_retry_service_retry_user_message_reuses_same_client_request_id(
+    migrated_db_session,
+) -> None:
+    _, chat_session, repository = create_user_and_session(migrated_db_session)
+    service = RetryService(repository, migrated_db_session)
+
+    original = service.create_or_reuse_user_message(
+        session_id=chat_session.id,
+        content="original question",
+        client_request_id="req-original",
+    )
+
+    first_retry = service.retry_user_message(
+        session_id=chat_session.id,
+        content="ignored content",
+        client_request_id="req-retry",
+        retry_of_message_id=original.id,
+    )
+    second_retry = service.retry_user_message(
+        session_id=chat_session.id,
+        content="still ignored",
+        client_request_id="req-retry",
+        retry_of_message_id=original.id,
+    )
+
+    assert first_retry.id == second_retry.id
+    assert second_retry.retry_of_message_id == original.id
+
+
+@pytest.mark.unit
 def test_retry_service_retry_user_message_fails_for_nonexistent_message(
     migrated_db_session,
 ) -> None:
@@ -155,13 +186,12 @@ def test_chat_api_can_delete_failed_user_message(api_client: TestClient, monkeyp
             del messages, settings
             yield {"type": "error", "error_message": "provider unavailable"}
 
-    monkeypatch.setattr(
-        "knowledge_chatbox_api.services.chat.chat_application_service.build_response_adapter_from_settings",
-        lambda settings_record: FailingStreamResponseAdapter(),
+    workflow_cls = make_adapter_backed_chat_workflow_class(
+        response_adapter=FailingStreamResponseAdapter()
     )
     monkeypatch.setattr(
-        "knowledge_chatbox_api.services.chat.chat_application_service.build_embedding_adapter_from_settings",
-        lambda settings_record: None,
+        "knowledge_chatbox_api.services.chat.chat_run_service.ChatWorkflow",
+        workflow_cls,
     )
 
     login_as_admin(api_client)

@@ -17,11 +17,13 @@ from tests.fixtures.factories import (
 from knowledge_chatbox_api.core.config import get_settings
 from knowledge_chatbox_api.repositories.chat_repository import ChatRepository
 from knowledge_chatbox_api.repositories.space_repository import SpaceRepository
+from knowledge_chatbox_api.schemas.chat import CreateChatMessageRequest
 from knowledge_chatbox_api.services.chat.chat_application_service import (
     ChatApplicationService,
     ChatRouteError,
 )
 from knowledge_chatbox_api.services.chat.chat_service import ChatService
+from knowledge_chatbox_api.services.chat.workflow.output import ChatWorkflowResult
 from knowledge_chatbox_api.services.documents.chunking_service import ChunkingService
 from knowledge_chatbox_api.services.documents.indexing_service import IndexingService
 from knowledge_chatbox_api.services.settings.settings_service import SettingsService
@@ -768,7 +770,7 @@ def test_chat_service_uses_lexical_fallback_for_each_attachment_when_vector_is_e
         )(),
     )
     lexical_query_calls: list[dict[str, Any]] = []
-    original_query = service.retrieval_service.retrieval_chunk_repository.query
+    original_query = service.retrieval_service.query_engine.retrieval_chunk_repository.query
 
     def capture_lexical_query(query_text: str, **kwargs):
         lexical_query_calls.append(
@@ -779,7 +781,7 @@ def test_chat_service_uses_lexical_fallback_for_each_attachment_when_vector_is_e
         )
         return original_query(query_text, **kwargs)
 
-    service.retrieval_service.retrieval_chunk_repository.query = capture_lexical_query
+    service.retrieval_service.query_engine.retrieval_chunk_repository.query = capture_lexical_query
 
     result = service.answer_question(
         chat_session.id,
@@ -894,6 +896,52 @@ def test_chat_service_matches_spaced_ascii_query_against_compound_document_term(
     result = service.answer_question(chat_session.id, "open claw")
 
     assert [source["document_revision_id"] for source in result["sources"]] == [document_version.id]
+
+
+def test_chat_application_service_uses_chat_workflow_by_default(
+    migrated_db_session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user, chat_session, _ = create_user_and_session(migrated_db_session)
+    captured: dict[str, Any] = {}
+
+    class ChatWorkflowStub:
+        def run_sync(self, *, deps, session_id: int, question: str, attachments):
+            captured["deps"] = deps
+            captured["session_id"] = session_id
+            captured["question"] = question
+            captured["attachments"] = attachments
+            return ChatWorkflowResult(
+                answer="workflow answer",
+                sources=[{"document_id": 1, "snippet": "workflow source"}],
+            )
+
+    monkeypatch.setattr(
+        "knowledge_chatbox_api.services.chat.chat_application_service.ChatWorkflow",
+        ChatWorkflowStub,
+    )
+
+    service = ChatApplicationService(migrated_db_session, settings=get_settings())
+    user_message, assistant_message = service.create_message(
+        user,
+        chat_session.id,
+        CreateChatMessageRequest(
+            content="走 workflow",
+            client_request_id="req-workflow-sync-1",
+            attachments=None,
+            retry_of_message_id=None,
+        ),
+    )
+
+    assert user_message.status == "succeeded"
+    assert assistant_message.content == "workflow answer"
+    assert assistant_message.status == "succeeded"
+    assert assistant_message.sources_json is not None
+    assert assistant_message.sources_json[0]["document_id"] == 1
+    assert assistant_message.sources_json[0]["snippet"] == "workflow source"
+    assert captured["session_id"] == chat_session.id
+    assert captured["question"] == "走 workflow"
+    assert captured["attachments"] is None
 
 
 def test_chat_service_includes_current_turn_document_attachment_text_in_prompt(

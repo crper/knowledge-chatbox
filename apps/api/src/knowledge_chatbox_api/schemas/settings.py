@@ -217,24 +217,3 @@ def dump_vision_route(value: object) -> dict[str, Any]:
 def parse_provider_runtime_settings(value: object) -> ProviderRuntimeSettings:
     """把运行时 provider 设置收紧为统一类型。"""
     return _PROVIDER_RUNTIME_SETTINGS_ADAPTER.validate_python(value)
-
-
-def build_provider_runtime_settings(
-    settings_record: Any,
-    *,
-    embedding_route: EmbeddingRouteConfig | dict[str, Any] | None = None,
-    reasoning_mode: ReasoningModeLiteral = "default",
-) -> ProviderRuntimeSettings:
-    """从任意 settings-like 对象构造强类型 provider runtime settings。"""
-    return ProviderRuntimeSettings(
-        provider_profiles=parse_provider_profiles(settings_record.provider_profiles),
-        response_route=parse_response_route(settings_record.response_route),
-        embedding_route=parse_embedding_route(
-            embedding_route if embedding_route is not None else settings_record.embedding_route
-        ),
-        vision_route=parse_vision_route(settings_record.vision_route),
-        system_prompt=settings_record.system_prompt,
-        provider_timeout_seconds=settings_record.provider_timeout_seconds,
-        active_index_generation=settings_record.active_index_generation,
-        reasoning_mode=reasoning_mode,
-    )

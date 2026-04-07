@@ -20,6 +20,7 @@ from knowledge_chatbox_api.providers.base import (
     ResponseStreamChunk,
     VisionSettings,
 )
+from knowledge_chatbox_api.providers.ollama_url import normalize_ollama_base_url
 
 OLLAMA_BASE_URL_UNREACHABLE_CODE = "ollama_base_url_unreachable"
 OLLAMA_PROXY_ENV_KEYS = (
@@ -158,9 +159,9 @@ class _OllamaClientMixin:
         return float(settings.provider_timeout_seconds)
 
     def _host(self, settings: ProviderSettings) -> str:
-        return (
-            settings.provider_profiles.ollama.base_url or "http://host.docker.internal:11434"
-        ).rstrip("/")
+        return normalize_ollama_base_url(settings.provider_profiles.ollama.base_url) or (
+            "http://host.docker.internal:11434"
+        )
 
     def _client(self, settings: ProviderSettings):
         host = self._host(settings)

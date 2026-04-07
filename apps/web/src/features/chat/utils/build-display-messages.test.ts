@@ -333,6 +333,36 @@ describe("buildDisplayMessages", () => {
     expect(result[1]).toEqual(messages[1]);
   });
 
+  it("suppresses an empty failed assistant placeholder when the paired user message already failed", () => {
+    const messages: ChatMessageItem[] = [
+      {
+        id: 1,
+        role: "user",
+        content: "hello",
+        status: "failed",
+        error_message: "provider unavailable",
+        sources_json: null,
+      },
+      {
+        id: 2,
+        role: "assistant",
+        content: "",
+        status: "failed",
+        error_message: "provider unavailable",
+        reply_to_message_id: 1,
+        sources_json: [],
+      },
+    ];
+
+    const result = buildDisplayMessages({
+      activeSessionId: 1,
+      messages,
+      runsById: {},
+    });
+
+    expect(result).toEqual([messages[0]]);
+  });
+
   it("collapses a persisted retry chain into the latest assistant attempt", () => {
     const messages: ChatMessageItem[] = [
       {
@@ -435,6 +465,86 @@ describe("buildDisplayMessages", () => {
         status: "streaming",
         sources_json: [],
       },
+    ]);
+  });
+
+  it("keeps a retrying answer anchored before later conversation turns", () => {
+    const messages: ChatMessageItem[] = [
+      {
+        id: 1,
+        role: "user",
+        content: "旧问题",
+        status: "succeeded",
+        sources_json: null,
+      },
+      {
+        id: 2,
+        role: "assistant",
+        content: "",
+        status: "failed",
+        reply_to_message_id: 1,
+        error_message: "本次回复生成失败，请点击重试或重新提问。",
+        sources_json: [],
+      },
+      {
+        id: 7,
+        role: "user",
+        content: "后来问题",
+        status: "succeeded",
+        sources_json: null,
+      },
+      {
+        id: 8,
+        role: "assistant",
+        content: "后来答案",
+        status: "succeeded",
+        reply_to_message_id: 7,
+        sources_json: [],
+      },
+      {
+        id: 9,
+        role: "user",
+        content: "旧问题",
+        status: "succeeded",
+        retry_of_message_id: 1,
+        sources_json: null,
+      },
+    ];
+
+    const result = buildDisplayMessages({
+      activeSessionId: 1,
+      messages,
+      runsById: {
+        9: {
+          assistantMessageId: 10,
+          content: "重试中的回答",
+          errorMessage: null,
+          runId: 9,
+          sessionId: 1,
+          userMessageId: 9,
+          userContent: "旧问题",
+          retryOfMessageId: 1,
+          status: "streaming",
+          toastShown: false,
+          sources: [],
+        },
+      },
+    });
+
+    expect(result).toEqual([
+      {
+        ...messages[4],
+      },
+      {
+        id: 10,
+        role: "assistant",
+        content: "重试中的回答",
+        reply_to_message_id: 1,
+        status: "streaming",
+        sources_json: [],
+      },
+      messages[2],
+      messages[3],
     ]);
   });
 });
