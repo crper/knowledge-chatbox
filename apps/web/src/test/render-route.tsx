@@ -33,6 +33,9 @@ export function renderRoute(route: string) {
     </I18nProvider>,
   );
 
+  // Kick TanStack Router's initial load so tests don't race the first route match.
+  void router.load();
+
   return {
     ...result,
     history,

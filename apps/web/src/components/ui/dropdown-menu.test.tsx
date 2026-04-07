@@ -1,5 +1,5 @@
 import * as React from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import { Button } from "./button";
@@ -60,7 +60,7 @@ function PlainMenu() {
 }
 
 describe("DropdownMenu", () => {
-  it("supports Base UI style render composition on the trigger and updates radio selection", () => {
+  it("supports Base UI style render composition on the trigger, updates radio selection, and closes after selection", async () => {
     const onValueChange = vi.fn();
 
     render(<RenderPropMenu onValueChange={onValueChange} />);
@@ -75,6 +75,7 @@ describe("DropdownMenu", () => {
     fireEvent.click(screen.getByRole("menuitemradio", { name: "深色" }));
 
     expect(onValueChange).toHaveBeenCalledWith("dark");
+    await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
   });
 
   it("applies caller sizing classes on the positioned wrapper so end-aligned menus do not drift", () => {

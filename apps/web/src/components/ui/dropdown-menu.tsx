@@ -149,6 +149,7 @@ function DropdownMenuRadioGroup({
 
 function DropdownMenuRadioItem({
   className,
+  closeOnClick = true,
   children,
   inset,
   ...props
@@ -157,6 +158,7 @@ function DropdownMenuRadioItem({
 }) {
   return (
     <DropdownMenuPrimitive.RadioItem
+      closeOnClick={closeOnClick}
       data-inset={inset}
       data-slot="dropdown-menu-radio-item"
       className={cn(

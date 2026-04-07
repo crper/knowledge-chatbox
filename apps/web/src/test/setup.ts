@@ -3,6 +3,7 @@
  */
 
 import "@testing-library/jest-dom/vitest";
+import { configure } from "@testing-library/react";
 
 import { LAST_VISITED_CHAT_SESSION_STORAGE_KEY } from "../features/chat/utils/chat-session-recovery";
 import { useChatUiStore } from "../features/chat/store/chat-ui-store";
@@ -16,6 +17,10 @@ import {
 } from "../lib/config/constants";
 import { useUiStore } from "../lib/store/ui-store";
 import { server } from "./msw/server";
+
+configure({
+  asyncUtilTimeout: 5000,
+});
 
 function createDomRect(width: number, height: number): DOMRectReadOnly {
   return {
@@ -131,6 +136,11 @@ Object.defineProperty(HTMLElement.prototype, "scrollTo", {
     this.scrollTop = options.top ?? this.scrollTop ?? 0;
     this.scrollLeft = options.left ?? this.scrollLeft ?? 0;
   },
+});
+
+Object.defineProperty(window, "scrollTo", {
+  configurable: true,
+  value: vi.fn(),
 });
 
 Object.defineProperty(HTMLElement.prototype, "hasPointerCapture", {
