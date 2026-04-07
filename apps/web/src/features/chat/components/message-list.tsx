@@ -11,6 +11,7 @@ import { useIsMobile } from "@/lib/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { ChatMessageItem } from "../api/chat";
+import { MessageRole, MessageStatus, isStreamingStatus } from "../constants";
 import {
   buildAttachmentPreviewIndexes,
   buildChatAttachmentDescriptors,
@@ -79,24 +80,27 @@ export const MessageRow = memo(function MessageRow({
   const retryLabel = t("retryAction");
   const systemLabel = t("systemRole", { defaultValue: "系统" });
   const userLabel = t("userRole");
-  const isUserMessage = message.role === "user";
-  const isAssistantMessage = message.role === "assistant";
+  const isUserMessage = message.role === MessageRole.USER;
+  const isAssistantMessage = message.role === MessageRole.ASSISTANT;
   const layoutMode = isCompactLayout ? "stacked" : "staggered";
   const messageSide = isUserMessage ? "end" : "start";
-  const messageLabelStyle = message.role === "assistant" ? "badge" : "tag";
+  const messageLabelStyle = message.role === MessageRole.ASSISTANT ? "badge" : "tag";
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   const canRetry =
-    message.status === "failed" && (isUserMessage || message.reply_to_message_id != null);
+    message.status === MessageStatus.FAILED &&
+    (isUserMessage || message.reply_to_message_id != null);
   const triggerRetry = () => {
     void Promise.resolve(onRetry(message)).catch(() => {});
   };
   const assistantContent =
     message.content.trim().length > 0
       ? message.content
-      : message.status === "failed"
+      : message.status === MessageStatus.FAILED
         ? t("assistantFailedFallback")
         : t("assistantStreamingFallback");
-  const displayErrorMessage = getUserFacingMessageError(message, t);
+  const displayErrorMessage = useMemo(() => {
+    return getUserFacingMessageError(message, t);
+  }, [message, t]);
   const attachments = message.attachments_json ?? [];
   const attachmentDescriptors = useMemo(
     () => buildChatAttachmentDescriptors(attachments),
@@ -126,12 +130,12 @@ export const MessageRow = memo(function MessageRow({
   const roleLabel = isAssistantMessage ? assistantLabel : isUserMessage ? userLabel : systemLabel;
   const bubbleWidthMode = isUserMessage ? "fit" : "adaptive";
   const statusMeta =
-    message.status === "failed"
+    message.status === MessageStatus.FAILED
       ? {
           label: isUserMessage ? t("messageStatusUserFailed") : t("messageStatusAssistantFailed"),
           tone: "error" as const,
         }
-      : isAssistantMessage && (message.status === "pending" || message.status === "streaming")
+      : isAssistantMessage && isStreamingStatus(message.status)
         ? {
             label: t("assistantStreamingStatus"),
             tone: "pending" as const,
@@ -145,7 +149,7 @@ export const MessageRow = memo(function MessageRow({
             tone: "default" as const,
           };
   const recoveryActions =
-    message.status === "failed" ? (
+    message.status === MessageStatus.FAILED ? (
       <div
         className={cn(
           "flex flex-wrap items-center gap-2",
@@ -272,7 +276,7 @@ export const MessageRow = memo(function MessageRow({
           {isAssistantMessage ? (
             <MarkdownMessage
               content={assistantContent}
-              isStreaming={message.status === "pending" || message.status === "streaming"}
+              isStreaming={isStreamingStatus(message.status)}
               testId="chat-markdown-body"
             />
           ) : message.content.trim() ? (

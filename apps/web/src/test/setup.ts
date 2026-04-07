@@ -220,7 +220,6 @@ beforeEach(() => {
   document.documentElement.style.colorScheme = "light";
   useUiStore.setState({ language: DEFAULT_LANGUAGE, theme: DEFAULT_THEME });
   useChatUiStore.setState({
-    activeSessionId: null,
     attachmentsBySession: {},
     draftsBySession: {},
     sendShortcut: "enter",

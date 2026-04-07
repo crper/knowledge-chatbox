@@ -1,3 +1,5 @@
+import { trim } from "es-toolkit";
+
 import type { ChatMessageItem } from "../api/chat";
 import type { ChatAttachmentItem } from "../store/chat-ui-store";
 
@@ -51,7 +53,7 @@ export function resolveSubmitErrorMessage(error: unknown, fallback: string) {
     return fallback;
   }
 
-  const message = error.message.trim();
+  const message = trim(error.message);
   if (!message || message === "chat stream request failed") {
     return fallback;
   }
@@ -59,7 +61,7 @@ export function resolveSubmitErrorMessage(error: unknown, fallback: string) {
   return message;
 }
 
-function toAttachmentSignature(input: {
+type AttachmentSignatureInput = {
   attachmentId: string;
   documentId: number | null;
   documentRevisionId: number | null;
@@ -67,11 +69,13 @@ function toAttachmentSignature(input: {
   mimeType: string | null;
   name: string;
   sizeBytes: number | null;
-}) {
+};
+
+function toAttachmentSignature(input: AttachmentSignatureInput): string {
   return JSON.stringify(input);
 }
 
-function toComposerAttachmentSignature(attachment: ChatAttachmentItem) {
+function toComposerAttachmentSignature(attachment: ChatAttachmentItem): string {
   return toAttachmentSignature({
     attachmentId: attachment.id,
     documentId: attachment.resourceDocumentId ?? null,
@@ -85,7 +89,7 @@ function toComposerAttachmentSignature(attachment: ChatAttachmentItem) {
 
 function toMessageAttachmentSignature(
   attachment: NonNullable<ChatMessageItem["attachments_json"]>[number],
-) {
+): string {
   return toAttachmentSignature({
     attachmentId: attachment.attachment_id,
     documentId: attachment.resource_document_id ?? null,
@@ -124,6 +128,6 @@ export function shouldResetComposerSnapshotForRetry({
   }
 
   return normalizedComposerAttachments.every(
-    (attachmentSignature, index) => attachmentSignature === normalizedRetryAttachments[index],
+    (signature, i) => signature === normalizedRetryAttachments[i],
   );
 }

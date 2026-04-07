@@ -2,7 +2,7 @@
  * @file 聊天会话数据与 cache patch Hook 模块。
  */
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   useInfiniteQuery,
   useQuery,
@@ -24,8 +24,6 @@ import type {
 import { buildDisplayMessages } from "../utils/build-display-messages";
 import type { StreamingRun } from "../store/chat-stream-store";
 
-type ChatRunsById = Record<number, StreamingRun>;
-
 function buildContextAttachmentKey(attachment: PersistedChatAttachmentItem) {
   if (attachment.resource_document_id != null) {
     return `document:${attachment.resource_document_id}`;
@@ -38,7 +36,52 @@ function buildContextAttachmentKey(attachment: PersistedChatAttachmentItem) {
   return `attachment:${attachment.attachment_id}`;
 }
 
-export function useChatSessionData(activeSessionId: number | null, runsById: ChatRunsById) {
+function getAllRunsForSession(
+  queryClient: ReturnType<typeof useQueryClient>,
+  sessionId: number,
+): Record<number, StreamingRun> {
+  const allRuns = queryClient.getQueriesData<StreamingRun>({
+    queryKey: queryKeys.chat.streamRuns,
+  });
+
+  const runsById: Record<number, StreamingRun> = {};
+  allRuns.forEach(([queryKey, run]) => {
+    if (run && run.sessionId === sessionId) {
+      const runId = Number(queryKey[2]);
+      if (!Number.isNaN(runId)) {
+        runsById[runId] = run;
+      }
+    }
+  });
+
+  return runsById;
+}
+
+function useSessionStreamRuns(sessionId: number | null) {
+  const queryClient = useQueryClient();
+  const [runsById, setRunsById] = useState<Record<number, StreamingRun>>({});
+
+  useEffect(() => {
+    const syncRuns = () => {
+      setRunsById(sessionId === null ? {} : getAllRunsForSession(queryClient, sessionId));
+    };
+
+    syncRuns();
+
+    const unsubscribe = queryClient.getQueryCache().subscribe((event) => {
+      if (event?.query.queryKey[1] !== "streamRun") {
+        return;
+      }
+      syncRuns();
+    });
+
+    return unsubscribe;
+  }, [queryClient, sessionId]);
+
+  return runsById;
+}
+
+export function useChatSessionData(activeSessionId: number | null) {
   const queryClient = useQueryClient();
 
   const sessionsQuery = useQuery(chatSessionsQueryOptions());
@@ -161,16 +204,15 @@ export function useChatSessionData(activeSessionId: number | null, runsById: Cha
       sessions.find((session: ChatSessionItem) => session.id === resolvedActiveSessionId) ?? null,
     [resolvedActiveSessionId, sessions],
   );
+  const runsById = useSessionStreamRuns(resolvedActiveSessionId);
 
-  const displayMessages = useMemo(
-    () =>
-      buildDisplayMessages({
-        activeSessionId: resolvedActiveSessionId,
-        messages,
-        runsById,
-      }),
-    [resolvedActiveSessionId, messages, runsById],
-  );
+  const displayMessages = useMemo(() => {
+    return buildDisplayMessages({
+      activeSessionId: resolvedActiveSessionId,
+      messages,
+      runsById,
+    });
+  }, [resolvedActiveSessionId, messages, runsById]);
 
   const hasOlderMessages = messagesWindowQuery.hasNextPage ?? false;
   const isLoadingOlderMessages = messagesWindowQuery.isFetchingNextPage;

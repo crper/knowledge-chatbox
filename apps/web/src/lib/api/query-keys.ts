@@ -12,11 +12,14 @@ export const queryKeys = {
   },
   chat: {
     all: ["chat"] as const,
+    base: ["chat"] as const,
     context: (sessionId: number | null) => ["chat", "context", sessionId] as const,
     messages: (sessionId: number | null) => ["chat", "messages", sessionId] as const,
     messagesWindow: (sessionId: number | null) => ["chat", "messages-window", sessionId] as const,
     profile: ["chat", "profile"] as const,
     sessions: ["chat", "sessions"] as const,
+    streamRuns: ["chat", "streamRun"] as const,
+    streamRun: (runId: number) => ["chat", "streamRun", runId] as const,
   },
   documents: {
     all: ["documents"] as const,

@@ -68,23 +68,28 @@ knowledge-chatbox/
 
 ### 3.2 分层约定
 
-| 目录                | 责任                                                          |
-| ------------------- | ------------------------------------------------------------- |
+| 目录                | 责任                                                              |
+| ------------------- | ----------------------------------------------------------------- |
 | `routes`            | TanStack Router file-based routes，负责 URL 契约、redirect、guard |
-| `router`            | 启动门禁与共享 route shell                                    |
-| `pages`             | 路由入口和页面装配                                            |
-| `features`          | 业务模块、API 调用、query/mutation 配置、局部状态、页面级编排 |
-| `components/ui`     | 基础 UI 组件                                                  |
-| `components/shared` | 跨 feature 复用的共享组件                                     |
-| `providers`         | Query、i18n、theme、Router 与开发态 Devtools 等顶层 provider  |
-| `lib`               | API 客户端、环境变量、hooks、store、utils                     |
-| `i18n`              | 多语言文案                                                    |
+| `router`            | 启动门禁与共享 route shell                                        |
+| `pages`             | 路由入口和页面装配                                                |
+| `features`          | 业务模块、API 调用、query/mutation 配置、局部状态、页面级编排     |
+| `components/ui`     | 基础 UI 组件                                                      |
+| `components/shared` | 跨 feature 复用的共享组件                                         |
+| `providers`         | Query、i18n、theme、Router 与开发态 Devtools 等顶层 provider      |
+| `lib`               | API 客户端、环境变量、hooks、store、utils                         |
+| `i18n`              | 多语言文案                                                        |
 
 补充约定：
 
 - `lib/api/generated` 只放 OpenAPI 生成产物和 typed client 入口
 - `lib/auth/*` 负责前端会话状态、access token 内存存储和启动恢复编排
 - FastAPI app 导出的 OpenAPI 是唯一接口契约源；`/docs`、`/redoc`、`/openapi.json` 与 `scripts/export_openapi.py` 导出的 schema 指向同一份契约
+- OpenAPI 生成流程：
+  - 后端通过 `scripts/export_openapi.py` 导出 FastAPI OpenAPI schema 到 `apps/web/openapi/schema.json`
+  - 前端通过 `openapi-typescript` 从 schema.json 生成 TypeScript 类型到 `src/lib/api/generated/schema.d.ts`
+  - 改了 `apps/api` 的 route / schema 后，必须执行 `vp run api:generate` 同步前端契约
+  - `vp run api:check` / `just web-check` 会校验 schema 和生成类型是否漂移，失败时需重新执行生成命令
 - `lib/api/client.ts` 负责 envelope 解包与前端错误归一化；只统一处理网络失败和 `AbortError`，不要把业务错误或契约错误一律改写成通用 `503`
 - `lib/forms.ts` 统一承接轻量表单辅助，包括错误消息抽取和共享 submit event helper；TanStack Form 对话框优先复用这里的轻量能力
 - `lib/document-upload.ts` 放聊天区和资源页共用的 document upload workflow helper；它统一承接进度 patch、成功 / 失败收敛，以及 abort signal 透传；资源页上传命中服务端去重时，也在这里统一走“无变化，已跳过上传”的前端反馈
@@ -121,32 +126,32 @@ knowledge-chatbox/
 
 ### 4.2 分层约定
 
-| 目录                                         | 责任                                                     |
-| -------------------------------------------- | -------------------------------------------------------- |
-| `api/routes`                                 | HTTP 入口                                                |
-| `api/deps.py`                                | 路由共享依赖                                             |
-| `core`                                       | 配置、日志、安全基础能力                                 |
-| `db`                                         | 引擎和会话工厂                                           |
-| `models`                                     | SQLAlchemy 模型                                          |
-| `schemas`                                    | 请求/响应模型                                            |
-| `repositories`                               | 数据访问                                                 |
-| `services`                                   | 用例编排和事务边界                                       |
+| 目录                                         | 责任                                                       |
+| -------------------------------------------- | ---------------------------------------------------------- |
+| `api/routes`                                 | HTTP 入口                                                  |
+| `api/deps.py`                                | 路由共享依赖                                               |
+| `core`                                       | 配置、日志、安全基础能力                                   |
+| `db`                                         | 引擎和会话工厂                                             |
+| `models`                                     | SQLAlchemy 模型                                            |
+| `schemas`                                    | 请求/响应模型                                              |
+| `repositories`                               | 数据访问                                                   |
+| `services`                                   | 用例编排和事务边界                                         |
 | `services/chat/workflow`                     | `ChatWorkflow + PydanticAI` 的聊天执行 owner、工具、bridge |
-| `providers`                                  | OpenAI / Anthropic / Voyage / Ollama capability adapters |
-| `tasks`                                      | 启动补偿任务                                             |
-| `utils`                                      | 文件、哈希、Chroma 等工具                                |
-| `repositories/retrieval_chunk_repository.py` | SQLite `FTS5` 词法候选索引的写入、删除与查询             |
+| `providers`                                  | OpenAI / Anthropic / Voyage / Ollama capability adapters   |
+| `tasks`                                      | 启动补偿任务                                               |
+| `utils`                                      | 文件、哈希、Chroma 等工具                                  |
+| `repositories/retrieval_chunk_repository.py` | SQLite `FTS5` 词法候选索引的写入、删除与查询               |
 
 ### 4.3 常见改动入口
 
-| 你要改什么                             | 先看哪里                                                                                                   |
-| -------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| provider 配置或重建索引语义            | `services/settings/settings_service.py`、`services/documents/rebuild_service.py`、`api/routes/settings.py` |
-| 上传、内容哈希去重、标准化、切块、索引 | `services/documents/*`                                                                                     |
-| 聊天、SSE、失败恢复、活跃 run 补偿     | `services/chat/*`、`tasks/document_jobs.py`、`main.py`                                                     |
+| 你要改什么                             | 先看哪里                                                                                                     |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| provider 配置或重建索引语义            | `services/settings/settings_service.py`、`services/documents/rebuild_service.py`、`api/routes/settings.py`   |
+| 上传、内容哈希去重、标准化、切块、索引 | `services/documents/*`                                                                                       |
+| 聊天、SSE、失败恢复、活跃 run 补偿     | `services/chat/*`、`tasks/document_jobs.py`、`main.py`                                                       |
 | `ChatWorkflow` / `PydanticAI` 聊天执行 | `services/chat/workflow/*`、`services/chat/chat_application_service.py`、`services/chat/chat_run_service.py` |
-| 认证、会话、用户管理                   | `services/auth/*`、`api/routes/auth.py`、`api/routes/users.py`                                             |
-| personal space bootstrap               | `repositories/space_repository.py`、`main.py`                                                              |
+| 认证、会话、用户管理                   | `services/auth/*`、`api/routes/auth.py`、`api/routes/users.py`                                               |
+| personal space bootstrap               | `repositories/space_repository.py`、`main.py`                                                                |
 
 ## 5. 修改时的基本规则
 
@@ -249,7 +254,12 @@ uv run --group dev python -m pytest
 
 - 后端单测优先保护公共契约、边界条件和业务行为；如果同一行为已经被更高层覆盖，不再补简单映射表或静态默认值的重复测试
 - `just api-check` 当前等价于 `ruff check + ruff format --check + basedpyright`
-- 后端测试目录当前只保留 `apps/api/tests/integration`、`apps/api/tests/unit`、`apps/api/tests/runtime`、`apps/api/tests/migrations` 和 `apps/api/tests/fixtures`
+- 后端测试目录分层：
+  - `tests/integration`: API 路由、provider 集成、文档上传问答全链路测试
+  - `tests/unit`: 纯服务、仓储、工具类的单元测试，不依赖外部服务
+  - `tests/runtime`: just 命令、脚本、仓库入口的运行时约束测试
+  - `tests/migrations`: 数据库迁移的 smoke test，验证 migration 可正确应用到 head
+  - `tests/fixtures`: 测试工厂、复用 helper、mock 数据生成器
 - 后端 API 集成测试当前统一通过 `apps/api/tests/conftest.py` 的 helper 准备 TestClient、临时 SQLite/Chroma 路径，以及 HTTPS / `SESSION_COOKIE_SECURE` 场景；不要在各测试文件里平行复制同一套启动代码
 
 ### 6.4 涉及启动、环境变量或 Docker

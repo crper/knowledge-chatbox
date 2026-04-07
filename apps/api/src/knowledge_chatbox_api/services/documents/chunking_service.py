@@ -37,23 +37,36 @@ class ChunkingService:
 
         for paragraph in paragraphs:
             for text in self._split_paragraph(paragraph):
+                chunk_id = f"{document_id}:{chunk_index}"
                 chunks.append(
                     Chunk(
-                        chunk_id=f"{document_id}:{chunk_index}",
+                        chunk_id=chunk_id,
                         chunk_index=chunk_index,
                         text=text,
-                        metadata={
-                            "document_id": document_id,
-                            "chunk_id": f"{document_id}:{chunk_index}",
-                            "chunk_index": chunk_index,
-                            "section_title": section_title,
-                            "page_number": page_number,
-                        },
+                        metadata=self._build_chunk_metadata(
+                            document_id, chunk_id, chunk_index, section_title, page_number
+                        ),
                     )
                 )
                 chunk_index += 1
 
         return chunks
+
+    def _build_chunk_metadata(
+        self,
+        document_id: int,
+        chunk_id: str,
+        chunk_index: int,
+        section_title: str | None,
+        page_number: int | None,
+    ) -> dict:
+        return {
+            "document_id": document_id,
+            "chunk_id": chunk_id,
+            "chunk_index": chunk_index,
+            "section_title": section_title,
+            "page_number": page_number,
+        }
 
     def _split_paragraph(self, paragraph: str) -> list[str]:
         if len(paragraph) <= self.max_chunk_length:
@@ -66,5 +79,5 @@ class ChunkingService:
             parts.append(paragraph[start:end])
             if end >= len(paragraph):
                 break
-            start = max(0, end - self.overlap)
+            start = end - self.overlap
         return parts

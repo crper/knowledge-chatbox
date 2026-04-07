@@ -15,22 +15,22 @@
 
 当前已落地的能力：
 
-| 特性              | 状态   | 说明                                                                                  |
-| ----------------- | ------ | ------------------------------------------------------------------------------------- |
-| 📱 响应式工作台   | 已支持 | `/chat` 桌面端三栏，移动端退化为抽屉和单栏                                            |
-| 📚 多格式资料入库 | 已支持 | `txt / md / pdf / docx / png / jpg / jpeg / webp`                                     |
-| 🌊 流式问答       | 已支持 | 同步问答、SSE 流式输出、失败重试、活动 run 查询；长会话主区默认只加载最近一段消息窗口 |
-| 🧾 来源引用回看   | 已支持 | 回答内容带来源片段；右侧上下文栏走独立会话摘要接口，不再依赖整段消息重拉              |
-| 🔎 检索兜底       | 已支持 | `Chroma` 向量召回优先，`SQLite FTS5` 负责词法候选兜底                                 |
-| 🧠 三路模型路由   | 已支持 | `response / embedding / vision` 独立配置与切换                                        |
-| 🤖 ChatWorkflow 后端 | 已支持 | 聊天执行当前统一由 `ChatWorkflow + PydanticAI` 驱动，同步和流式共用同一路径 |
-| 🔌 多 Provider    | 已支持 | `OpenAI / Anthropic / Voyage / Ollama`                                                |
-| 🌐 中英双语       | 已支持 | 前端内置 `zh-CN / en` 文案与切换能力                                                  |
-| 🌓 主题切换       | 已支持 | `light / dark / system` 三种主题偏好                                                  |
-| 🔐 角色与设置中心 | 已支持 | `admin / user` 两类角色，带设置中心和用户管理                                         |
-| 🐳 单机部署       | 已支持 | 开发态可直跑，稳定运行走 Docker Compose                                               |
-| 🗂️ 本地优先存储   | 已支持 | SQLite（含 `FTS5` 词法兜底索引）、Chroma、上传文件和标准化结果都落本地目录            |
-| 🪶 依赖克制       | 已支持 | V1 不引入 Redis、Celery、对象存储等非必需基础设施                                     |
+| 特性                 | 状态   | 说明                                                                                  |
+| -------------------- | ------ | ------------------------------------------------------------------------------------- |
+| 📱 响应式工作台      | 已支持 | `/chat` 桌面端三栏，移动端退化为抽屉和单栏                                            |
+| 📚 多格式资料入库    | 已支持 | `txt / md / pdf / docx / png / jpg / jpeg / webp`                                     |
+| 🌊 流式问答          | 已支持 | 同步问答、SSE 流式输出、失败重试、活动 run 查询；长会话主区默认只加载最近一段消息窗口 |
+| 🧾 来源引用回看      | 已支持 | 回答内容带来源片段；右侧上下文栏走独立会话摘要接口，不再依赖整段消息重拉              |
+| 🔎 检索兜底          | 已支持 | `Chroma` 向量召回优先，`SQLite FTS5` 负责词法候选兜底                                 |
+| 🧠 三路模型路由      | 已支持 | `response / embedding / vision` 独立配置与切换                                        |
+| 🤖 ChatWorkflow 后端 | 已支持 | 聊天执行当前统一由 `ChatWorkflow + PydanticAI` 驱动，同步和流式共用同一路径           |
+| 🔌 多 Provider       | 已支持 | `OpenAI / Anthropic / Voyage / Ollama`                                                |
+| 🌐 中英双语          | 已支持 | 前端内置 `zh-CN / en` 文案与切换能力                                                  |
+| 🌓 主题切换          | 已支持 | `light / dark / system` 三种主题偏好                                                  |
+| 🔐 角色与设置中心    | 已支持 | `admin / user` 两类角色，带设置中心和用户管理                                         |
+| 🐳 单机部署          | 已支持 | 开发态可直跑，稳定运行走 Docker Compose                                               |
+| 🗂️ 本地优先存储      | 已支持 | SQLite（含 `FTS5` 词法兜底索引）、Chroma、上传文件和标准化结果都落本地目录            |
+| 🪶 依赖克制          | 已支持 | V1 不引入 Redis、Celery、对象存储等非必需基础设施                                     |
 
 ## 演示 Demo
 
@@ -99,22 +99,22 @@ just setup
 - 首次 clone 后必须先执行一次
 - 后端会执行 `uv sync --all-groups`
 - 前端会执行 `vp install`
-- `just dev` 默认假定依赖已经装好；如果直接在 fresh clone 上运行，前端会因为缺少本地依赖而启动失败
+- `just dev` 专注于启动服务，不会自动安装依赖；推荐先执行 `just setup` 再运行 `just dev`
 
 ### 4. 选择运行方式
 
-| 目标               | 命令               | 说明                                                           |
-| ------------------ | ------------------ | -------------------------------------------------------------- |
-| 首次安装依赖       | `just setup`       | 同步后端虚拟环境和前端依赖                                     |
-| 看仓库入口         | `just --list`      | 查看当前保留的高频命令                                         |
-| 手动执行数据库迁移 | `just api-migrate` | 只补齐本地 API schema，不启动服务                              |
-| 本地开发           | `just dev`         | 依赖已安装后先启动 API、等健康检查 ready，再启动 Web 并打印访问地址 |
-| 检查仓库表面约束   | `just repo-check`  | 校验 README / 包级 README 和 `justfile` 的关键入口是否保持一致 |
-| 只跑后端           | `just api-dev`     | FastAPI 开发态                                                 |
-| 只跑前端           | `just web-dev`     | Web 开发态                                                     |
-| 检查与测试         | `just test`        | 先跑 `repo-check`，再执行后端 `tests/integration + unit + runtime + migrations` 与前端测试 |
+| 目标               | 命令               | 说明                                                                                               |
+| ------------------ | ------------------ | -------------------------------------------------------------------------------------------------- |
+| 首次安装依赖       | `just setup`       | 同步后端虚拟环境和前端依赖                                                                         |
+| 看仓库入口         | `just --list`      | 查看当前保留的高频命令                                                                             |
+| 手动执行数据库迁移 | `just api-migrate` | 只补齐本地 API schema，不启动服务                                                                  |
+| 本地开发           | `just dev`         | 依赖已安装后先启动 API、等健康检查 ready，再启动 Web 并打印访问地址                                |
+| 检查仓库表面约束   | `just repo-check`  | 校验 README / 包级 README 和 `justfile` 的关键入口是否保持一致                                     |
+| 只跑后端           | `just api-dev`     | FastAPI 开发态                                                                                     |
+| 只跑前端           | `just web-dev`     | Web 开发态                                                                                         |
+| 检查与测试         | `just test`        | 先跑 `repo-check`，再执行后端 `tests/integration + unit + runtime + migrations` 与前端测试         |
 | 重置本地数据       | `just reset-dev`   | 清空全部本地数据（上传文件/标准化结果/向量索引/SQLite含WAL）、重装依赖、重启前后端，并打印访问地址 |
-| 单机部署           | `just docker-up`   | Docker Compose 运行                                            |
+| 单机部署           | `just docker-up`   | Docker Compose 运行                                                                                |
 
 `just reset-dev` 会按顺序执行以下操作：
 

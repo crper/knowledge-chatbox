@@ -11,9 +11,11 @@ import { queryKeys } from "@/lib/api/query-keys";
 import type { ChatMessageItem, ChatSessionContextItem, ChatSourceItem } from "../api/chat";
 import { startChatStream, type ChatStreamAttachmentInput } from "../api/chat-stream";
 import { CHAT_STREAM_EVENT } from "../api/chat-stream-events";
-import { useChatStreamStore } from "../store/chat-stream-store";
+import type { useChatStreamRun } from "../hooks/use-chat-stream-run";
+import type { StreamingRun } from "../store/chat-stream-store";
 import { patchPagedChatMessagesCache } from "../utils/patch-paged-chat-messages";
 import { resolveSubmitErrorMessage } from "../utils/chat-submit-helpers";
+import { MessageRole, MessageStatus } from "../constants";
 
 type StreamRunTerminalStatus = "failed" | "succeeded";
 
@@ -25,20 +27,16 @@ type UseChatStreamLifecycleParams = {
     latestAssistantSources?: ChatSessionContextItem["latest_assistant_sources"];
     sessionId: number;
   }) => void;
+  streamRun: ReturnType<typeof useChatStreamRun>;
 };
 
 export function useChatStreamLifecycle({
   currentSessionIdRef,
   patchSessionContext,
+  streamRun,
 }: UseChatStreamLifecycleParams) {
   const { t } = useTranslation(["chat", "common"]);
   const queryClient = useQueryClient();
-  const startRun = useChatStreamStore((state) => state.startRun);
-  const appendDelta = useChatStreamStore((state) => state.appendDelta);
-  const addSource = useChatStreamStore((state) => state.addSource);
-  const completeRun = useChatStreamStore((state) => state.completeRun);
-  const failRun = useChatStreamStore((state) => state.failRun);
-  const pruneRuns = useChatStreamStore((state) => state.pruneRuns);
 
   const patchRetriedUserMessage = useCallback(
     ({ sessionId, userMessageId }: { sessionId: number; userMessageId: number }) => {
@@ -52,7 +50,7 @@ export function useChatStreamLifecycle({
           let patched = false;
           const nextPages = current.pages.map((page) =>
             page.map((message) => {
-              if (message.id !== userMessageId || message.role !== "user") {
+              if (message.id !== userMessageId || message.role !== MessageRole.USER) {
                 return message;
               }
 
@@ -60,7 +58,7 @@ export function useChatStreamLifecycle({
               return {
                 ...message,
                 error_message: null,
-                status: "succeeded",
+                status: MessageStatus.SUCCEEDED,
               } satisfies ChatMessageItem;
             }),
           );
@@ -79,7 +77,7 @@ export function useChatStreamLifecycle({
       status,
     }: {
       errorMessage: string | null;
-      run: ReturnType<typeof useChatStreamStore.getState>["runsById"][number];
+      run: StreamingRun;
       status: StreamRunTerminalStatus;
     }): ChatMessageItem[] => {
       const assistantMessage: ChatMessageItem = {
@@ -87,7 +85,7 @@ export function useChatStreamLifecycle({
         error_message: errorMessage,
         id: run.assistantMessageId,
         reply_to_message_id: run.retryOfMessageId ?? run.userMessageId ?? null,
-        role: "assistant",
+        role: MessageRole.ASSISTANT,
         sources_json: run.sources as ChatMessageItem["sources_json"],
         status,
       };
@@ -105,7 +103,7 @@ export function useChatStreamLifecycle({
           content: run.userContent,
           ...(errorMessage ? { error_message: errorMessage } : {}),
           id: run.userMessageId,
-          role: "user",
+          role: MessageRole.USER,
           sources_json: [],
           status,
         },
@@ -127,7 +125,7 @@ export function useChatStreamLifecycle({
       sessionId: number;
       status: StreamRunTerminalStatus;
     }) => {
-      const currentRun = useChatStreamStore.getState().runsById[runId];
+      const currentRun = streamRun.getRun(runId);
       const patched =
         currentRun == null
           ? false
@@ -149,7 +147,7 @@ export function useChatStreamLifecycle({
             });
 
       if (currentRun != null) {
-        if (status === "succeeded" && currentRun.retryOfMessageId != null) {
+        if (status === MessageStatus.SUCCEEDED && currentRun.retryOfMessageId != null) {
           patchRetriedUserMessage({
             sessionId,
             userMessageId: currentRun.retryOfMessageId,
@@ -170,8 +168,8 @@ export function useChatStreamLifecycle({
             queryKey: queryKeys.chat.messagesWindow(sessionId),
           });
       void refreshPromise.then(() => {
-        if (status === "failed" || currentSessionIdRef.current === sessionId) {
-          pruneRuns([runId]);
+        if (status === MessageStatus.FAILED || currentSessionIdRef.current === sessionId) {
+          streamRun.pruneRuns([runId]);
         }
       });
     },
@@ -180,8 +178,8 @@ export function useChatStreamLifecycle({
       currentSessionIdRef,
       patchRetriedUserMessage,
       patchSessionContext,
-      pruneRuns,
       queryClient,
+      streamRun,
     ],
   );
 
@@ -216,7 +214,7 @@ export function useChatStreamLifecycle({
               activeRunId = runId;
               const userMessageId =
                 typeof event.data.user_message_id === "number" ? event.data.user_message_id : null;
-              startRun({
+              streamRun.startRun({
                 runId,
                 sessionId: Number(event.data.session_id ?? sessionId),
                 assistantMessageId: Number(event.data.assistant_message_id ?? 0),
@@ -247,8 +245,8 @@ export function useChatStreamLifecycle({
                       {
                         content,
                         id: userMessageId,
-                        role: "user",
-                        status: "succeeded",
+                        role: MessageRole.USER,
+                        status: MessageStatus.SUCCEEDED,
                         sources_json: [],
                       } satisfies ChatMessageItem,
                     ];
@@ -267,12 +265,15 @@ export function useChatStreamLifecycle({
               event.event === CHAT_STREAM_EVENT.partTextDelta ||
               event.event === CHAT_STREAM_EVENT.legacyMessageDelta
             ) {
-              appendDelta(runId, typeof event.data.delta === "string" ? event.data.delta : "");
+              streamRun.appendDelta(
+                runId,
+                typeof event.data.delta === "string" ? event.data.delta : "",
+              );
               return;
             }
 
             if (event.event === CHAT_STREAM_EVENT.partSource && event.data.source) {
-              addSource(runId, event.data.source as Record<string, unknown>);
+              streamRun.addSource(runId, event.data.source as Record<string, unknown>);
               return;
             }
 
@@ -281,14 +282,14 @@ export function useChatStreamLifecycle({
               Array.isArray(event.data.sources)
             ) {
               for (const source of event.data.sources) {
-                addSource(runId, source as ChatSourceItem as Record<string, unknown>);
+                streamRun.addSource(runId, source as ChatSourceItem as Record<string, unknown>);
               }
               return;
             }
 
             if (event.event === CHAT_STREAM_EVENT.runCompleted) {
               receivedTerminalRunEvent = true;
-              completeRun(runId);
+              streamRun.completeRun(runId);
               finalizeStreamRun({
                 errorMessage: null,
                 runId,
@@ -304,7 +305,7 @@ export function useChatStreamLifecycle({
                 typeof event.data.error_message === "string"
                   ? event.data.error_message
                   : t("assistantStreamingInterruptedError");
-              failRun(runId, errorMessage);
+              streamRun.failRun(runId, errorMessage);
               finalizeStreamRun({
                 errorMessage,
                 runId,
@@ -316,7 +317,7 @@ export function useChatStreamLifecycle({
         });
       } catch (error) {
         if (activeRunId !== null && !receivedTerminalRunEvent) {
-          failRun(activeRunId, t("assistantStreamingInterruptedError"));
+          streamRun.failRun(activeRunId, t("assistantStreamingInterruptedError"));
         } else {
           toast.error(resolveSubmitErrorMessage(error, t("messageSendFailedToast")));
         }

@@ -16,7 +16,8 @@ import { useChatComposerSubmit } from "../hooks/use-chat-composer-submit";
 import { useChatSessionData } from "../hooks/use-chat-session-data";
 import { useChatSessionSubmitController } from "../hooks/use-chat-session-submit-controller";
 import { useChatStreamLifecycle } from "../hooks/use-chat-stream-lifecycle";
-import { useChatStreamStore } from "../store/chat-stream-store";
+import { useChatStreamRun } from "../hooks/use-chat-stream-run";
+import type { StreamingRun } from "../store/chat-stream-store";
 import { useChatUiStore } from "../store/chat-ui-store";
 import {
   buildLocalAttachmentFingerprint,
@@ -40,9 +41,6 @@ export function useChatWorkspace(activeSessionId: number | null) {
   const setSendShortcut = useChatUiStore((state) => state.setSendShortcut);
   const setDraft = useChatUiStore((state) => state.setDraft);
 
-  const runsById = useChatStreamStore((state) => state.runsById);
-  const markToastShown = useChatStreamStore((state) => state.markToastShown);
-  const removeRun = useChatStreamStore((state) => state.removeRun);
   const { beginSessionSubmit, finishSessionSubmit, isSessionSubmitPending } =
     useChatSessionSubmitController();
 
@@ -59,14 +57,16 @@ export function useChatWorkspace(activeSessionId: number | null) {
     resolvedActiveSessionId,
     sessions,
     sessionsQuery,
-  } = useChatSessionData(activeSessionId, runsById);
+  } = useChatSessionData(activeSessionId);
 
   useEffect(() => {
     currentSessionIdRef.current = resolvedActiveSessionId;
   }, [resolvedActiveSessionId]);
+  const streamRun = useChatStreamRun();
   const { sendMutation } = useChatStreamLifecycle({
     currentSessionIdRef,
     patchSessionContext,
+    streamRun,
   });
   const { retryMessage, submitMessage } = useChatComposerSubmit({
     beginSessionSubmit,
@@ -78,7 +78,22 @@ export function useChatWorkspace(activeSessionId: number | null) {
       setScrollToLatestRequestKey((current) => current + 1);
     },
     resolvedActiveSessionId,
-    runsById,
+    getRunsById: () => {
+      if (resolvedActiveSessionId === null) return {};
+      const allRuns = queryClient.getQueriesData<StreamingRun>({
+        queryKey: queryKeys.chat.streamRuns,
+      });
+      const runsById: Record<number, StreamingRun> = {};
+      allRuns.forEach(([queryKey, run]) => {
+        if (run && run.sessionId === resolvedActiveSessionId) {
+          const runId = Number(queryKey[2]);
+          if (!Number.isNaN(runId)) {
+            runsById[runId] = run;
+          }
+        }
+      });
+      return runsById;
+    },
     sendStreamMessage: sendMutation.mutateAsync,
   });
 
@@ -97,30 +112,43 @@ export function useChatWorkspace(activeSessionId: number | null) {
       return;
     }
 
-    Object.values(runsById).forEach((run) => {
-      if (
-        run.status !== "succeeded" ||
-        run.toastShown ||
-        run.sessionId === resolvedActiveSessionId
-      ) {
-        return;
-      }
+    const checkBackgroundRuns = () => {
+      const allRuns = queryClient.getQueriesData<StreamingRun>({
+        queryKey: queryKeys.chat.streamRuns,
+      });
 
-      const session = sessions.find((item) => item.id === run.sessionId);
-      const title = resolveSessionTitle(session?.title, t("sessionTitleFallback"));
-      toast.success(t("backgroundSessionCompletedToast", { title }));
-      markToastShown(run.runId);
-      removeRun(run.runId);
+      allRuns.forEach(([, run]) => {
+        if (
+          !run ||
+          run.status !== "succeeded" ||
+          run.toastShown ||
+          run.sessionId === resolvedActiveSessionId
+        ) {
+          return;
+        }
+
+        const session = sessions.find((item) => item.id === run.sessionId);
+        const title = resolveSessionTitle(session?.title, t("sessionTitleFallback"));
+        toast.success(t("backgroundSessionCompletedToast", { title }));
+        streamRun.markToastShown(run.runId);
+        streamRun.removeRun(run.runId);
+      });
+    };
+
+    // 立即检查一次
+    checkBackgroundRuns();
+
+    // 订阅 Query Cache 变化，当有 run 更新时再次检查
+    const unsubscribe = queryClient.getQueryCache().subscribe((event) => {
+      if (event?.type === "updated" && event.query.queryKey[1] === "streamRun") {
+        checkBackgroundRuns();
+      }
     });
-  }, [
-    markToastShown,
-    removeRun,
-    resolvedActiveSessionId,
-    runsById,
-    sessions,
-    sessionsQuery.isPending,
-    t,
-  ]);
+
+    return () => {
+      unsubscribe();
+    };
+  }, [queryClient, resolvedActiveSessionId, sessions, sessionsQuery.isPending, streamRun, t]);
 
   const attachFiles = useCallback(
     (files: File[]) => {

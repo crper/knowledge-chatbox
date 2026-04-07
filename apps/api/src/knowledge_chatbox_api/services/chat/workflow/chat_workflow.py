@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import base64
 import binascii
-from typing import cast
 
 from pydantic_ai.messages import BinaryContent, ModelRequest, ModelResponse, TextPart
 from pydantic_ai.settings import ModelSettings
@@ -67,31 +66,39 @@ class ChatWorkflow:
     ) -> list[str | BinaryContent]:
         user_content: list[str | BinaryContent] = []
         for item in prompt_attachments:
-            if item.get("type") == "text":
-                text = item.get("text")
-                if isinstance(text, str) and text:
-                    user_content.append(text)
-                continue
-
-            if item.get("type") != "image":
-                continue
-
-            data_base64 = item.get("data_base64")
-            if not isinstance(data_base64, str) or not data_base64:
-                continue
-
-            mime_type = item.get("mime_type")
-            if not isinstance(mime_type, str) or not mime_type:
-                mime_type = "image/jpeg"
-
-            try:
-                image_bytes = base64.b64decode(data_base64, validate=True)
-            except (binascii.Error, ValueError):
-                continue
-
-            user_content.append(BinaryContent(data=image_bytes, media_type=mime_type))
-
+            content = self._convert_attachment_item(item)
+            if content is not None:
+                user_content.append(content)
         return user_content
+
+    def _convert_attachment_item(self, item: dict) -> str | BinaryContent | None:
+        """将单个附件项转换为 Prompt 内容。"""
+        item_type = item.get("type")
+
+        if item_type == "text":
+            text = item.get("text")
+            return text if isinstance(text, str) and text else None
+
+        if item_type == "image":
+            return self._convert_image_attachment(item)
+
+        return None
+
+    def _convert_image_attachment(self, item: dict) -> BinaryContent | None:
+        data_base64 = item.get("data_base64")
+        if not isinstance(data_base64, str) or not data_base64:
+            return None
+
+        mime_type = item.get("mime_type")
+        if not isinstance(mime_type, str) or not mime_type:
+            mime_type = "image/jpeg"
+
+        try:
+            image_bytes = base64.b64decode(data_base64, validate=True)
+        except (binascii.Error, ValueError):
+            return None
+
+        return BinaryContent(data=image_bytes, media_type=mime_type)
 
     def _build_message_history(
         self,
@@ -123,9 +130,11 @@ class ChatWorkflow:
     def _build_model_settings(self, runtime_settings) -> ModelSettings:
         route = runtime_settings.response_route
         reasoning_mode = getattr(runtime_settings, "reasoning_mode", "default")
-        model_settings: dict[str, object] = {
-            "timeout": getattr(runtime_settings, "provider_timeout_seconds", None),
-        }
+        model_settings: dict[str, object] = {}
+
+        timeout = getattr(runtime_settings, "provider_timeout_seconds", None)
+        if timeout is not None:
+            model_settings["timeout"] = timeout
 
         if route.provider == "anthropic":
             if reasoning_mode == "on":
@@ -143,10 +152,7 @@ class ChatWorkflow:
         elif reasoning_mode == "off":
             model_settings["openai_reasoning_effort"] = "none"
 
-        return cast(
-            ModelSettings,
-            {key: value for key, value in model_settings.items() if value is not None},
-        )
+        return model_settings  # type: ignore[return-value]
 
     def _reset_workflow_state(self, deps) -> None:
         workflow_state = getattr(deps, "workflow_state", None)
