@@ -37,14 +37,14 @@
 - React 19
 - TypeScript
 - Vite+
-- React Router
+- TanStack Router
 - TanStack Query
 - TanStack Form
 - react-virtuoso
 - Zustand
 - openapi-typescript / openapi-fetch
 - i18next
-- shadcn/ui
+- Base UI
 - Tailwind CSS 4
 - Streamdown
 

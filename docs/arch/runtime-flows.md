@@ -83,17 +83,23 @@ flowchart TD
 
 ## 5. 聊天流式执行
 
+当前聊天执行 owner 已统一收口到 `services/chat/workflow/*`：
+
+- 同步问答走 `ChatWorkflow.run_sync`
+- 流式问答走 `WorkflowStreamRunner`，把 workflow 事件桥接回现有 SSE / `chat_run_events` 契约
+
 1. 创建或复用 user message projection
 2. 创建 `chat_run`
 3. 若携带文档附件，先读取每个附件的标准化文本片段并拼进当前轮 prompt
 4. 若携带图片附件，再按 `document_revision_id` 重读原图并统一转成稳定 JPEG payload
-5. 写入 `chat_run_events`
+5. `WorkflowStreamRunner` 把 `ChatWorkflow` 事件映射成 `chat_run_events`
 6. assistant 投影随事件流更新
 7. 成功时持久化 `sources_json / usage_json`
 8. 若命中相同 `client_request_id`，直接复用既有 run 并重放事件
 
 关键约束：
 
+- `ChatWorkflow + PydanticAI` 当前按两条输出链路接入：同步问答走结构化输出，流式问答走文本增量事件，并在最终结果事件里回收 `sources_json / usage_json`
 - 检索范围默认按当前会话 `space_id` 过滤
 - 若本轮消息带文档附件，检索会进一步限域到当前附件对应的 `document_revision_id`
 - 多文档附件检索当前会先按附件集合做一次批量限域召回，再按 `document_revision_id` 在内存里做轮转式公平选取，减少单个文档吃满全局 `top_k`，也避免附件数增多时把检索请求线性放大
@@ -111,8 +117,11 @@ flowchart TD
 
 关键入口：
 
+- `apps/api/src/knowledge_chatbox_api/services/chat/chat_application_service.py`
 - `apps/api/src/knowledge_chatbox_api/services/chat/chat_run_service.py`
 - `apps/api/src/knowledge_chatbox_api/services/chat/chat_persistence_service.py`
+- `apps/api/src/knowledge_chatbox_api/services/chat/workflow_stream_runner.py`
+- `apps/api/src/knowledge_chatbox_api/services/chat/workflow/*`
 - `apps/api/src/knowledge_chatbox_api/services/chat/chat_service.py`
 - `apps/api/src/knowledge_chatbox_api/utils/chroma.py`
 
