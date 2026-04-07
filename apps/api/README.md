@@ -177,6 +177,7 @@ uv run -m uvicorn knowledge_chatbox_api.main:app --reload --host 0.0.0.0 --port 
 - `ollama.base_url` 对外当前统一表示服务根地址，例如 `http://localhost:11434`；如果用户误填了 `/v1`，服务端会在读写设置和运行时自动收口，真正需要 OpenAI 兼容接口时再内部派生 `.../v1`
 - 当前 capability route 支持独立选择 `response / embedding / vision`；切换检索 provider 或 embedding model 会触发后台 generation 重建
 - 聊天执行 owner 当前统一由 `services/chat/workflow/*` 驱动，同步和流式问答共享同一套 `ChatWorkflow + PydanticAI` 路径；HTTP 契约、`sources_json` 语义和 `client_request_id` 幂等语义保持不变
+- 当前轮附件会在进入 `ChatWorkflow` 前先由服务端物化成真实 prompt 内容：文档附件转标准化文本片段，图片附件转稳定 JPEG 多模态 payload，再直接随 user prompt 进入模型，不再把“是否读取图片附件”交给模型自己决定
 - 后端业务异常统一返回 `Envelope(success=false, error={ code, message, details })`
 - `/api/chat/sessions/{session_id}/messages` 当前支持可选 `before_id`、`limit`，用于 Web 主区按尾部窗口读取长会话；不带参数时仍保留全量历史返回作兼容路径
 - `/api/chat/sessions/{session_id}/context` 当前返回聊天右栏需要的紧凑摘要：已去重附件、最近一次 assistant 引用和对应消息 id

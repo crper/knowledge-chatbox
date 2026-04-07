@@ -9,7 +9,8 @@ def base_instructions() -> str:
     return (
         "优先回答用户真正的问题。"
         "需要知识库上下文时调用 knowledge_search 工具。"
-        "需要读取当前回合附件时调用 load_prompt_attachments 工具。"
+        "当前回合附件会随用户消息直接提供。"
+        "只有确认服务端回填的附件内容时，才调用 load_prompt_attachments 工具。"
     )
 
 

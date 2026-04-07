@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import base64
+import binascii
 from typing import cast
 
-from pydantic_ai.messages import ModelRequest, ModelResponse, TextPart
+from pydantic_ai.messages import BinaryContent, ModelRequest, ModelResponse, TextPart
 from pydantic_ai.settings import ModelSettings
 
 from knowledge_chatbox_api.services.chat.workflow.agent import (
@@ -32,16 +34,64 @@ class ChatWorkflow:
     def _build_user_prompt(
         self,
         *,
+        deps,
         session_id: int,
         question: str,
         attachments: list[dict] | None,
-    ) -> str:
-        return (
+    ) -> str | list[str | BinaryContent]:
+        chat_session = deps.chat_repository.get_session(session_id)
+        active_space_id = chat_session.space_id if chat_session is not None else None
+        prompt_attachments = deps.prompt_attachment_service.build_prompt_attachments(
+            attachments,
+            active_space_id,
+        )
+        prompt_text = deps.prompt_attachment_service.resolve_prompt_text(question, attachments)
+        prompt_body = (
+            f"{prompt_text}\n\n"
             f"session_id={session_id}\n"
             f"question={question}\n"
             f"attachments={attachments or []}\n"
-            "请在必要时调用工具后给出最终答案。"
-        )
+            "当前回合附件已随用户消息直接提供。需要知识库上下文时调用 knowledge_search 工具。"
+        ).strip()
+
+        if not prompt_attachments:
+            return prompt_body
+
+        user_content: list[str | BinaryContent] = [prompt_body]
+        user_content.extend(self._map_prompt_attachments(prompt_attachments))
+        return user_content
+
+    def _map_prompt_attachments(
+        self,
+        prompt_attachments: list[dict],
+    ) -> list[str | BinaryContent]:
+        user_content: list[str | BinaryContent] = []
+        for item in prompt_attachments:
+            if item.get("type") == "text":
+                text = item.get("text")
+                if isinstance(text, str) and text:
+                    user_content.append(text)
+                continue
+
+            if item.get("type") != "image":
+                continue
+
+            data_base64 = item.get("data_base64")
+            if not isinstance(data_base64, str) or not data_base64:
+                continue
+
+            mime_type = item.get("mime_type")
+            if not isinstance(mime_type, str) or not mime_type:
+                mime_type = "image/jpeg"
+
+            try:
+                image_bytes = base64.b64decode(data_base64, validate=True)
+            except (binascii.Error, ValueError):
+                continue
+
+            user_content.append(BinaryContent(data=image_bytes, media_type=mime_type))
+
+        return user_content
 
     def _build_message_history(
         self,
@@ -144,6 +194,7 @@ class ChatWorkflow:
         self._reset_workflow_state(deps)
         result = agent.run_sync(
             self._build_user_prompt(
+                deps=deps,
                 session_id=session_id,
                 question=question,
                 attachments=attachments,
@@ -179,6 +230,7 @@ class ChatWorkflow:
         self._reset_workflow_state(deps)
         return agent.run_stream_events(
             self._build_user_prompt(
+                deps=deps,
                 session_id=session_id,
                 question=question,
                 attachments=attachments,

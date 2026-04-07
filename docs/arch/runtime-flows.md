@@ -87,6 +87,7 @@ flowchart TD
 
 - 同步问答走 `ChatWorkflow.run_sync`
 - 流式问答走 `WorkflowStreamRunner`，把 workflow 事件桥接回现有 SSE / `chat_run_events` 契约
+- 当前回合附件不会只作为字符串元数据丢给模型自己猜；服务端会先把附件物化成真实 user content，再交给 `PydanticAI`
 
 1. 创建或复用 user message projection
 2. 创建 `chat_run`
@@ -100,6 +101,7 @@ flowchart TD
 关键约束：
 
 - `ChatWorkflow + PydanticAI` 当前按两条输出链路接入：同步问答走结构化输出，流式问答走文本增量事件，并在最终结果事件里回收 `sources_json / usage_json`
+- 当前轮附件采用 eager hydration：文档附件先转成标准化文本块，图片附件先转成稳定 JPEG bytes，然后直接作为多模态 user content 随本轮 user prompt 进入模型；`load_prompt_attachments` 工具只作为确认或补读手段，不再承担“图片是否能进模型”的主路径
 - 检索范围默认按当前会话 `space_id` 过滤
 - 若本轮消息带文档附件，检索会进一步限域到当前附件对应的 `document_revision_id`
 - 多文档附件检索当前会先按附件集合做一次批量限域召回，再按 `document_revision_id` 在内存里做轮转式公平选取，减少单个文档吃满全局 `top_k`，也避免附件数增多时把检索请求线性放大
@@ -107,6 +109,7 @@ flowchart TD
 - 若向量命中不足或当前轮 query embedding 生成失败，本轮会降级到 SQLite `FTS5` 词法候选兜底，再做轻量重排；不会退回整代索引的全量词法扫描
 - 纯图片泛化看图请求默认跳过 retrieval
 - 无附件时，问答仍会继续查询当前用户 personal `space` 里已入库的历史知识
+- 因为图片已经在 provider 调用前直接注入 user prompt，兼容 OpenAI 的多模态模型不会再出现“聊天气泡里有图片，但模型收到的只是附件 JSON 文本”的退化链路
 - Web 主区默认通过 `/api/chat/sessions/{id}/messages?limit=80` 先读取最近一段消息窗口，继续向上滚动时再带 `before_id + limit` 请求更早消息
 - Web 右侧上下文栏当前走 `/api/chat/sessions/{id}/context`，返回当前会话已去重附件摘要和最近一次 assistant 引用，不再依赖整段消息列表反推
 - 受保护读取接口在鉴权阶段保持纯读，不再为 session 心跳同步写 `auth_sessions.last_seen_at`；避免流式回答持有 SQLite 写事务时，把 `/api/auth/me`、`/api/settings` 这类并发页面读取锁成 `database is locked`

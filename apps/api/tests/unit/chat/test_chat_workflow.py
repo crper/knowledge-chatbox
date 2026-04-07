@@ -4,7 +4,7 @@ import asyncio
 from types import SimpleNamespace
 
 from pydantic_ai import AgentRunResultEvent
-from pydantic_ai.messages import ModelRequest, ModelResponse, TextPart
+from pydantic_ai.messages import BinaryContent, ModelRequest, ModelResponse, TextPart
 from pydantic_ai.models.test import TestModel
 
 from knowledge_chatbox_api.services.chat.workflow.chat_workflow import ChatWorkflow
@@ -42,16 +42,30 @@ class DummyMessage:
 
 
 class DummyChatRepository:
-    def __init__(self, recent_messages: list[DummyMessage] | None = None) -> None:
+    def __init__(
+        self,
+        recent_messages: list[DummyMessage] | None = None,
+        *,
+        space_id: int | None = None,
+    ) -> None:
         self._recent_messages = list(recent_messages or [])
+        self._space_id = space_id
 
     def list_recent_messages(self, session_id: int, *, limit: int):
         assert session_id == 1
         assert limit == 4
         return list(self._recent_messages)
 
+    def get_session(self, session_id: int):
+        assert session_id == 1
+        return SimpleNamespace(space_id=self._space_id)
+
 
 class DummyPromptAttachmentService:
+    def build_prompt_attachments(self, attachments, active_space_id: int | None):
+        del attachments, active_space_id
+        return []
+
     def resolve_prompt_text(self, question: str, attachments):
         del attachments
         return question
@@ -61,15 +75,17 @@ def build_deps(
     *,
     runtime_settings: DummyRuntimeSettings | None = None,
     recent_messages: list[DummyMessage] | None = None,
+    prompt_attachment_service: DummyPromptAttachmentService | None = None,
+    space_id: int | None = None,
 ) -> ChatWorkflowDeps:
     return ChatWorkflowDeps(
         session=object(),
         actor=object(),
-        chat_repository=DummyChatRepository(recent_messages),
+        chat_repository=DummyChatRepository(recent_messages, space_id=space_id),
         chat_run_repository=object(),
         chat_run_event_repository=object(),
         retrieval_service=object(),
-        prompt_attachment_service=DummyPromptAttachmentService(),
+        prompt_attachment_service=prompt_attachment_service or DummyPromptAttachmentService(),
         runtime_settings=runtime_settings or DummyRuntimeSettings(),
         request_metadata={"path": "sync"},
     )
@@ -194,7 +210,11 @@ def test_chat_workflow_run_sync_passes_history_and_model_settings(
 
     assert result.answer == "捕获成功"
     assert captured["user_prompt"] == (
-        "session_id=1\nquestion=继续刚才的话题\nattachments=[]\n请在必要时调用工具后给出最终答案。"
+        "继续刚才的话题\n\n"
+        "session_id=1\n"
+        "question=继续刚才的话题\n"
+        "attachments=[]\n"
+        "当前回合附件已随用户消息直接提供。需要知识库上下文时调用 knowledge_search 工具。"
     )
     assert captured["model_settings"] == {
         "openai_reasoning_effort": "medium",
@@ -236,6 +256,120 @@ def test_chat_workflow_builds_provider_specific_model_settings() -> None:
         "extra_body": {"think": False},
         "timeout": 21,
     }
+
+
+def test_chat_workflow_passes_multimodal_user_prompt_when_image_attachments_exist(
+    monkeypatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    class ImagePromptAttachmentService(DummyPromptAttachmentService):
+        def build_prompt_attachments(self, attachments, active_space_id: int | None):
+            assert attachments == [{"type": "image", "document_revision_id": 9}]
+            assert active_space_id == 77
+            return [
+                {
+                    "type": "image",
+                    "mime_type": "image/jpeg",
+                    "data_base64": "aGVsbG8=",
+                }
+            ]
+
+        def resolve_prompt_text(self, question: str, attachments):
+            assert question == ""
+            assert attachments == [{"type": "image", "document_revision_id": 9}]
+            return "Analyze the attached image."
+
+    class CapturingAgent:
+        def run_sync(self, user_prompt, **kwargs):
+            captured["user_prompt"] = user_prompt
+            return SimpleNamespace(output=ChatWorkflowResult(answer="已捕获", sources=[]))
+
+    workflow = ChatWorkflow()
+    monkeypatch.setattr(workflow, "_build_agent", lambda _runtime_settings: CapturingAgent())
+
+    result = workflow.run_sync(
+        deps=build_deps(
+            prompt_attachment_service=ImagePromptAttachmentService(),
+            space_id=77,
+        ),
+        session_id=1,
+        question="",
+        attachments=[{"type": "image", "document_revision_id": 9}],
+    )
+
+    assert result.answer == "已捕获"
+    user_prompt = captured["user_prompt"]
+    assert isinstance(user_prompt, list)
+    assert user_prompt[0].startswith("Analyze the attached image.")
+    assert isinstance(user_prompt[1], BinaryContent)
+    assert user_prompt[1].data == b"hello"
+    assert user_prompt[1].media_type == "image/jpeg"
+
+
+def test_chat_workflow_stream_passes_multimodal_user_prompt_when_image_attachments_exist(
+    monkeypatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    class ImagePromptAttachmentService(DummyPromptAttachmentService):
+        def build_prompt_attachments(self, attachments, active_space_id: int | None):
+            assert attachments == [{"type": "image", "document_revision_id": 12}]
+            assert active_space_id == 88
+            return [
+                {
+                    "type": "image",
+                    "mime_type": "image/jpeg",
+                    "data_base64": "aGVsbG8=",
+                }
+            ]
+
+        def resolve_prompt_text(self, question: str, attachments):
+            assert question == "这张图是什么"
+            assert attachments == [{"type": "image", "document_revision_id": 12}]
+            return "这张图是什么"
+
+    class CapturingStreamAgent:
+        def run_stream_events(self, user_prompt, **kwargs):
+            del kwargs
+            captured["user_prompt"] = user_prompt
+
+            async def _events():
+                if False:
+                    yield None
+
+            return _events()
+
+    workflow = ChatWorkflow()
+    monkeypatch.setattr(
+        workflow,
+        "_build_stream_agent",
+        lambda _runtime_settings: CapturingStreamAgent(),
+    )
+
+    async def collect_events():
+        events = []
+        async for event in workflow.run_stream_events(
+            deps=build_deps(
+                prompt_attachment_service=ImagePromptAttachmentService(),
+                space_id=88,
+            ),
+            session_id=1,
+            question="这张图是什么",
+            attachments=[{"type": "image", "document_revision_id": 12}],
+        ):
+            events.append(event)
+        return events
+
+    events = asyncio.run(collect_events())
+
+    assert events == []
+    user_prompt = captured["user_prompt"]
+    assert isinstance(user_prompt, list)
+    assert user_prompt[0].startswith("这张图是什么")
+    assert isinstance(user_prompt[1], BinaryContent)
+    assert user_prompt[1].data == b"hello"
+    assert user_prompt[1].media_type == "image/jpeg"
 
 
 def test_runtime_instructions_include_configured_system_prompt() -> None:
