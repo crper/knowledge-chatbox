@@ -26,19 +26,18 @@ import { MessageRole, MessageStatus } from "../constants";
 type UseChatComposerSubmitParams = {
   beginSessionSubmit: (sessionId: number) => boolean;
   finishSessionSubmit: (sessionId: number) => void;
-  getRunsById: () => Record<
-    number,
-    {
-      assistantMessageId: number;
-      retryOfMessageId?: number | null;
-      runId: number;
-      sessionId: number;
-      status: MessageStatus;
-      toastShown: boolean;
-      userContent: string;
-      userMessageId: number | null;
-    }
-  >;
+  findRunByAssistantMessageId: (assistantMessageId: number) =>
+    | {
+        assistantMessageId: number;
+        retryOfMessageId?: number | null;
+        runId: number;
+        sessionId: number;
+        status: MessageStatus;
+        toastShown: boolean;
+        userContent: string;
+        userMessageId: number | null;
+      }
+    | undefined;
   messages: ChatMessageItem[];
   patchSessionContext: (input: {
     attachments?: ChatSessionContextItem["attachments"];
@@ -81,7 +80,7 @@ function toPersistedChatAttachments(
 export function useChatComposerSubmit({
   beginSessionSubmit,
   finishSessionSubmit,
-  getRunsById,
+  findRunByAssistantMessageId,
   messages,
   patchSessionContext,
   patchUserMessageAttachments,
@@ -214,8 +213,7 @@ export function useChatComposerSubmit({
       const retryContent =
         message.role === MessageRole.ASSISTANT
           ? (messages.find((item) => item.id === retryOfMessageId)?.content ??
-            Object.values(getRunsById()).find((run) => run.assistantMessageId === message.id)
-              ?.userContent ??
+            findRunByAssistantMessageId(message.id)?.userContent ??
             message.content)
           : message.content;
       const retryAttachments =
@@ -259,7 +257,7 @@ export function useChatComposerSubmit({
       beginSessionSubmit,
       clearAttachments,
       finishSessionSubmit,
-      getRunsById,
+      findRunByAssistantMessageId,
       messages,
       requestScrollToLatest,
       resolvedActiveSessionId,

@@ -2,12 +2,13 @@
  * @file 聊天流式运行状态管理 Hook 模块。
  */
 
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { queryKeys } from "@/lib/api/query-keys";
 import type { StreamingRun } from "../store/chat-stream-store";
 import { MessageStatus } from "../constants";
+import { getStreamRunsBySession } from "../utils/stream-run-query";
 
 /**
  * 管理聊天流式运行的临时状态。
@@ -171,25 +172,35 @@ export function useChatStreamRun() {
 
   const getAllRunsForSession = useCallback(
     (sessionId: number) => {
-      const allRuns = queryClient.getQueriesData<StreamingRun>({
-        queryKey: queryKeys.chat.streamRuns,
-      });
-
-      return allRuns.filter(([, run]) => run?.sessionId === sessionId).map(([, run]) => run!);
+      return Object.values(getStreamRunsBySession(queryClient, sessionId));
     },
     [queryClient],
   );
 
-  return {
-    appendDelta,
-    addSource,
-    completeRun,
-    failRun,
-    getAllRunsForSession,
-    getRun,
-    markToastShown,
-    pruneRuns,
-    removeRun,
-    startRun,
-  };
+  return useMemo(
+    () => ({
+      appendDelta,
+      addSource,
+      completeRun,
+      failRun,
+      getAllRunsForSession,
+      getRun,
+      markToastShown,
+      pruneRuns,
+      removeRun,
+      startRun,
+    }),
+    [
+      appendDelta,
+      addSource,
+      completeRun,
+      failRun,
+      getAllRunsForSession,
+      getRun,
+      markToastShown,
+      pruneRuns,
+      removeRun,
+      startRun,
+    ],
+  );
 }

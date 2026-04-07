@@ -17,13 +17,17 @@ import { useChatSessionData } from "../hooks/use-chat-session-data";
 import { useChatSessionSubmitController } from "../hooks/use-chat-session-submit-controller";
 import { useChatStreamLifecycle } from "../hooks/use-chat-stream-lifecycle";
 import { useChatStreamRun } from "../hooks/use-chat-stream-run";
-import type { StreamingRun } from "../store/chat-stream-store";
 import { useChatUiStore } from "../store/chat-ui-store";
 import {
   buildLocalAttachmentFingerprint,
   collectLocalAttachmentFingerprints,
 } from "../utils/chat-submit-helpers";
 import { resolveSessionTitle } from "../utils/session-title";
+import {
+  findStreamRunByAssistantMessageId,
+  getStreamRunEntries,
+  subscribeToStreamRunChanges,
+} from "../utils/stream-run-query";
 
 /**
  * 封装聊天工作区的数据与交互。
@@ -71,6 +75,8 @@ export function useChatWorkspace(activeSessionId: number | null) {
   const { retryMessage, submitMessage } = useChatComposerSubmit({
     beginSessionSubmit,
     finishSessionSubmit,
+    findRunByAssistantMessageId: (assistantMessageId) =>
+      findStreamRunByAssistantMessageId(queryClient, assistantMessageId, resolvedActiveSessionId),
     messages,
     patchSessionContext,
     patchUserMessageAttachments,
@@ -78,22 +84,6 @@ export function useChatWorkspace(activeSessionId: number | null) {
       setScrollToLatestRequestKey((current) => current + 1);
     },
     resolvedActiveSessionId,
-    getRunsById: () => {
-      if (resolvedActiveSessionId === null) return {};
-      const allRuns = queryClient.getQueriesData<StreamingRun>({
-        queryKey: queryKeys.chat.streamRuns,
-      });
-      const runsById: Record<number, StreamingRun> = {};
-      allRuns.forEach(([queryKey, run]) => {
-        if (run && run.sessionId === resolvedActiveSessionId) {
-          const runId = Number(queryKey[2]);
-          if (!Number.isNaN(runId)) {
-            runsById[runId] = run;
-          }
-        }
-      });
-      return runsById;
-    },
     sendStreamMessage: sendMutation.mutateAsync,
   });
 
@@ -113,11 +103,7 @@ export function useChatWorkspace(activeSessionId: number | null) {
     }
 
     const checkBackgroundRuns = () => {
-      const allRuns = queryClient.getQueriesData<StreamingRun>({
-        queryKey: queryKeys.chat.streamRuns,
-      });
-
-      allRuns.forEach(([, run]) => {
+      getStreamRunEntries(queryClient).forEach(([, run]) => {
         if (
           !run ||
           run.status !== "succeeded" ||
@@ -139,11 +125,7 @@ export function useChatWorkspace(activeSessionId: number | null) {
     checkBackgroundRuns();
 
     // 订阅 Query Cache 变化，当有 run 更新时再次检查
-    const unsubscribe = queryClient.getQueryCache().subscribe((event) => {
-      if (event?.type === "updated" && event.query.queryKey[1] === "streamRun") {
-        checkBackgroundRuns();
-      }
-    });
+    const unsubscribe = subscribeToStreamRunChanges(queryClient, checkBackgroundRuns);
 
     return () => {
       unsubscribe();

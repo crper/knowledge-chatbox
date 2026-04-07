@@ -23,6 +23,7 @@ import type {
 } from "../api/chat";
 import { buildDisplayMessages } from "../utils/build-display-messages";
 import type { StreamingRun } from "../store/chat-stream-store";
+import { getStreamRunsBySession, subscribeToStreamRunChanges } from "../utils/stream-run-query";
 
 function buildContextAttachmentKey(attachment: PersistedChatAttachmentItem) {
   if (attachment.resource_document_id != null) {
@@ -36,44 +37,18 @@ function buildContextAttachmentKey(attachment: PersistedChatAttachmentItem) {
   return `attachment:${attachment.attachment_id}`;
 }
 
-function getAllRunsForSession(
-  queryClient: ReturnType<typeof useQueryClient>,
-  sessionId: number,
-): Record<number, StreamingRun> {
-  const allRuns = queryClient.getQueriesData<StreamingRun>({
-    queryKey: queryKeys.chat.streamRuns,
-  });
-
-  const runsById: Record<number, StreamingRun> = {};
-  allRuns.forEach(([queryKey, run]) => {
-    if (run && run.sessionId === sessionId) {
-      const runId = Number(queryKey[2]);
-      if (!Number.isNaN(runId)) {
-        runsById[runId] = run;
-      }
-    }
-  });
-
-  return runsById;
-}
-
 function useSessionStreamRuns(sessionId: number | null) {
   const queryClient = useQueryClient();
   const [runsById, setRunsById] = useState<Record<number, StreamingRun>>({});
 
   useEffect(() => {
     const syncRuns = () => {
-      setRunsById(sessionId === null ? {} : getAllRunsForSession(queryClient, sessionId));
+      setRunsById(sessionId === null ? {} : getStreamRunsBySession(queryClient, sessionId));
     };
 
     syncRuns();
 
-    const unsubscribe = queryClient.getQueryCache().subscribe((event) => {
-      if (event?.query.queryKey[1] !== "streamRun") {
-        return;
-      }
-      syncRuns();
-    });
+    const unsubscribe = subscribeToStreamRunChanges(queryClient, syncRuns);
 
     return unsubscribe;
   }, [queryClient, sessionId]);
