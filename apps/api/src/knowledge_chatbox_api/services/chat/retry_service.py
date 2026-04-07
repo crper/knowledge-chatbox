@@ -83,6 +83,21 @@ class RetryService:
             }
             for attachment in self.repository.list_attachments(original_message.id)
         ]
+        existing_message = self.repository.get_user_message_by_client_request_id(
+            session_id=session_id,
+            client_request_id=client_request_id,
+        )
+        if existing_message is not None:
+            if self._matches_existing_message(
+                message_id=existing_message.id,
+                content=original_message.content,
+                attachments=original_attachments,
+                retry_of_message_id=retry_of_message_id,
+            ):
+                return existing_message
+            raise DuplicateClientRequestConflictError(
+                "client_request_id already exists for a different retry payload."
+            )
         return self.repository.create_message(
             attachments=original_attachments,
             session_id=session_id,
@@ -115,14 +130,18 @@ class RetryService:
         message_id: int,
         content: str,
         attachments: list[dict] | None,
+        retry_of_message_id: int | None = None,
     ) -> bool:
         existing_message = self.repository.get_message(message_id)
         if existing_message is None:
             return False
 
-        return content == existing_message.content and self._normalize_attachments(
-            attachments
-        ) == self._normalize_attachments(self._serialize_attachments(message_id))
+        return (
+            content == existing_message.content
+            and retry_of_message_id == existing_message.retry_of_message_id
+            and self._normalize_attachments(attachments)
+            == self._normalize_attachments(self._serialize_attachments(message_id))
+        )
 
     def _serialize_attachments(self, message_id: int) -> list[dict]:
         return [

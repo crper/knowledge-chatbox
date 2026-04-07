@@ -118,9 +118,7 @@ def build_workflow_factory(response_adapter, *, retrieved_sources: list[dict] | 
                     result=ToolReturnPart(
                         "knowledge_search",
                         {
-                            "context_sections": ["Document: source"]
-                            if retrieved_sources
-                            else [],
+                            "context_sections": ["Document: source"] if retrieved_sources else [],
                             "sources": retrieved_sources or [],
                         },
                         "call-1",
@@ -347,6 +345,81 @@ def test_chat_run_service_streams_runtime_events_and_persists_projection(
         }
     ]
     assert len(persisted_events) == len(events)
+
+
+def test_chat_run_service_replays_existing_run_for_duplicate_retry_client_request_id(
+    migrated_db_session,
+) -> None:
+    class StreamingAdapterStub:
+        def __init__(self) -> None:
+            self.stream_calls = 0
+
+        def stream_response(self, messages, settings):
+            del messages, settings
+            self.stream_calls += 1
+            yield SimpleNamespace(type="text_delta", delta="hello ")
+            yield SimpleNamespace(type="text_delta", delta="again")
+            yield SimpleNamespace(type="completed", usage={"output_tokens": 2})
+
+    adapter = StreamingAdapterStub()
+    chat_session = create_user_and_session(migrated_db_session)
+    service, chat_repository, _, event_repository = build_chat_run_service(
+        migrated_db_session,
+        response_adapter=adapter,
+    )
+    original_message = chat_repository.create_message(
+        session_id=chat_session.id,
+        role="user",
+        content="question",
+        status="failed",
+        client_request_id="req-original-failed",
+    )
+    migrated_db_session.commit()
+    migrated_db_session.refresh(original_message)
+
+    first_events = list(
+        service.stream_run(
+            session_id=chat_session.id,
+            content="question",
+            client_request_id="req-retry-idempotent-1",
+            retry_of_message_id=original_message.id,
+        )
+    )
+    second_events = list(
+        service.stream_run(
+            session_id=chat_session.id,
+            content="question",
+            client_request_id="req-retry-idempotent-1",
+            retry_of_message_id=original_message.id,
+        )
+    )
+
+    first_run_id = first_events[0]["data"]["run_id"]
+    second_run_id = second_events[0]["data"]["run_id"]
+    messages = chat_repository.list_messages(chat_session.id)
+    retried_messages = [
+        message
+        for message in messages
+        if message.role == "user" and message.retry_of_message_id == original_message.id
+    ]
+    persisted_events = event_repository.list_for_run(first_run_id)
+
+    assert first_run_id == second_run_id
+    assert adapter.stream_calls == 1
+    assert len(retried_messages) == 1
+    assert [event.event_type for event in persisted_events] == [
+        "run.started",
+        "message.started",
+        "tool.call",
+        "tool.result",
+        "part.text.start",
+        "part.text.delta",
+        "part.text.delta",
+        "part.text.end",
+        "usage.final",
+        "message.completed",
+        "run.completed",
+    ]
 
 
 def test_chat_run_service_marks_run_failed_when_stream_is_closed_early(

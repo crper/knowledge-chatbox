@@ -79,13 +79,13 @@ class ChatRunService:
                 content=content,
                 client_request_id=client_request_id,
             )
-            existing_run = self.chat_run_repository.get_run_by_client_request_id(
-                session_id=session_id,
-                client_request_id=client_request_id,
-            )
-            if existing_run is not None:
-                yield from self._replay_existing_run(existing_run)
-                return
+        existing_run = self.chat_run_repository.get_run_by_client_request_id(
+            session_id=session_id,
+            client_request_id=client_request_id,
+        )
+        if existing_run is not None:
+            yield from self._replay_existing_run(existing_run)
+            return
 
         run = self.chat_run_repository.create_run(
             session_id=session_id,

@@ -1124,6 +1124,106 @@ describe("chat workspace", () => {
     });
   });
 
+  it("keeps only one visible retry entry for a persisted failed request pair", async () => {
+    setupAuthenticatedWorkspace({
+      messagesBySession: {
+        2: [
+          {
+            id: 23,
+            role: "user",
+            content: "hello stream",
+            status: "failed",
+            error_message: "provider unavailable",
+            sources_json: [],
+          },
+          {
+            id: 24,
+            role: "assistant",
+            content: "",
+            status: "failed",
+            error_message: "provider unavailable",
+            reply_to_message_id: 23,
+            sources_json: [],
+          },
+        ],
+      },
+      sessions: [{ id: 2, title: "Session B", reasoning_mode: "default" }],
+    });
+
+    renderChatRoute("/chat/2");
+
+    expect(await findSessionLink("Session B")).toBeInTheDocument();
+    await findTextContent("provider unavailable");
+
+    await waitFor(() => {
+      expect(screen.getAllByRole("button", { name: "重试" })).toHaveLength(1);
+    });
+    expect(screen.getByText("发送失败")).toBeInTheDocument();
+    expect(screen.queryByText("本次回复生成失败，请点击重试或重新提问。")).not.toBeInTheDocument();
+  });
+
+  it("clears the original failed user state after a retry succeeds", async () => {
+    setupAuthenticatedWorkspace({
+      messagesBySession: {
+        2: [
+          {
+            id: 23,
+            role: "user",
+            content: "hello stream",
+            status: "failed",
+            error_message: "provider unavailable",
+            sources_json: [],
+          },
+          {
+            id: 24,
+            role: "assistant",
+            content: "",
+            status: "failed",
+            error_message: "provider unavailable",
+            reply_to_message_id: 23,
+            sources_json: [],
+          },
+        ],
+      },
+      sessions: [{ id: 2, title: "Session B", reasoning_mode: "default" }],
+      streamFramesBySession: {
+        2: [
+          createChatStreamFrame(CHAT_STREAM_EVENT.runStarted, {
+            run_id: 25,
+            session_id: 2,
+            user_message_id: 27,
+            assistant_message_id: 28,
+          }),
+          createChatStreamFrame(CHAT_STREAM_EVENT.legacyMessageDelta, {
+            run_id: 25,
+            assistant_message_id: 28,
+            delta: "fixed answer",
+          }),
+          createChatStreamFrame(CHAT_STREAM_EVENT.runCompleted, {
+            run_id: 25,
+            session_id: 2,
+            assistant_message_id: 28,
+          }),
+          createChatStreamFrame(CHAT_STREAM_EVENT.done, {}),
+        ],
+      },
+    });
+
+    renderChatRoute("/chat/2");
+
+    expect(await findSessionLink("Session B")).toBeInTheDocument();
+    await findTextContent("provider unavailable");
+
+    fireEvent.click(await screen.findByRole("button", { name: "重试" }));
+
+    await findTextContent("fixed answer");
+
+    await waitFor(() => {
+      expect(screen.queryByText("发送失败")).not.toBeInTheDocument();
+      expect(screen.queryByText("provider unavailable")).not.toBeInTheDocument();
+    });
+  });
+
   it("keeps only one visible copy of the retried question while the new answer is streaming", async () => {
     setupAuthenticatedWorkspace({
       messages: [
