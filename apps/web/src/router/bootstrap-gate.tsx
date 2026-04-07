@@ -8,10 +8,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useLocation } from "@/lib/app-router";
 
-import {
-  ensureSessionBootstrap,
-  markSessionAnonymous,
-} from "@/lib/auth/session-manager";
+import { ensureSessionBootstrap, markSessionAnonymous } from "@/lib/auth/session-manager";
 import { useSessionStore } from "@/lib/auth/session-store";
 import { AuthDegradedPage } from "@/pages/system/auth-degraded-page";
 

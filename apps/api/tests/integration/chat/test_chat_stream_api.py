@@ -185,9 +185,9 @@ def test_chat_profile_api_exposes_response_route_to_authenticated_users(
 
     assert response.status_code == 200
     assert response.json()["data"] == {
-        "provider": "openai",
-        "model": "gpt-5.4",
-        "configured": False,
+        "provider": "ollama",
+        "model": "qwen3.5:4b",
+        "configured": True,
     }
 
 

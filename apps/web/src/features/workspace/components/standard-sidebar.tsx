@@ -37,12 +37,12 @@ export function WorkspaceModeSwitcher({
   const { t } = useTranslation("common");
 
   return (
-    <SidebarGroup className="gap-2.5 p-0">
-      <SidebarGroupLabel className="h-auto px-0 text-ui-kicker text-muted-foreground">
+    <SidebarGroup className="gap-3 p-0">
+      <SidebarGroupLabel className="h-auto px-0 pb-1 text-ui-kicker text-muted-foreground/72">
         {t("workspaceModeSection")}
       </SidebarGroupLabel>
       <SidebarGroupContent>
-        <div className="surface-panel-subtle grid grid-cols-2 gap-1.5 rounded-2xl p-1.5">
+        <div className="surface-inline grid grid-cols-2 gap-1.5 rounded-2xl p-1.5">
           {WORKSPACE_LINKS.map((link) => {
             const Icon = link.icon;
             const isActive = pathname.startsWith(link.to);
@@ -51,10 +51,10 @@ export function WorkspaceModeSwitcher({
               <SidebarMenuButton
                 key={link.to}
                 className={cn(
-                  "h-auto min-h-11 select-none rounded-xl border px-3 py-2.5 text-center text-sm font-semibold shadow-none transition-[background-color,border-color,color,box-shadow,transform] duration-200 ease-out md:min-h-10",
+                  "h-auto min-h-11 select-none rounded-xl px-3 py-2.5 text-sm font-semibold shadow-none transition-[background-color,border-color,color,box-shadow,transform] duration-200 ease-out",
                   "justify-center gap-2 max-[380px]:px-2.5 max-[380px]:text-xs",
-                  "data-[active=true]:border-primary/22 data-[active=true]:bg-primary data-[active=true]:text-primary-foreground data-[active=true]:shadow-[0_12px_26px_-18px_hsl(var(--primary)/0.6)] data-[active=true]:hover:bg-primary/94 data-[active=true]:hover:text-primary-foreground",
-                  "data-[active=false]:border-transparent data-[active=false]:bg-transparent data-[active=false]:text-foreground/70 data-[active=false]:hover:border-border/60 data-[active=false]:hover:bg-background/62 data-[active=false]:hover:text-foreground data-[active=false]:active:scale-[0.97]",
+                  "data-[active=true]:surface-light data-[active=true]:border-primary/18 data-[active=true]:bg-primary/94 data-[active=true]:text-primary-foreground data-[active=true]:shadow-[0_8px_20px_-12px_hsl(var(--primary)/0.45)] data-[active=true]:hover:bg-primary data-[active=true]:hover:text-primary-foreground",
+                  "data-[active=false]:border-transparent data-[active=false]:bg-transparent data-[active=false]:text-foreground/68 data-[active=false]:hover:border-border/50 data-[active=false]:hover:bg-background/56 data-[active=false]:hover:text-foreground data-[active=false]:active:scale-[0.97]",
                 )}
                 isActive={isActive}
                 render={<NavLink className="w-full" onClick={onNavigate} to={link.to} />}
@@ -91,11 +91,11 @@ function SettingsSidebarNav({
 
   return (
     <SidebarGroup className="mt-6 min-h-0 flex-1 p-0">
-      <SidebarGroupLabel className="h-auto px-0 text-ui-kicker text-muted-foreground">
+      <SidebarGroupLabel className="h-auto px-0 pb-1 text-ui-kicker text-muted-foreground/72">
         {t("navigationLabel")}
       </SidebarGroupLabel>
-      <SidebarGroupContent className="mt-2.5">
-        <div className="grid gap-1">
+      <SidebarGroupContent className="mt-3">
+        <div className="grid gap-0.5">
           {sections.map((section) => {
             const isActive = section.id === activeSection;
 
@@ -103,9 +103,9 @@ function SettingsSidebarNav({
               <SidebarMenuButton
                 key={section.id}
                 className={cn(
-                  "h-9 rounded-xl px-3 text-sm shadow-none",
-                  "data-[active=true]:bg-sidebar-accent/72 data-[active=true]:text-foreground",
-                  "data-[active=false]:text-muted-foreground data-[active=false]:hover:bg-sidebar-accent/42 data-[active=false]:hover:text-foreground",
+                  "h-9 rounded-xl px-3 text-sm shadow-none transition-[background-color,color] duration-180 ease-out",
+                  "data-[active=true]:surface-inline data-[active=true]:bg-sidebar-accent/64 data-[active=true]:text-foreground data-[active=true]:font-medium",
+                  "data-[active=false]:text-muted-foreground/82 data-[active=false]:hover:bg-sidebar-accent/36 data-[active=false]:hover:text-foreground",
                 )}
                 isActive={isActive}
                 render={<Link onClick={onNavigate} to={buildSettingsPath(section.id)} />}
@@ -135,8 +135,8 @@ function WorkspaceFooter({
   user: AppUser;
 }) {
   return (
-    <SidebarFooterSection className={cn("mt-auto gap-3 p-4 pt-0", className)}>
-      <SidebarSeparator className="mx-0" />
+    <SidebarFooterSection className={cn("mt-auto gap-3.5 p-4 pt-4", className)}>
+      <SidebarSeparator className="mx-0 mb-1 opacity-56" />
       <WorkspaceAccountMenu onLogout={onLogout} onNavigate={onNavigate} user={user} />
     </SidebarFooterSection>
   );
@@ -176,7 +176,7 @@ export function StandardSidebar({
         collapsible="none"
         role="complementary"
       >
-        <SidebarHeader className={isEmbedded ? "p-0" : "p-4 pb-0"}>
+        <SidebarHeader className={isEmbedded ? "p-0 pb-4" : "p-4 pb-3"}>
           <BrandMark
             alt={t("workspaceLogoAlt")}
             subtitle={t("workspaceSubtitle")}
@@ -185,14 +185,14 @@ export function StandardSidebar({
         </SidebarHeader>
 
         <SidebarContent
-          className={isEmbedded ? "gap-0 overflow-auto px-0 py-6" : "gap-0 overflow-auto px-4 py-4"}
+          className={isEmbedded ? "gap-0 overflow-auto px-0 py-5" : "gap-0 overflow-auto px-4 py-4"}
         >
           <WorkspaceModeSwitcher onNavigate={onNavigate} pathname={pathname} />
           <SettingsSidebarNav onNavigate={onNavigate} pathname={pathname} user={user} />
         </SidebarContent>
 
         <WorkspaceFooter
-          className={isEmbedded ? "p-0 pt-0" : undefined}
+          className={isEmbedded ? "p-0 pt-3" : undefined}
           onNavigate={onNavigate}
           onLogout={onLogout}
           user={user}

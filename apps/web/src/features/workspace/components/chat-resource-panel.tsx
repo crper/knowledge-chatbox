@@ -81,45 +81,55 @@ export function ChatResourcePanel({
     <div
       className={cn(
         surface === "embedded"
-          ? "flex h-full min-h-0 min-w-0 flex-col bg-transparent px-5 py-5"
+          ? "flex h-full min-h-0 min-w-0 flex-col bg-transparent px-4 py-4"
           : "surface-panel-subtle flex h-full min-h-0 min-w-0 flex-col rounded-2xl p-4",
         className,
       )}
     >
-      <div className="space-y-1 pb-4">
+      <div className="space-y-1 pb-3.5">
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2">
-            <span className="surface-light flex size-9 items-center justify-center rounded-2xl text-primary">
-              <BookOpenTextIcon aria-hidden="true" className="size-4" />
+            <span className="surface-inline flex size-8 items-center justify-center rounded-xl text-primary/78">
+              <BookOpenTextIcon aria-hidden="true" className="size-3.5" />
             </span>
-            <CardTitle>{t("currentSessionResourcesTitle")}</CardTitle>
+            <CardTitle className="text-sm font-semibold tracking-tight">
+              {t("currentSessionResourcesTitle")}
+            </CardTitle>
           </div>
           {headerAccessory}
         </div>
-        <CardDescription>{t("currentSessionResourcesDescription")}</CardDescription>
+        <CardDescription className="text-xs text-muted-foreground/64">
+          {t("currentSessionResourcesDescription")}
+        </CardDescription>
       </div>
 
       <ScrollArea
         className="min-h-0 min-w-0 flex-1"
         data-testid="chat-resource-panel-scroll-container"
       >
-        <div className={cn("min-w-full pb-1 pr-1", isOverviewOnly ? "space-y-4" : "space-y-8")}>
-          <section className="surface-panel rounded-3xl p-4">
+        <div className={cn("min-w-full pb-1 pr-0.5", isOverviewOnly ? "space-y-3" : "space-y-6")}>
+          <section className="surface-inline rounded-2xl p-3.5">
             <div className="grid gap-2 sm:grid-cols-3">
-              <Badge className="justify-center sm:justify-start" variant="outline">
+              <Badge
+                className="justify-center border-border/48 text-[11px] sm:justify-start"
+                variant="outline"
+              >
                 {t("contextAttachmentsCount", { count: attachments.length })}
               </Badge>
-              <Badge className="justify-center sm:justify-start" variant="outline">
+              <Badge
+                className="justify-center border-border/48 text-[11px] sm:justify-start"
+                variant="outline"
+              >
                 {t("contextSourcesCount", { count: groupedSources.length })}
               </Badge>
               <Badge
-                className="justify-center sm:justify-start sm:col-span-3"
+                className="justify-center text-[11px] sm:justify-start sm:col-span-3"
                 variant={groupedSources.length > 0 ? "secondary" : "outline"}
               >
                 {groupedSources.length > 0 ? t("contextStatusReady") : t("contextStatusWaiting")}
               </Badge>
             </div>
-            <p className="mt-3 text-sm leading-6 text-muted-foreground">
+            <p className="mt-2.5 text-[13px] leading-relaxed text-muted-foreground/76">
               {groupedSources.length > 0 || attachments.length > 0
                 ? t("contextReadyDescription")
                 : t("contextEmptyDescription")}
@@ -127,35 +137,37 @@ export function ChatResourcePanel({
             <NavLink
               className={cn(
                 buttonVariants({ size: "sm", variant: "outline" }),
-                "mt-4 justify-start",
+                "mt-3.5 h-8 justify-start text-xs",
               )}
               to="/knowledge"
             >
-              <UploadIcon data-icon="inline-start" />
+              <UploadIcon data-icon="inline-start" className="size-3.5" />
               {t("emptySessionResourceAction")}
             </NavLink>
           </section>
 
           {!isOverviewOnly ? (
-            <section className="space-y-4">
+            <section className="space-y-3">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
-                  <span className="surface-light flex size-8 items-center justify-center rounded-xl text-primary">
-                    <BookOpenTextIcon aria-hidden="true" className="size-4" />
+                  <span className="surface-inline flex size-7 items-center justify-center rounded-lg text-primary/72">
+                    <BookOpenTextIcon aria-hidden="true" className="size-3" />
                   </span>
-                  <p className="text-sm font-medium text-foreground">
+                  <p className="text-[13px] font-medium text-foreground">
                     {t("contextAttachmentsTitle")}
                   </p>
                 </div>
-                <p className="text-xs leading-5 text-muted-foreground">
+                <p className="text-[11px] leading-relaxed text-muted-foreground/56 pl-9">
                   {t("contextAttachmentsDescription")}
                 </p>
               </div>
               {attachments.length === 0 ? (
-                <Empty className="bg-background/40 p-4">
+                <Empty className="bg-background/28 rounded-xl p-3">
                   <EmptyHeader>
-                    <EmptyTitle>{t("contextAttachmentsEmptyTitle")}</EmptyTitle>
-                    <EmptyDescription>{t("contextAttachmentsEmptyDescription")}</EmptyDescription>
+                    <EmptyTitle className="text-xs">{t("contextAttachmentsEmptyTitle")}</EmptyTitle>
+                    <EmptyDescription className="text-[11px] leading-relaxed text-muted-foreground/64">
+                      {t("contextAttachmentsEmptyDescription")}
+                    </EmptyDescription>
                   </EmptyHeader>
                 </Empty>
               ) : (
@@ -169,43 +181,47 @@ export function ChatResourcePanel({
           ) : null}
 
           {!isOverviewOnly ? (
-            <section className="space-y-4">
+            <section className="space-y-3">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
-                  <span className="surface-light flex size-8 items-center justify-center rounded-xl text-primary">
-                    <ScanSearchIcon aria-hidden="true" className="size-4" />
+                  <span className="surface-inline flex size-7 items-center justify-center rounded-lg text-primary/72">
+                    <ScanSearchIcon aria-hidden="true" className="size-3" />
                   </span>
-                  <p className="text-sm font-medium text-foreground">
+                  <p className="text-[13px] font-medium text-foreground">
                     {t("contextReferencesTitle")}
                   </p>
                 </div>
-                <p className="text-xs leading-5 text-muted-foreground">
+                <p className="text-[11px] leading-relaxed text-muted-foreground/56 pl-9">
                   {t("contextReferencesDescription")}
                 </p>
               </div>
               {groupedSources.length === 0 ? (
-                <Empty className="bg-background/40 p-4">
+                <Empty className="bg-background/28 rounded-xl p-3">
                   <EmptyHeader>
-                    <EmptyTitle>{t("contextReferencesEmptyTitle")}</EmptyTitle>
-                    <EmptyDescription>{t("contextReferencesEmptyDescription")}</EmptyDescription>
+                    <EmptyTitle className="text-xs">{t("contextReferencesEmptyTitle")}</EmptyTitle>
+                    <EmptyDescription className="text-[11px] leading-relaxed text-muted-foreground/64">
+                      {t("contextReferencesEmptyDescription")}
+                    </EmptyDescription>
                   </EmptyHeader>
                 </Empty>
               ) : (
-                <div className="space-y-2.5">
+                <div className="space-y-2">
                   {groupedSources.map((group) => (
-                    <div key={group.key} className="surface-light rounded-2xl p-4">
-                      <div className="flex items-start justify-between gap-3">
+                    <div key={group.key} className="surface-inline rounded-xl p-3">
+                      <div className="flex items-start justify-between gap-2.5">
                         <div className="min-w-0 flex-1">
-                          <p className="break-words font-medium text-foreground">{group.title}</p>
+                          <p className="break-words text-[13px] font-medium leading-snug text-foreground">
+                            {group.title}
+                          </p>
                         </div>
-                        <Badge className="shrink-0" variant="outline">
+                        <Badge className="shrink-0 border-border/48 text-[10px]" variant="outline">
                           {t("contextSourceHitsCount", { count: group.count })}
                         </Badge>
                       </div>
                       {group.snippets.map((snippet, index) => (
                         <p
                           key={`${group.key}-${index}`}
-                          className="mt-2 break-words text-sm leading-6 text-muted-foreground"
+                          className="mt-1.5 break-words text-[12px] leading-relaxed text-muted-foreground/70"
                         >
                           {snippet}
                         </p>

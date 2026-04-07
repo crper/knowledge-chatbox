@@ -34,7 +34,8 @@
 - `provider_profiles_json` 保存四类 provider 的连接参数和 provider 级模型模板
 - `response_route_json / embedding_route_json / vision_route_json` 保存当前活动 capability route
 - `pending_embedding_route_json` 只在检索链路切换期间存在，用来描述“下一代索引要切到哪个 embedding route”
-- secret 字段返回给前端时仍会被掩码成 `********`
+- secret 字段（如 `api_key`）在 GET 接口返回时会被掩码成 `********`，前端不会看到明文
+- PUT 接口支持部分更新：未提供的字段保持原值不变，提供的 secret 字段如果是完整字符串则会覆盖原值
 
 ### `provider_profiles_json` 的逻辑内容
 
@@ -54,6 +55,12 @@
 - 聊天主链路内部再从这个根地址派生 OpenAI 兼容端点 `.../v1`；原生 Ollama SDK 与健康检查继续使用根地址
 
 这些模板字段会在保存 route 后同步回 profile，保证设置页再次打开时看到的是“当前真实会生效的模型值”。
+
+当前 bootstrap 约定：
+
+- 本地 `just dev` 主线默认使用 `.env.example`，会把 `response / embedding / vision` 三条 route 都种到 Ollama
+- `.env.example` 里的 `INITIAL_OLLAMA_BASE_URL` 默认是 `http://localhost:11434`
+- 如果改走 Docker Compose 且 Ollama 仍跑在宿主机，需要把 `.env` 里的 `INITIAL_OLLAMA_BASE_URL` 改成 `http://host.docker.internal:11434`
 
 ## 3. route 语义
 

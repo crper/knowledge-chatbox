@@ -2,6 +2,8 @@
  * @file 聊天测试辅助工具。
  */
 
+import { cloneDeep } from "es-toolkit";
+
 import type {
   ChatAttachmentItem,
   ChatSessionContextItem,
@@ -67,11 +69,7 @@ function toContextAttachment(attachment: ChatAttachmentWithAliases): ChatAttachm
 }
 
 export function cloneJson<T>(value: T): T {
-  if (value === null || typeof value !== "object") {
-    return value;
-  }
-
-  return JSON.parse(JSON.stringify(value)) as T;
+  return cloneDeep(value);
 }
 
 export function buildChatSessionContext(

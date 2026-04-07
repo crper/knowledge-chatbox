@@ -60,8 +60,8 @@ describe("ChatSidebar", () => {
 
   function resetStore() {
     useChatUiStore.setState({
-      activeSessionId: null,
-      setActiveSessionId: vi.fn(),
+      attachmentsBySession: {},
+      draftsBySession: {},
     });
   }
 
@@ -116,10 +116,9 @@ describe("ChatSidebar", () => {
   }
 
   it("does not auto-select the first session while rendering", async () => {
-    const setActiveSessionId = vi.fn();
     useChatUiStore.setState({
-      activeSessionId: null,
-      setActiveSessionId,
+      attachmentsBySession: {},
+      draftsBySession: {},
     });
 
     mockSessions([
@@ -130,7 +129,6 @@ describe("ChatSidebar", () => {
     renderSidebar();
 
     expect(await screen.findByRole("link", { name: "Session A" })).toBeInTheDocument();
-    expect(setActiveSessionId).not.toHaveBeenCalled();
   });
 
   it("virtualizes a long session list instead of mounting every row", async () => {

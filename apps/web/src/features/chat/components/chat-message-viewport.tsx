@@ -16,6 +16,12 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 
 import { useIsMobile } from "@/lib/hooks/use-mobile";
 import type { ChatMessageItem } from "../api/chat";
+import {
+  buildLatestMessageSignature,
+  resolveLatestMessageScrollIntent,
+  resolveOlderMessagesLoadIntent,
+  resolvePrependCompensation,
+} from "./chat-message-viewport-intent";
 import { MessageRow } from "./message-list";
 
 type ChatMessageViewportProps = {
@@ -82,10 +88,7 @@ export const ChatMessageViewport = memo(function ChatMessageViewport({
   const [scrollElement, setScrollElement] = useState<HTMLElement | null>(null);
   const latestMessage = messages.at(-1) ?? null;
   const latestMessageSignature = useMemo(
-    () =>
-      latestMessage === null
-        ? "empty"
-        : `${latestMessage.id}:${latestMessage.status}:${latestMessage.content}`,
+    () => buildLatestMessageSignature(latestMessage),
     [latestMessage],
   );
 
@@ -117,33 +120,19 @@ export const ChatMessageViewport = memo(function ChatMessageViewport({
   }, [scrollToLatestRequestKey]);
 
   useEffect(() => {
-    if (messages.length === 0) {
-      previousLatestMessageSignatureRef.current = "empty";
-      pendingScrollToLatestRef.current = false;
-      return;
-    }
+    const intent = resolveLatestMessageScrollIntent({
+      isNearBottom: isNearBottom(scrollElement),
+      latestMessageSignature,
+      pendingScrollToLatest: pendingScrollToLatestRef.current,
+      previousLatestMessageSignature: previousLatestMessageSignatureRef.current,
+    });
+    previousLatestMessageSignatureRef.current = intent.nextPreviousLatestMessageSignature;
+    pendingScrollToLatestRef.current = intent.nextPendingScrollToLatest;
 
-    if (previousLatestMessageSignatureRef.current === latestMessageSignature) {
-      return;
-    }
-
-    const previousSignature = previousLatestMessageSignatureRef.current;
-    previousLatestMessageSignatureRef.current = latestMessageSignature;
-
-    if (pendingScrollToLatestRef.current) {
-      pendingScrollToLatestRef.current = false;
-      scrollToLatest("auto");
-      return;
-    }
-
-    if (previousSignature === "empty") {
-      return;
-    }
-
-    if (isNearBottom(scrollElement)) {
+    if (intent.shouldScrollToLatest) {
       scrollToLatest("auto");
     }
-  }, [latestMessageSignature, messages.length, scrollToLatest, scrollElement]);
+  }, [latestMessageSignature, scrollToLatest, scrollElement]);
 
   useEffect(() => {
     if (!scrollElement) {
@@ -151,24 +140,24 @@ export const ChatMessageViewport = memo(function ChatMessageViewport({
     }
 
     const handleScroll = () => {
-      const nextIsAtBottom = isNearBottom(scrollElement);
-      if (!nextIsAtBottom) {
+      const intent = resolveOlderMessagesLoadIntent({
+        hasOlderMessages,
+        isLoadingOlderMessages,
+        isNearBottom: isNearBottom(scrollElement),
+        olderLoadTriggerArmed: olderLoadTriggerArmedRef.current,
+        pendingPrependScrollHeight: pendingPrependScrollHeightRef.current,
+        scrollHeight: scrollElement.scrollHeight,
+        scrollTop: scrollElement.scrollTop,
+        topThreshold: TOP_THRESHOLD,
+      });
+
+      if (intent.shouldClearPendingScroll) {
         pendingScrollToLatestRef.current = false;
       }
+      olderLoadTriggerArmedRef.current = intent.nextOlderLoadTriggerArmed;
+      pendingPrependScrollHeightRef.current = intent.nextPendingPrependScrollHeight;
 
-      if (scrollElement.scrollTop > TOP_THRESHOLD) {
-        olderLoadTriggerArmedRef.current = true;
-        return;
-      }
-
-      if (
-        scrollElement.scrollTop <= TOP_THRESHOLD &&
-        hasOlderMessages &&
-        !isLoadingOlderMessages &&
-        olderLoadTriggerArmedRef.current
-      ) {
-        olderLoadTriggerArmedRef.current = false;
-        pendingPrependScrollHeightRef.current = scrollElement.scrollHeight;
+      if (intent.shouldLoadOlderMessages) {
         void onLoadOlderMessages?.();
       }
     };
@@ -188,23 +177,18 @@ export const ChatMessageViewport = memo(function ChatMessageViewport({
 
     const previousMessagesLength = previousMessagesLengthRef.current;
     previousMessagesLengthRef.current = messages.length;
+    const compensation = resolvePrependCompensation({
+      isLoadingOlderMessages,
+      nextMessagesLength: messages.length,
+      nextScrollHeight: scrollElement.scrollHeight,
+      pendingPrependScrollHeight: pendingPrependScrollHeightRef.current,
+      previousMessagesLength,
+    });
+    pendingPrependScrollHeightRef.current = compensation.nextPendingPrependScrollHeight;
 
-    if (pendingPrependScrollHeightRef.current === null || isLoadingOlderMessages) {
-      return;
+    if ((compensation.scrollDelta ?? 0) > 0) {
+      scrollElement.scrollTop += compensation.scrollDelta ?? 0;
     }
-
-    if (messages.length <= previousMessagesLength) {
-      pendingPrependScrollHeightRef.current = null;
-      return;
-    }
-
-    const previousScrollHeight = pendingPrependScrollHeightRef.current;
-    const nextScrollHeight = scrollElement.scrollHeight;
-    const delta = nextScrollHeight - previousScrollHeight;
-    if (delta > 0) {
-      scrollElement.scrollTop += delta;
-    }
-    pendingPrependScrollHeightRef.current = null;
   }, [isLoadingOlderMessages, messages.length, scrollElement]);
 
   useEffect(() => {

@@ -63,9 +63,9 @@ def test_health_capabilities_reports_unconfigured_routes(api_client: TestClient)
 
     assert response.status_code == 200
     assert payload["success"] is True
-    assert payload["data"]["response"]["provider"] == "openai"
-    assert payload["data"]["embedding"]["provider"] == "openai"
-    assert payload["data"]["vision"]["provider"] == "openai"
+    assert payload["data"]["response"]["provider"] == "ollama"
+    assert payload["data"]["embedding"]["provider"] == "ollama"
+    assert payload["data"]["vision"]["provider"] == "ollama"
 
 
 def test_capability_health_does_not_change_rebuild_status(

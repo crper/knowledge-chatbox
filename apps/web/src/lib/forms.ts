@@ -1,6 +1,8 @@
 /**
- * @file 表单辅助模块。
+ * 表单辅助模块。
  */
+
+import { trim } from "es-toolkit";
 
 export type FormErrorDescriptor = {
   i18nKey: string;
@@ -79,15 +81,15 @@ export function toFieldErrorItems(
   manualError?: string,
 ) {
   const messages = [...getFormErrorMessages(errors, translate), manualError].filter(
-    (message): message is string => typeof message === "string" && message.trim().length > 0,
+    (message): message is string => typeof message === "string" && trim(message).length > 0,
   );
 
   return messages.map((message) => ({ message }));
 }
 
 function collectErrorMessages(error: unknown, translate?: FormErrorTranslator): string[] {
-  if (typeof error === "string" && error.trim()) {
-    const trimmedError = error.trim();
+  if (typeof error === "string" && trim(error)) {
+    const trimmedError = trim(error);
     if (translate && trimmedError.includes(":")) {
       const parts = trimmedError.split(":");
       if (parts.length >= 2) {
@@ -147,5 +149,5 @@ function isFormErrorDescriptor(error: unknown): error is FormErrorDescriptor {
 }
 
 export function normalizeText(value: string | null | undefined) {
-  return typeof value === "string" ? value.trim() : "";
+  return typeof value === "string" ? trim(value) : "";
 }

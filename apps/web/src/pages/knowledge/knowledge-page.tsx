@@ -436,10 +436,10 @@ export function KnowledgePage() {
           isMobile ? (
             <div className="flex w-full flex-col gap-3">
               <label className="relative w-full">
-                <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground/72" />
                 <Input
                   aria-label={t("searchInputLabel")}
-                  className="h-11 rounded-xl border-border/60 bg-background/68 pl-9"
+                  className="h-11 rounded-xl border-border/50 bg-background/80 pl-9 text-sm"
                   onChange={(event) => setSearchValue(event.target.value)}
                   placeholder={t("searchInputPlaceholder")}
                   value={searchValue}
@@ -465,10 +465,10 @@ export function KnowledgePage() {
           ) : (
             <div className="flex w-full flex-wrap items-center gap-3 md:justify-end">
               <label className="relative min-w-[min(18rem,100%)] flex-1 basis-[18rem]">
-                <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground/72" />
                 <Input
                   aria-label={t("searchInputLabel")}
-                  className="h-11 rounded-xl border-border/60 bg-background/68 pl-9"
+                  className="h-11 rounded-xl border-border/50 bg-background/80 pl-9 text-sm"
                   onChange={(event) => setSearchValue(event.target.value)}
                   placeholder={t("searchInputPlaceholder")}
                   value={searchValue}
@@ -508,7 +508,7 @@ export function KnowledgePage() {
             </>
           )
         }
-        metricsClassName="xl:grid-cols-[minmax(0,1.15fr)_repeat(2,minmax(0,1fr))]"
+        metricsClassName="xl:grid-cols-[minmax(0,1.15fr)_repeat(2,minmax(0,1fr))] gap-3"
         main={
           <div
             className="flex h-full min-h-0 flex-col gap-4"
@@ -526,7 +526,7 @@ export function KnowledgePage() {
                 />
               ) : null}
               {showFilteredListShell ? (
-                <section className="surface-panel-subtle space-y-3 rounded-2xl p-3.5 md:p-4">
+                <section className="surface-panel-subtle space-y-3 rounded-2xl border-border/50 p-3.5 md:p-4">
                   <div className="flex flex-col gap-2.5 md:flex-row md:items-start md:justify-between">
                     <div className="space-y-1.5">
                       <p className="text-ui-title">{t("tableSectionTitle")}</p>

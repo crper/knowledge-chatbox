@@ -1,5 +1,4 @@
 import { queryKeys } from "@/lib/api/query-keys";
-import { useChatStreamStore } from "@/features/chat/store/chat-stream-store";
 import {
   LAST_VISITED_CHAT_SESSION_STORAGE_KEY,
   readLastVisitedChatSessionId,
@@ -28,7 +27,6 @@ function seedSessionScopedState(queryClient: ReturnType<typeof createQueryClient
   ]);
   queryClient.setQueryData(queryKeys.documents.list, [{ document_id: 99, name: "stale.txt" }]);
   useChatUiStore.setState({
-    activeSessionId: 7,
     attachmentsBySession: {
       "7": [
         {
@@ -42,21 +40,17 @@ function seedSessionScopedState(queryClient: ReturnType<typeof createQueryClient
     draftsBySession: { "7": "stale draft" },
     sendShortcut: "shift-enter",
   });
-  useChatStreamStore.setState({
-    runsById: {
-      11: {
-        assistantMessageId: 12,
-        content: "old delta",
-        errorMessage: null,
-        runId: 11,
-        sessionId: 7,
-        sources: [],
-        status: "streaming",
-        toastShown: false,
-        userContent: "old question",
-        userMessageId: 10,
-      },
-    },
+  queryClient.setQueryData(queryKeys.chat.streamRun(11), {
+    assistantMessageId: 12,
+    content: "old delta",
+    errorMessage: null,
+    runId: 11,
+    sessionId: 7,
+    sources: [],
+    status: "streaming",
+    toastShown: false,
+    userContent: "old question",
+    userMessageId: 10,
   });
   window.localStorage.setItem(LAST_VISITED_CHAT_SESSION_STORAGE_KEY, "7");
 }
@@ -65,7 +59,6 @@ describe("session-manager", () => {
   beforeEach(() => {
     setAccessToken(null);
     useSessionStore.getState().reset();
-    useChatStreamStore.setState({ runsById: {} });
   });
 
   it("marks the session anonymous when bootstrap endpoint reports no active session", async () => {
@@ -123,7 +116,6 @@ describe("session-manager", () => {
     expect(queryClient.getQueryData(queryKeys.chat.sessions)).toBeUndefined();
     expect(queryClient.getQueryData(queryKeys.documents.list)).toBeUndefined();
     expect(useChatUiStore.getState()).toMatchObject({
-      activeSessionId: 7,
       attachmentsBySession: {
         "7": [
           {
@@ -137,7 +129,7 @@ describe("session-manager", () => {
       draftsBySession: { "7": "stale draft" },
       sendShortcut: "shift-enter",
     });
-    expect(useChatStreamStore.getState().runsById).toEqual({});
+    expect(queryClient.getQueryData(queryKeys.chat.streamRun(11))).toBeUndefined();
     expect(readLastVisitedChatSessionId()).toBe(7);
     expect(useSessionStore.getState().status).toBe("authenticated");
   });

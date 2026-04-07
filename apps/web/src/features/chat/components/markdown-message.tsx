@@ -216,8 +216,8 @@ export function AssistantWaitingCard({
       aria-live="polite"
       className={cn(
         "relative min-w-0 max-w-full overflow-hidden text-foreground",
-        frame === "surface" ? "surface-light surface-waiting-card" : "rounded-[1.2rem]",
-        compact ? "px-4 py-3" : "px-4 py-3.5 sm:px-5 sm:py-4",
+        frame === "surface" ? "surface-light surface-waiting-card" : "rounded-xl",
+        compact ? "px-3 py-2.5" : "px-3.5 py-3 sm:px-4 sm:py-3.5",
       )}
       data-assistant-loading-state="true"
       data-testid={testId}
@@ -226,33 +226,33 @@ export function AssistantWaitingCard({
       role="status"
     >
       <div aria-hidden="true" className="waiting-card-shimmer motion-reduce:hidden" />
-      <div className="relative space-y-3">
-        <div className="flex items-start gap-3">
+      <div className="relative space-y-2.5">
+        <div className="flex items-start gap-2.5">
           <div
             aria-hidden="true"
-            className="surface-light flex size-9 shrink-0 items-center justify-center rounded-full border-primary/18 bg-primary/8 text-primary"
+            className="surface-inline flex size-8 shrink-0 items-center justify-center rounded-full border-primary/16 bg-primary/7 text-primary/82"
           >
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1">
               {[0, 1, 2].map((index) => (
                 <span
                   key={index}
-                  className="size-1.5 rounded-full bg-primary/55 [animation:chat-streaming-dot-bounce_1.4s_ease-in-out_infinite] motion-reduce:animate-none"
+                  className="size-1.25 rounded-full bg-primary/50 [animation:chat-streaming-dot-bounce_1.4s_ease-in-out_infinite] motion-reduce:animate-none"
                   style={{ animationDelay: `${index * 160}ms` }}
                 />
               ))}
             </div>
           </div>
-          <div className="min-w-0 flex-1 space-y-1">
-            {caption && <p className="text-ui-kicker text-muted-foreground">{caption}</p>}
-            <p className="text-ui-title text-foreground/92">{statusLabel}</p>
-            {detail && <p className="text-ui-subtle text-muted-foreground">{detail}</p>}
+          <div className="min-w-0 flex-1 space-y-0.5">
+            {caption && <p className="text-ui-kicker text-muted-foreground/72">{caption}</p>}
+            <p className="text-[13px] font-medium text-foreground/90">{statusLabel}</p>
+            {detail && <p className="text-xs leading-relaxed text-muted-foreground/68">{detail}</p>}
           </div>
         </div>
-        <div aria-hidden="true" className="grid gap-2.5">
-          <div className="h-2 w-24 rounded-full bg-primary/16 dark:bg-primary/22" />
-          <div className="h-2.5 w-[78%] rounded-full bg-foreground/8 dark:bg-foreground/12" />
-          <div className="h-2.5 w-[62%] rounded-full bg-foreground/6 dark:bg-foreground/10" />
-          <div className="h-2.5 w-[44%] rounded-full bg-primary/10 dark:bg-primary/16" />
+        <div aria-hidden="true" className="grid gap-2">
+          <div className="h-1.5 w-24 rounded-full bg-primary/14 dark:bg-primary/20" />
+          <div className="h-2 w-[78%] rounded-full bg-foreground/6 dark:bg-foreground/10" />
+          <div className="h-2 w-[62%] rounded-full bg-foreground/5 dark:bg-foreground/8" />
+          <div className="h-2 w-[44%] rounded-full bg-primary/8 dark:bg-primary/14" />
         </div>
       </div>
     </div>

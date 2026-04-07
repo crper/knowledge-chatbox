@@ -125,7 +125,7 @@ export function LoginPage() {
 
   return (
     <main className="relative min-h-[100dvh] overflow-x-hidden bg-background px-5 py-6 text-foreground md:px-6 md:py-8">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_72%_52%_at_top_left,hsl(var(--primary)/0.07),transparent_46%),linear-gradient(180deg,hsl(var(--background))_0%,hsl(var(--sidebar)/0.82)_100%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_68%_46%_at_top_left,hsl(var(--primary)/0.055),transparent_50%),linear-gradient(180deg,hsl(var(--background))_0%,hsl(var(--sidebar)/0.78)_100%)]" />
       <div className="relative mx-auto flex min-h-[calc(100dvh-3rem)] max-w-7xl flex-col gap-6">
         <div className="flex items-center justify-between gap-2 sm:justify-end">
           <LanguageToggle compact />
@@ -140,7 +140,7 @@ export function LoginPage() {
         <div className="grid gap-6 lg:flex-1 lg:grid-cols-[minmax(0,1.18fr)_minmax(340px,420px)] lg:items-stretch">
           <section aria-label={t("entryIntroRegionLabel")} className="relative order-2 lg:order-1">
             <div className="relative flex max-w-[52rem] flex-col gap-5 px-2 py-2 md:gap-6 md:px-4 md:py-4">
-              <div className="space-y-6 md:space-y-7">
+              <div className="space-y-5 md:space-y-6">
                 <div className="flex items-start justify-between gap-4">
                   <BrandMark
                     alt={t("workspaceLogoAlt", { ns: "common" })}
@@ -153,36 +153,38 @@ export function LoginPage() {
                       render={
                         <Button
                           aria-label={t("aboutWorkspaceAction")}
-                          className="rounded-full border-border/70 bg-background/62 text-muted-foreground shadow-none hover:bg-background/78 hover:text-foreground"
+                          className="rounded-full border-border/56 bg-background/56 text-muted-foreground/72 shadow-none hover:bg-background/72 hover:text-foreground"
                           size="icon-sm"
                           variant="outline"
                         />
                       }
                     >
-                      <CircleHelpIcon aria-hidden="true" className="size-4" />
+                      <CircleHelpIcon aria-hidden="true" className="size-3.5" />
                       <span className="sr-only">{t("aboutWorkspaceAction")}</span>
                     </DialogTrigger>
                     <DialogContent
                       className="max-w-lg gap-0 rounded-2xl p-0 sm:max-w-lg"
                       closeLabel={t("closeAction", { ns: "common" })}
                     >
-                      <div className="border-b border-border/70 bg-sidebar/64 px-6 py-5">
-                        <span className="surface-light inline-flex rounded-full px-3 py-1 text-ui-kicker text-muted-foreground">
+                      <div className="border-b border-border/60 bg-sidebar/58 px-6 py-5">
+                        <span className="surface-inline inline-flex rounded-full px-2.5 py-0.5 text-ui-kicker text-muted-foreground/72">
                           {t("aboutHighlights")}
                         </span>
-                        <DialogHeader className="mt-4">
-                          <DialogTitle className="text-ui-heading">{t("aboutTitle")}</DialogTitle>
-                          <DialogDescription className="max-w-xl text-ui-body">
+                        <DialogHeader className="mt-3.5">
+                          <DialogTitle className="text-ui-heading tracking-tight">
+                            {t("aboutTitle")}
+                          </DialogTitle>
+                          <DialogDescription className="max-w-xl text-ui-body text-muted-foreground/82">
                             {t("aboutDescription")}
                           </DialogDescription>
                         </DialogHeader>
                       </div>
 
-                      <div className="grid gap-3 px-6 py-6">
+                      <div className="grid gap-2.5 px-6 py-5">
                         {aboutSections.map((section) => (
-                          <div key={section.title} className="surface-light rounded-2xl p-4">
-                            <p className="text-ui-title">{section.title}</p>
-                            <p className="mt-2 text-ui-subtle text-muted-foreground">
+                          <div key={section.title} className="surface-inline rounded-xl p-3.5">
+                            <p className="text-ui-title text-sm font-medium">{section.title}</p>
+                            <p className="mt-1.5 text-ui-subtle text-muted-foreground/72 leading-relaxed">
                               {section.description}
                             </p>
                           </div>
@@ -192,40 +194,48 @@ export function LoginPage() {
                   </Dialog>
                 </div>
 
-                <div className="space-y-4">
-                  <CardDescription className="text-ui-kicker">{t("brandEyebrow")}</CardDescription>
-                  <h1 className="max-w-2xl text-ui-display text-balance">{t("brandHeadline")}</h1>
-                  <p className="max-w-[62ch] text-ui-body text-muted-foreground">
+                <div className="space-y-3.5">
+                  <CardDescription className="text-ui-kicker text-muted-foreground/64">
+                    {t("brandEyebrow")}
+                  </CardDescription>
+                  <h1 className="max-w-2xl text-ui-display text-balance tracking-tight">
+                    {t("brandHeadline")}
+                  </h1>
+                  <p className="max-w-[62ch] text-ui-body text-muted-foreground/82 leading-relaxed">
                     {t("brandDescription")}
                   </p>
                 </div>
               </div>
 
-              <div className="space-y-4 border-t border-border/60 pt-6">
+              <div className="space-y-3.5 border-t border-border/48 pt-5">
                 <div className="space-y-1">
-                  <p className="text-ui-kicker text-muted-foreground">{t("entryChecklistTitle")}</p>
-                  <p className="max-w-[58ch] text-ui-subtle text-muted-foreground">
+                  <p className="text-ui-kicker text-muted-foreground/64">
+                    {t("entryChecklistTitle")}
+                  </p>
+                  <p className="max-w-[58ch] text-ui-subtle text-muted-foreground/64 leading-relaxed">
                     {t("entryChecklistDescription")}
                   </p>
                 </div>
 
-                <ol aria-label={t("entryChecklistTitle")} className="space-y-0.5">
+                <ol aria-label={t("entryChecklistTitle")} className="space-y-0">
                   {workbenchSteps.map(({ icon: Icon, title, description }, index) => (
                     <li
                       key={title}
-                      className="grid grid-cols-[auto_minmax(0,1fr)] gap-4 py-4 not-last:border-b not-last:border-border/36"
+                      className="grid grid-cols-[auto_minmax(0,1fr)] gap-3.5 py-3.5 not-last:border-b not-last:border-border/28"
                     >
-                      <div className="flex items-center gap-3">
-                        <span className="surface-light flex size-10 items-center justify-center rounded-2xl text-primary">
-                          <Icon aria-hidden="true" className="size-4" />
+                      <div className="flex items-center gap-2.5">
+                        <span className="surface-inline flex size-9 items-center justify-center rounded-xl text-primary/72">
+                          <Icon aria-hidden="true" className="size-3.5" />
                         </span>
-                        <span className="text-ui-kicker text-muted-foreground">
+                        <span className="text-ui-kicker text-muted-foreground/56">
                           {`0${index + 1}`}
                         </span>
                       </div>
-                      <div className="space-y-1">
-                        <p className="text-ui-title">{title}</p>
-                        <p className="text-ui-subtle text-muted-foreground">{description}</p>
+                      <div className="space-y-0.5">
+                        <p className="text-ui-title text-sm font-medium">{title}</p>
+                        <p className="text-ui-subtle text-muted-foreground/64 leading-relaxed">
+                          {description}
+                        </p>
                       </div>
                     </li>
                   ))}
@@ -238,19 +248,21 @@ export function LoginPage() {
             aria-label={t("loginRegionLabel")}
             className="order-1 flex justify-center lg:order-2 lg:items-center lg:justify-end"
           >
-            <Card className="surface-elevated w-full max-w-md rounded-3xl py-6">
-              <CardHeader className="gap-4 border-b border-border/70 pb-6">
-                <div className="space-y-4 pl-4">
-                  <Badge className="w-fit rounded-full px-3 py-1" variant="outline">
+            <Card className="surface-elevated w-full max-w-md rounded-2xl py-5">
+              <CardHeader className="gap-3.5 border-b border-border/60 pb-5">
+                <div className="space-y-3 pl-4">
+                  <Badge className="w-fit rounded-full px-2.5 py-0.5 text-xs" variant="outline">
                     {t("loginHint")}
                   </Badge>
-                  <div className="space-y-2">
-                    <h2 className="text-ui-heading">{t("loginTitle")}</h2>
-                    <CardDescription>{t("controlledAccessDescription")}</CardDescription>
+                  <div className="space-y-1.5">
+                    <h2 className="text-ui-heading tracking-tight">{t("loginTitle")}</h2>
+                    <CardDescription className="text-sm text-muted-foreground/76">
+                      {t("controlledAccessDescription")}
+                    </CardDescription>
                   </div>
                 </div>
               </CardHeader>
-              <CardContent className="space-y-5 pt-6">
+              <CardContent className="space-y-4 pt-5">
                 <LoginForm
                   errorMessage={errorMessage}
                   onFieldChange={() => {
@@ -260,7 +272,7 @@ export function LoginPage() {
                   }}
                   onSubmit={handleSubmit}
                 />
-                <p className="border-t border-border/60 pl-4 pt-4 text-ui-subtle text-muted-foreground">
+                <p className="border-t border-border/48 pl-4 pt-3 text-ui-subtle text-muted-foreground/60 leading-relaxed">
                   {t("workspaceConsistencyDescription")}
                 </p>
               </CardContent>

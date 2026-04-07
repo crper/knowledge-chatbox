@@ -1,13 +1,12 @@
 /**
- * @file 聊天相关工具模块。
+ * 聊天相关工具模块。
  */
+
+import { sortBy } from "es-toolkit";
 
 import type { ChatMessageItem } from "../api/chat";
 import type { StreamingRun } from "../store/chat-stream-store";
-
-function isStreamingStatus(status: string) {
-  return status === "pending" || status === "streaming";
-}
+import { MessageRole, MessageStatus, isStreamingStatus } from "../constants";
 
 function normalizePersistedMessages(
   messages: ChatMessageItem[],
@@ -16,13 +15,13 @@ function normalizePersistedMessages(
 ) {
   return messages.map((message) => {
     if (
-      message.role === "assistant" &&
+      message.role === MessageRole.ASSISTANT &&
       isStreamingStatus(message.status) &&
       (message.id < maxPersistedMessageId || !activeStreamingAssistantMessageIds.has(message.id))
     ) {
       return {
         ...message,
-        status: "failed",
+        status: MessageStatus.FAILED,
       };
     }
 
@@ -40,7 +39,7 @@ function resolveRetryRootUserMessageId(
   while (!visitedMessageIds.has(currentMessageId)) {
     visitedMessageIds.add(currentMessageId);
     const currentMessage = messageById.get(currentMessageId);
-    if (currentMessage?.role !== "user" || currentMessage.retry_of_message_id == null) {
+    if (currentMessage?.role !== MessageRole.USER || currentMessage.retry_of_message_id == null) {
       return currentMessageId;
     }
     currentMessageId = currentMessage.retry_of_message_id;
@@ -52,12 +51,10 @@ function resolveRetryRootUserMessageId(
 function shouldSuppressFailedAssistantPlaceholder(
   assistantMessage: ChatMessageItem,
   latestUserAttempt: ChatMessageItem | undefined,
-) {
-  return (
-    latestUserAttempt?.status === "failed" &&
-    assistantMessage.status === "failed" &&
-    assistantMessage.content.trim().length === 0
-  );
+): boolean {
+  if (latestUserAttempt?.status !== MessageStatus.FAILED) return false;
+  if (assistantMessage.status !== MessageStatus.FAILED) return false;
+  return assistantMessage.content.trim().length === 0;
 }
 
 function collapseRetryMessageAttempts(messages: ChatMessageItem[]) {
@@ -79,13 +76,13 @@ function collapseRetryMessageAttempts(messages: ChatMessageItem[]) {
   };
 
   messages.forEach((message) => {
-    if (message.role === "user") {
+    if (message.role === MessageRole.USER) {
       const rootUserMessageId = getRootUserMessageId(message.id);
       latestUserAttemptByRootId.set(rootUserMessageId, message);
       return;
     }
 
-    if (message.role === "assistant" && typeof message.reply_to_message_id === "number") {
+    if (message.role === MessageRole.ASSISTANT && typeof message.reply_to_message_id === "number") {
       const rootUserMessageId = getRootUserMessageId(message.reply_to_message_id);
       latestAssistantAttemptByRootId.set(rootUserMessageId, message);
       if (!assistantAnchorMessageIdByRootId.has(rootUserMessageId)) {
@@ -98,41 +95,82 @@ function collapseRetryMessageAttempts(messages: ChatMessageItem[]) {
   const emittedAssistantRootIds = new Set<number>();
 
   return messages.flatMap((message) => {
-    if (message.role === "user") {
-      const rootUserMessageId = getRootUserMessageId(message.id);
-      if (message.id !== rootUserMessageId || emittedUserRootIds.has(rootUserMessageId)) {
-        return [];
-      }
-
-      emittedUserRootIds.add(rootUserMessageId);
-      const latestUserAttempt = latestUserAttemptByRootId.get(rootUserMessageId) ?? message;
-      return [latestUserAttempt];
+    // 处理用户消息
+    if (message.role === MessageRole.USER) {
+      return processUserMessage(message, {
+        getRootUserMessageId,
+        emittedUserRootIds,
+        latestUserAttemptByRootId,
+      });
     }
 
-    if (message.role === "assistant" && typeof message.reply_to_message_id === "number") {
-      const rootUserMessageId = getRootUserMessageId(message.reply_to_message_id);
-      if (emittedAssistantRootIds.has(rootUserMessageId)) {
-        return [];
-      }
-
-      if (assistantAnchorMessageIdByRootId.get(rootUserMessageId) !== message.id) {
-        return [];
-      }
-
-      const latestUserAttempt = latestUserAttemptByRootId.get(rootUserMessageId);
-      const latestAssistantAttempt =
-        latestAssistantAttemptByRootId.get(rootUserMessageId) ?? message;
-      if (shouldSuppressFailedAssistantPlaceholder(latestAssistantAttempt, latestUserAttempt)) {
-        emittedAssistantRootIds.add(rootUserMessageId);
-        return [];
-      }
-
-      emittedAssistantRootIds.add(rootUserMessageId);
-      return [latestAssistantAttempt];
+    // 处理助手消息
+    if (message.role === MessageRole.ASSISTANT && typeof message.reply_to_message_id === "number") {
+      return processAssistantMessage(message, {
+        getRootUserMessageId,
+        emittedAssistantRootIds,
+        assistantAnchorMessageIdByRootId,
+        latestUserAttemptByRootId,
+        latestAssistantAttemptByRootId,
+      });
     }
 
     return [message];
   });
+}
+
+function processUserMessage(
+  message: ChatMessageItem,
+  deps: {
+    getRootUserMessageId: (id: number) => number;
+    emittedUserRootIds: Set<number>;
+    latestUserAttemptByRootId: Map<number, ChatMessageItem>;
+  },
+): ChatMessageItem[] {
+  const rootUserMessageId = deps.getRootUserMessageId(message.id);
+  if (message.id !== rootUserMessageId || deps.emittedUserRootIds.has(rootUserMessageId)) {
+    return [];
+  }
+
+  deps.emittedUserRootIds.add(rootUserMessageId);
+  const latestUserAttempt = deps.latestUserAttemptByRootId.get(rootUserMessageId) ?? message;
+  return [latestUserAttempt];
+}
+
+function processAssistantMessage(
+  message: ChatMessageItem,
+  deps: {
+    getRootUserMessageId: (id: number) => number;
+    emittedAssistantRootIds: Set<number>;
+    assistantAnchorMessageIdByRootId: Map<number, number>;
+    latestUserAttemptByRootId: Map<number, ChatMessageItem>;
+    latestAssistantAttemptByRootId: Map<number, ChatMessageItem>;
+  },
+): ChatMessageItem[] {
+  const rootUserMessageId = deps.getRootUserMessageId(message.reply_to_message_id!);
+
+  // 检查是否已发射
+  if (deps.emittedAssistantRootIds.has(rootUserMessageId)) {
+    return [];
+  }
+
+  // 检查是否是锚点消息
+  if (deps.assistantAnchorMessageIdByRootId.get(rootUserMessageId) !== message.id) {
+    return [];
+  }
+
+  const latestUserAttempt = deps.latestUserAttemptByRootId.get(rootUserMessageId);
+  const latestAssistantAttempt =
+    deps.latestAssistantAttemptByRootId.get(rootUserMessageId) ?? message;
+
+  // 检查是否需要抑制失败的占位符
+  if (shouldSuppressFailedAssistantPlaceholder(latestAssistantAttempt, latestUserAttempt)) {
+    deps.emittedAssistantRootIds.add(rootUserMessageId);
+    return [];
+  }
+
+  deps.emittedAssistantRootIds.add(rootUserMessageId);
+  return [latestAssistantAttempt];
 }
 
 /**
@@ -147,21 +185,22 @@ export function buildDisplayMessages({
   messages: ChatMessageItem[];
   runsById: Record<number, StreamingRun>;
 }) {
-  const streamingRuns =
-    activeSessionId === null
-      ? []
-      : Object.values(runsById)
-          .filter((run) => run.sessionId === activeSessionId)
-          .sort((left, right) => left.assistantMessageId - right.assistantMessageId);
+  const streamingRuns = sortBy(
+    Object.values(runsById).filter((run) => run.sessionId === activeSessionId),
+    [(run) => run.assistantMessageId],
+  );
+
   const activeStreamingAssistantMessageIds = new Set(
     streamingRuns
       .filter((run) => isStreamingStatus(run.status))
       .map((run) => run.assistantMessageId),
   );
+
   const maxPersistedMessageId = messages.reduce(
     (currentMax, message) => Math.max(currentMax, message.id),
     0,
   );
+
   const normalizedMessages = normalizePersistedMessages(
     messages,
     activeStreamingAssistantMessageIds,
@@ -169,18 +208,29 @@ export function buildDisplayMessages({
   );
   const collapsedPersistedMessages = collapseRetryMessageAttempts(normalizedMessages);
 
-  if (activeSessionId === null) {
+  if (activeSessionId === null || streamingRuns.length === 0) {
     return collapsedPersistedMessages;
   }
 
-  if (streamingRuns.length === 0) {
-    return collapsedPersistedMessages;
-  }
+  const mergedMessages = mergeStreamingRuns(
+    normalizedMessages,
+    streamingRuns,
+    maxPersistedMessageId,
+  );
 
-  const nextMessages = [...normalizedMessages];
+  return collapseRetryMessageAttempts(mergedMessages);
+}
+
+function mergeStreamingRuns(
+  messages: ChatMessageItem[],
+  streamingRuns: StreamingRun[],
+  maxPersistedMessageId: number,
+) {
+  const nextMessages = [...messages];
   const messageIndexById = new Map(nextMessages.map((message, index) => [message.id, index]));
+
   for (const run of streamingRuns) {
-    if (isStreamingStatus(run.status) && run.assistantMessageId < maxPersistedMessageId) {
+    if (shouldSkipStreamingRun(run, maxPersistedMessageId)) {
       continue;
     }
 
@@ -188,39 +238,53 @@ export function buildDisplayMessages({
 
     if (existingIndex >= 0) {
       const existingMessage = nextMessages[existingIndex]!;
-      const hasPersistedTerminalAssistantState =
-        existingMessage.role === "assistant" && !isStreamingStatus(existingMessage.status);
-
-      if (hasPersistedTerminalAssistantState && run.status !== "succeeded") {
+      if (shouldKeepPersistedState(existingMessage, run)) {
         continue;
       }
 
-      nextMessages[existingIndex] = {
-        ...existingMessage,
-        content: run.content || existingMessage.content,
-        reply_to_message_id:
-          run.retryOfMessageId ?? run.userMessageId ?? existingMessage.reply_to_message_id,
-        ...(run.errorMessage ? { error_message: run.errorMessage } : {}),
-        sources_json:
-          (run.sources ?? []).length > 0
-            ? (run.sources as ChatMessageItem["sources_json"])
-            : existingMessage.sources_json,
-        status: run.status,
-      };
+      nextMessages[existingIndex] = mergeRunIntoMessage(existingMessage, run);
       continue;
     }
 
-    nextMessages.push({
-      id: run.assistantMessageId,
-      role: "assistant",
-      content: run.content,
-      reply_to_message_id: run.retryOfMessageId ?? run.userMessageId,
-      ...(run.errorMessage ? { error_message: run.errorMessage } : {}),
-      status: run.status,
-      sources_json: (run.sources ?? []) as ChatMessageItem["sources_json"],
-    });
+    nextMessages.push(createMessageFromRun(run));
     messageIndexById.set(run.assistantMessageId, nextMessages.length - 1);
   }
 
-  return collapseRetryMessageAttempts(nextMessages);
+  return nextMessages;
+}
+
+function shouldSkipStreamingRun(run: StreamingRun, maxPersistedMessageId: number) {
+  return isStreamingStatus(run.status) && run.assistantMessageId < maxPersistedMessageId;
+}
+
+function shouldKeepPersistedState(message: ChatMessageItem, run: StreamingRun) {
+  const hasPersistedTerminalAssistantState =
+    message.role === MessageRole.ASSISTANT && !isStreamingStatus(message.status);
+  return hasPersistedTerminalAssistantState && run.status !== MessageStatus.SUCCEEDED;
+}
+
+function mergeRunIntoMessage(message: ChatMessageItem, run: StreamingRun) {
+  return {
+    ...message,
+    content: run.content || message.content,
+    reply_to_message_id: run.retryOfMessageId ?? run.userMessageId ?? message.reply_to_message_id,
+    ...(run.errorMessage ? { error_message: run.errorMessage } : {}),
+    sources_json:
+      (run.sources ?? []).length > 0
+        ? (run.sources as ChatMessageItem["sources_json"])
+        : message.sources_json,
+    status: run.status,
+  };
+}
+
+function createMessageFromRun(run: StreamingRun) {
+  return {
+    id: run.assistantMessageId,
+    role: MessageRole.ASSISTANT,
+    content: run.content,
+    reply_to_message_id: run.retryOfMessageId ?? run.userMessageId,
+    ...(run.errorMessage ? { error_message: run.errorMessage } : {}),
+    status: run.status,
+    sources_json: (run.sources ?? []) as ChatMessageItem["sources_json"],
+  } satisfies ChatMessageItem;
 }

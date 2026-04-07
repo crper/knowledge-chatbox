@@ -17,19 +17,21 @@ type BrandMarkProps = {
  */
 export function BrandMark({ alt, className, subtitle, title }: BrandMarkProps) {
   return (
-    <div className={cn("flex select-none items-center gap-3.5", className)}>
-      <span className="surface-light flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-xl">
+    <div className={cn("flex select-none items-center gap-3", className)}>
+      <span className="surface-inline flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-xl">
         <img
           alt={alt}
-          className="size-9 rounded-lg object-cover select-none"
+          className="size-8 rounded-lg object-cover select-none"
           draggable={false}
           src={logoUrl}
         />
       </span>
       <div className="min-w-0 space-y-0.5">
-        <p className="truncate text-ui-title font-semibold text-foreground">{title}</p>
+        <p className="truncate text-[13px] font-semibold tracking-tight text-foreground">{title}</p>
         {subtitle ? (
-          <p className="truncate text-ui-subtle text-muted-foreground">{subtitle}</p>
+          <p className="truncate text-[11px] leading-relaxed text-muted-foreground/68">
+            {subtitle}
+          </p>
         ) : null}
       </div>
     </div>

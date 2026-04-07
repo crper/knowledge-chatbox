@@ -79,6 +79,7 @@ erDiagram
 - `chat_run_events(run_id, seq)` 唯一
 - `app_settings.index_rebuild_status` 只允许 `idle / running / failed`
 - `app_settings.scope_type + scope_id` 当前唯一，V1 只使用 `global / global`
+- SQLite 默认开启 WAL (Write-Ahead Logging) 模式，支持并发读，降低流式事件写入与标准页面读取并发时触发锁错误的概率
 
 ## 5. 写路径
 

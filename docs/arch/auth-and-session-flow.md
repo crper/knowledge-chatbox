@@ -24,8 +24,13 @@
 ### `POST /api/auth/login`
 
 - 校验用户名和密码
-- 返回短期 bearer `access token`
-- 同时写入新的 refresh session cookie
+- 返回短期 bearer `access token`（JWT 格式，默认有效期 15 分钟）
+- 同时写入新的 refresh session cookie（HttpOnly，服务端随机字符串，有效期与 access token 一致）
+
+### Token 格式说明
+
+- **access token**: JWT (JSON Web Token)，使用 HS256 算法签名，包含 `sub` (用户 ID)、`exp` (过期时间) 等 claims，只保存在前端内存
+- **refresh session**: 服务端生成的随机字符串，通过 `auth_sessions` 表管理，以 HttpOnly cookie 形式存储在浏览器，前端无法读取
 
 ### `POST /api/auth/bootstrap`
 

@@ -2,7 +2,7 @@
  * @file 聊天会话数据与 cache patch Hook 模块。
  */
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   useInfiniteQuery,
   useQuery,
@@ -23,8 +23,7 @@ import type {
 } from "../api/chat";
 import { buildDisplayMessages } from "../utils/build-display-messages";
 import type { StreamingRun } from "../store/chat-stream-store";
-
-type ChatRunsById = Record<number, StreamingRun>;
+import { getStreamRunsBySession, subscribeToStreamRunChanges } from "../utils/stream-run-query";
 
 function buildContextAttachmentKey(attachment: PersistedChatAttachmentItem) {
   if (attachment.resource_document_id != null) {
@@ -38,7 +37,26 @@ function buildContextAttachmentKey(attachment: PersistedChatAttachmentItem) {
   return `attachment:${attachment.attachment_id}`;
 }
 
-export function useChatSessionData(activeSessionId: number | null, runsById: ChatRunsById) {
+function useSessionStreamRuns(sessionId: number | null) {
+  const queryClient = useQueryClient();
+  const [runsById, setRunsById] = useState<Record<number, StreamingRun>>({});
+
+  useEffect(() => {
+    const syncRuns = () => {
+      setRunsById(sessionId === null ? {} : getStreamRunsBySession(queryClient, sessionId));
+    };
+
+    syncRuns();
+
+    const unsubscribe = subscribeToStreamRunChanges(queryClient, syncRuns);
+
+    return unsubscribe;
+  }, [queryClient, sessionId]);
+
+  return runsById;
+}
+
+export function useChatSessionData(activeSessionId: number | null) {
   const queryClient = useQueryClient();
 
   const sessionsQuery = useQuery(chatSessionsQueryOptions());
@@ -161,16 +179,15 @@ export function useChatSessionData(activeSessionId: number | null, runsById: Cha
       sessions.find((session: ChatSessionItem) => session.id === resolvedActiveSessionId) ?? null,
     [resolvedActiveSessionId, sessions],
   );
+  const runsById = useSessionStreamRuns(resolvedActiveSessionId);
 
-  const displayMessages = useMemo(
-    () =>
-      buildDisplayMessages({
-        activeSessionId: resolvedActiveSessionId,
-        messages,
-        runsById,
-      }),
-    [resolvedActiveSessionId, messages, runsById],
-  );
+  const displayMessages = useMemo(() => {
+    return buildDisplayMessages({
+      activeSessionId: resolvedActiveSessionId,
+      messages,
+      runsById,
+    });
+  }, [resolvedActiveSessionId, messages, runsById]);
 
   const hasOlderMessages = messagesWindowQuery.hasNextPage ?? false;
   const isLoadingOlderMessages = messagesWindowQuery.isFetchingNextPage;

@@ -15,9 +15,9 @@ from knowledge_chatbox_api.schemas.settings import (
     parse_vision_route,
 )
 
-DEFAULT_RESPONSE_ROUTE = {"provider": "openai", "model": "unknown"}
-DEFAULT_EMBEDDING_ROUTE = {"provider": "openai", "model": "text-embedding-3-small"}
-DEFAULT_VISION_ROUTE = {"provider": "openai", "model": "unknown"}
+DEFAULT_RESPONSE_ROUTE = {"provider": "ollama", "model": "unknown"}
+DEFAULT_EMBEDDING_ROUTE = {"provider": "ollama", "model": "unknown"}
+DEFAULT_VISION_ROUTE = {"provider": "ollama", "model": "unknown"}
 DEFAULT_PROVIDER_TIMEOUT_SECONDS = 60
 
 

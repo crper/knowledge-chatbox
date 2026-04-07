@@ -54,16 +54,16 @@ DEFAULT_PROVIDER_PROFILES = {
         "embedding_model": "voyage-3.5",
     },
     "ollama": {
-        "base_url": "http://host.docker.internal:11434",
+        "base_url": "http://localhost:11434",
         "chat_model": "qwen3.5:4b",
         "embedding_model": "nomic-embed-text",
         "vision_model": "qwen3.5:4b",
     },
 }
 
-DEFAULT_RESPONSE_ROUTE = {"provider": "openai", "model": "gpt-5.4"}
-DEFAULT_EMBEDDING_ROUTE = {"provider": "openai", "model": "text-embedding-3-small"}
-DEFAULT_VISION_ROUTE = {"provider": "openai", "model": "gpt-5.4"}
+DEFAULT_RESPONSE_ROUTE = {"provider": "ollama", "model": "qwen3.5:4b"}
+DEFAULT_EMBEDDING_ROUTE = {"provider": "ollama", "model": "nomic-embed-text"}
+DEFAULT_VISION_ROUTE = {"provider": "ollama", "model": "qwen3.5:4b"}
 
 
 class AppSettings(Base):

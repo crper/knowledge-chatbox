@@ -11,9 +11,10 @@ import { queryKeys } from "@/lib/api/query-keys";
 import type { ChatMessageItem, ChatSessionContextItem, ChatSourceItem } from "../api/chat";
 import { startChatStream, type ChatStreamAttachmentInput } from "../api/chat-stream";
 import { CHAT_STREAM_EVENT } from "../api/chat-stream-events";
-import { useChatStreamStore } from "../store/chat-stream-store";
-import { patchPagedChatMessagesCache } from "../utils/patch-paged-chat-messages";
+import type { useChatStreamRun } from "../hooks/use-chat-stream-run";
+import { finalizeTerminalStreamRun } from "../utils/finalize-terminal-stream-run";
 import { resolveSubmitErrorMessage } from "../utils/chat-submit-helpers";
+import { MessageRole, MessageStatus } from "../constants";
 
 type StreamRunTerminalStatus = "failed" | "succeeded";
 
@@ -25,95 +26,16 @@ type UseChatStreamLifecycleParams = {
     latestAssistantSources?: ChatSessionContextItem["latest_assistant_sources"];
     sessionId: number;
   }) => void;
+  streamRun: ReturnType<typeof useChatStreamRun>;
 };
 
 export function useChatStreamLifecycle({
   currentSessionIdRef,
   patchSessionContext,
+  streamRun,
 }: UseChatStreamLifecycleParams) {
   const { t } = useTranslation(["chat", "common"]);
   const queryClient = useQueryClient();
-  const startRun = useChatStreamStore((state) => state.startRun);
-  const appendDelta = useChatStreamStore((state) => state.appendDelta);
-  const addSource = useChatStreamStore((state) => state.addSource);
-  const completeRun = useChatStreamStore((state) => state.completeRun);
-  const failRun = useChatStreamStore((state) => state.failRun);
-  const pruneRuns = useChatStreamStore((state) => state.pruneRuns);
-
-  const patchRetriedUserMessage = useCallback(
-    ({ sessionId, userMessageId }: { sessionId: number; userMessageId: number }) => {
-      queryClient.setQueryData<InfiniteData<ChatMessageItem[], number | null>>(
-        queryKeys.chat.messagesWindow(sessionId),
-        (current) => {
-          if (!current || typeof current !== "object" || !("pages" in current)) {
-            return current;
-          }
-
-          let patched = false;
-          const nextPages = current.pages.map((page) =>
-            page.map((message) => {
-              if (message.id !== userMessageId || message.role !== "user") {
-                return message;
-              }
-
-              patched = true;
-              return {
-                ...message,
-                error_message: null,
-                status: "succeeded",
-              } satisfies ChatMessageItem;
-            }),
-          );
-
-          return patched ? { ...current, pages: nextPages } : current;
-        },
-      );
-    },
-    [queryClient],
-  );
-
-  const buildTerminalMessages = useCallback(
-    ({
-      errorMessage,
-      run,
-      status,
-    }: {
-      errorMessage: string | null;
-      run: ReturnType<typeof useChatStreamStore.getState>["runsById"][number];
-      status: StreamRunTerminalStatus;
-    }): ChatMessageItem[] => {
-      const assistantMessage: ChatMessageItem = {
-        content: run.content,
-        error_message: errorMessage,
-        id: run.assistantMessageId,
-        reply_to_message_id: run.retryOfMessageId ?? run.userMessageId ?? null,
-        role: "assistant",
-        sources_json: run.sources as ChatMessageItem["sources_json"],
-        status,
-      };
-
-      if (run.userMessageId === null) {
-        return [assistantMessage];
-      }
-
-      if (run.retryOfMessageId != null) {
-        return [assistantMessage];
-      }
-
-      return [
-        {
-          content: run.userContent,
-          ...(errorMessage ? { error_message: errorMessage } : {}),
-          id: run.userMessageId,
-          role: "user",
-          sources_json: [],
-          status,
-        },
-        assistantMessage,
-      ];
-    },
-    [],
-  );
 
   const finalizeStreamRun = useCallback(
     ({
@@ -127,62 +49,21 @@ export function useChatStreamLifecycle({
       sessionId: number;
       status: StreamRunTerminalStatus;
     }) => {
-      const currentRun = useChatStreamStore.getState().runsById[runId];
-      const patched =
-        currentRun == null
-          ? false
-          : patchPagedChatMessagesCache({
-              appendIfMissing: buildTerminalMessages({
-                errorMessage,
-                run: currentRun,
-                status,
-              }),
-              assistantMessageId: currentRun.assistantMessageId,
-              patch: {
-                content: currentRun.content,
-                error_message: errorMessage,
-                sources_json: currentRun.sources as ChatMessageItem["sources_json"],
-                status,
-              },
-              queryClient,
-              sessionId,
-            });
-
-      if (currentRun != null) {
-        if (status === "succeeded" && currentRun.retryOfMessageId != null) {
-          patchRetriedUserMessage({
-            sessionId,
-            userMessageId: currentRun.retryOfMessageId,
-          });
-        }
-
-        patchSessionContext({
-          latestAssistantMessageId: currentRun.assistantMessageId,
-          latestAssistantSources:
-            currentRun.sources as ChatSessionContextItem["latest_assistant_sources"],
-          sessionId,
-        });
-      }
-
-      const refreshPromise = patched
-        ? Promise.resolve()
-        : queryClient.invalidateQueries({
-            queryKey: queryKeys.chat.messagesWindow(sessionId),
-          });
-      void refreshPromise.then(() => {
-        if (status === "failed" || currentSessionIdRef.current === sessionId) {
-          pruneRuns([runId]);
+      void finalizeTerminalStreamRun({
+        currentRun: streamRun.getRun(runId) ?? null,
+        currentSessionId: currentSessionIdRef.current,
+        errorMessage,
+        patchSessionContext,
+        queryClient,
+        sessionId,
+        status,
+      }).then((result) => {
+        if (result.shouldPruneRun && result.runId !== null) {
+          streamRun.pruneRuns([result.runId]);
         }
       });
     },
-    [
-      buildTerminalMessages,
-      currentSessionIdRef,
-      patchRetriedUserMessage,
-      patchSessionContext,
-      pruneRuns,
-      queryClient,
-    ],
+    [currentSessionIdRef, patchSessionContext, queryClient, streamRun],
   );
 
   const sendMutation = useMutation({
@@ -216,7 +97,7 @@ export function useChatStreamLifecycle({
               activeRunId = runId;
               const userMessageId =
                 typeof event.data.user_message_id === "number" ? event.data.user_message_id : null;
-              startRun({
+              streamRun.startRun({
                 runId,
                 sessionId: Number(event.data.session_id ?? sessionId),
                 assistantMessageId: Number(event.data.assistant_message_id ?? 0),
@@ -247,8 +128,8 @@ export function useChatStreamLifecycle({
                       {
                         content,
                         id: userMessageId,
-                        role: "user",
-                        status: "succeeded",
+                        role: MessageRole.USER,
+                        status: MessageStatus.SUCCEEDED,
                         sources_json: [],
                       } satisfies ChatMessageItem,
                     ];
@@ -267,12 +148,15 @@ export function useChatStreamLifecycle({
               event.event === CHAT_STREAM_EVENT.partTextDelta ||
               event.event === CHAT_STREAM_EVENT.legacyMessageDelta
             ) {
-              appendDelta(runId, typeof event.data.delta === "string" ? event.data.delta : "");
+              streamRun.appendDelta(
+                runId,
+                typeof event.data.delta === "string" ? event.data.delta : "",
+              );
               return;
             }
 
             if (event.event === CHAT_STREAM_EVENT.partSource && event.data.source) {
-              addSource(runId, event.data.source as Record<string, unknown>);
+              streamRun.addSource(runId, event.data.source as Record<string, unknown>);
               return;
             }
 
@@ -281,14 +165,14 @@ export function useChatStreamLifecycle({
               Array.isArray(event.data.sources)
             ) {
               for (const source of event.data.sources) {
-                addSource(runId, source as ChatSourceItem as Record<string, unknown>);
+                streamRun.addSource(runId, source as ChatSourceItem as Record<string, unknown>);
               }
               return;
             }
 
             if (event.event === CHAT_STREAM_EVENT.runCompleted) {
               receivedTerminalRunEvent = true;
-              completeRun(runId);
+              streamRun.completeRun(runId);
               finalizeStreamRun({
                 errorMessage: null,
                 runId,
@@ -304,7 +188,7 @@ export function useChatStreamLifecycle({
                 typeof event.data.error_message === "string"
                   ? event.data.error_message
                   : t("assistantStreamingInterruptedError");
-              failRun(runId, errorMessage);
+              streamRun.failRun(runId, errorMessage);
               finalizeStreamRun({
                 errorMessage,
                 runId,
@@ -316,7 +200,7 @@ export function useChatStreamLifecycle({
         });
       } catch (error) {
         if (activeRunId !== null && !receivedTerminalRunEvent) {
-          failRun(activeRunId, t("assistantStreamingInterruptedError"));
+          streamRun.failRun(activeRunId, t("assistantStreamingInterruptedError"));
         } else {
           toast.error(resolveSubmitErrorMessage(error, t("messageSendFailedToast")));
         }

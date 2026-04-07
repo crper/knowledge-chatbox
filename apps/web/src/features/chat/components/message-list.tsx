@@ -11,6 +11,8 @@ import { useIsMobile } from "@/lib/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { ChatMessageItem } from "../api/chat";
+import { MessageStatus, isStreamingStatus } from "../constants";
+import { buildMessageRowModel } from "./build-message-row-model";
 import {
   buildAttachmentPreviewIndexes,
   buildChatAttachmentDescriptors,
@@ -30,31 +32,6 @@ type MessageListProps = {
 };
 
 const MESSAGE_CONTAINMENT_THRESHOLD = 80;
-const IMAGE_ATTACHMENT_ERROR_PATTERNS = [
-  /attached image could not be processed/i,
-  /failed to process inputs:\s*image/i,
-  /image:\s*unknown format/i,
-] as const;
-
-function getUserFacingMessageError(message: ChatMessageItem, fallbackT: (key: string) => string) {
-  const rawErrorMessage = message.error_message?.trim();
-  if (!rawErrorMessage) {
-    return null;
-  }
-
-  const hasImageAttachment = (message.attachments_json ?? []).some(
-    (attachment) => attachment.type === "image",
-  );
-  if (
-    hasImageAttachment &&
-    IMAGE_ATTACHMENT_ERROR_PATTERNS.some((pattern) => pattern.test(rawErrorMessage))
-  ) {
-    return fallbackT("attachmentImageProcessingFailed");
-  }
-
-  return rawErrorMessage;
-}
-
 export type MessageRowProps = {
   enableContainment?: boolean;
   isCompactLayout?: boolean;
@@ -79,24 +56,21 @@ export const MessageRow = memo(function MessageRow({
   const retryLabel = t("retryAction");
   const systemLabel = t("systemRole", { defaultValue: "系统" });
   const userLabel = t("userRole");
-  const isUserMessage = message.role === "user";
-  const isAssistantMessage = message.role === "assistant";
+  const {
+    assistantContent,
+    canRetry,
+    displayErrorMessage,
+    isAssistantMessage,
+    isUserMessage,
+    messageLabelStyle,
+    statusMeta,
+  } = useMemo(() => buildMessageRowModel(message, t), [message, t]);
   const layoutMode = isCompactLayout ? "stacked" : "staggered";
   const messageSide = isUserMessage ? "end" : "start";
-  const messageLabelStyle = message.role === "assistant" ? "badge" : "tag";
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
-  const canRetry =
-    message.status === "failed" && (isUserMessage || message.reply_to_message_id != null);
   const triggerRetry = () => {
     void Promise.resolve(onRetry(message)).catch(() => {});
   };
-  const assistantContent =
-    message.content.trim().length > 0
-      ? message.content
-      : message.status === "failed"
-        ? t("assistantFailedFallback")
-        : t("assistantStreamingFallback");
-  const displayErrorMessage = getUserFacingMessageError(message, t);
   const attachments = message.attachments_json ?? [];
   const attachmentDescriptors = useMemo(
     () => buildChatAttachmentDescriptors(attachments),
@@ -125,27 +99,8 @@ export const MessageRow = memo(function MessageRow({
   );
   const roleLabel = isAssistantMessage ? assistantLabel : isUserMessage ? userLabel : systemLabel;
   const bubbleWidthMode = isUserMessage ? "fit" : "adaptive";
-  const statusMeta =
-    message.status === "failed"
-      ? {
-          label: isUserMessage ? t("messageStatusUserFailed") : t("messageStatusAssistantFailed"),
-          tone: "error" as const,
-        }
-      : isAssistantMessage && (message.status === "pending" || message.status === "streaming")
-        ? {
-            label: t("assistantStreamingStatus"),
-            tone: "pending" as const,
-          }
-        : {
-            label: isUserMessage
-              ? t("messageStatusUserReady")
-              : isAssistantMessage
-                ? t("messageStatusAssistantReady")
-                : t("messageStatusSystemReady", { defaultValue: "系统消息" }),
-            tone: "default" as const,
-          };
   const recoveryActions =
-    message.status === "failed" ? (
+    message.status === MessageStatus.FAILED ? (
       <div
         className={cn(
           "flex flex-wrap items-center gap-2",
@@ -272,7 +227,7 @@ export const MessageRow = memo(function MessageRow({
           {isAssistantMessage ? (
             <MarkdownMessage
               content={assistantContent}
-              isStreaming={message.status === "pending" || message.status === "streaming"}
+              isStreaming={isStreamingStatus(message.status)}
               testId="chat-markdown-body"
             />
           ) : message.content.trim() ? (

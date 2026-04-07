@@ -46,65 +46,84 @@ class RetrievedContextBuilder:
         sources: list[dict[str, Any]] = []
 
         for record in retrieved_chunks:
-            score = record.get("score")
-            if isinstance(score, (int, float)) and score < 0.1:
+            if not self._is_record_valid(record):
                 continue
 
-            revision_id = record.get("document_revision_id", record["document_id"])
-            document_version = versions_by_id.get(revision_id)
-
-            if document_version is None:
-                document_name = f"Document {record['document_id']}"
-            else:
-                document = documents_by_id.get(document_version.document_id)
-                if document is not None and not self._is_valid_document_version(
-                    document,
-                    document_version,
-                    active_space_id,
-                ):
-                    continue
-                document_name = (
-                    document.logical_name
-                    if document is not None
-                    else f"Document {record['document_id']}"
-                )
-
-            metadata = record["metadata"]
-            page_number = metadata.get("page_number")
-            section_title = metadata.get("section_title")
-            record_text = record["text"]
-
-            context_sections.append(
-                "\n".join(
-                    filter(
-                        None,
-                        [
-                            f"Document: {document_name}",
-                            f"Section: {section_title}" if section_title else None,
-                            f"Page: {page_number}" if page_number is not None else None,
-                            f"Content: {record_text}",
-                        ],
-                    )
-                )
+            document_name = self._resolve_document_name(
+                record, versions_by_id, documents_by_id, active_space_id
             )
-            sources.append(
-                {
-                    "document_id": record["document_id"],
-                    "document_revision_id": revision_id,
-                    "document_name": document_name,
-                    "chunk_id": record["id"],
-                    "snippet": record_text[:240],
-                    "page_number": page_number,
-                    "section_title": section_title,
-                    "score": score,
-                }
-            )
+            if document_name is None:
+                continue
+
+            context_section, source = self._build_record_output(record, document_name)
+            context_sections.append(context_section)
+            sources.append(source)
 
         return RetrievedContext(
             context_sections=context_sections,
             sources=sources,
             diagnostics=diagnostics,
         )
+
+    def _is_record_valid(self, record: dict[str, Any]) -> bool:
+        score = record.get("score")
+        if isinstance(score, (int, float)) and score < 0.1:
+            return False
+        return True
+
+    def _resolve_document_name(
+        self,
+        record: dict[str, Any],
+        versions_by_id: dict[int, DocumentRevision],
+        documents_by_id: dict[int, Document],
+        active_space_id: int | None,
+    ) -> str | None:
+        revision_id = record.get("document_revision_id", record["document_id"])
+        document_version = versions_by_id.get(revision_id)
+
+        if document_version is None:
+            return f"Document {record['document_id']}"
+
+        document = documents_by_id.get(document_version.document_id)
+        if document is None:
+            return f"Document {record['document_id']}"
+
+        if not self._is_valid_document_version(document, document_version, active_space_id):
+            return None
+
+        return document.logical_name
+
+    def _build_record_output(
+        self, record: dict[str, Any], document_name: str
+    ) -> tuple[str, dict[str, Any]]:
+        metadata = record["metadata"]
+        page_number = metadata.get("page_number")
+        section_title = metadata.get("section_title")
+        record_text = record["text"]
+        revision_id = record.get("document_revision_id", record["document_id"])
+
+        context_lines = [
+            f"Document: {document_name}",
+        ]
+        if section_title:
+            context_lines.append(f"Section: {section_title}")
+        if page_number is not None:
+            context_lines.append(f"Page: {page_number}")
+        context_lines.append(f"Content: {record_text}")
+        context_section = "\n".join(context_lines)
+
+        source = {
+            "document_id": record["document_id"],
+            "document_revision_id": revision_id,
+            "document_name": document_name,
+            "chunk_id": record["id"],
+            "snippet": record_text[:240],
+            "page_number": page_number,
+            "section_title": section_title,
+            "score": record.get("score"),
+        }
+
+        return context_section, source
 
     def build_diagnostics(
         self,

@@ -36,18 +36,18 @@ export type ChatAttachmentItem = {
   status: "queued" | "uploading" | "uploaded" | "failed";
 };
 
-function loadDrafts() {
+function loadDrafts(): Record<string, string> {
   if (typeof window === "undefined") {
-    return {} as Record<string, string>;
+    return {};
   }
 
   const raw = window.localStorage.getItem(CHAT_DRAFTS_STORAGE_KEY);
   if (!raw) {
-    return {} as Record<string, string>;
+    return {};
   }
 
   try {
-    return JSON.parse(raw) as Record<string, string>;
+    return JSON.parse(raw);
   } catch {
     return {};
   }
@@ -62,18 +62,17 @@ function loadSendShortcut(): ChatSendShortcut {
   if (raw === "enter" || raw === "shift-enter") {
     return raw;
   }
+
   return "enter";
 }
 
 type ChatUiState = {
-  activeSessionId: number | null;
   attachmentsBySession: Record<string, ChatAttachmentItem[]>;
   draftsBySession: Record<string, string>;
   sendShortcut: ChatSendShortcut;
   addAttachment: (sessionId: number | null, attachment: ChatAttachmentItem) => void;
   clearAttachments: (sessionId: number | null) => void;
   removeAttachment: (sessionId: number | null, attachmentId: string) => void;
-  setActiveSessionId: (sessionId: number | null) => void;
   setAttachments: (sessionId: number | null, attachments: ChatAttachmentItem[]) => void;
   setSendShortcut: (shortcut: ChatSendShortcut) => void;
   setDraft: (sessionId: number | null, draft: string) => void;
@@ -187,7 +186,6 @@ const chatUiStoreStorage: PersistStorage<PersistedChatUiState> = {
 export const useChatUiStore = create<ChatUiState>()(
   persist(
     (set) => ({
-      activeSessionId: null,
       attachmentsBySession: {},
       draftsBySession: {},
       sendShortcut: "enter",
@@ -229,7 +227,6 @@ export const useChatUiStore = create<ChatUiState>()(
           },
         }));
       },
-      setActiveSessionId: (activeSessionId) => set({ activeSessionId }),
       setAttachments: (sessionId, attachments) => {
         if (sessionId === null) {
           return;

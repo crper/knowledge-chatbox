@@ -102,41 +102,47 @@ def _tokenize_text(text: str) -> set[str]:
     """将文本分词为 tokens，支持 ASCII 和 CJK 字符。"""
     tokens: set[str] = set()
     ascii_buffer: list[str] = []
-    cjk_buffer: list[str] = []
-
-    def flush_ascii() -> None:
-        if ascii_buffer:
-            tokens.add("".join(ascii_buffer))
-            ascii_buffer.clear()
-
-    def flush_cjk() -> None:
-        if not cjk_buffer:
-            return
-        run = "".join(cjk_buffer)
-        if len(run) == 1:
-            tokens.add(run)
-        else:
-            tokens.update(run[i : i + 2] for i in range(len(run) - 1))
-        cjk_buffer.clear()
+    cjk_run: list[str] = []
 
     for char in text:
         if char.isascii() and char.isalnum():
-            flush_cjk()
+            # Flush CJK buffer when encountering ASCII
+            if cjk_run:
+                tokens.update(_extract_cjk_tokens(cjk_run))
+                cjk_run.clear()
             ascii_buffer.append(char.lower())
         elif _is_cjk_character(char):
-            flush_ascii()
-            cjk_buffer.append(char)
+            # Flush ASCII buffer when encountering CJK
+            if ascii_buffer:
+                tokens.add("".join(ascii_buffer))
+                ascii_buffer.clear()
+            cjk_run.append(char)
         else:
-            flush_ascii()
-            flush_cjk()
+            # Delimiter: flush both buffers
+            if ascii_buffer:
+                tokens.add("".join(ascii_buffer))
+                ascii_buffer.clear()
+            if cjk_run:
+                tokens.update(_extract_cjk_tokens(cjk_run))
+                cjk_run.clear()
 
-    flush_ascii()
-    flush_cjk()
+    # Flush remaining buffers
+    if ascii_buffer:
+        tokens.add("".join(ascii_buffer))
+    if cjk_run:
+        tokens.update(_extract_cjk_tokens(cjk_run))
+
     return tokens
 
 
+def _extract_cjk_tokens(cjk_chars: list[str]) -> set[str]:
+    """从 CJK 字符列表中提取 tokens（单字或双字组合）。"""
+    if len(cjk_chars) == 1:
+        return {cjk_chars[0]}
+    return {cjk_chars[i] + cjk_chars[i + 1] for i in range(len(cjk_chars) - 1)}
+
+
 def _text_fallback_where_document_terms(query_text: str) -> list[str]:
-    """提取查询文本中的候选词项用于文本回退搜索。"""
     candidates: list[str] = []
     seen: set[str] = set()
 
@@ -147,16 +153,13 @@ def _text_fallback_where_document_terms(query_text: str) -> list[str]:
         seen.add(normalized)
         candidates.append(normalized)
 
-    # 优先添加引号内的短语
     for phrase in _raw_quoted_phrases(query_text):
         add_candidate(phrase)
 
-    # 添加完整查询（如果长度合适）
     stripped_query = query_text.strip()
     if 2 <= len(stripped_query) <= 120:
         add_candidate(stripped_query)
 
-    # 添加分词结果（按长度排序，优先长词）
     for token in sorted(_tokenize_text(query_text), key=lambda t: (-len(t), t)):
         if token.isascii() and len(token) < 3:
             continue
@@ -175,13 +178,10 @@ def _score_records(
     *,
     top_k: int,
 ) -> list[dict[str, Any]]:
-    """对记录进行评分和排序，返回 top_k 结果。"""
-    # 预计算查询相关值，避免在循环中重复计算
     query_terms = _tokenize_text(query_text)
     query_phrases = _quoted_phrases(query_text)
     normalized_query = _normalize_match_text(query_text)
 
-    # 提前退出：如果没有查询词，返回空结果
     if not query_terms and not query_phrases and len(normalized_query) < 2:
         return []
 

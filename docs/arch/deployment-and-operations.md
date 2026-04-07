@@ -24,7 +24,8 @@
 - 首次 clone 或依赖刚更新时，先执行：`just init-env` -> `just setup`
 - 依赖已安装后的推荐入口：仓库根目录 `just dev`
 - `just dev` / `just reset-dev` 会把当前 `API_PORT / WEB_PORT` 传给共享开发脚本；脚本会先拉起 API、等待 `GET /api/health` ready，再启动 Web，并在终端打印 Web、API health、docs、redoc 和 OpenAPI 地址
-- 共享开发脚本默认会给 API 一段启动补偿时间；如果本机恢复文档 / chat run / 索引状态较慢，可临时调大 `DEV_API_READY_MAX_ATTEMPTS` 再执行 `just dev`
+- 共享开发脚本默认会给 API 约 60 秒启动补偿时间（默认 12 次尝试，每次间隔 5 秒）
+- 如果本机恢复文档 / chat run / 索引状态较慢，可临时调大 `DEV_API_READY_MAX_ATTEMPTS`（例如设为 30）再执行 `just dev`
 - 前端 `vp` 当前通过 `apps/web/.node-version` 固定到 `24.14.1`；这样 `vp dev / check / test / build` 会优先直接使用本地已安装版本，而不是每次都先走远端 `lts` 解析
 - 前端开发态当前还会自动挂载 TanStack Devtools 聚合面板，统一查看 Query / Router / Form 状态；这层只在 `vp dev` 下可见，不进入 Vitest 或生产构建，也不新增任何部署变量
 - 只需要手动补齐本地数据库 schema 时，优先使用仓库根目录 `just api-migrate`
@@ -37,7 +38,9 @@
 - `just setup` 是非破坏性的依赖同步入口；它会执行 `apps/api` 下的 `uv sync --all-groups` 和 `apps/web` 下的 `vp install`
 - 如果你要的是“本地像生产一样稳定跑起来”，请直接看下方 Docker Compose 部分，不要继续用 `vp dev` 或 `uvicorn --reload`
 - 数据：统一落在仓库根目录 `data/`；其中 SQLite 文件除了业务真相源，也承载 `FTS5` 词法兜底索引
-- OpenAPI 契约校验当前是严格门禁：`just web-check` / `vp run api:check` 如果发现 `apps/web/openapi/schema.json` 或 `src/lib/api/generated/schema.d.ts` 漂移会直接失败；标准修复入口是 `cd apps/web && vp run api:generate`
+- OpenAPI 契约校验当前是严格门禁：`just web-check` / `vp run api:check` 如果发现 `apps/web/openapi/schema.json` 或 `src/lib/api/generated/schema.d.ts` 漂移会直接失败
+- 校验失败时会看到类似 "OpenAPI schema drift detected" 的错误提示，此时标准修复入口是 `cd apps/web && vp run api:generate`
+- 该命令会导出后端最新 OpenAPI schema 并重新生成前端类型，生成完成后需重新提交代码
 - API 启动后默认暴露 `/docs`、`/redoc`、`/openapi.json`；它们与前端契约生成共用同一份 FastAPI OpenAPI 真相源
 - 认证当前使用 `PyJWT` 短期 access token + HttpOnly refresh cookie；refresh cookie 默认按请求 scheme 自动决定是否带 `Secure`，若部署在 HTTPS 反向代理后且应用层拿不到 `https` scheme，则需要显式配置 `SESSION_COOKIE_SECURE=true`；本地和容器环境都需要提供稳定的 `JWT_SECRET_KEY`；前端启动期会通过 `/api/auth/bootstrap` 恢复 refresh session，普通请求、资源上传与 SSE 流式聊天里的 `401` 续期仍走 `/api/auth/refresh`
 - 资源上传当前会先按块落到 `data/uploads`，同时增量计算 `content_hash` 和 `file_size`；因此即使 `web` 容器把 `client_max_body_size` 放宽到 `2g`，API 进程也不会再把整份文件一次性读进内存
@@ -99,7 +102,9 @@ flowchart LR
 - `api` 容器和 `web` 容器都是单机部署态的一部分，不是开发态的替代品
 - `api` 启动期除了默认数据 bootstrap，还会补偿残留的 `processing` 文档、`pending / running` chat run，以及 `running` 的索引重建状态；其中图片文档的 `processing` 记录会优先尝试恢复后台补全
 - provider 相关 bootstrap 现在会在单条 `app_settings` 记录里同时种入 `provider_profiles_json`、`response_route_json`、`embedding_route_json`、`vision_route_json`，并把 `pending_embedding_route_json` 初始化为空
-- 默认 Ollama bootstrap 当前对齐为 `qwen3.5:4b` 作为 chat / vision 模板值，避免设置页首屏和连接测试看到的默认模型不一致
+- `.env.example` 面向本地 `just dev` 主线时，默认会把三条 capability route 都 bootstrap 到 Ollama，并把 `INITIAL_OLLAMA_BASE_URL` 设为 `http://localhost:11434`
+- 如果改走 Docker Compose 且 Ollama 仍跑在宿主机，需要把 `.env` 里的 `INITIAL_OLLAMA_BASE_URL` 改成 `http://host.docker.internal:11434`
+- 默认 Ollama bootstrap 当前对齐为 `qwen3.5:4b` 作为 chat / vision 模板值，embedding 则对齐为 `nomic-embed-text`，避免设置页首屏和连接测试看到的默认模型不一致
 - API 响应头默认附带 `X-Request-ID`，日志里同样会输出 `request_id`
 - SQLite 连接默认开启 `WAL` 和 `busy_timeout=30000`，降低流式事件写入与标准页面读取并发时直接触发锁错误的概率
 - 文档索引当前拆成两层：`Chroma` 保存向量索引，SQLite 同库保存 `FTS5` 词法候选兜底索引；重置本地 SQLite 文件会一并清掉这部分派生数据

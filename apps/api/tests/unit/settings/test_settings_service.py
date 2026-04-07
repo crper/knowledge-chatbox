@@ -68,16 +68,16 @@ def test_settings_service_bootstraps_routes_and_profiles(migrated_db_session) ->
     )
 
     assert settings_record.response_route.model_dump() == {
-        "provider": "openai",
-        "model": "gpt-5.4",
+        "provider": "ollama",
+        "model": "qwen3.5:4b",
     }
     assert settings_record.embedding_route.model_dump() == {
-        "provider": "openai",
-        "model": "text-embedding-3-small",
+        "provider": "ollama",
+        "model": "nomic-embed-text",
     }
     assert settings_record.vision_route.model_dump() == {
-        "provider": "openai",
-        "model": "gpt-5.4",
+        "provider": "ollama",
+        "model": "qwen3.5:4b",
     }
     assert settings_record.provider_profiles.openai.base_url == "https://api.openai.com/v1"
     assert settings_record.provider_profiles.openai.chat_model == "gpt-5.4"
@@ -89,6 +89,7 @@ def test_settings_service_bootstraps_routes_and_profiles(migrated_db_session) ->
     assert settings_record.provider_profiles.ollama.chat_model == "qwen3.5:4b"
     assert settings_record.provider_profiles.ollama.embedding_model == "nomic-embed-text"
     assert settings_record.provider_profiles.ollama.vision_model == "qwen3.5:4b"
+    assert settings_record.provider_profiles.ollama.base_url == "http://localhost:11434"
     assert settings_record.system_prompt == expected_system_prompt
     assert settings_record.system_prompt == DEFAULT_SYSTEM_PROMPT
 
@@ -99,7 +100,7 @@ def test_settings_only_accepts_initial_response_provider_env(monkeypatch) -> Non
 
     settings = Settings(_env_file=None)
 
-    assert settings.initial_response_provider == "openai"
+    assert settings.initial_response_provider == "ollama"
 
     monkeypatch.setenv("INITIAL_RESPONSE_PROVIDER", "anthropic")
 
@@ -231,7 +232,7 @@ def test_parse_runtime_settings_accepts_attribute_and_mapping_inputs(migrated_db
     )
 
     assert isinstance(from_record, ProviderRuntimeSettings)
-    assert from_record.response_route.provider == "openai"
+    assert from_record.response_route.provider == "ollama"
     assert isinstance(from_mapping, ProviderRuntimeSettings)
     assert from_mapping.reasoning_mode == "on"
 
@@ -358,9 +359,9 @@ def test_settings_api_returns_capability_first_shape(api_client: TestClient) -> 
     assert response.status_code == 200
     payload = response.json()["data"]
     assert "provider_profiles" in payload
-    assert payload["response_route"]["provider"] == "openai"
-    assert payload["embedding_route"]["provider"] == "openai"
-    assert payload["vision_route"]["provider"] == "openai"
+    assert payload["response_route"]["provider"] == "ollama"
+    assert payload["embedding_route"]["provider"] == "ollama"
+    assert payload["vision_route"]["provider"] == "ollama"
     assert payload["provider_profiles"]["openai"]["chat_model"] == "gpt-5.4"
     assert payload["provider_profiles"]["voyage"]["embedding_model"] == "voyage-3.5"
 
@@ -375,8 +376,8 @@ def test_chat_profile_endpoint_marks_missing_provider_configuration(api_client: 
 
     assert response.status_code == 200
     payload = response.json()["data"]
-    assert payload["provider"] == "openai"
-    assert payload["model"] == "gpt-5.4"
+    assert payload["provider"] == "ollama"
+    assert payload["model"] == "qwen3.5:4b"
 
 
 def test_test_routes_endpoint_returns_three_capabilities(api_client: TestClient) -> None:

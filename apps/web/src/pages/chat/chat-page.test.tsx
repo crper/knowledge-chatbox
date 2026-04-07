@@ -25,7 +25,6 @@ vi.mock("@tanstack/react-virtual", () => ({
 
 import type { ChatMessageItem } from "@/features/chat/api/chat";
 import { CHAT_STREAM_EVENT } from "@/features/chat/api/chat-stream-events";
-import { useChatStreamStore } from "@/features/chat/store/chat-stream-store";
 import { useChatUiStore } from "@/features/chat/store/chat-ui-store";
 import { useSessionStore } from "@/lib/auth/session-store";
 import { setAccessToken } from "@/lib/auth/token-store";
@@ -37,6 +36,7 @@ import { createTestServer, overrideHandler, apiResponse, apiError } from "@/test
 import { renderRoute } from "@/test/render-route";
 import { http } from "msw";
 import { mockMobileViewport } from "@/test/viewport";
+import { queryKeys } from "@/lib/api/query-keys";
 
 declare const fetchMockCalls: Array<[string, RequestInit?]>;
 
@@ -600,14 +600,12 @@ describe("chat workspace", () => {
       }),
     );
     useChatUiStore.setState({
-      activeSessionId: null,
       attachmentsBySession: {},
       draftsBySession: {},
       sendShortcut: "enter",
     });
     useSessionStore.getState().reset();
     setAccessToken(null);
-    useChatStreamStore.setState({ runsById: {} });
 
     const style = document.createElement("style");
     style.textContent = `
@@ -776,7 +774,6 @@ describe("chat workspace", () => {
   it("clears stale local draft and attachments for a newly created session id", async () => {
     setupAuthenticatedWorkspace();
     useChatUiStore.setState({
-      activeSessionId: null,
       attachmentsBySession: {
         "3": [
           {
@@ -949,6 +946,48 @@ describe("chat workspace", () => {
     );
 
     expect(messageWindowCalls).toHaveLength(1);
+  });
+
+  it("re-renders the active session while local stream run cache receives new deltas", async () => {
+    setupAuthenticatedWorkspace({ messages: [] });
+
+    const { queryClient } = renderChatRoute("/chat/1");
+
+    expect(await findSessionLink("Session A")).toBeInTheDocument();
+
+    await act(async () => {
+      queryClient.setQueryData(queryKeys.chat.streamRun(301), {
+        runId: 301,
+        sessionId: 1,
+        assistantMessageId: 4,
+        userMessageId: 3,
+        userContent: "hello stream",
+        content: "第一段",
+        sources: [],
+        errorMessage: null,
+        status: "streaming",
+        toastShown: false,
+      });
+    });
+
+    expect(await findTextContent("第一段")).toBeInTheDocument();
+
+    await act(async () => {
+      queryClient.setQueryData(queryKeys.chat.streamRun(301), {
+        runId: 301,
+        sessionId: 1,
+        assistantMessageId: 4,
+        userMessageId: 3,
+        userContent: "hello stream",
+        content: "第一段，第二段",
+        sources: [],
+        errorMessage: null,
+        status: "streaming",
+        toastShown: false,
+      });
+    });
+
+    expect(await findTextContent("第一段，第二段")).toBeInTheDocument();
   });
 
   it("does not refetch the current message window or context after a successful attachment send", async () => {
@@ -2216,29 +2255,24 @@ describe("chat workspace", () => {
     });
 
     useChatUiStore.setState({
-      activeSessionId: 2,
       attachmentsBySession: {},
       draftsBySession: {},
       sendShortcut: "enter",
     });
-    useChatStreamStore.setState({
-      runsById: {
-        900: {
-          runId: 900,
-          sessionId: 2,
-          assistantMessageId: 32,
-          userMessageId: 31,
-          userContent: "第二个会话的问题",
-          content: "",
-          sources: [],
-          errorMessage: null,
-          status: "streaming",
-          toastShown: false,
-        },
-      },
-    });
 
-    renderChatRoute("/chat/2");
+    const { queryClient } = renderChatRoute("/chat/2");
+    queryClient.setQueryData(queryKeys.chat.streamRun(900), {
+      runId: 900,
+      sessionId: 2,
+      assistantMessageId: 32,
+      userMessageId: 31,
+      userContent: "第二个会话的问题",
+      content: "",
+      sources: [],
+      errorMessage: null,
+      status: "streaming",
+      toastShown: false,
+    });
 
     expect(await screen.findByRole("heading", { name: "Session B" })).toBeInTheDocument();
     expect(await findTextContent("第二个会话的最终答案")).toBeInTheDocument();
@@ -2272,28 +2306,35 @@ describe("chat workspace", () => {
     setAccessToken("test-token");
     const successSpy = vi.spyOn(toast, "success");
 
-    useChatStreamStore.setState({
-      runsById: {
-        205: {
-          runId: 205,
-          sessionId: 2,
-          assistantMessageId: 24,
-          userMessageId: 23,
-          userContent: "hello",
-          content: "done",
-          sources: [],
-          errorMessage: null,
-          status: "succeeded",
-          toastShown: false,
-        },
-      },
-    });
+    const { queryClient } = renderChatRoute("/chat/1");
 
-    renderChatRoute("/chat/1");
-
+    // 在组件挂载后设置后台 run 数据，触发 useEffect
     await waitFor(() => {
-      expect(successSpy).toHaveBeenCalledWith("Session B 已生成完成。");
+      expect(screen.getByRole("heading", { name: "Session A" })).toBeInTheDocument();
     });
+
+    // 使用 act 包裹状态更新
+    await act(async () => {
+      queryClient.setQueryData(queryKeys.chat.streamRun(205), {
+        runId: 205,
+        sessionId: 2,
+        assistantMessageId: 24,
+        userMessageId: 23,
+        userContent: "hello",
+        content: "done",
+        sources: [],
+        errorMessage: null,
+        status: "succeeded",
+        toastShown: false,
+      });
+    });
+
+    await waitFor(
+      () => {
+        expect(successSpy).toHaveBeenCalledWith("Session B 已生成完成。");
+      },
+      { timeout: 10000 },
+    );
   });
 
   it("uses the localized untitled session fallback in background completion toasts", async () => {
@@ -2308,28 +2349,33 @@ describe("chat workspace", () => {
     setAccessToken("test-token");
     const successSpy = vi.spyOn(toast, "success");
 
-    useChatStreamStore.setState({
-      runsById: {
-        205: {
-          runId: 205,
-          sessionId: 2,
-          assistantMessageId: 24,
-          userMessageId: 23,
-          userContent: "hello",
-          content: "done",
-          sources: [],
-          errorMessage: null,
-          status: "succeeded",
-          toastShown: false,
-        },
-      },
-    });
-
-    renderChatRoute("/chat/1");
+    const { queryClient } = renderChatRoute("/chat/1");
 
     await waitFor(() => {
-      expect(successSpy).toHaveBeenCalledWith("Untitled Session is ready.");
+      expect(screen.getByRole("heading", { name: "Session A" })).toBeInTheDocument();
     });
+
+    await act(async () => {
+      queryClient.setQueryData(queryKeys.chat.streamRun(205), {
+        runId: 205,
+        sessionId: 2,
+        assistantMessageId: 24,
+        userMessageId: 23,
+        userContent: "hello",
+        content: "done",
+        sources: [],
+        errorMessage: null,
+        status: "succeeded",
+        toastShown: false,
+      });
+    });
+
+    await waitFor(
+      () => {
+        expect(successSpy).toHaveBeenCalledWith("Untitled Session is ready.");
+      },
+      { timeout: 10000 },
+    );
   });
 
   it("prioritizes the main chat canvas on mobile and exposes sessions/context in sheets", async () => {

@@ -21,24 +21,23 @@ import {
   shouldResetComposerSnapshotForRetry,
 } from "../utils/chat-submit-helpers";
 import { uploadQueuedChatAttachments } from "../utils/upload-chat-attachments";
-
-type ChatRunsById = Record<
-  number,
-  {
-    assistantMessageId: number;
-    retryOfMessageId?: number | null;
-    runId: number;
-    sessionId: number;
-    status: "pending" | "streaming" | "succeeded" | "failed";
-    toastShown: boolean;
-    userContent: string;
-    userMessageId: number | null;
-  }
->;
+import { MessageRole, MessageStatus } from "../constants";
 
 type UseChatComposerSubmitParams = {
   beginSessionSubmit: (sessionId: number) => boolean;
   finishSessionSubmit: (sessionId: number) => void;
+  findRunByAssistantMessageId: (assistantMessageId: number) =>
+    | {
+        assistantMessageId: number;
+        retryOfMessageId?: number | null;
+        runId: number;
+        sessionId: number;
+        status: MessageStatus;
+        toastShown: boolean;
+        userContent: string;
+        userMessageId: number | null;
+      }
+    | undefined;
   messages: ChatMessageItem[];
   patchSessionContext: (input: {
     attachments?: ChatSessionContextItem["attachments"];
@@ -53,7 +52,6 @@ type UseChatComposerSubmitParams = {
   }) => boolean;
   requestScrollToLatest: () => void;
   resolvedActiveSessionId: number | null;
-  runsById: ChatRunsById;
   sendStreamMessage: (input: {
     attachments?: ChatStreamAttachmentInput[];
     content: string;
@@ -65,27 +63,29 @@ type UseChatComposerSubmitParams = {
 function toPersistedChatAttachments(
   attachments: ChatStreamAttachmentInput[],
 ): PersistedChatAttachmentItem[] {
-  return attachments.map((attachment) => ({
-    attachment_id: attachment.attachment_id,
-    archived_at: null,
-    name: attachment.name,
-    mime_type: attachment.mime_type,
-    resource_document_id: attachment.document_id ?? null,
-    resource_document_version_id: attachment.document_revision_id,
-    size_bytes: attachment.size_bytes,
-    type: attachment.type,
-  }));
+  return attachments.map(
+    ({ attachment_id, name, mime_type, document_id, document_revision_id, size_bytes, type }) => ({
+      attachment_id,
+      archived_at: null,
+      name,
+      mime_type,
+      resource_document_id: document_id ?? null,
+      resource_document_version_id: document_revision_id,
+      size_bytes,
+      type,
+    }),
+  );
 }
 
 export function useChatComposerSubmit({
   beginSessionSubmit,
   finishSessionSubmit,
+  findRunByAssistantMessageId,
   messages,
   patchSessionContext,
   patchUserMessageAttachments,
   requestScrollToLatest,
   resolvedActiveSessionId,
-  runsById,
   sendStreamMessage,
 }: UseChatComposerSubmitParams) {
   const { t } = useTranslation(["chat", "common"]);
@@ -109,7 +109,7 @@ export function useChatComposerSubmit({
       useChatUiStore.getState().attachmentsBySession[String(sessionId)] ?? [],
     );
     const sendableAttachments = snapshotAttachments.filter(
-      (attachment) => attachment.status !== "failed",
+      (attachment) => attachment.status !== MessageStatus.FAILED,
     );
 
     if (!nextDraft.trim() && sendableAttachments.length === 0) {
@@ -125,7 +125,7 @@ export function useChatComposerSubmit({
     try {
       const { uploadedAttachments: persistedAttachments, uploadedCount } =
         await uploadQueuedChatAttachments({
-          attachments: workingAttachments.filter((item) => item.status !== "failed"),
+          attachments: workingAttachments.filter((item) => item.status !== MessageStatus.FAILED),
           concurrency: 2,
           failedMessage: t("attachmentUploadFailed"),
           onPatch: (attachmentId, patch) => {
@@ -204,21 +204,20 @@ export function useChatComposerSubmit({
       }
 
       const retryOfMessageId =
-        message.role === "assistant" ? (message.reply_to_message_id ?? null) : message.id;
+        message.role === MessageRole.ASSISTANT ? (message.reply_to_message_id ?? null) : message.id;
       if (retryOfMessageId === null) {
         finishSessionSubmit(sessionId);
         return;
       }
 
       const retryContent =
-        message.role === "assistant"
+        message.role === MessageRole.ASSISTANT
           ? (messages.find((item) => item.id === retryOfMessageId)?.content ??
-            Object.values(runsById).find((run) => run.assistantMessageId === message.id)
-              ?.userContent ??
+            findRunByAssistantMessageId(message.id)?.userContent ??
             message.content)
           : message.content;
       const retryAttachments =
-        message.role === "assistant"
+        message.role === MessageRole.ASSISTANT
           ? (messages.find((item) => item.id === retryOfMessageId)?.attachments_json ?? null)
           : (message.attachments_json ?? null);
       const draftSnapshot = useChatUiStore.getState().draftsBySession[String(sessionId)] ?? "";
@@ -258,10 +257,10 @@ export function useChatComposerSubmit({
       beginSessionSubmit,
       clearAttachments,
       finishSessionSubmit,
+      findRunByAssistantMessageId,
       messages,
       requestScrollToLatest,
       resolvedActiveSessionId,
-      runsById,
       sendStreamMessage,
       setAttachments,
       setDraft,

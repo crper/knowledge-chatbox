@@ -6,9 +6,7 @@ import type { QueryClient } from "@tanstack/react-query";
 
 import { currentUserQueryOptions } from "@/features/auth/api/auth-query";
 import { bootstrapAuthSession } from "@/features/auth/api/auth";
-import { useChatStreamStore } from "@/features/chat/store/chat-stream-store";
-import { useChatUiStore } from "@/features/chat/store/chat-ui-store";
-import { clearLastVisitedChatSessionId } from "@/features/chat/utils/chat-session-recovery";
+import { resetChatSessionState } from "@/features/chat/utils/reset-chat-session-state";
 import { ApiRequestError, type AppUser } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/query-keys";
 import { clearAccessToken, getAccessToken } from "./token-store";
@@ -32,17 +30,6 @@ type EnsureSessionBootstrapOptions = {
 
 let pendingBootstrapPromise: Promise<AppUser | null> | null = null;
 
-function resetChatUiSessionState() {
-  const sendShortcut = useChatUiStore.getState().sendShortcut;
-  useChatUiStore.persist.clearStorage();
-  useChatUiStore.setState({
-    activeSessionId: null,
-    attachmentsBySession: {},
-    draftsBySession: {},
-    sendShortcut,
-  });
-}
-
 export async function resetSessionScopedClientState(
   queryClient: QueryClient,
   options: ResetSessionScopedClientStateOptions = {},
@@ -54,10 +41,8 @@ export async function resetSessionScopedClientState(
     }),
   );
   if (!options.preserveChatRecovery) {
-    clearLastVisitedChatSessionId();
-    resetChatUiSessionState();
+    resetChatSessionState();
   }
-  useChatStreamStore.setState({ runsById: {} });
 }
 
 async function applyAuthenticatedSession(
