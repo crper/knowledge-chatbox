@@ -252,12 +252,12 @@ export function MessageInput({
           <div
             {...getRootProps({
               className: cn(
-                "surface-elevated rounded-2xl p-2.5 transition-[color,border-color,background,box-shadow] duration-200 ease-out sm:rounded-3xl sm:p-3",
+                "surface-elevated rounded-xl p-2 transition-[color,border-color,background,box-shadow] duration-200 ease-out sm:rounded-xl sm:p-2.5",
                 isDragActive &&
-                  "border-primary/40 bg-primary/7 scale-[1.005] shadow-[0_16px_36px_-20px_hsl(var(--primary)/0.2)]",
+                  "border-primary/36 bg-primary/6 scale-[1.004] shadow-[0_14px_32px_-18px_hsl(var(--primary)/0.16)]",
                 isDragAccept &&
-                  "border-primary/50 bg-primary/9 scale-[1.008] shadow-[0_18px_40px_-22px_hsl(var(--primary)/0.24)]",
-                isDragReject && "border-destructive/42 bg-destructive/10 scale-[0.998]",
+                  "border-primary/44 bg-primary/8 scale-[1.006] shadow-[0_16px_36px_-20px_hsl(var(--primary)/0.2)]",
+                isDragReject && "border-destructive/38 bg-destructive/8 scale-[0.998]",
               ),
               "data-testid": "message-input-shell",
             })}

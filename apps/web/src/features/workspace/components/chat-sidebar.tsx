@@ -126,14 +126,14 @@ const SessionRow = memo(function SessionRow({
         </form>
       ) : (
         <div
-          className="group/menu-item flex items-center gap-2"
+          className="group/menu-item flex items-center gap-2 rounded-xl transition-colors duration-150 ease-out"
           data-testid={`chat-session-row-${session.id}`}
         >
           <SidebarMenuButton
             className={cn(
-              "h-auto min-w-0 flex-1 rounded-xl px-3 py-3 text-left transition-[background-color,color] duration-180 ease-out",
-              "data-[active=true]:bg-secondary/70 data-[active=true]:text-foreground",
-              "data-[active=false]:text-foreground/82 data-[active=false]:hover:bg-background/72 data-[active=false]:hover:text-foreground",
+              "h-auto min-w-0 flex-1 rounded-xl px-3 py-2.5 text-left shadow-none transition-[background-color,color] duration-180 ease-out",
+              "data-[active=true]:surface-inline data-[active=true]:bg-secondary/56 data-[active=true]:text-foreground data-[active=true]:font-medium",
+              "data-[active=false]:text-foreground/76 data-[active=false]:hover:bg-background/64 data-[active=false]:hover:text-foreground",
             )}
             isActive={session.id === activeSessionId}
             render={
@@ -145,7 +145,7 @@ const SessionRow = memo(function SessionRow({
             </span>
           </SidebarMenuButton>
           <div
-            className="flex shrink-0 select-none items-center gap-1"
+            className="flex shrink-0 select-none items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover/menu-item:opacity-100"
             data-testid={`chat-session-action-rail-${session.id}`}
           >
             <Button
@@ -153,26 +153,26 @@ const SessionRow = memo(function SessionRow({
                 ns: "chat",
                 title: resolveSessionTitle(session.title, sessionTitleFallback),
               })}
-              className="size-9 rounded-full"
+              className="size-8 rounded-lg"
               onClick={() => onBeginRename(session.id, session.title)}
               size="icon-sm"
               type="button"
               variant="ghost"
             >
-              <PencilLineIcon />
+              <PencilLineIcon className="size-3.5" />
             </Button>
             <Button
               aria-label={t("deleteSessionAction", {
                 ns: "chat",
                 title: resolveSessionTitle(session.title, sessionTitleFallback),
               })}
-              className="size-9 rounded-full"
+              className="size-8 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/8"
               onClick={() => onDeleteSession(session.id)}
               size="icon-sm"
               type="button"
               variant="ghost"
             >
-              <Trash2Icon />
+              <Trash2Icon className="size-3.5" />
             </Button>
           </div>
         </div>
@@ -357,7 +357,7 @@ export function ChatSidebar({
         collapsible="none"
         role="complementary"
       >
-        <SidebarHeader className="gap-6 p-0">
+        <SidebarHeader className="gap-5 p-0">
           <BrandMark
             alt={t("workspaceLogoAlt", { ns: "common" })}
             subtitle={t("workspaceSubtitle", { ns: "common" })}
@@ -366,16 +366,18 @@ export function ChatSidebar({
 
           <WorkspaceModeSwitcher onNavigate={onNavigate} pathname={pathname} />
 
-          <SidebarGroup className="surface-light gap-3 rounded-2xl p-3.5">
+          <SidebarGroup className="surface-inline gap-3.5 rounded-2xl p-3.5">
             <SidebarGroupContent>
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="text-ui-title">{t("sessionListTitle", { ns: "chat" })}</p>
-                  <p className="text-ui-caption text-muted-foreground">
+                  <p className="text-ui-title font-semibold">
+                    {t("sessionListTitle", { ns: "chat" })}
+                  </p>
+                  <p className="text-ui-caption mt-0.5 text-muted-foreground/72">
                     {t("workspaceChatHint", { ns: "common" })}
                   </p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
                   <Button
                     aria-label={t("newSessionAction", { ns: "chat" })}
                     disabled={createSessionPending}
@@ -384,17 +386,17 @@ export function ChatSidebar({
                     type="button"
                     variant="secondary"
                   >
-                    <PlusIcon aria-hidden="true" />
+                    <PlusIcon aria-hidden="true" className="size-4" />
                   </Button>
                 </div>
               </div>
             </SidebarGroupContent>
             <SidebarGroupContent>
               <label className="relative block">
-                <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground/56" />
                 <SidebarInput
                   aria-label={t("searchSessionsLabel", { ns: "chat" })}
-                  className="h-10 rounded-xl border-border/70 bg-background/62 pr-3 pl-9"
+                  className="h-9 rounded-xl border-border/50 bg-background/56 pr-3 pl-8.5 text-sm placeholder:text-muted-foreground/48"
                   onChange={(event) => handleSetSearchValue(event.target.value)}
                   placeholder={t("searchSessionsLabel", { ns: "chat" })}
                   value={searchValue}
@@ -404,25 +406,31 @@ export function ChatSidebar({
           </SidebarGroup>
         </SidebarHeader>
 
-        <SidebarContent className="min-h-0 gap-0 overflow-hidden px-0 pt-6">
-          <SidebarSeparator className="mx-0 mb-4" />
+        <SidebarContent className="min-h-0 gap-0 overflow-hidden px-0 pt-5">
+          <SidebarSeparator className="mx-0 mb-3.5 opacity-56" />
           <div className="min-h-0 flex-1">
             {filteredSessions.length === 0 ? (
-              <Empty className="bg-background/40 px-4 py-8">
+              <Empty className="bg-background/28 rounded-xl px-3.5 py-6">
                 <EmptyHeader>
-                  <EmptyTitle>
+                  <EmptyTitle className="text-sm">
                     {searchValue
                       ? t("sessionSearchEmptyTitle", { ns: "chat" })
                       : t("sessionListEmptyTitle", { ns: "chat" })}
                   </EmptyTitle>
-                  <EmptyDescription>
+                  <EmptyDescription className="text-xs leading-relaxed text-muted-foreground/64">
                     {searchValue
                       ? t("sessionSearchEmptyDescription", { ns: "chat" })
                       : t("sessionListEmptyDescription", { ns: "chat" })}
                   </EmptyDescription>
                 </EmptyHeader>
                 {searchValue ? (
-                  <Button onClick={handleClearSearch} size="sm" type="button" variant="outline">
+                  <Button
+                    className="mt-2.5 h-7 text-xs"
+                    onClick={handleClearSearch}
+                    size="sm"
+                    type="button"
+                    variant="outline"
+                  >
                     {t("clearSearchAction", { ns: "chat" })}
                   </Button>
                 ) : null}
@@ -483,8 +491,8 @@ export function ChatSidebar({
           </div>
         </SidebarContent>
 
-        <SidebarFooter className="mt-auto gap-3 p-0 pt-0">
-          <SidebarSeparator className="mx-0" />
+        <SidebarFooter className="mt-auto gap-3 p-0 pt-3">
+          <SidebarSeparator className="mx-0 mb-1 opacity-56" />
           <WorkspaceAccountMenu onLogout={onLogout} onNavigate={onNavigate} user={user} />
         </SidebarFooter>
       </Sidebar>

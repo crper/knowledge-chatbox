@@ -284,6 +284,42 @@
     }
   }
 
+  @keyframes fade-in-up {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes scale-in {
+    from {
+      opacity: 0;
+      transform: scale(0.96);
+    }
+
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  @keyframes slide-in-right {
+    from {
+      opacity: 0;
+      transform: translateX(8px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
   .text-ui-display {
     font-size: clamp(1.75rem, 2vw + 1rem, 2.25rem);
     font-weight: 650;
@@ -426,6 +462,28 @@
     -webkit-backdrop-filter: blur(10px) saturate(122%);
   }
 
+  .surface-embedded {
+    border: 1px solid hsl(var(--surface-border) / 0.42);
+    background: linear-gradient(
+      160deg,
+      hsl(var(--surface-top) / 0.32),
+      hsl(var(--surface-base) / 0.56)
+    );
+    box-shadow:
+      0 4px 16px -12px hsl(var(--shadow-color) / 0.18),
+      inset 0 1px 0 hsl(var(--surface-highlight) / 0.03);
+  }
+
+  .surface-inline {
+    border: 1px solid hsl(var(--surface-border) / 0.36);
+    background: linear-gradient(
+      145deg,
+      hsl(var(--surface-top) / 0.28),
+      hsl(var(--surface-base) / 0.42)
+    );
+    box-shadow: inset 0 1px 0 hsl(var(--surface-highlight) / 0.02);
+  }
+
   /*
    * Streamdown code highlighting tokens are emitted as inline CSS variables.
    * We intentionally consume those variables with scoped selectors here instead
@@ -526,6 +584,34 @@
       transparent 86%
     );
     animation: assistant-loading-shimmer 2.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  }
+
+  .animate-fade-in-up {
+    animation: fade-in-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .animate-scale-in {
+    animation: scale-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .animate-slide-in-right {
+    animation: slide-in-right 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .stagger-1 {
+    animation-delay: 0.05s;
+  }
+  .stagger-2 {
+    animation-delay: 0.1s;
+  }
+  .stagger-3 {
+    animation-delay: 0.15s;
+  }
+  .stagger-4 {
+    animation-delay: 0.2s;
+  }
+  .stagger-5 {
+    animation-delay: 0.25s;
   }
 }
 

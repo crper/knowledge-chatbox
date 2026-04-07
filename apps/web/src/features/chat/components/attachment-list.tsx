@@ -64,9 +64,9 @@ export function AttachmentList({
   const ToggleIcon = collapsed ? ChevronDownIcon : ChevronUpIcon;
 
   return (
-    <section className="surface-light overflow-hidden rounded-xl">
-      <div className="flex select-none items-center justify-between gap-3 px-3 py-2.5">
-        <p className="text-ui-caption font-medium text-foreground/92">
+    <section className="surface-inline overflow-hidden rounded-xl">
+      <div className="flex select-none items-center justify-between gap-2.5 px-2.5 py-2">
+        <p className="text-[11px] font-medium text-foreground/88">
           {t("attachmentPanelLabel", {
             count: items.length,
             defaultValue: "附件 {{count}}",
@@ -76,19 +76,19 @@ export function AttachmentList({
           aria-controls={contentId}
           aria-expanded={!collapsed}
           aria-label={toggleLabel}
-          className="h-7 gap-1 rounded-full px-2 text-ui-caption text-muted-foreground hover:text-foreground"
+          className="h-6 gap-1 rounded-full px-1.5 text-[11px] text-muted-foreground/68 hover:text-foreground"
           onClick={() => setCollapsed((current) => !current)}
           size="sm"
           type="button"
           variant="ghost"
         >
-          <ToggleIcon className="size-3.5" />
+          <ToggleIcon className="size-3" />
           <span>{toggleLabel}</span>
         </Button>
       </div>
       {!collapsed ? (
         <ul
-          className="max-h-44 divide-y divide-border/60 overflow-y-auto border-t border-border/60"
+          className="max-h-40 divide-y divide-border/50 overflow-y-auto border-t border-border/50"
           data-testid={testId}
           id={contentId}
         >
@@ -98,25 +98,25 @@ export function AttachmentList({
             return (
               <li
                 key={item.id}
-                className="flex min-w-0 items-center gap-2.5 px-3 py-2"
+                className="flex min-w-0 items-center gap-2 px-2.5 py-1.5"
                 title={item.rawName ?? item.displayName}
               >
                 <span
                   className={cn(
-                    "flex size-7 shrink-0 items-center justify-center rounded-full border",
+                    "flex size-6 shrink-0 items-center justify-center rounded-full border",
                     item.kind === "image"
-                      ? "border-primary/18 bg-primary/8 text-primary"
-                      : "border-border/70 bg-background/62 text-muted-foreground",
+                      ? "border-primary/16 bg-primary/7 text-primary/82"
+                      : "border-border/56 bg-background/62 text-muted-foreground/72",
                   )}
                 >
-                  <AttachmentIcon className="size-3.5" />
+                  <AttachmentIcon className="size-3" />
                 </span>
-                <p className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+                <p className="min-w-0 flex-1 truncate text-xs font-medium text-foreground">
                   {item.displayName}
                 </p>
-                <div className="flex shrink-0 select-none items-center gap-1.5">
+                <div className="flex shrink-0 select-none items-center gap-1">
                   {item.statusLabel ? (
-                    <span className="max-w-28 truncate text-ui-caption text-muted-foreground">
+                    <span className="max-w-24 truncate text-[10px] text-muted-foreground/64">
                       {item.statusLabel}
                     </span>
                   ) : null}
@@ -126,25 +126,25 @@ export function AttachmentList({
                         defaultValue: "预览附件 {{name}}",
                         name: item.displayName,
                       })}
-                      className="text-muted-foreground hover:text-foreground"
+                      className="text-muted-foreground/68 hover:text-foreground"
                       onClick={item.onPreview}
                       size="icon-xs"
                       type="button"
                       variant="ghost"
                     >
-                      <EyeIcon className="size-3.5" />
+                      <EyeIcon className="size-3" />
                     </Button>
                   ) : null}
                   {item.onRemove ? (
                     <Button
                       aria-label={t("removeAttachmentAction", { name: item.displayName })}
-                      className="text-muted-foreground hover:text-foreground"
+                      className="text-muted-foreground/68 hover:text-foreground"
                       onClick={item.onRemove}
                       size="icon-xs"
                       type="button"
                       variant="ghost"
                     >
-                      <XIcon className="size-3.5" />
+                      <XIcon className="size-3" />
                     </Button>
                   ) : null}
                 </div>

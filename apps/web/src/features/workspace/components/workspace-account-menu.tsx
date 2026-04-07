@@ -103,7 +103,7 @@ export function WorkspaceAccountMenu({
           <Button
             aria-label={t("accountMenuTrigger")}
             className={cn(
-              "surface-light h-auto min-h-14 w-full justify-start gap-3 rounded-xl px-3 py-2.5 text-left shadow-none hover:bg-sidebar-accent/42",
+              "surface-inline h-auto min-w-0 w-full justify-start gap-2.5 rounded-xl px-3 py-2 text-left shadow-none hover:bg-sidebar-accent/36",
               className,
             )}
             size="lg"
@@ -112,19 +112,22 @@ export function WorkspaceAccountMenu({
           />
         }
       >
-        <Avatar className="size-10 rounded-xl">
+        <Avatar className="size-9 rounded-lg">
           <AvatarImage alt={t("workspaceLogoAlt")} src={logoUrl} />
           <AvatarFallback>AI</AvatarFallback>
         </Avatar>
 
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium text-foreground">{user.username}</p>
-          <p className="truncate text-xs text-muted-foreground">
+          <p className="truncate text-[13px] font-medium text-foreground">{user.username}</p>
+          <p className="truncate text-[11px] leading-relaxed text-muted-foreground/68">
             {t("workspaceRoleLabel", { role: user.role })}
           </p>
         </div>
 
-        <ChevronDownIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+        <ChevronDownIcon
+          aria-hidden="true"
+          className="size-3.5 shrink-0 text-muted-foreground/64"
+        />
       </DropdownMenuTrigger>
 
       <DropdownMenuContent align="end" className="w-72 min-w-72">

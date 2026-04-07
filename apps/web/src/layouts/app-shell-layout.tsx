@@ -184,10 +184,9 @@ export function AppShellLayout({ user }: { user: AppUser }) {
 
   if (isChatRoute) {
     return (
-      <main className="min-h-[100dvh] bg-background/95 px-4 py-4 text-foreground">
+      <main className="min-h-[100dvh] bg-background/95 px-3.5 py-3.5 text-foreground sm:px-4 sm:py-4">
         {isMobile ? (
-          // 移动端：统一间距节奏
-          <div className="flex min-h-[calc(100dvh-2rem)] flex-col gap-3">
+          <div className="flex min-h-[calc(100dvh-1.75rem)] flex-col gap-2.5">
             <div className="surface-elevated grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-xl px-2 py-1.5 transition-[background-color,border-color,box-shadow] duration-200">
               <Sheet onOpenChange={setIsMobileNavigationOpen} open={isMobileNavigationOpen}>
                 <SheetTrigger
@@ -202,7 +201,7 @@ export function AppShellLayout({ user }: { user: AppUser }) {
                   closeLabel={t("closeAction", { ns: "common" })}
                   side="left"
                 >
-                  <SheetHeader className="border-b border-border/70">
+                  <SheetHeader className="border-b border-border/60">
                     <SheetTitle>{t("mobileNavigationTitle", { ns: "common" })}</SheetTitle>
                     <SheetDescription>
                       {t("mobileNavigationDescription", { ns: "common" })}
@@ -226,7 +225,7 @@ export function AppShellLayout({ user }: { user: AppUser }) {
               </Sheet>
 
               <div className="min-w-0 px-1 text-center">
-                <p className="truncate text-sm font-medium text-foreground">
+                <p className="truncate text-sm font-medium text-foreground/92">
                   {t(getWorkspaceLabelKey(location.pathname), { ns: "common" })}
                 </p>
               </div>
@@ -244,7 +243,7 @@ export function AppShellLayout({ user }: { user: AppUser }) {
                   closeLabel={t("closeAction", { ns: "common" })}
                   side="right"
                 >
-                  <SheetHeader className="border-b border-border/70">
+                  <SheetHeader className="border-b border-border/60">
                     <SheetTitle>{t("mobileContextTitle")}</SheetTitle>
                     <SheetDescription>{t("mobileContextDescription")}</SheetDescription>
                   </SheetHeader>
@@ -261,11 +260,11 @@ export function AppShellLayout({ user }: { user: AppUser }) {
           </div>
         ) : (
           <div
-            className="surface-elevated grid h-[calc(100dvh-2rem)] min-h-[calc(100dvh-2rem)] min-w-0 overflow-hidden rounded-3xl transition-[grid-template-columns] duration-200 ease-out"
+            className="surface-elevated grid h-[calc(100dvh-1.75rem)] min-h-[calc(100dvh-1.75rem)] min-w-0 overflow-hidden rounded-2xl transition-[grid-template-columns] duration-250 ease-out"
             data-testid="chat-desktop-layout"
             style={{
-              height: "calc(100vh - 2rem)",
-              minHeight: "calc(100vh - 2rem)",
+              height: "calc(100vh - 1.75rem)",
+              minHeight: "calc(100vh - 1.75rem)",
               gridTemplateColumns: chatDesktopGridTemplate,
             }}
           >
@@ -352,9 +351,9 @@ export function AppShellLayout({ user }: { user: AppUser }) {
   }
 
   return (
-    <main className="min-h-[100dvh] bg-background/95 px-4 py-4 text-foreground">
+    <main className="min-h-[100dvh] bg-background/95 px-3.5 py-3.5 text-foreground sm:px-4 sm:py-4">
       {isMobile ? (
-        <div className="flex min-h-[calc(100dvh-2rem)] flex-col gap-2.5 sm:gap-3">
+        <div className="flex min-h-[calc(100dvh-1.75rem)] flex-col gap-2 sm:gap-2.5">
           <div className="surface-elevated grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-xl px-2 py-1.5 transition-[background-color,border-color,box-shadow] duration-200">
             <Sheet onOpenChange={setIsMobileNavigationOpen} open={isMobileNavigationOpen}>
               <SheetTrigger
@@ -373,7 +372,7 @@ export function AppShellLayout({ user }: { user: AppUser }) {
                 closeLabel={t("closeAction", { ns: "common" })}
                 side="left"
               >
-                <SheetHeader className="border-b border-border/70">
+                <SheetHeader className="border-b border-border/60">
                   <SheetTitle>{t("mobileNavigationTitle", { ns: "common" })}</SheetTitle>
                   <SheetDescription>
                     {t("mobileNavigationDescription", { ns: "common" })}
@@ -394,7 +393,7 @@ export function AppShellLayout({ user }: { user: AppUser }) {
             </Sheet>
 
             <div className="min-w-0 px-1 text-center">
-              <p className="truncate text-sm font-medium text-foreground">
+              <p className="truncate text-sm font-medium text-foreground/92">
                 {t(getWorkspaceLabelKey(location.pathname), { ns: "common" })}
               </p>
             </div>
@@ -403,7 +402,7 @@ export function AppShellLayout({ user }: { user: AppUser }) {
           </div>
 
           <div
-            className="surface-elevated flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl"
+            className="surface-elevated flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl"
             id="main-content"
           >
             <Outlet />
@@ -412,11 +411,11 @@ export function AppShellLayout({ user }: { user: AppUser }) {
       ) : (
         // 桌面端标准布局：优化侧边栏比例
         <div
-          className="surface-elevated grid min-h-[calc(100dvh-2rem)] gap-0 overflow-hidden rounded-3xl lg:grid-cols-[260px_minmax(0,1fr)]"
+          className="surface-elevated grid min-h-[calc(100dvh-1.75rem)] gap-0 overflow-hidden rounded-2xl lg:grid-cols-[252px_minmax(0,1fr)]"
           data-testid="standard-desktop-layout"
         >
           <div
-            className="min-h-0 min-w-0 overflow-hidden border-r border-border/60 bg-sidebar/56"
+            className="min-h-0 min-w-0 overflow-hidden border-r border-border/50 bg-sidebar/56"
             data-testid="standard-desktop-sidebar-rail"
           >
             <StandardSidebar

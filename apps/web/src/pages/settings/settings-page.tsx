@@ -66,20 +66,22 @@ export function SettingsPage({ user }: { user: AppUser }) {
 
   const renderAsideCards = (settings?: AppSettings) => (
     <>
-      <Card className="workspace-surface-subtle border-border/70" size="sm">
-        <CardHeader className="gap-1">
-          <CardTitle>{t("chatConnectionCardTitle")}</CardTitle>
-          <CardDescription className="text-ui-subtle">
+      <Card className="workspace-surface-subtle border-border/50" size="sm">
+        <CardHeader className="gap-1.5">
+          <CardTitle className="text-sm font-semibold tracking-tight">
+            {t("chatConnectionCardTitle")}
+          </CardTitle>
+          <CardDescription className="text-xs text-muted-foreground/72 leading-relaxed">
             {t("chatConnectionCardDescription")}
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="space-y-2.5">
           {settings ? (
             <>
-              <Badge className="w-fit rounded-full px-3 py-1" variant="secondary">
+              <Badge className="w-fit rounded-full px-2 py-0.5 text-[11px]" variant="secondary">
                 {getProviderLabel(settings.response_route.provider, t)}
               </Badge>
-              <p className="text-ui-subtle text-muted-foreground">
+              <p className="text-xs leading-relaxed text-muted-foreground/76">
                 {formatProviderProfile(
                   settings.response_route.provider,
                   settings.response_route.model ?? null,
@@ -88,19 +90,21 @@ export function SettingsPage({ user }: { user: AppUser }) {
               </p>
             </>
           ) : (
-            <Skeleton className="h-6 w-24 rounded-full" />
+            <Skeleton className="h-5 w-20 rounded-full" />
           )}
         </CardContent>
       </Card>
 
-      <Card className="workspace-surface-subtle border-border/70" size="sm">
-        <CardHeader className="gap-1">
-          <CardTitle>{t("retrievalCardTitle")}</CardTitle>
-          <CardDescription className="text-ui-subtle">
+      <Card className="workspace-surface-subtle border-border/50" size="sm">
+        <CardHeader className="gap-1.5">
+          <CardTitle className="text-sm font-semibold tracking-tight">
+            {t("retrievalCardTitle")}
+          </CardTitle>
+          <CardDescription className="text-xs text-muted-foreground/72 leading-relaxed">
             {t("retrievalCardDescription")}
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-2 text-ui-subtle text-muted-foreground">
+        <CardContent className="space-y-1.5 text-xs leading-relaxed text-muted-foreground/72">
           {settings ? (
             <>
               <p>
@@ -123,25 +127,27 @@ export function SettingsPage({ user }: { user: AppUser }) {
             </>
           ) : (
             <>
-              <Skeleton className="h-4 w-36" />
-              <Skeleton className="h-4 w-44" />
+              <Skeleton className="h-3.5 w-32" />
+              <Skeleton className="h-3.5 w-40" />
             </>
           )}
         </CardContent>
       </Card>
 
-      <Card className="workspace-surface-subtle border-border/70" size="sm">
-        <CardHeader className="gap-1">
-          <CardTitle>{t("indexStatusCardTitle")}</CardTitle>
-          <CardDescription className="text-ui-subtle">
+      <Card className="workspace-surface-subtle border-border/50" size="sm">
+        <CardHeader className="gap-1.5">
+          <CardTitle className="text-sm font-semibold tracking-tight">
+            {t("indexStatusCardTitle")}
+          </CardTitle>
+          <CardDescription className="text-xs text-muted-foreground/72 leading-relaxed">
             {t("indexStatusCardDescription")}
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-3 text-ui-subtle text-muted-foreground">
+        <CardContent className="space-y-2.5 text-xs leading-relaxed text-muted-foreground/72">
           {settings ? (
             <>
               <Badge
-                className="w-fit rounded-full px-3 py-1"
+                className="w-fit rounded-full px-2 py-0.5 text-[11px]"
                 variant={settings.index_rebuild_status === "failed" ? "destructive" : "secondary"}
               >
                 {getIndexStatusLabel(settings.index_rebuild_status, t)}
@@ -168,9 +174,9 @@ export function SettingsPage({ user }: { user: AppUser }) {
             </>
           ) : (
             <>
-              <Skeleton className="h-6 w-20 rounded-full" />
-              <Skeleton className="h-4 w-32" />
-              <Skeleton className="h-4 w-44" />
+              <Skeleton className="h-5 w-16 rounded-full" />
+              <Skeleton className="h-3.5 w-28" />
+              <Skeleton className="h-3.5 w-40" />
             </>
           )}
         </CardContent>
@@ -202,30 +208,34 @@ export function SettingsPage({ user }: { user: AppUser }) {
     ) : null;
 
   const renderSelfServiceCards = () => (
-    <Card className="workspace-surface border-border/70">
-      <CardHeader className="gap-1 border-b border-border/70 pb-5">
-        <CardTitle>{t("preferencesCardTitle")}</CardTitle>
-        <CardDescription className="text-ui-body">
+    <Card className="workspace-surface border-border/50">
+      <CardHeader className="gap-1.5 border-b border-border/60 pb-4">
+        <CardTitle className="text-sm font-semibold tracking-tight">
+          {t("preferencesCardTitle")}
+        </CardTitle>
+        <CardDescription className="text-sm text-muted-foreground/76 leading-relaxed">
           {t("preferencesCardDescription")}
         </CardDescription>
       </CardHeader>
-      <CardContent className="grid gap-4 pt-6 md:grid-cols-2">
-        <div className="space-y-3 rounded-xl border border-border/70 bg-background/55 p-4">
+      <CardContent className="grid gap-3.5 pt-4 md:grid-cols-2">
+        <div className="surface-inline space-y-2.5 rounded-xl p-3.5">
           <div className="space-y-1">
-            <p className="text-ui-title">{t("languageSettingTitle")}</p>
-            <p className="text-ui-subtle text-muted-foreground">
+            <p className="text-[13px] font-medium">{t("languageSettingTitle")}</p>
+            <p className="text-xs leading-relaxed text-muted-foreground/68">
               {t("languageSettingDescription")}
             </p>
           </div>
-          <LanguageToggle className="h-11 justify-between md:h-10" />
+          <LanguageToggle className="h-10 justify-between md:h-9" />
         </div>
-        <div className="space-y-3 rounded-xl border border-border/70 bg-background/55 p-4">
+        <div className="surface-inline space-y-2.5 rounded-xl p-3.5">
           <div className="space-y-1">
-            <p className="text-ui-title">{t("themeSettingTitle")}</p>
-            <p className="text-ui-subtle text-muted-foreground">{t("themeSettingDescription")}</p>
+            <p className="text-[13px] font-medium">{t("themeSettingTitle")}</p>
+            <p className="text-xs leading-relaxed text-muted-foreground/68">
+              {t("themeSettingDescription")}
+            </p>
           </div>
           <ThemeToggle
-            className="h-11 justify-between md:h-10"
+            className="h-10 justify-between md:h-9"
             onChange={(nextTheme) => preferenceMutation.mutate({ themePreference: nextTheme })}
           />
         </div>
@@ -234,14 +244,18 @@ export function SettingsPage({ user }: { user: AppUser }) {
   );
 
   const renderSecurityCard = () => (
-    <Card className="workspace-surface border-border/70">
-      <CardHeader className="gap-1 border-b border-border/70 pb-5">
-        <CardTitle>{t("securityCardTitle")}</CardTitle>
-        <CardDescription className="text-ui-body">{t("securityCardDescription")}</CardDescription>
+    <Card className="workspace-surface border-border/50">
+      <CardHeader className="gap-1.5 border-b border-border/60 pb-4">
+        <CardTitle className="text-sm font-semibold tracking-tight">
+          {t("securityCardTitle")}
+        </CardTitle>
+        <CardDescription className="text-sm text-muted-foreground/76 leading-relaxed">
+          {t("securityCardDescription")}
+        </CardDescription>
       </CardHeader>
-      <CardContent className="pt-6">
+      <CardContent className="pt-4">
         <Button
-          className="w-full sm:w-auto"
+          className="h-9 w-full sm:w-auto"
           onClick={() => setPasswordDialogOpen(true)}
           type="button"
           variant="outline"
@@ -253,13 +267,17 @@ export function SettingsPage({ user }: { user: AppUser }) {
   );
 
   const renderManagementCard = () => (
-    <Card className="workspace-surface border-border/70">
-      <CardHeader className="gap-1 border-b border-border/70 pb-5">
-        <CardTitle>{t("managementCardTitle")}</CardTitle>
-        <CardDescription className="text-ui-body">{t("managementCardDescription")}</CardDescription>
+    <Card className="workspace-surface border-border/50">
+      <CardHeader className="gap-1.5 border-b border-border/60 pb-4">
+        <CardTitle className="text-sm font-semibold tracking-tight">
+          {t("managementCardTitle")}
+        </CardTitle>
+        <CardDescription className="text-sm text-muted-foreground/76 leading-relaxed">
+          {t("managementCardDescription")}
+        </CardDescription>
       </CardHeader>
-      <CardContent className="pt-6">
-        <Link className={cn(buttonVariants(), "w-full sm:w-auto")} to={ADMIN_USERS_PATH}>
+      <CardContent className="pt-4">
+        <Link className={cn(buttonVariants(), "h-9 w-full sm:w-auto")} to={ADMIN_USERS_PATH}>
           {t("managementEntryAction")}
         </Link>
       </CardContent>
