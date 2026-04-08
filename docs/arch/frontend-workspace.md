@@ -193,16 +193,42 @@
 - 聊天输入草稿
 - 待发送附件队列
 - 发送快捷键
-- 当前会话是否处于提交中
-- 登录后要回跳的 `redirectTo`
 - 最近访问的聊天会话 ID
 
-当前实现里，这些状态通过 persist middleware 落到 `localStorage`，并在跨标签页通过 `storage` 事件重放到 store。
+当前实现里，这些状态进一步分成两类：
+
+- `useUiStore + useChatUiStore`：通过 persist middleware 落到 `localStorage`，并在跨标签页通过 `storage` 事件重放到 store
+- `useChatAttachmentStore`：只保留会话内、页面内附件队列，不落持久化
+
+认证回跳目标当前不再放进 store，而是直接编码进 `/login?redirect=...` 这条 URL 契约。
 
 聊天相关服务端状态当前进一步收敛成两条 query：
 
 - 主区消息：分页 `messagesWindow`，默认先拿最近 80 条，再按 `before_id + limit` 取更早消息
 - 右栏上下文：`context` 摘要，返回已去重附件和最近一次 assistant 引用
+
+### 5.3 聊天运行时协调层
+
+聊天工作区当前已经把“谁读 runtime、谁写 cache、谁装配页面”进一步拆开：
+
+```text
+[ChatPage]
+  -> [useChatWorkspace]
+     -> [useChatSessionData]         # 只读模型
+     -> [useChatRuntimeState]        # 只读 streamRun
+     -> [useChatRuntimeController]   # 会话级提交锁 + streamRun action
+     -> [useChatSessionCacheActions] # patch/invalidate messagesWindow + context
+```
+
+约束：
+
+- `useChatSessionData` 当前只负责 `sessions / messagesWindow / displayMessages` 这条只读模型，不再对外暴露 cache patch
+- `useChatRuntimeState` 是 query-backed `streamRun` 的统一读取面，不再允许多个 hook 各自订阅 QueryCache 后再做平行筛选
+- `useChatRuntimeController` 当前组合会话级提交锁和 `streamRun` action；提交锁不是 Zustand 真相，也不落持久化
+- `useChatSessionCacheActions` 当前统一承接 `appendStartedUserMessage`、`patchUserMessageAttachments`、`patchSessionContext` 与 `invalidateSessionArtifacts`
+- `useChatWorkspace` 当前退回聊天页面装配层，只负责把 read model、runtime controller、cache actions、submit/stream 生命周期组合成页面可消费接口
+- `useChatUiStore` 当前只保留 `draftsBySession + sendShortcut`
+- `useChatAttachmentStore` 当前单独承接 `attachmentsBySession`，避免把 `File` 和 persist store 混在一起
 
 认证补充约束：
 
@@ -225,7 +251,7 @@
 
 待发送附件队列还有一个补充约束：同一会话里，本地附件在进入 store 前会按 `name + type + size + lastModified` 做轻量去重。目标不是识别“语义相同文件”，而是拦住用户重复选择、拖拽或粘贴同一文件后造成的重复追加和重复上传。
 
-### 5.3 主题与语言
+### 5.4 主题与语言
 
 主题和语言现在都先进入前端本地 store，再各自决定是否需要继续同步到服务端：
 
@@ -234,7 +260,7 @@
 
 这也是为什么设置中心里的 `语言 / 主题` 不会混进 `/api/settings` 的 provider 保存表单。
 
-### 5.4 表单状态
+### 5.5 表单状态
 
 常规业务表单优先由 `TanStack Form` 管理；像 provider 设置页这类需要把 wire contract 映射成页面模型的复杂表单，可以在页面内部额外保留一层 view-model：
 

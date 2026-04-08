@@ -3,22 +3,26 @@
  */
 
 import { useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useChatAttachmentIntake } from "../hooks/use-chat-attachment-intake";
 import { useChatBackgroundRunToasts } from "../hooks/use-chat-background-run-toasts";
+import { useChatSessionCacheActions } from "../hooks/use-chat-session-cache-actions";
 import { useChatWorkspaceActions } from "../hooks/use-chat-workspace-actions";
-import { useChatSessionSubmitController } from "../hooks/use-chat-session-submit-controller";
-import { useChatStreamRun } from "../hooks/use-chat-stream-run";
+import { useChatRuntimeController } from "../hooks/use-chat-runtime-controller";
+import { useChatStreamLifecycle } from "../hooks/use-chat-stream-lifecycle";
+import { findStreamRunByAssistantMessageId } from "../utils/stream-run-query";
 import { useChatWorkspaceViewModel } from "./use-chat-workspace-view-model";
 
 /**
  * 封装聊天工作区的数据与交互。
  */
 export function useChatWorkspace(activeSessionId: number | null) {
+  const queryClient = useQueryClient();
   const currentSessionIdRef = useRef(activeSessionId);
   const [scrollToLatestRequestKey, setScrollToLatestRequestKey] = useState(0);
 
-  const { beginSessionSubmit, finishSessionSubmit, isSessionSubmitPending } =
-    useChatSessionSubmitController();
+  const runtime = useChatRuntimeController();
+  const { beginSessionSubmit, finishSessionSubmit, isSessionSubmitPending, streamRun } = runtime;
 
   const {
     activeSession,
@@ -29,8 +33,6 @@ export function useChatWorkspace(activeSessionId: number | null) {
     isLoadingOlderMessages,
     loadOlderMessages,
     messages,
-    patchSessionContext,
-    patchUserMessageAttachments,
     resolvedActiveSessionId,
     removeAttachment,
     sendShortcut,
@@ -48,7 +50,18 @@ export function useChatWorkspace(activeSessionId: number | null) {
   useEffect(() => {
     currentSessionIdRef.current = resolvedActiveSessionId;
   }, [resolvedActiveSessionId]);
-  const streamRun = useChatStreamRun();
+  const {
+    appendStartedUserMessage,
+    invalidateSessionArtifacts,
+    patchSessionContext,
+    patchUserMessageAttachments,
+  } = useChatSessionCacheActions();
+  const { sendMutation } = useChatStreamLifecycle({
+    appendStartedUserMessage,
+    currentSessionIdRef,
+    patchSessionContext,
+    streamRun,
+  });
   useChatBackgroundRunToasts({
     resolvedActiveSessionId,
     sessions,
@@ -58,8 +71,10 @@ export function useChatWorkspace(activeSessionId: number | null) {
   const { deleteFailedMessage, editFailedMessage, retryMessage, submitMessage } =
     useChatWorkspaceActions({
       beginSessionSubmit,
-      currentSessionIdRef,
+      findRunByAssistantMessageId: (assistantMessageId) =>
+        findStreamRunByAssistantMessageId(queryClient, assistantMessageId, resolvedActiveSessionId),
       finishSessionSubmit,
+      invalidateSessionArtifacts,
       messages,
       patchSessionContext,
       patchUserMessageAttachments,
@@ -67,6 +82,7 @@ export function useChatWorkspace(activeSessionId: number | null) {
         setScrollToLatestRequestKey((current) => current + 1);
       },
       resolvedActiveSessionId,
+      sendStreamMessage: sendMutation.mutateAsync,
     });
   const { attachFiles, rejectFiles } = useChatAttachmentIntake({
     resolvedActiveSessionId,

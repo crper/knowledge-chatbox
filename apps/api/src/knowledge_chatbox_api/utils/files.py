@@ -29,19 +29,19 @@ class AsyncReadableUpload(Protocol):
 
 
 def ensure_directory(path: Path) -> Path:
-    """确保Directory。"""
+    """确保目录存在。"""
     path.mkdir(parents=True, exist_ok=True)
     return path
 
 
 def build_storage_filename(original_name: str) -> str:
-    """构建StorageFilename。"""
+    """构建存储文件名。"""
     suffix = Path(original_name).suffix
     return f"{uuid4().hex}{suffix}"
 
 
 def save_bytes(base_dir: Path, original_name: str, content: bytes) -> Path:
-    """保存Bytes。"""
+    """保存字节数据到文件。"""
     ensure_directory(base_dir)
     output_path = base_dir / build_storage_filename(original_name)
     output_path.write_bytes(content)

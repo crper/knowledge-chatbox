@@ -16,7 +16,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { useNavigate } from "@/lib/app-router";
+import { useLocation, useNavigate } from "@/lib/app-router";
 import {
   Dialog,
   DialogContent,
@@ -29,8 +29,8 @@ import { queryKeys } from "@/lib/api/query-keys";
 import { getApiErrorMessage } from "@/lib/api/client";
 import { login, updatePreferences } from "@/features/auth/api/auth";
 import { LoginForm } from "@/features/auth/components/login-form";
+import { resolvePostLoginPath } from "@/lib/auth/auth-redirect";
 import { setAuthenticatedSession } from "@/lib/auth/session-manager";
-import { useSessionStore } from "@/lib/auth/session-store";
 import { BrandMark } from "@/components/shared/brand-mark";
 import { LanguageToggle } from "@/features/settings/components/language-toggle";
 import { ThemeToggle } from "@/features/settings/components/theme-toggle";
@@ -45,10 +45,9 @@ import {
  */
 export function LoginPage() {
   const { t } = useTranslation(["auth", "common"]);
+  const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const clearRedirectTo = useSessionStore((state) => state.clearRedirectTo);
-  const redirectTo = useSessionStore((state) => state.redirectTo);
   const [loginError, setLoginError] = useState<unknown>(null);
   const workbenchSteps: Array<{
     icon: LucideIcon;
@@ -113,8 +112,7 @@ export function LoginPage() {
           });
       }
       await setAuthenticatedSession(queryClient, nextUser);
-      const nextPath = redirectTo ?? "/chat";
-      clearRedirectTo();
+      const nextPath = resolvePostLoginPath(location.search);
       void navigate(nextPath, { replace: true });
     } catch (error) {
       setLoginError(error);

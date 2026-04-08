@@ -6,13 +6,7 @@ from pydantic_ai.providers.anthropic import AnthropicProvider
 from pydantic_ai.providers.openai import OpenAIProvider
 
 from knowledge_chatbox_api.providers.ollama_url import build_ollama_openai_base_url
-
-
-def _strip_or_none(value: str | None) -> str | None:
-    if value is None:
-        return None
-    stripped = value.strip()
-    return stripped or None
+from knowledge_chatbox_api.utils.compat import strip_or_none
 
 
 def build_chat_agent_model(runtime_settings):
@@ -23,8 +17,8 @@ def build_chat_agent_model(runtime_settings):
         return AnthropicModel(
             route.model,
             provider=AnthropicProvider(
-                api_key=_strip_or_none(profiles.anthropic.api_key),
-                base_url=_strip_or_none(profiles.anthropic.base_url),
+                api_key=strip_or_none(profiles.anthropic.api_key),
+                base_url=strip_or_none(profiles.anthropic.base_url),
             ),
         )
 
@@ -40,7 +34,7 @@ def build_chat_agent_model(runtime_settings):
     return OpenAIChatModel(
         route.model,
         provider=OpenAIProvider(
-            base_url=_strip_or_none(profiles.openai.base_url),
-            api_key=_strip_or_none(profiles.openai.api_key),
+            base_url=strip_or_none(profiles.openai.base_url),
+            api_key=strip_or_none(profiles.openai.api_key),
         ),
     )

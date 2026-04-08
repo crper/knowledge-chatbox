@@ -28,7 +28,7 @@ class RetryService:
         content: str,
         client_request_id: str,
     ):
-        """创建OrReuse用户消息。"""
+        """创建新用户消息或返回已有消息。"""
         message = self.repository.get_user_message_by_client_request_id(
             session_id=session_id,
             client_request_id=client_request_id,
@@ -61,7 +61,7 @@ class RetryService:
         client_request_id: str,
         retry_of_message_id: int,
     ):
-        """处理重试用户消息相关逻辑。"""
+        """重试用户消息。"""
         original_message = self.repository.get_message(retry_of_message_id)
         if (
             original_message is None
@@ -71,18 +71,7 @@ class RetryService:
             raise RetryTargetNotFoundError("Retry target not found.")
 
         del content
-        original_attachments = [
-            {
-                "attachment_id": attachment.attachment_id,
-                "type": attachment.type,
-                "name": attachment.name,
-                "mime_type": attachment.mime_type,
-                "size_bytes": attachment.size_bytes,
-                "document_revision_id": attachment.document_revision_id,
-                "archived_at": attachment.archived_at,
-            }
-            for attachment in self.repository.list_attachments(original_message.id)
-        ]
+        original_attachments = self._serialize_attachments(original_message.id)
         existing_message = self.repository.get_user_message_by_client_request_id(
             session_id=session_id,
             client_request_id=client_request_id,
@@ -115,7 +104,7 @@ class RetryService:
         reply_to_message_id: int,
         content: str,
     ):
-        """创建AssistantReply。"""
+        """创建助手回复消息。"""
         return self.repository.create_message(
             session_id=session_id,
             role="assistant",

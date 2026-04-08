@@ -93,7 +93,12 @@ knowledge-chatbox/
 - `lib/api/client.ts` 负责 envelope 解包与前端错误归一化；只统一处理网络失败和 `AbortError`，不要把业务错误或契约错误一律改写成通用 `503`
 - `lib/forms.ts` 统一承接轻量表单辅助，包括错误消息抽取和共享 submit event helper；TanStack Form 对话框优先复用这里的轻量能力
 - `lib/document-upload.ts` 放聊天区和资源页共用的 document upload workflow helper；它统一承接进度 patch、成功 / 失败收敛，以及 abort signal 透传；资源页上传命中服务端去重时，也在这里统一走“无变化，已跳过上传”的前端反馈
-- `features/chat/hooks/use-chat-workspace.ts` 负责聊天 composer 的本地附件队列、分页消息窗口协调、流式收尾 patch 和会话级发送锁；当前会在入队前按文件元数据做轻量去重，避免同一文件被重复追加
+- `lib/auth/auth-redirect.ts` 统一承接 `/login?redirect=...` 的构建、读取和安全归一化；不要再把回跳路径塞回 Zustand
+- `features/chat/hooks/use-chat-workspace.ts` 当前只负责聊天页面装配层，组合 read model、runtime controller、cache actions 和 submit / stream 生命周期
+- `features/chat/hooks/use-chat-runtime-state.ts` 是 query-backed `streamRun` 的统一读取面
+- `features/chat/hooks/use-chat-runtime-controller.ts` 组合会话级提交锁和 `streamRun` action，不承担持久化职责
+- `features/chat/hooks/use-chat-session-cache-actions.ts` 统一承接 `messagesWindow / context` 的 patch、started user message 预插入和 targeted invalidate
+- `features/chat/store/chat-attachment-store.ts` 只承接会话内待发送附件队列；`features/chat/store/chat-ui-store.ts` 只保留草稿和发送快捷键
 - `features/chat/utils/patch-paged-chat-messages.ts` 负责把流式完成 / 失败态优先 patch 进当前已加载消息窗口
 - `features/chat/utils/upload-chat-attachments.ts` 负责聊天区待发送附件的有限并发上传与顺序保持
 - `features/chat/utils/chat-session-recovery.ts` 负责最近访问聊天会话的本地持久化与恢复决策；`/chat` 入口恢复逻辑优先收敛在这里，不要把同一语义分散到多个路由守卫或页面副作用里，也不要在页面里先落空态再补跳转
@@ -111,7 +116,7 @@ knowledge-chatbox/
 | 你要改什么                                   | 先看哪里                                                                                                                                                                                                                                                                       |
 | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | 工作台导航或设置中心结构                     | `src/layouts/app-shell-layout.tsx`、`features/workspace/*`、`features/settings/settings-sections.ts`                                                                                                                                                                           |
-| 聊天请求、流式状态、重试、附件展示           | `features/chat/api/*`、`features/chat/hooks/*`、`features/chat/store/*`、`features/chat/components/chat-message-viewport.tsx`、`features/chat/components/attachment-list.tsx`、`features/chat/components/image-viewer-dialog.tsx`、`features/chat/components/message-list.tsx` |
+| 聊天请求、流式状态、重试、附件展示           | `features/chat/api/*`、`features/chat/hooks/*`、`features/chat/store/*`、`features/chat/components/chat-message-viewport.tsx`、`features/chat/components/attachment-list.tsx`、`features/chat/components/image-viewer-dialog.tsx`、`features/chat/components/message-list.tsx`；如果改的是 runtime 读面、提交锁或 cache patch，优先先看 `use-chat-runtime-state.ts`、`use-chat-runtime-controller.ts`、`use-chat-session-cache-actions.ts` |
 | 资源页表格、上传队列、重建索引、重复上传反馈 | `features/knowledge/*`、`components/shared/data-table.tsx`、`features/knowledge/components/upload-queue-summary.tsx`、`lib/document-upload.ts`                                                                                                                                 |
 | 当前用户、登录、改密、主题偏好               | `features/auth/*`、`lib/auth/*`、`router/*`、`features/workspace/components/workspace-account-menu.tsx`                                                                                                                                                                        |
 | 页面表单校验与提交流程                       | 对应 `features/*/components/*form*`，默认先看 TanStack Form 用法；共享 submit / 错误抽取先看 `lib/forms.ts`                                                                                                                                                                    |
@@ -169,6 +174,7 @@ knowledge-chatbox/
 - 改聊天执行 owner 时，当前真相是“同步和流式问答统一由 `services/chat/workflow/*` 驱动”；不要在 route、repository 或 provider 层再平行塞第二套聊天执行状态机
 - 改认证与会话链路时，当前真相是“前端只在内存保存 access token，refresh session 继续走 HttpOnly cookie，`/api/auth/me` 等受保护读取接口在鉴权阶段保持纯读”；不要把 access token 落进 `localStorage`，也不要把 session 心跳重新塞回高频读路径
 - 改认证与会话链路时，启动期匿名探测与业务请求续期当前已经分开：前端用 `/api/auth/bootstrap` 处理“是否能恢复已有 refresh session”，匿名态返回 `200 + authenticated=false`；业务请求里的 `401` 续期仍走 `/api/auth/refresh`；更细时序统一看 [auth-and-session-flow.md](./auth-and-session-flow.md)
+- 登录回跳当前真相是“受保护页面统一跳 `/login?redirect=...`，登录成功后只读取 URL 里的 redirect 并回到站内路径”；不要再把回跳路径塞进 `session-store`
 - 改前端 API 基址或开发态鉴权链路时，当前真相是“浏览器开发态优先走同源 `/api`，由 `apps/web/vite.config.ts` 代理到本机 `8000`；只有显式指向独立后端时，才填 `VITE_API_BASE_URL`”；不要把页面开在 `127.0.0.1:3000`，却把 API 固定到 `http://localhost:8000`
 - 改上传与附件链路时，当前真相是“聊天区和资源页共用 document upload helper；前端只持久化附件元数据与作用域提示；后端按文件类型分流：文本文档同步标准化，图片先返回 `processing` 再后台补全；聊天当前轮图片仍直接读取原图”；不要在前端维护第二份附件正文缓存，也不要把上传请求做回 cookie-only 分支
 - 改后端上传链路时，当前真相是“`api/routes/documents.py` 先做 `upload-readiness` 校验，再把上传流按块落盘，`VersioningService` 只消费已落盘工件并写入 document/document_revision，重复内容与失败路径的源文件清理由 `IngestionService` 收口”；不要再把整份文件一次性读成 `bytes` 后在 service 层到处传
@@ -176,6 +182,8 @@ knowledge-chatbox/
 - 改聊天 UI 时，附件展示、图片查看、消息视口、失败恢复带、新会话空态、会话恢复和默认标题语义，统一以 [frontend-workspace.md](./frontend-workspace.md) 为准；这里不再平行维护一套页面级视觉规则
 - 改聊天数据读取时，当前真相是“主区默认先走 `/api/chat/sessions/{id}/messages?limit=80`，继续向上滚动时再带 `before_id + limit` 请求更早消息；右栏走 `/api/chat/sessions/{id}/context`”；不要再让 `ChatResourcePanel` 或其他 UI 组件直接依赖整段消息列表去反推摘要
 - 改流式问答收尾时，当前真相是“Web 优先 patch `messagesWindow` 和 `context`，只有 patch miss 时才回退到对应 query 的失效刷新”；不要把成功或失败收尾重新做回默认整段消息重拉
+- 改聊天前端运行时边界时，当前真相是“`useChatRuntimeState` 读 `streamRun`、`useChatRuntimeController` 持有会话级提交锁和 `streamRun` action、`useChatSessionCacheActions` 负责 cache 写入，`useChatWorkspace` 只做装配”；不要再把读 hook、页面 hook 和 cache patch 混回同一个 God hook
+- 改聊天 composer 本地状态时，当前真相是“`useChatUiStore` 只持久化草稿和发送快捷键，`useChatAttachmentStore` 单独持有待发送附件”；不要再把 `File` 对象塞回 persist store
 - 改资源页或标准工作区壳层时，优先沿用 `WorkspacePage`、`data-table` 和预览抽屉这套共享结构；布局真相同样放在 [frontend-workspace.md](./frontend-workspace.md)
 - 改设置页交互时，当前真相是“纯 helper 返回 i18n key，主区承载当前生效配置，高级区只承载检索覆盖、备用模板和 Timeout”；不要在纯逻辑层硬编码中英文文案
 - 改 API 文档或前端契约时，当前真相是“FastAPI OpenAPI 为唯一接口契约源”；不要再维护一套平行手写接口文档

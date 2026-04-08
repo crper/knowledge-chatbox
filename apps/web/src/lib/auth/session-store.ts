@@ -12,11 +12,8 @@ export type SessionStatus =
   | "degraded";
 
 type SessionState = {
-  redirectTo: string | null;
   status: SessionStatus;
-  clearRedirectTo: () => void;
   reset: () => void;
-  setRedirectTo: (value: string | null) => void;
   setStatus: (status: SessionStatus) => void;
 };
 
@@ -24,14 +21,10 @@ type SessionState = {
  * 集中管理前端会话状态。
  */
 export const useSessionStore = create<SessionState>((set) => ({
-  redirectTo: null,
   status: "bootstrapping",
-  clearRedirectTo: () => set({ redirectTo: null }),
   reset: () =>
     set({
-      redirectTo: null,
       status: "bootstrapping",
     }),
-  setRedirectTo: (value) => set({ redirectTo: value }),
   setStatus: (status) => set({ status }),
 }));

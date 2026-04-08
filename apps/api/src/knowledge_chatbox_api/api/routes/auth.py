@@ -39,7 +39,7 @@ def set_session_cookie(
     request: Request,
     response: Response,
 ) -> None:
-    """写入 refresh session cookie。"""
+    """写入刷新会话 cookie。"""
     response.set_cookie(
         key=auth_service.settings.session_cookie_name,
         value=refresh_token,
@@ -84,7 +84,7 @@ def refresh(
     token: SessionTokenDep,
     auth_service: AuthServiceDep,
 ) -> Envelope[AccessTokenRead]:
-    """轮换 refresh session 并返回新的 access token。"""
+    """轮换刷新会话并返回新的访问令牌。"""
     refresh_token, access_token = auth_service.refresh_access_token(token)
     set_session_cookie(
         auth_service=auth_service,
@@ -109,7 +109,7 @@ def bootstrap(
     token: SessionTokenDep,
     auth_service: AuthServiceDep,
 ) -> Envelope[SessionBootstrapRead]:
-    """启动期恢复 refresh session；匿名态返回 200 + authenticated=false。"""
+    """启动期恢复刷新会话；匿名态返回 200 且 authenticated=false。"""
     restored = auth_service.bootstrap_session(token)
 
     if restored is None:
@@ -147,7 +147,7 @@ def logout(
 
 @router.get("/me", response_model=Envelope[AuthUserRead])
 def me(current_user: CurrentUserDep) -> Envelope[AuthUserRead]:
-    """处理Me相关逻辑。"""
+    """返回当前登录用户信息。"""
     return Envelope(success=True, data=to_auth_user_read(current_user), error=None)
 
 

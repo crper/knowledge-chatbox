@@ -5,7 +5,7 @@ import type { FileRejection } from "react-dropzone";
 
 import { I18nProvider } from "@/providers/i18n-provider";
 import { createTestQueryClient } from "@/test/query-client";
-import { useChatUiStore } from "../store/chat-ui-store";
+import { useChatAttachmentStore } from "../store/chat-attachment-store";
 import { useChatAttachmentIntake } from "./use-chat-attachment-intake";
 
 function AttachmentIntakeHost({
@@ -51,10 +51,8 @@ describe("useChatAttachmentIntake", () => {
   it("deduplicates accepted files within the active session", async () => {
     const queryClient = createTestQueryClient();
 
-    useChatUiStore.setState({
+    useChatAttachmentStore.setState({
       attachmentsBySession: {},
-      draftsBySession: {},
-      sendShortcut: "enter",
     });
 
     render(
@@ -68,7 +66,7 @@ describe("useChatAttachmentIntake", () => {
     fireEvent.click(screen.getByRole("button", { name: "attach" }));
 
     await waitFor(() => {
-      expect(useChatUiStore.getState().attachmentsBySession["7"]).toHaveLength(1);
+      expect(useChatAttachmentStore.getState().attachmentsBySession["7"]).toHaveLength(1);
     });
   });
 
@@ -76,10 +74,8 @@ describe("useChatAttachmentIntake", () => {
     const queryClient = createTestQueryClient();
     const errorSpy = vi.spyOn(toast, "error");
 
-    useChatUiStore.setState({
+    useChatAttachmentStore.setState({
       attachmentsBySession: {},
-      draftsBySession: {},
-      sendShortcut: "enter",
     });
 
     render(
@@ -93,8 +89,8 @@ describe("useChatAttachmentIntake", () => {
     fireEvent.click(screen.getByRole("button", { name: "reject" }));
 
     await waitFor(() => {
-      expect(useChatUiStore.getState().attachmentsBySession["7"]).toHaveLength(1);
-      expect(useChatUiStore.getState().attachmentsBySession["7"]?.[0]).toMatchObject({
+      expect(useChatAttachmentStore.getState().attachmentsBySession["7"]).toHaveLength(1);
+      expect(useChatAttachmentStore.getState().attachmentsBySession["7"]?.[0]).toMatchObject({
         kind: "document",
         name: "virus.exe",
         status: "failed",

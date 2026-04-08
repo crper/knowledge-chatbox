@@ -14,6 +14,7 @@ import type {
   ChatSessionContextItem,
 } from "../api/chat";
 import type { ChatStreamAttachmentInput } from "../api/chat-stream";
+import { useChatAttachmentStore } from "../store/chat-attachment-store";
 import { useChatUiStore } from "../store/chat-ui-store";
 import {
   cloneChatAttachments,
@@ -90,8 +91,8 @@ export function useChatComposerSubmit({
 }: UseChatComposerSubmitParams) {
   const { t } = useTranslation(["chat", "common"]);
   const queryClient = useQueryClient();
-  const clearAttachments = useChatUiStore((state) => state.clearAttachments);
-  const setAttachments = useChatUiStore((state) => state.setAttachments);
+  const clearAttachments = useChatAttachmentStore((state) => state.clearAttachments);
+  const setAttachments = useChatAttachmentStore((state) => state.setAttachments);
   const setDraft = useChatUiStore((state) => state.setDraft);
 
   const submitMessage = useCallback(async () => {
@@ -106,7 +107,7 @@ export function useChatComposerSubmit({
 
     const nextDraft = useChatUiStore.getState().draftsBySession[String(sessionId)] ?? "";
     const snapshotAttachments = cloneChatAttachments(
-      useChatUiStore.getState().attachmentsBySession[String(sessionId)] ?? [],
+      useChatAttachmentStore.getState().attachmentsBySession[String(sessionId)] ?? [],
     );
     const sendableAttachments = snapshotAttachments.filter(
       (attachment) => attachment.status !== MessageStatus.FAILED,
@@ -222,7 +223,7 @@ export function useChatComposerSubmit({
           : (message.attachments_json ?? null);
       const draftSnapshot = useChatUiStore.getState().draftsBySession[String(sessionId)] ?? "";
       const attachmentSnapshot = cloneChatAttachments(
-        useChatUiStore.getState().attachmentsBySession[String(sessionId)] ?? [],
+        useChatAttachmentStore.getState().attachmentsBySession[String(sessionId)] ?? [],
       );
       const shouldResetComposerSnapshot = shouldResetComposerSnapshotForRetry({
         composerAttachments: attachmentSnapshot,

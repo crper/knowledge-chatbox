@@ -8,6 +8,7 @@ import { useTranslation } from "react-i18next";
 
 import { currentUserQueryOptions } from "@/features/auth/api/auth-query";
 import type { AppUser } from "@/lib/api/client";
+import { buildLoginPath } from "@/lib/auth/auth-redirect";
 import { useLocation, useNavigate, Navigate } from "@/lib/app-router";
 import { markSessionExpired } from "@/lib/auth/session-manager";
 import { useSessionStore } from "@/lib/auth/session-store";
@@ -32,6 +33,8 @@ const UsersPage = lazy(async () => ({
   default: (await import("@/pages/users/users-page")).UsersPage,
 }));
 
+let pendingAuthRedirectPath: string | null = null;
+
 export function LoadingState() {
   const { t } = useTranslation("common");
 
@@ -45,7 +48,6 @@ export function RouteSuspense({ children }: { children: ReactNode }) {
 export function CurrentUserBoundary({ children }: { children: (user: AppUser) => ReactNode }) {
   const location = useLocation();
   const navigate = useNavigate();
-  const setRedirectTo = useSessionStore((state) => state.setRedirectTo);
   const status = useSessionStore((state) => state.status);
   const currentUserQuery = useQuery({
     ...currentUserQueryOptions(),
@@ -55,22 +57,9 @@ export function CurrentUserBoundary({ children }: { children: (user: AppUser) =>
   const shouldRedirectToLogin = status === "anonymous" || status === "expired";
   const shouldExpireSession =
     status === "authenticated" && currentUserQuery.isSuccess && !currentUserQuery.data;
-
-  useEffect(() => {
-    if (!shouldRedirectToLogin) {
-      return;
-    }
-
-    setRedirectTo(`${location.pathname}${location.search}${location.hash}`);
-  }, [location.hash, location.pathname, location.search, setRedirectTo, shouldRedirectToLogin]);
-
-  useEffect(() => {
-    if (!shouldRedirectToLogin) {
-      return;
-    }
-
-    void navigate("/login", { replace: true });
-  }, [navigate, shouldRedirectToLogin]);
+  const loginRedirectPath = buildLoginPath(
+    `${location.pathname}${location.search}${location.hash}`,
+  );
 
   useEffect(() => {
     if (!shouldExpireSession) {
@@ -78,14 +67,27 @@ export function CurrentUserBoundary({ children }: { children: (user: AppUser) =>
     }
 
     markSessionExpired();
-    void navigate("/login", { replace: true });
-  }, [navigate, shouldExpireSession]);
+  }, [shouldExpireSession]);
 
-  if (shouldRedirectToLogin) {
+  useEffect(() => {
+    if (!shouldRedirectToLogin) {
+      pendingAuthRedirectPath = null;
+      return;
+    }
+
+    if (pendingAuthRedirectPath === loginRedirectPath) {
+      return;
+    }
+
+    pendingAuthRedirectPath = loginRedirectPath;
+    void navigate(loginRedirectPath, { replace: true });
+  }, [loginRedirectPath, navigate, shouldRedirectToLogin]);
+
+  if (shouldRedirectToLogin || shouldExpireSession) {
     return <LoadingState />;
   }
 
-  if (currentUserQuery.isPending || shouldExpireSession) {
+  if (currentUserQuery.isPending) {
     return <LoadingState />;
   }
 
@@ -137,12 +139,6 @@ export function UsersPageRoute() {
 }
 
 export function PublicLoginRoute() {
-  const status = useSessionStore((state) => state.status);
-
-  if (status === "authenticated") {
-    return <Navigate replace to="/chat" />;
-  }
-
   return (
     <RouteSuspense>
       <LoginPage />

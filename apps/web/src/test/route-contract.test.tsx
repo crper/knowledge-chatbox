@@ -170,13 +170,14 @@ describe("route contract (TanStack runtime)", () => {
     await i18n.changeLanguage("zh-CN");
   });
 
-  it("redirects bootstrapped anonymous users from /chat to /login", async () => {
+  it("redirects bootstrapped anonymous users from protected pages to /login with redirect", async () => {
     setupAuthResponse(null, false, 401);
 
-    const { history } = renderRoute("/chat");
+    const { history } = renderRoute("/knowledge?query=notes");
 
     expect(await screen.findByRole("heading", { name: "登录" })).toBeInTheDocument();
     expect(history.location.pathname).toBe("/login");
+    expect(history.location.search).toBe("?redirect=%2Fknowledge");
   });
 
   it("redirects authenticated users away from /login", async () => {

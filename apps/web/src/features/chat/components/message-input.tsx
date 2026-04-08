@@ -130,7 +130,6 @@ export function MessageInput({
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const statusLabels = useAttachmentStatusLabels();
 
-  // 计算派生状态
   const reasoningLabels = useMemo(
     () => ({
       label: t("reasoningModeLabel", { defaultValue: "思考模式" }),
@@ -147,14 +146,12 @@ export function MessageInput({
   );
   const canSubmit = (draft.trim().length > 0 || hasSendableAttachment) && !submitPending;
 
-  // 图片查看器数据
   const imageViewerItems = useMemo(() => buildComposerImageViewerItems(attachments), [attachments]);
   const previewIndexes = useMemo(
     () => buildAttachmentPreviewIndexes(imageViewerItems),
     [imageViewerItems],
   );
 
-  // 附件列表项
   const attachmentListItems = useMemo(() => {
     const getStatusLabel = (attachment: ChatAttachmentItem) => {
       switch (attachment.status) {
@@ -180,7 +177,6 @@ export function MessageInput({
     });
   }, [attachments, onRemoveAttachment, previewIndexes, statusLabels]);
 
-  // 提交处理
   const triggerSubmit = useCallback(() => {
     void Promise.resolve(onSubmit()).catch(() => {});
   }, [onSubmit]);
@@ -193,7 +189,6 @@ export function MessageInput({
     [canSubmit, triggerSubmit],
   );
 
-  // 键盘事件处理
   const handleKeyDown = useCallback(
     (event: KeyboardEvent<HTMLTextAreaElement>) => {
       const isComposing =
@@ -215,7 +210,6 @@ export function MessageInput({
     [canSubmit, sendShortcut, triggerSubmit],
   );
 
-  // 粘贴处理
   const handlePaste = useCallback(
     (event: ClipboardEvent<HTMLTextAreaElement>) => {
       const files = getClipboardFiles(event);
@@ -227,7 +221,6 @@ export function MessageInput({
     [onAttachFiles],
   );
 
-  // 失焦处理
   const blurTextareaIfFocused = useCallback(() => {
     if (typeof document === "undefined") return;
     if (document.activeElement === textareaRef.current) {
@@ -235,7 +228,6 @@ export function MessageInput({
     }
   }, []);
 
-  // 渲染附件错误
   const attachmentErrors = useMemo(() => attachments.filter((a) => a.errorMessage), [attachments]);
 
   return (

@@ -25,6 +25,7 @@ vi.mock("@tanstack/react-virtual", () => ({
 
 import type { ChatMessageItem } from "@/features/chat/api/chat";
 import { CHAT_STREAM_EVENT } from "@/features/chat/api/chat-stream-events";
+import { useChatAttachmentStore } from "@/features/chat/store/chat-attachment-store";
 import { useChatUiStore } from "@/features/chat/store/chat-ui-store";
 import { useSessionStore } from "@/lib/auth/session-store";
 import { setAccessToken } from "@/lib/auth/token-store";
@@ -599,8 +600,10 @@ describe("chat workspace", () => {
         revokeObjectURL: vi.fn(),
       }),
     );
-    useChatUiStore.setState({
+    useChatAttachmentStore.setState({
       attachmentsBySession: {},
+    });
+    useChatUiStore.setState({
       draftsBySession: {},
       sendShortcut: "enter",
     });
@@ -773,7 +776,7 @@ describe("chat workspace", () => {
 
   it("clears stale local draft and attachments for a newly created session id", async () => {
     setupAuthenticatedWorkspace();
-    useChatUiStore.setState({
+    useChatAttachmentStore.setState({
       attachmentsBySession: {
         "3": [
           {
@@ -786,6 +789,8 @@ describe("chat workspace", () => {
           },
         ],
       },
+    });
+    useChatUiStore.setState({
       draftsBySession: {
         "3": "stale draft",
       },
@@ -1900,7 +1905,9 @@ describe("chat workspace", () => {
 
     fireEvent.click(await findSessionLink("Session A"));
     expect(await findSessionLink("Session B")).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("消息输入"), {
+    const messageInput = await screen.findByLabelText("消息输入");
+
+    fireEvent.change(messageInput, {
       target: { value: "background run" },
     });
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
@@ -1918,8 +1925,9 @@ describe("chat workspace", () => {
 
     await findSessionLink("Session A");
     expect(await findSessionLink("Session B")).toBeInTheDocument();
+    const messageInput = await screen.findByLabelText("消息输入");
 
-    fireEvent.change(screen.getByLabelText("消息输入"), {
+    fireEvent.change(messageInput, {
       target: { value: "background run" },
     });
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
@@ -2094,7 +2102,7 @@ describe("chat workspace", () => {
     await findSessionLink("Session A");
     expect(await findSessionLink("Session B")).toBeInTheDocument();
     act(() => {
-      useChatUiStore.setState({
+      useChatAttachmentStore.setState({
         attachmentsBySession: {
           "1": [
             {
@@ -2109,6 +2117,8 @@ describe("chat workspace", () => {
             },
           ],
         },
+      });
+      useChatUiStore.setState({
         draftsBySession: {
           "1": "文档说了啥",
         },
@@ -2184,7 +2194,7 @@ describe("chat workspace", () => {
 
     await findSessionLink("Session A");
     act(() => {
-      useChatUiStore.setState({
+      useChatAttachmentStore.setState({
         attachmentsBySession: {
           "1": [
             {
@@ -2199,6 +2209,8 @@ describe("chat workspace", () => {
             },
           ],
         },
+      });
+      useChatUiStore.setState({
         draftsBySession: {
           "1": "后来新写的问题",
         },
@@ -2254,11 +2266,8 @@ describe("chat workspace", () => {
       },
     });
 
-    useChatUiStore.setState({
-      attachmentsBySession: {},
-      draftsBySession: {},
-      sendShortcut: "enter",
-    });
+    useChatAttachmentStore.setState({ attachmentsBySession: {} });
+    useChatUiStore.setState({ draftsBySession: {}, sendShortcut: "enter" });
 
     const { queryClient } = renderChatRoute("/chat/2");
     queryClient.setQueryData(queryKeys.chat.streamRun(900), {

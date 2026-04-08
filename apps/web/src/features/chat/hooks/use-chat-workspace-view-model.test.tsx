@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 
 import type { ChatMessageItem } from "../api/chat";
+import { useChatAttachmentStore } from "../store/chat-attachment-store";
 import { useChatUiStore } from "../store/chat-ui-store";
 import { useChatWorkspaceViewModel } from "./use-chat-workspace-view-model";
 
@@ -83,7 +84,7 @@ describe("useChatWorkspaceViewModel", () => {
       },
     ];
     sessionDataState.resolvedActiveSessionId = 7;
-    useChatUiStore.setState({
+    useChatAttachmentStore.setState({
       attachmentsBySession: {
         "7": [
           {
@@ -94,6 +95,8 @@ describe("useChatWorkspaceViewModel", () => {
           },
         ],
       },
+    });
+    useChatUiStore.setState({
       draftsBySession: {
         "7": "draft text",
       },

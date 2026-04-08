@@ -160,6 +160,32 @@ describe("login page", () => {
     expect(await screen.findByRole("button", { name: "新建会话" })).toBeInTheDocument();
   });
 
+  it("redirects to the requested in-app path after login success", async () => {
+    overrideHandler(
+      http.post("*/api/auth/login", () => {
+        return apiResponse({
+          authenticated: true,
+          access_token: "login-token",
+          expires_in: 900,
+          token_type: "Bearer",
+          user: buildAppUser("admin"),
+        });
+      }),
+    );
+
+    renderRoute("/login?redirect=%2Fsettings%2Fproviders");
+
+    fireEvent.change(await screen.findByLabelText("用户名"), {
+      target: { value: "admin" },
+    });
+    fireEvent.change(screen.getByLabelText("密码"), {
+      target: { value: "password" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "登录" }));
+
+    expect(await screen.findByRole("heading", { name: "提供商配置" })).toBeInTheDocument();
+  });
+
   it("keeps the login-page theme after sign-in and syncs it to account preferences", async () => {
     overrideHandler(
       http.post("*/api/auth/login", () => {

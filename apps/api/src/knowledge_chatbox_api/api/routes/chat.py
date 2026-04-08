@@ -195,7 +195,7 @@ def list_sessions(
     session: DbSessionDep,
     current_user: CurrentUserDep,
 ) -> Envelope[list[ChatSessionRead]]:
-    """列出Sessions。"""
+    """列出会话。"""
     chat_sessions = ChatApplicationService(
         session,
         settings=None,
@@ -349,7 +349,7 @@ def create_message_stream(
     settings: SettingsDep,
     current_user: CurrentUserDep,
 ):
-    """创建消息流式。"""
+    """以 SSE 流式创建聊天消息。"""
     service = ChatApplicationService(session, settings)
     presenter, chat_run_service = service.create_stream_components(current_user, session_id)
 
@@ -377,7 +377,7 @@ def list_active_runs(
     session: DbSessionDep,
     current_user: CurrentUserDep,
 ) -> Envelope[list[ActiveChatRunRead]]:
-    """列出活跃Runs。"""
+    """列出活跃的聊天运行。"""
     runs = ChatApplicationService(session, settings=None).list_active_runs(current_user)
     return Envelope(
         success=True,

@@ -18,17 +18,10 @@ from knowledge_chatbox_api.providers.base import (
     ResponseStreamChunk,
     VisionSettings,
 )
+from knowledge_chatbox_api.utils.compat import safe_getattr
 
 DEFAULT_ANTHROPIC_BASE_URL = "https://api.anthropic.com"
 DEFAULT_MAX_TOKENS = 4096
-
-
-def _attr(value: Any, name: str, default: Any = None) -> Any:
-    if value is None:
-        return default
-    if isinstance(value, dict):
-        return value.get(name, default)
-    return getattr(value, name, default)
 
 
 def _usage_to_dict(usage: Any) -> dict[str, Any] | None:
@@ -44,7 +37,7 @@ def _usage_to_dict(usage: Any) -> dict[str, Any] | None:
         "cache_creation_input_tokens",
         "cache_read_input_tokens",
     ):
-        value = _attr(usage, field)
+        value = safe_getattr(usage, field)
         if value is not None:
             result[field] = value
     return result or None
@@ -84,6 +77,21 @@ class _AnthropicClientMixin:
 
     def _quick_model_check(self, settings: ProviderSettings, model: str) -> None:
         self._client(settings).models.retrieve(model)
+
+    def _run_health_check(self, settings: ProviderSettings, model: str) -> ProviderHealthResult:
+        start = time.perf_counter()
+        if not self._api_key(settings):
+            return ProviderHealthResult(healthy=False, message="Anthropic API key is missing.")
+
+        try:
+            self._quick_model_check(settings, model)
+        except Exception as exc:  # noqa: BLE001
+            return ProviderHealthResult(healthy=False, message=str(exc))
+        return ProviderHealthResult(
+            healthy=True,
+            message="ok",
+            latency_ms=int((time.perf_counter() - start) * 1000),
+        )
 
     def _thinking_config(self, settings: ResponseRuntimeSettings) -> dict[str, Any] | None:
         mode = settings.reasoning_mode
@@ -148,9 +156,9 @@ class _AnthropicClientMixin:
 
     def _extract_response_text(self, response: Any) -> str:
         parts: list[str] = []
-        for block in _attr(response, "content", []) or []:
-            if _attr(block, "type") == "text":
-                parts.append(_attr(block, "text", "") or "")
+        for block in safe_getattr(response, "content", []) or []:
+            if safe_getattr(block, "type") == "text":
+                parts.append(safe_getattr(block, "text", "") or "")
         return "".join(parts).strip()
 
     def _build_message_kwargs(
@@ -207,26 +215,14 @@ class AnthropicResponseAdapter(_AnthropicClientMixin, BaseResponseAdapter):
                 final_message = stream.get_final_message()
                 yield ResponseStreamChunk(
                     type="completed",
-                    provider_response_id=_attr(final_message, "id"),
-                    usage=_usage_to_dict(_attr(final_message, "usage")),
+                    provider_response_id=safe_getattr(final_message, "id"),
+                    usage=_usage_to_dict(safe_getattr(final_message, "usage")),
                 )
         except Exception as exc:  # noqa: BLE001
             yield ResponseStreamChunk(type="error", error_message=str(exc))
 
     def health_check(self, settings: ResponseSettings) -> ProviderHealthResult:
-        start = time.perf_counter()
-        if not self._api_key(settings):
-            return ProviderHealthResult(healthy=False, message="Anthropic API key is missing.")
-
-        try:
-            self._quick_model_check(settings, settings.response_route.model)
-        except Exception as exc:  # noqa: BLE001
-            return ProviderHealthResult(healthy=False, message=str(exc))
-        return ProviderHealthResult(
-            healthy=True,
-            message="ok",
-            latency_ms=int((time.perf_counter() - start) * 1000),
-        )
+        return self._run_health_check(settings, settings.response_route.model)
 
 
 class AnthropicVisionAdapter(_AnthropicClientMixin, BaseVisionAdapter):
@@ -263,16 +259,4 @@ class AnthropicVisionAdapter(_AnthropicClientMixin, BaseVisionAdapter):
         return self._extract_response_text(response)
 
     def health_check(self, settings: VisionSettings) -> ProviderHealthResult:
-        start = time.perf_counter()
-        if not self._api_key(settings):
-            return ProviderHealthResult(healthy=False, message="Anthropic API key is missing.")
-
-        try:
-            self._quick_model_check(settings, settings.vision_route.model)
-        except Exception as exc:  # noqa: BLE001
-            return ProviderHealthResult(healthy=False, message=str(exc))
-        return ProviderHealthResult(
-            healthy=True,
-            message="ok",
-            latency_ms=int((time.perf_counter() - start) * 1000),
-        )
+        return self._run_health_check(settings, settings.vision_route.model)

@@ -22,12 +22,6 @@ from knowledge_chatbox_api.services.settings.runtime_settings import parse_runti
 logger = get_logger(__name__)
 
 
-def _event_attr(event: Any, name: str, default=None):
-    if isinstance(event, dict):
-        return event.get(name, default)
-    return getattr(event, name, default)
-
-
 class ChatRunService:
     """封装聊天运行记录、事件和消息投影。"""
 

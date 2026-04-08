@@ -5,6 +5,7 @@
 import "@testing-library/jest-dom/vitest";
 import { configure } from "@testing-library/react";
 
+import { useChatAttachmentStore } from "../features/chat/store/chat-attachment-store";
 import { LAST_VISITED_CHAT_SESSION_STORAGE_KEY } from "../features/chat/utils/chat-session-recovery";
 import { useChatUiStore } from "../features/chat/store/chat-ui-store";
 import { i18n } from "../i18n";
@@ -219,8 +220,10 @@ beforeEach(() => {
   document.documentElement.className = "";
   document.documentElement.style.colorScheme = "light";
   useUiStore.setState({ language: DEFAULT_LANGUAGE, theme: DEFAULT_THEME });
-  useChatUiStore.setState({
+  useChatAttachmentStore.setState({
     attachmentsBySession: {},
+  });
+  useChatUiStore.setState({
     draftsBySession: {},
     sendShortcut: "enter",
   });

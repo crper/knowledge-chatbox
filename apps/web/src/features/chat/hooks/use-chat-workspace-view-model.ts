@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 
+import { useChatAttachmentStore } from "../store/chat-attachment-store";
 import { useChatUiStore } from "../store/chat-ui-store";
 import { useChatSessionData } from "./use-chat-session-data";
 
@@ -12,9 +13,9 @@ export function useChatWorkspaceViewModel({
   activeSessionId,
   isSessionSubmitPending,
 }: UseChatWorkspaceViewModelParams) {
-  const attachmentsBySession = useChatUiStore((state) => state.attachmentsBySession);
+  const attachmentsBySession = useChatAttachmentStore((state) => state.attachmentsBySession);
+  const removeAttachment = useChatAttachmentStore((state) => state.removeAttachment);
   const draftsBySession = useChatUiStore((state) => state.draftsBySession);
-  const removeAttachment = useChatUiStore((state) => state.removeAttachment);
   const sendShortcut = useChatUiStore((state) => state.sendShortcut);
   const setSendShortcut = useChatUiStore((state) => state.setSendShortcut);
   const setDraft = useChatUiStore((state) => state.setDraft);

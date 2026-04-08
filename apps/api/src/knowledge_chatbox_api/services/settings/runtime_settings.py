@@ -14,17 +14,12 @@ from knowledge_chatbox_api.schemas.settings import (
     parse_response_route,
     parse_vision_route,
 )
+from knowledge_chatbox_api.utils.compat import safe_getattr
 
 DEFAULT_RESPONSE_ROUTE = {"provider": "ollama", "model": "unknown"}
 DEFAULT_EMBEDDING_ROUTE = {"provider": "ollama", "model": "unknown"}
 DEFAULT_VISION_ROUTE = {"provider": "ollama", "model": "unknown"}
 DEFAULT_PROVIDER_TIMEOUT_SECONDS = 60
-
-
-def _settings_attr(value: Any, name: str, default: Any = None) -> Any:
-    if isinstance(value, dict):
-        return value.get(name, default)
-    return getattr(value, name, default)
 
 
 def _runtime_settings_payload(
@@ -34,27 +29,25 @@ def _runtime_settings_payload(
     reasoning_mode: ReasoningModeLiteral | None = None,
 ) -> dict[str, Any]:
     payload = {
-        "provider_profiles": parse_provider_profiles(
-            _settings_attr(value, "provider_profiles", {})
-        ),
+        "provider_profiles": parse_provider_profiles(safe_getattr(value, "provider_profiles", {})),
         "response_route": parse_response_route(
-            _settings_attr(value, "response_route", DEFAULT_RESPONSE_ROUTE)
+            safe_getattr(value, "response_route", DEFAULT_RESPONSE_ROUTE)
         ),
         "embedding_route": parse_embedding_route(
             embedding_route
             if embedding_route is not None
-            else _settings_attr(value, "embedding_route", DEFAULT_EMBEDDING_ROUTE)
+            else safe_getattr(value, "embedding_route", DEFAULT_EMBEDDING_ROUTE)
         ),
         "vision_route": parse_vision_route(
-            _settings_attr(value, "vision_route", DEFAULT_VISION_ROUTE)
+            safe_getattr(value, "vision_route", DEFAULT_VISION_ROUTE)
         ),
-        "system_prompt": _settings_attr(value, "system_prompt", None),
-        "provider_timeout_seconds": _settings_attr(
+        "system_prompt": safe_getattr(value, "system_prompt", None),
+        "provider_timeout_seconds": safe_getattr(
             value,
             "provider_timeout_seconds",
             DEFAULT_PROVIDER_TIMEOUT_SECONDS,
         ),
-        "active_index_generation": _settings_attr(value, "active_index_generation", None),
+        "active_index_generation": safe_getattr(value, "active_index_generation", None),
     }
     if reasoning_mode is not None:
         payload["reasoning_mode"] = reasoning_mode
@@ -69,7 +62,7 @@ def parse_runtime_settings(value: object) -> ProviderRuntimeSettings:
         return ProviderRuntimeSettings(
             **_runtime_settings_payload(
                 value,
-                reasoning_mode=_settings_attr(value, "reasoning_mode", "default"),
+                reasoning_mode=safe_getattr(value, "reasoning_mode", "default"),
             )
         )
 

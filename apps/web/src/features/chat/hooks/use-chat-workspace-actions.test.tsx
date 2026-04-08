@@ -1,35 +1,23 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 
-import { queryKeys } from "@/lib/api/query-keys";
 import { createTestQueryClient } from "@/test/query-client";
+import { useChatAttachmentStore } from "../store/chat-attachment-store";
 import { useChatUiStore } from "../store/chat-ui-store";
 import { useChatWorkspaceActions } from "./use-chat-workspace-actions";
 
 const submitMessageSpy = vi.fn(async () => {});
 const retryMessageSpy = vi.fn(async () => {});
-const mutateAsyncSpy = vi.fn(async () => ({ userMessageId: 1 }));
-
-vi.mock("./use-chat-stream-run", () => ({
-  useChatStreamRun: () => ({
-    markToastShown: vi.fn(),
-    removeRun: vi.fn(),
-  }),
-}));
-
-vi.mock("./use-chat-stream-lifecycle", () => ({
-  useChatStreamLifecycle: () => ({
-    sendMutation: {
-      mutateAsync: mutateAsyncSpy,
-    },
-  }),
+const sendStreamMessageSpy = vi.fn(async () => ({ userMessageId: 1 }));
+const findRunByAssistantMessageIdSpy = vi.fn();
+const invalidateSessionArtifactsSpy = vi.fn(async () => {});
+const useChatComposerSubmitSpy = vi.fn((_args: unknown) => ({
+  retryMessage: retryMessageSpy,
+  submitMessage: submitMessageSpy,
 }));
 
 vi.mock("./use-chat-composer-submit", () => ({
-  useChatComposerSubmit: () => ({
-    retryMessage: retryMessageSpy,
-    submitMessage: submitMessageSpy,
-  }),
+  useChatComposerSubmit: (args: unknown) => useChatComposerSubmitSpy(args),
 }));
 
 vi.mock("../api/chat", async () => {
@@ -43,13 +31,15 @@ vi.mock("../api/chat", async () => {
 function ActionsHost() {
   const actions = useChatWorkspaceActions({
     beginSessionSubmit: vi.fn(() => true),
-    currentSessionIdRef: { current: 7 },
     finishSessionSubmit: vi.fn(),
     messages: [],
     patchSessionContext: vi.fn(),
     patchUserMessageAttachments: vi.fn(() => false),
     requestScrollToLatest: vi.fn(),
     resolvedActiveSessionId: 7,
+    invalidateSessionArtifacts: invalidateSessionArtifactsSpy,
+    findRunByAssistantMessageId: findRunByAssistantMessageIdSpy,
+    sendStreamMessage: sendStreamMessageSpy,
   });
 
   return (
@@ -108,9 +98,14 @@ describe("useChatWorkspaceActions", () => {
   beforeEach(() => {
     submitMessageSpy.mockClear();
     retryMessageSpy.mockClear();
-    mutateAsyncSpy.mockClear();
-    useChatUiStore.setState({
+    sendStreamMessageSpy.mockClear();
+    findRunByAssistantMessageIdSpy.mockClear();
+    invalidateSessionArtifactsSpy.mockClear();
+    useChatComposerSubmitSpy.mockClear();
+    useChatAttachmentStore.setState({
       attachmentsBySession: {},
+    });
+    useChatUiStore.setState({
       draftsBySession: {},
       sendShortcut: "enter",
     });
@@ -130,9 +125,8 @@ describe("useChatWorkspaceActions", () => {
     expect(useChatUiStore.getState().draftsBySession["7"]).toBe("repair me");
   });
 
-  it("invalidates chat queries after deleting a failed message", async () => {
+  it("uses the injected invalidation dependency after deleting a failed message", async () => {
     const queryClient = createTestQueryClient();
-    const invalidateQueriesSpy = vi.spyOn(queryClient, "invalidateQueries");
 
     render(
       <QueryClientProvider client={queryClient}>
@@ -143,12 +137,7 @@ describe("useChatWorkspaceActions", () => {
     fireEvent.click(screen.getByRole("button", { name: "delete" }));
 
     await waitFor(() => {
-      expect(invalidateQueriesSpy).toHaveBeenCalledWith({
-        queryKey: queryKeys.chat.messagesWindow(7),
-      });
-      expect(invalidateQueriesSpy).toHaveBeenCalledWith({
-        queryKey: queryKeys.chat.context(7),
-      });
+      expect(invalidateSessionArtifactsSpy).toHaveBeenCalledWith(7);
     });
   });
 
@@ -168,5 +157,22 @@ describe("useChatWorkspaceActions", () => {
       expect(submitMessageSpy).toHaveBeenCalled();
       expect(retryMessageSpy).toHaveBeenCalled();
     });
+  });
+
+  it("forwards the injected sendStreamMessage dependency into composer submit", () => {
+    const queryClient = createTestQueryClient();
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ActionsHost />
+      </QueryClientProvider>,
+    );
+
+    expect(useChatComposerSubmitSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        findRunByAssistantMessageId: findRunByAssistantMessageIdSpy,
+        sendStreamMessage: sendStreamMessageSpy,
+      }),
+    );
   });
 });

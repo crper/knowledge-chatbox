@@ -25,10 +25,10 @@ import {
   type DocumentPreviewKind,
 } from "../api/document-preview";
 import { fetchProtectedFileBlob } from "@/lib/api/protected-file";
-import { formatDateTime as formatDateTimeUtil } from "@/lib/date-utils";
 import { cn } from "@/lib/utils";
 import { DocumentImagePreview } from "./document-image-preview";
 import { DocumentTextPreview } from "./document-text-preview";
+import { formatKnowledgeDocumentDateTime } from "./resource-document-helpers";
 
 type DocumentPreviewSheetProps = {
   document: KnowledgeDocument | null;
@@ -38,11 +38,6 @@ type DocumentPreviewSheetProps = {
   onShowVersions: (documentId: number) => void;
   open: boolean;
 };
-
-function formatDateTime(value: string, locale: string) {
-  const result = formatDateTimeUtil(value, locale);
-  return result || value;
-}
 
 function formatFileSize(bytes: number | null | undefined) {
   if (typeof bytes !== "number" || Number.isNaN(bytes) || bytes <= 0) {
@@ -126,7 +121,7 @@ export function DocumentPreviewSheet({
   const fileUrl = getDocumentFileUrl(document.id);
   const metaItems = [
     formatFileSize(document.file_size),
-    formatDateTime(document.updated_at, i18n.resolvedLanguage ?? "zh-CN"),
+    formatKnowledgeDocumentDateTime(document.updated_at, i18n.resolvedLanguage ?? "zh-CN"),
     typeof document.chunk_count === "number" ? `${document.chunk_count} chunks` : null,
   ].filter(Boolean);
 

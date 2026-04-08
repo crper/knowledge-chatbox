@@ -21,6 +21,7 @@ from knowledge_chatbox_api.providers.base import (
     VisionSettings,
 )
 from knowledge_chatbox_api.providers.ollama_url import normalize_ollama_base_url
+from knowledge_chatbox_api.utils.compat import safe_getattr
 
 OLLAMA_BASE_URL_UNREACHABLE_CODE = "ollama_base_url_unreachable"
 OLLAMA_PROXY_ENV_KEYS = (
@@ -90,27 +91,19 @@ def _is_ollama_request_error(exc: Exception) -> bool:
     return isinstance(exc, request_error_type)
 
 
-def _attr(value: Any, name: str, default: Any = None) -> Any:
-    if value is None:
-        return default
-    if isinstance(value, dict):
-        return value.get(name, default)
-    return getattr(value, name, default)
-
-
 def _message_content(response: Any) -> str:
-    message = _attr(response, "message")
+    message = safe_getattr(response, "message")
     if message is None and isinstance(response, dict):
         message = response.get("message")
-    content = _attr(message, "content")
+    content = safe_getattr(message, "content")
     if isinstance(content, str):
         return content
-    fallback = _attr(response, "response")
+    fallback = safe_getattr(response, "response")
     return fallback if isinstance(fallback, str) else ""
 
 
 def _usage_to_dict(response: Any) -> dict[str, Any] | None:
-    eval_count = _attr(response, "eval_count")
+    eval_count = safe_getattr(response, "eval_count")
     if eval_count is None:
         return None
     return {"output_tokens": eval_count}
@@ -127,7 +120,7 @@ def _raw_dict(response: Any) -> dict[str, Any] | None:
 
 
 def _ollama_capabilities(response: Any) -> set[str] | None:
-    capabilities = _attr(response, "capabilities")
+    capabilities = safe_getattr(response, "capabilities")
     if isinstance(capabilities, str):
         normalized = capabilities.strip().lower()
         return {normalized} if normalized else set()
@@ -274,7 +267,7 @@ class OllamaResponseAdapter(_OllamaClientMixin, BaseResponseAdapter):
                         delta=content,
                         raw=_raw_dict(chunk),
                     )
-                if _attr(chunk, "done") is True:
+                if safe_getattr(chunk, "done") is True:
                     yield ResponseStreamChunk(
                         type="completed",
                         usage=_usage_to_dict(chunk),
@@ -297,7 +290,7 @@ class OllamaEmbeddingAdapter(_OllamaClientMixin, BaseEmbeddingAdapter):
 
     def embed(self, texts: list[str], settings: EmbeddingSettings) -> list[list[float]]:
         response = self._client(settings).embed(model=settings.embedding_route.model, input=texts)
-        embeddings = _attr(response, "embeddings")
+        embeddings = safe_getattr(response, "embeddings")
         if isinstance(embeddings, list):
             return embeddings
         if embeddings is not None:
