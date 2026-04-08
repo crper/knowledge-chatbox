@@ -109,7 +109,7 @@ def to_document_summary_read(document, latest_revision) -> DocumentSummaryRead:
 
 
 def to_document_upload_readiness_read(settings_record) -> DocumentUploadReadinessRead:
-    """把上传 readiness 结果转换为响应结构。"""
+    """把上传就绪状态转换为响应结构。"""
     readiness = get_document_upload_readiness(settings_record)
     return DocumentUploadReadinessRead(
         can_upload=readiness.can_upload,
@@ -123,7 +123,7 @@ def to_document_list_summary_read(*, pending_count: int) -> DocumentListSummaryR
 
 
 def ensure_document_upload_ready(settings_record) -> None:
-    """上传前阻止缺少 embedding 配置的请求继续落盘。"""
+    """上传前阻止缺少向量配置的请求继续落盘。"""
     readiness = get_document_upload_readiness(settings_record)
     if readiness.blocking_reason == "pending_embedding_not_configured":
         raise PendingEmbeddingNotConfiguredError()
@@ -217,7 +217,7 @@ def get_document_revisions(
     _settings: SettingsDep,
     current_user: CurrentUserDep,
 ) -> Envelope[list[DocumentRevisionRead]]:
-    """获取文档Versions。"""
+    """获取文档版本列表。"""
     service = DocumentQueryService(session)
     documents = service.list_versions(current_user, document_id)
     return Envelope(
@@ -244,7 +244,7 @@ async def upload_document(
     background_tasks: BackgroundTasks,
     file: UploadFileDep,
 ) -> Envelope[DocumentUploadRead]:
-    """处理Upload文档相关逻辑。"""
+    """上传文档。"""
     service = IngestionService(session, settings)
     repository = DocumentRepository(session)
     ensure_document_upload_ready(service.settings_service.get_or_create_settings_record())
@@ -306,7 +306,7 @@ def reindex_document(
     settings: SettingsDep,
     current_user: CurrentUserDep,
 ) -> Envelope[DocumentRevisionRead]:
-    """处理Reindex文档相关逻辑。"""
+    """重新索引文档。"""
     service = IngestionService(session, settings)
     document = service.reindex_document(current_user, document_id)
     return Envelope(success=True, data=to_document_revision_read(document), error=None)
@@ -332,7 +332,7 @@ def get_document_file(
     _settings: SettingsDep,
     current_user: CurrentUserDep,
 ):
-    """获取文档File。"""
+    """获取文档原文件。"""
     service = DocumentQueryService(session)
     document = service.get_document(current_user, document_id)
     if document is None:

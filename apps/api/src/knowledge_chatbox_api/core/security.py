@@ -19,11 +19,11 @@ class PasswordManager:
         self._hasher = PasswordHasher()
 
     def hash_password(self, password: str) -> str:
-        """处理Hash密码相关逻辑。"""
+        """对密码进行哈希。"""
         return self._hasher.hash(password)
 
     def verify_password(self, password_hash: str, password: str) -> tuple[bool, str | None]:
-        """处理Verify密码相关逻辑。"""
+        """校验密码是否匹配。"""
         try:
             verified = self._hasher.verify(password_hash, password)
         except VerifyMismatchError:

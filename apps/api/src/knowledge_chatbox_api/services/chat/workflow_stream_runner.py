@@ -24,6 +24,7 @@ from knowledge_chatbox_api.services.chat.stream_events import (
     StreamEventPayload,
 )
 from knowledge_chatbox_api.services.chat.workflow.event_bridge import ChatWorkflowEventBridge
+from knowledge_chatbox_api.services.chat.workflow.output import merge_sources_by_key
 
 STREAM_INTERRUPTED_ERROR_MESSAGE = "本次生成连接中断，请重试。"
 PROVIDER_STREAM_ENDED_EARLY_ERROR_MESSAGE = "provider stream ended before completion"
@@ -105,7 +106,7 @@ class WorkflowStreamRunner:
                         getattr(getattr(workflow_event, "result", None), "content", None)
                     )
                     if extracted_sources:
-                        sources = self._merge_sources(sources, extracted_sources)
+                        sources = merge_sources_by_key(sources, extracted_sources)
 
                     for event_name, payload in self.bridge.map_event(
                         workflow_event,
@@ -304,29 +305,3 @@ class WorkflowStreamRunner:
 
         self.session.commit()
         return next_seq, presented_events
-
-    def _merge_sources(
-        self,
-        current_sources: list[dict[str, Any]],
-        new_sources: list[dict[str, Any]],
-    ) -> list[dict[str, Any]]:
-        merged: list[dict[str, Any]] = list(current_sources)
-        seen = {
-            (
-                source.get("document_revision_id"),
-                source.get("chunk_id"),
-                source.get("snippet"),
-            )
-            for source in current_sources
-        }
-        for source in new_sources:
-            key = (
-                source.get("document_revision_id"),
-                source.get("chunk_id"),
-                source.get("snippet"),
-            )
-            if key in seen:
-                continue
-            seen.add(key)
-            merged.append(source)
-        return merged

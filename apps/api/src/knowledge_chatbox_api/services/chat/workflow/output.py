@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
@@ -17,3 +19,29 @@ class WorkflowSource(BaseModel):
 class ChatWorkflowResult(BaseModel):
     answer: str = Field(default="")
     sources: list[WorkflowSource] = Field(default_factory=list)
+
+
+def merge_sources_by_key(
+    current_sources: list[dict[str, Any]],
+    new_sources: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    merged: list[dict[str, Any]] = list(current_sources)
+    seen = {
+        (
+            source.get("document_revision_id"),
+            source.get("chunk_id"),
+            source.get("snippet"),
+        )
+        for source in current_sources
+    }
+    for source in new_sources:
+        key = (
+            source.get("document_revision_id"),
+            source.get("chunk_id"),
+            source.get("snippet"),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(source)
+    return merged

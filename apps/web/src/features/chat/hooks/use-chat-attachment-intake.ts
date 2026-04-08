@@ -5,7 +5,7 @@ import { toast } from "sonner";
 
 import { detectSupportedUploadKind } from "@/features/knowledge/upload-file-types";
 import { getDocumentUploadRejectionMessage } from "@/lib/document-upload";
-import { useChatUiStore } from "../store/chat-ui-store";
+import { useChatAttachmentStore } from "../store/chat-attachment-store";
 import {
   buildLocalAttachmentFingerprint,
   collectLocalAttachmentFingerprints,
@@ -19,7 +19,7 @@ export function useChatAttachmentIntake({
   resolvedActiveSessionId,
 }: UseChatAttachmentIntakeParams) {
   const { t } = useTranslation(["chat", "common"]);
-  const addAttachment = useChatUiStore((state) => state.addAttachment);
+  const addAttachment = useChatAttachmentStore((state) => state.addAttachment);
 
   const attachFiles = useCallback(
     (files: File[]) => {
@@ -28,7 +28,8 @@ export function useChatAttachmentIntake({
       }
 
       const existingAttachments =
-        useChatUiStore.getState().attachmentsBySession[String(resolvedActiveSessionId)] ?? [];
+        useChatAttachmentStore.getState().attachmentsBySession[String(resolvedActiveSessionId)] ??
+        [];
       const knownFingerprints = collectLocalAttachmentFingerprints(existingAttachments);
 
       for (const file of files) {

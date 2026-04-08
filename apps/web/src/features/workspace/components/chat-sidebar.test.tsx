@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { QueryClientProvider } from "@tanstack/react-query";
 
 import type { AppUser } from "@/lib/api/client";
+import { useChatAttachmentStore } from "@/features/chat/store/chat-attachment-store";
 import { useChatUiStore } from "@/features/chat/store/chat-ui-store";
 import { I18nProvider } from "@/providers/i18n-provider";
 import { ThemeProvider } from "@/providers/theme-provider";
@@ -59,8 +60,10 @@ describe("ChatSidebar", () => {
   });
 
   function resetStore() {
-    useChatUiStore.setState({
+    useChatAttachmentStore.setState({
       attachmentsBySession: {},
+    });
+    useChatUiStore.setState({
       draftsBySession: {},
     });
   }
@@ -116,10 +119,8 @@ describe("ChatSidebar", () => {
   }
 
   it("does not auto-select the first session while rendering", async () => {
-    useChatUiStore.setState({
-      attachmentsBySession: {},
-      draftsBySession: {},
-    });
+    useChatAttachmentStore.setState({ attachmentsBySession: {} });
+    useChatUiStore.setState({ draftsBySession: {} });
 
     mockSessions([
       { id: 1, title: "Session A" },

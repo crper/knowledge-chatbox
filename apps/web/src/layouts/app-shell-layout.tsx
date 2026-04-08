@@ -32,6 +32,7 @@ import type { AppUser } from "@/lib/api/client";
 import { logoutSession } from "@/lib/auth/session-manager";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/providers/theme-provider";
+import { useChatAttachmentStore } from "@/features/chat/store/chat-attachment-store";
 import { useChatUiStore } from "@/features/chat/store/chat-ui-store";
 import {
   buildChatDesktopGridTemplate,
@@ -71,7 +72,7 @@ export function AppShellLayout({ user }: { user: AppUser }) {
   const [chatWorkspacePanels, setChatWorkspacePanels] = useState(DEFAULT_CHAT_WORKSPACE_PANELS);
   const isChatRoute = location.pathname.startsWith("/chat");
   const { setTheme } = useTheme();
-  const clearAttachments = useChatUiStore((state) => state.clearAttachments);
+  const clearAttachments = useChatAttachmentStore((state) => state.clearAttachments);
   const setDraft = useChatUiStore((state) => state.setDraft);
   const pendingThemeRef = useRef<AppUser["theme_preference"] | null>(null);
   const pendingThemeBaseRef = useRef<AppUser["theme_preference"] | null>(null);

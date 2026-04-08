@@ -4,12 +4,7 @@ from __future__ import annotations
 
 from urllib.parse import urlsplit, urlunsplit
 
-
-def _strip_or_none(value: str | None) -> str | None:
-    if value is None:
-        return None
-    stripped = value.strip()
-    return stripped or None
+from knowledge_chatbox_api.utils.compat import strip_or_none
 
 
 def _trim_v1_suffix(path: str) -> str:
@@ -20,7 +15,7 @@ def _trim_v1_suffix(path: str) -> str:
 
 
 def normalize_ollama_base_url(base_url: str | None) -> str | None:
-    normalized = _strip_or_none(base_url)
+    normalized = strip_or_none(base_url)
     if normalized is None:
         return None
 

@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 from pydantic_ai import RunContext
 
 from knowledge_chatbox_api.services.chat.workflow.deps import ChatWorkflowDeps
-from knowledge_chatbox_api.services.chat.workflow.output import WorkflowSource
+from knowledge_chatbox_api.services.chat.workflow.output import WorkflowSource, merge_sources_by_key
 
 
 class KnowledgeSearchOutput(BaseModel):
@@ -15,32 +15,6 @@ class KnowledgeSearchOutput(BaseModel):
 class PromptAttachmentsOutput(BaseModel):
     prompt_text: str
     attachments: list[dict] = Field(default_factory=list)
-
-
-def _merge_sources(
-    current_sources: list[dict],
-    new_sources: list[dict],
-) -> list[dict]:
-    merged = list(current_sources)
-    seen = {
-        (
-            source.get("document_revision_id"),
-            source.get("chunk_id"),
-            source.get("snippet"),
-        )
-        for source in current_sources
-    }
-    for source in new_sources:
-        key = (
-            source.get("document_revision_id"),
-            source.get("chunk_id"),
-            source.get("snippet"),
-        )
-        if key in seen:
-            continue
-        seen.add(key)
-        merged.append(source)
-    return merged
 
 
 async def knowledge_search_tool(
@@ -64,7 +38,7 @@ async def knowledge_search_tool(
     if isinstance(workflow_state, dict):
         current_sources = workflow_state.get("retrieved_sources", [])
         if isinstance(current_sources, list):
-            workflow_state["retrieved_sources"] = _merge_sources(
+            workflow_state["retrieved_sources"] = merge_sources_by_key(
                 current_sources,
                 [source.model_dump() for source in output.sources],
             )

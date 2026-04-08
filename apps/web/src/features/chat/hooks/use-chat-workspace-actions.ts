@@ -1,23 +1,32 @@
 import { useCallback } from "react";
-import { useQueryClient } from "@tanstack/react-query";
 
-import { queryKeys } from "@/lib/api/query-keys";
 import type {
   ChatAttachmentItem as PersistedChatAttachmentItem,
   ChatMessageItem,
   ChatSessionContextItem,
 } from "../api/chat";
+import type { ChatStreamAttachmentInput } from "../api/chat-stream";
 import { deleteChatMessage } from "../api/chat";
 import { useChatComposerSubmit } from "./use-chat-composer-submit";
-import { useChatStreamLifecycle } from "./use-chat-stream-lifecycle";
-import { useChatStreamRun } from "./use-chat-stream-run";
-import { findStreamRunByAssistantMessageId } from "../utils/stream-run-query";
 import { useChatUiStore } from "../store/chat-ui-store";
+import { MessageStatus } from "../constants";
 
 type UseChatWorkspaceActionsParams = {
   beginSessionSubmit: (sessionId: number) => boolean;
-  currentSessionIdRef: React.RefObject<number | null>;
+  findRunByAssistantMessageId: (assistantMessageId: number) =>
+    | {
+        assistantMessageId: number;
+        retryOfMessageId?: number | null;
+        runId: number;
+        sessionId: number;
+        status: MessageStatus;
+        toastShown: boolean;
+        userContent: string;
+        userMessageId: number | null;
+      }
+    | undefined;
   finishSessionSubmit: (sessionId: number) => void;
+  invalidateSessionArtifacts: (sessionId: number) => Promise<void>;
   messages: ChatMessageItem[];
   patchSessionContext: (input: {
     attachments?: ChatSessionContextItem["attachments"];
@@ -32,38 +41,38 @@ type UseChatWorkspaceActionsParams = {
   }) => boolean;
   requestScrollToLatest: () => void;
   resolvedActiveSessionId: number | null;
+  sendStreamMessage: (input: {
+    attachments?: ChatStreamAttachmentInput[];
+    content: string;
+    retryOfMessageId?: number;
+    sessionId: number;
+  }) => Promise<{ userMessageId?: number | null }>;
 };
 
 export function useChatWorkspaceActions({
   beginSessionSubmit,
-  currentSessionIdRef,
+  findRunByAssistantMessageId,
   finishSessionSubmit,
+  invalidateSessionArtifacts,
   messages,
   patchSessionContext,
   patchUserMessageAttachments,
   requestScrollToLatest,
   resolvedActiveSessionId,
+  sendStreamMessage,
 }: UseChatWorkspaceActionsParams) {
-  const queryClient = useQueryClient();
   const setDraft = useChatUiStore((state) => state.setDraft);
-  const streamRun = useChatStreamRun();
-  const { sendMutation } = useChatStreamLifecycle({
-    currentSessionIdRef,
-    patchSessionContext,
-    streamRun,
-  });
 
   const { retryMessage, submitMessage } = useChatComposerSubmit({
     beginSessionSubmit,
     finishSessionSubmit,
-    findRunByAssistantMessageId: (assistantMessageId) =>
-      findStreamRunByAssistantMessageId(queryClient, assistantMessageId, resolvedActiveSessionId),
+    findRunByAssistantMessageId,
     messages,
     patchSessionContext,
     patchUserMessageAttachments,
     requestScrollToLatest,
     resolvedActiveSessionId,
-    sendStreamMessage: sendMutation.mutateAsync,
+    sendStreamMessage,
   });
 
   const editFailedMessage = useCallback(
@@ -80,15 +89,10 @@ export function useChatWorkspaceActions({
     async (message: ChatMessageItem) => {
       await deleteChatMessage(message.id);
       if (resolvedActiveSessionId !== null) {
-        await queryClient.invalidateQueries({
-          queryKey: queryKeys.chat.messagesWindow(resolvedActiveSessionId),
-        });
-        await queryClient.invalidateQueries({
-          queryKey: queryKeys.chat.context(resolvedActiveSessionId),
-        });
+        await invalidateSessionArtifacts(resolvedActiveSessionId);
       }
     },
-    [queryClient, resolvedActiveSessionId],
+    [invalidateSessionArtifacts, resolvedActiveSessionId],
   );
 
   return {

@@ -67,20 +67,10 @@ function loadSendShortcut(): ChatSendShortcut {
 }
 
 type ChatUiState = {
-  attachmentsBySession: Record<string, ChatAttachmentItem[]>;
   draftsBySession: Record<string, string>;
   sendShortcut: ChatSendShortcut;
-  addAttachment: (sessionId: number | null, attachment: ChatAttachmentItem) => void;
-  clearAttachments: (sessionId: number | null) => void;
-  removeAttachment: (sessionId: number | null, attachmentId: string) => void;
-  setAttachments: (sessionId: number | null, attachments: ChatAttachmentItem[]) => void;
   setSendShortcut: (shortcut: ChatSendShortcut) => void;
   setDraft: (sessionId: number | null, draft: string) => void;
-  updateAttachment: (
-    sessionId: number | null,
-    attachmentId: string,
-    patch: Partial<ChatAttachmentItem>,
-  ) => void;
 };
 
 type PersistedChatUiState = Pick<ChatUiState, "draftsBySession" | "sendShortcut">;
@@ -181,63 +171,13 @@ const chatUiStoreStorage: PersistStorage<PersistedChatUiState> = {
 };
 
 /**
- * 集中管理聊天输入与附件状态。
+ * 集中管理聊天草稿与发送快捷键状态。
  */
 export const useChatUiStore = create<ChatUiState>()(
   persist(
     (set) => ({
-      attachmentsBySession: {},
       draftsBySession: {},
       sendShortcut: "enter",
-      addAttachment: (sessionId, attachment) => {
-        if (sessionId === null) {
-          return;
-        }
-        set((state) => ({
-          attachmentsBySession: {
-            ...state.attachmentsBySession,
-            [String(sessionId)]: [
-              ...(state.attachmentsBySession[String(sessionId)] ?? []),
-              attachment,
-            ],
-          },
-        }));
-      },
-      clearAttachments: (sessionId) => {
-        if (sessionId === null) {
-          return;
-        }
-        set((state) => ({
-          attachmentsBySession: {
-            ...state.attachmentsBySession,
-            [String(sessionId)]: [],
-          },
-        }));
-      },
-      removeAttachment: (sessionId, attachmentId) => {
-        if (sessionId === null) {
-          return;
-        }
-        set((state) => ({
-          attachmentsBySession: {
-            ...state.attachmentsBySession,
-            [String(sessionId)]: (state.attachmentsBySession[String(sessionId)] ?? []).filter(
-              (attachment) => attachment.id !== attachmentId,
-            ),
-          },
-        }));
-      },
-      setAttachments: (sessionId, attachments) => {
-        if (sessionId === null) {
-          return;
-        }
-        set((state) => ({
-          attachmentsBySession: {
-            ...state.attachmentsBySession,
-            [String(sessionId)]: attachments,
-          },
-        }));
-      },
       setSendShortcut: (sendShortcut) => set({ sendShortcut }),
       setDraft: (sessionId, draft) => {
         if (sessionId === null) {
@@ -247,20 +187,6 @@ export const useChatUiStore = create<ChatUiState>()(
           draftsBySession: {
             ...state.draftsBySession,
             [String(sessionId)]: draft,
-          },
-        }));
-      },
-      updateAttachment: (sessionId, attachmentId, patch) => {
-        if (sessionId === null) {
-          return;
-        }
-        set((state) => ({
-          attachmentsBySession: {
-            ...state.attachmentsBySession,
-            [String(sessionId)]: (state.attachmentsBySession[String(sessionId)] ?? []).map(
-              (attachment) =>
-                attachment.id === attachmentId ? { ...attachment, ...patch } : attachment,
-            ),
           },
         }));
       },

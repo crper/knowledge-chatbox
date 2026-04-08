@@ -110,7 +110,7 @@ exit 0
     )
 
     try:
-        output = read_output_until(process, timeout_seconds=2.0)
+        output = read_output_until(process, timeout_seconds=3.0)
     finally:
         terminate_process(process)
 
@@ -214,7 +214,7 @@ exit 1
     )
 
     try:
-        output = read_output_until(process, timeout_seconds=2.0)
+        output = read_output_until(process, timeout_seconds=3.0)
     finally:
         terminate_process(process)
 

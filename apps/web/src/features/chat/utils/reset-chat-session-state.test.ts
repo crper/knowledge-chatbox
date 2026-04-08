@@ -1,3 +1,4 @@
+import { useChatAttachmentStore } from "../store/chat-attachment-store";
 import { useChatUiStore } from "../store/chat-ui-store";
 import {
   LAST_VISITED_CHAT_SESSION_STORAGE_KEY,
@@ -7,7 +8,7 @@ import { resetChatSessionState } from "./reset-chat-session-state";
 
 describe("resetChatSessionState", () => {
   beforeEach(() => {
-    useChatUiStore.setState({
+    useChatAttachmentStore.setState({
       attachmentsBySession: {
         "7": [
           {
@@ -18,6 +19,8 @@ describe("resetChatSessionState", () => {
           },
         ],
       },
+    });
+    useChatUiStore.setState({
       draftsBySession: { "7": "stale draft" },
       sendShortcut: "shift-enter",
     });
@@ -27,8 +30,10 @@ describe("resetChatSessionState", () => {
   it("clears chat ui state and recovery by default while preserving the send shortcut", () => {
     resetChatSessionState();
 
-    expect(useChatUiStore.getState()).toMatchObject({
+    expect(useChatAttachmentStore.getState()).toMatchObject({
       attachmentsBySession: {},
+    });
+    expect(useChatUiStore.getState()).toMatchObject({
       draftsBySession: {},
       sendShortcut: "shift-enter",
     });
@@ -38,7 +43,7 @@ describe("resetChatSessionState", () => {
   it("preserves chat recovery state when explicitly requested", () => {
     resetChatSessionState({ preserveChatRecovery: true });
 
-    expect(useChatUiStore.getState()).toMatchObject({
+    expect(useChatAttachmentStore.getState()).toMatchObject({
       attachmentsBySession: {
         "7": [
           {
@@ -49,6 +54,8 @@ describe("resetChatSessionState", () => {
           },
         ],
       },
+    });
+    expect(useChatUiStore.getState()).toMatchObject({
       draftsBySession: { "7": "stale draft" },
       sendShortcut: "shift-enter",
     });

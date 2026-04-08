@@ -3,22 +3,24 @@
  */
 
 import { useCallback } from "react";
-import { useMutation, useQueryClient, type InfiniteData } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
-import { queryKeys } from "@/lib/api/query-keys";
-import type { ChatMessageItem, ChatSessionContextItem, ChatSourceItem } from "../api/chat";
+import type { ChatSessionContextItem, ChatSourceItem } from "../api/chat";
 import { startChatStream, type ChatStreamAttachmentInput } from "../api/chat-stream";
 import { CHAT_STREAM_EVENT } from "../api/chat-stream-events";
 import type { useChatStreamRun } from "../hooks/use-chat-stream-run";
 import { finalizeTerminalStreamRun } from "../utils/finalize-terminal-stream-run";
 import { resolveSubmitErrorMessage } from "../utils/chat-submit-helpers";
-import { MessageRole, MessageStatus } from "../constants";
-
 type StreamRunTerminalStatus = "failed" | "succeeded";
 
 type UseChatStreamLifecycleParams = {
+  appendStartedUserMessage: (input: {
+    content: string;
+    sessionId: number;
+    userMessageId: number;
+  }) => void;
   currentSessionIdRef: React.RefObject<number | null>;
   patchSessionContext: (input: {
     attachments?: ChatSessionContextItem["attachments"];
@@ -30,6 +32,7 @@ type UseChatStreamLifecycleParams = {
 };
 
 export function useChatStreamLifecycle({
+  appendStartedUserMessage,
   currentSessionIdRef,
   patchSessionContext,
   streamRun,
@@ -107,39 +110,11 @@ export function useChatStreamLifecycle({
               });
 
               if (userMessageId !== null && retryOfMessageId == null) {
-                queryClient.setQueryData<InfiniteData<ChatMessageItem[], number | null>>(
-                  queryKeys.chat.messagesWindow(sessionId),
-                  (current) => {
-                    if (!current || typeof current !== "object" || !("pages" in current)) {
-                      return current;
-                    }
-
-                    const knownIds = new Set(
-                      current.pages.flatMap((page: ChatMessageItem[]) =>
-                        page.map((message) => message.id),
-                      ),
-                    );
-                    if (knownIds.has(userMessageId)) {
-                      return current;
-                    }
-
-                    const nextLastPage = [
-                      ...(current.pages.at(-1) ?? []),
-                      {
-                        content,
-                        id: userMessageId,
-                        role: MessageRole.USER,
-                        status: MessageStatus.SUCCEEDED,
-                        sources_json: [],
-                      } satisfies ChatMessageItem,
-                    ];
-
-                    return {
-                      ...current,
-                      pages: [...current.pages.slice(0, -1), nextLastPage],
-                    };
-                  },
-                );
+                appendStartedUserMessage({
+                  content,
+                  sessionId,
+                  userMessageId,
+                });
               }
               return;
             }

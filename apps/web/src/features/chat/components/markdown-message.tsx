@@ -40,13 +40,11 @@ type RichMarkdownRendererComponent = (props: {
   translations: Partial<StreamdownTranslations>;
 }) => ReactNode;
 
-// 正则表达式模式
 const CJK_TEXT_PATTERN = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
 const INLINE_MATH_PATTERN =
   /^[0-9A-Za-z\s\\{}[\]()+\-*/^_=|<>.,:;%!~\u0370-\u03FF\u2200-\u22FF]+$/u;
 const NUMBER_LIKE_PATTERN = /^\s*[-+]?[\d,.]+(?:\s*%)?\s*$/u;
 
-// 富文本 Markdown 特征模式
 const RICH_MARKDOWN_PATTERNS = [
   /^#{1,6}\s/m, // 标题
   /```/, // 代码块
@@ -280,12 +278,10 @@ export function MarkdownMessage({ content, isStreaming, testId }: MarkdownMessag
     [displayContent],
   );
 
-  // 富文本渲染器状态
   const [RichMarkdownRenderer, setRichMarkdownRenderer] =
     useState<RichMarkdownRendererComponent | null>(null);
   const [richRendererLoadFailed, setRichRendererLoadFailed] = useState(false);
 
-  // 加载富文本渲染器
   // 注意：只在 needsRichRenderer 变化时加载，避免流式更新导致重复加载
   useEffect(() => {
     if (!needsRichRenderer) {
@@ -309,7 +305,6 @@ export function MarkdownMessage({ content, isStreaming, testId }: MarkdownMessag
     };
   }, [needsRichRenderer]);
 
-  // 纯文本回退
   const plainTextFallback = (
     <div
       className="text-ui-body break-words whitespace-pre-wrap text-foreground"

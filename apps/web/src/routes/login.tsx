@@ -4,13 +4,14 @@
 
 import { createFileRoute, redirect } from "@tanstack/react-router";
 
+import { resolvePostLoginPath } from "@/lib/auth/auth-redirect";
 import { PublicLoginRoute } from "@/router/route-shells";
 import { useSessionStore } from "@/lib/auth/session-store";
 
 export const Route = createFileRoute("/login")({
-  beforeLoad: () => {
+  beforeLoad: ({ location }) => {
     if (useSessionStore.getState().status === "authenticated") {
-      throw redirect({ to: "/chat" });
+      throw redirect({ to: resolvePostLoginPath(location.search) });
     }
   },
   component: PublicLoginRoute,

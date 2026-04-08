@@ -3,6 +3,7 @@ import {
   LAST_VISITED_CHAT_SESSION_STORAGE_KEY,
   readLastVisitedChatSessionId,
 } from "@/features/chat/utils/chat-session-recovery";
+import { useChatAttachmentStore } from "@/features/chat/store/chat-attachment-store";
 import { useSessionStore } from "@/lib/auth/session-store";
 import { useChatUiStore } from "@/features/chat/store/chat-ui-store";
 import { setAccessToken } from "@/lib/auth/token-store";
@@ -26,7 +27,7 @@ function seedSessionScopedState(queryClient: ReturnType<typeof createQueryClient
     { id: 7, reasoning_mode: "default", title: "stale chat" },
   ]);
   queryClient.setQueryData(queryKeys.documents.list, [{ document_id: 99, name: "stale.txt" }]);
-  useChatUiStore.setState({
+  useChatAttachmentStore.setState({
     attachmentsBySession: {
       "7": [
         {
@@ -37,6 +38,8 @@ function seedSessionScopedState(queryClient: ReturnType<typeof createQueryClient
         },
       ],
     },
+  });
+  useChatUiStore.setState({
     draftsBySession: { "7": "stale draft" },
     sendShortcut: "shift-enter",
   });
@@ -115,7 +118,7 @@ describe("session-manager", () => {
     });
     expect(queryClient.getQueryData(queryKeys.chat.sessions)).toBeUndefined();
     expect(queryClient.getQueryData(queryKeys.documents.list)).toBeUndefined();
-    expect(useChatUiStore.getState()).toMatchObject({
+    expect(useChatAttachmentStore.getState()).toMatchObject({
       attachmentsBySession: {
         "7": [
           {
@@ -126,6 +129,8 @@ describe("session-manager", () => {
           },
         ],
       },
+    });
+    expect(useChatUiStore.getState()).toMatchObject({
       draftsBySession: { "7": "stale draft" },
       sendShortcut: "shift-enter",
     });

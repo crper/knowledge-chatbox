@@ -12,7 +12,11 @@ from knowledge_chatbox_api.services.chat.workflow.agent import (
     build_chat_usage_limits,
 )
 from knowledge_chatbox_api.services.chat.workflow.model_factory import build_chat_agent_model
-from knowledge_chatbox_api.services.chat.workflow.output import ChatWorkflowResult, WorkflowSource
+from knowledge_chatbox_api.services.chat.workflow.output import (
+    ChatWorkflowResult,
+    WorkflowSource,
+    merge_sources_by_key,
+)
 
 PROMPT_HISTORY_MESSAGE_LIMIT = 4
 
@@ -173,20 +177,11 @@ class ChatWorkflow:
         retrieved_sources: list[WorkflowSource],
         output_sources: list[WorkflowSource],
     ) -> list[WorkflowSource]:
-        merged: list[WorkflowSource] = []
-        seen: set[tuple[int | None, str | None, str]] = set()
-        for source in [*retrieved_sources, *output_sources]:
-            validated = WorkflowSource.model_validate(source)
-            key = (
-                validated.document_revision_id,
-                validated.chunk_id,
-                validated.snippet,
-            )
-            if key in seen:
-                continue
-            seen.add(key)
-            merged.append(validated)
-        return merged
+        merged_dicts = merge_sources_by_key(
+            [s.model_dump() for s in retrieved_sources],
+            [s.model_dump() for s in output_sources],
+        )
+        return [WorkflowSource.model_validate(d) for d in merged_dicts]
 
     def run_sync(
         self,
