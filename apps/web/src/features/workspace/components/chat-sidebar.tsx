@@ -6,20 +6,28 @@ import { useCallback, memo, useDeferredValue, useMemo, useRef, useState } from "
 import type { FormEvent, KeyboardEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { PencilLineIcon, PlusIcon, SearchIcon, Trash2Icon } from "lucide-react";
+import { MoreHorizontalIcon, PencilLineIcon, PlusIcon, SearchIcon, Trash2Icon } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import { z } from "zod";
 
 import { BrandMark } from "@/components/shared/brand-mark";
 import { NavLink, useNavigate } from "@/lib/app-router";
+import { isInputComposing } from "@/lib/dom";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
-  SidebarGroup,
-  SidebarGroupContent,
   SidebarHeader,
   SidebarInput,
   SidebarMenuButton,
@@ -36,24 +44,14 @@ import type { AppUser } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/query-keys";
 import { useAppForm } from "@/lib/form/use-app-form";
 import { handleFormSubmitEvent } from "@/lib/forms";
+import { useIsMobile } from "@/lib/hooks/use-mobile";
 import { cn } from "@/lib/utils";
+import { resolveSessionTitle } from "@/features/chat/utils/session-title";
 import { WorkspaceModeSwitcher } from "./standard-sidebar";
 import { WorkspaceAccountMenu } from "./workspace-account-menu";
 
-function resolveSessionTitle(title: string | null, fallbackTitle: string) {
-  const normalizedTitle = title?.trim();
-  return normalizedTitle ? normalizedTitle : fallbackTitle;
-}
-
 function renderSessionProbeRow() {
-  return <div aria-hidden="true" className="h-[72px] opacity-0 pointer-events-none" />;
-}
-
-function isInputComposing(event: KeyboardEvent<HTMLInputElement>) {
-  return (
-    event.nativeEvent.isComposing ||
-    Boolean((event as KeyboardEvent<HTMLInputElement> & { isComposing?: boolean }).isComposing)
-  );
+  return <div aria-hidden="true" className="h-[52px] pointer-events-none opacity-0" />;
 }
 
 const sessionRenameSchema = z.object({
@@ -64,6 +62,7 @@ type SessionRowProps = {
   activeSessionId: number | null;
   editingSessionId: number | null;
   isRenamePending: boolean;
+  menuPortalContainer?: React.RefObject<HTMLElement | null>;
   onBeginRename: (sessionId: number, title: string | null) => void;
   onDeleteSession: (sessionId: number) => void;
   onRenameInputKeyDown: (event: KeyboardEvent<HTMLInputElement>) => void;
@@ -79,6 +78,7 @@ const SessionRow = memo(function SessionRow({
   activeSessionId,
   editingSessionId,
   isRenamePending,
+  menuPortalContainer,
   onBeginRename,
   onDeleteSession,
   onRenameInputKeyDown,
@@ -90,12 +90,13 @@ const SessionRow = memo(function SessionRow({
   t,
 }: SessionRowProps) {
   const isEditing = editingSessionId === session.id;
+  const isMobile = useIsMobile();
 
   return (
     <div data-testid={`chat-session-actions-${session.id}`}>
       {isEditing ? (
         <form
-          className="surface-light flex items-center gap-2 rounded-xl p-1"
+          className="surface-light flex items-center gap-1.5 rounded-xl p-1"
           data-testid={`chat-session-row-${session.id}`}
           noValidate
           onSubmit={onRenameSubmit(session.id)}
@@ -104,7 +105,7 @@ const SessionRow = memo(function SessionRow({
             {(field: any) => (
               <SidebarInput
                 aria-label={t("sessionRenameLabel", { ns: "chat" })}
-                className="h-9 rounded-lg bg-background"
+                className="h-8 rounded-lg border-border/50 bg-background/88 text-xs"
                 disabled={isRenamePending}
                 name={field.name}
                 onChange={(event) => field.handleChange(event.target.value)}
@@ -126,54 +127,88 @@ const SessionRow = memo(function SessionRow({
         </form>
       ) : (
         <div
-          className="group/menu-item flex items-center gap-2 rounded-xl transition-colors duration-150 ease-out"
+          className="group/menu-item flex items-center gap-1 rounded-xl transition-colors duration-150 ease-out"
+          data-active={session.id === activeSessionId}
           data-testid={`chat-session-row-${session.id}`}
         >
           <SidebarMenuButton
             className={cn(
-              "h-auto min-w-0 flex-1 rounded-xl px-3 py-2.5 text-left shadow-none transition-[background-color,color] duration-180 ease-out",
-              "data-[active=true]:surface-inline data-[active=true]:bg-secondary/56 data-[active=true]:text-foreground data-[active=true]:font-medium",
-              "data-[active=false]:text-foreground/76 data-[active=false]:hover:bg-background/64 data-[active=false]:hover:text-foreground",
+              "h-10 min-w-0 flex-1 rounded-xl border-transparent px-2.5 py-0 text-left shadow-none transition-[background-color,border-color,color,box-shadow] duration-180 ease-out",
+              "data-[active=true]:border-border/60 data-[active=true]:bg-secondary/44 data-[active=true]:text-foreground data-[active=true]:font-medium data-[active=true]:shadow-[inset_0_1px_0_hsl(var(--surface-highlight)/0.14)]",
+              "data-[active=false]:text-foreground/72 data-[active=false]:hover:bg-background/52 data-[active=false]:hover:text-foreground",
             )}
             isActive={session.id === activeSessionId}
             render={
               <NavLink onClick={() => onSelectSession?.()} to={buildChatSessionPath(session.id)} />
             }
+            size="sm"
           >
-            <span className="min-w-0 truncate">
+            <span className="min-w-0 truncate text-[12px] tracking-[-0.01em]">
               {resolveSessionTitle(session.title, sessionTitleFallback)}
             </span>
           </SidebarMenuButton>
           <div
-            className="flex shrink-0 select-none items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover/menu-item:opacity-100"
-            data-testid={`chat-session-action-rail-${session.id}`}
+            className="flex shrink-0 select-none items-center opacity-100 md:opacity-0 md:transition-opacity md:duration-150 md:group-hover/menu-item:opacity-100 md:group-data-[active=true]/menu-item:opacity-100"
+            data-testid={`chat-session-action-menu-${session.id}`}
           >
-            <Button
-              aria-label={t("renameSessionAction", {
-                ns: "chat",
-                title: resolveSessionTitle(session.title, sessionTitleFallback),
-              })}
-              className="size-8 rounded-lg"
-              onClick={() => onBeginRename(session.id, session.title)}
-              size="icon-sm"
-              type="button"
-              variant="ghost"
-            >
-              <PencilLineIcon className="size-3.5" />
-            </Button>
-            <Button
-              aria-label={t("deleteSessionAction", {
-                ns: "chat",
-                title: resolveSessionTitle(session.title, sessionTitleFallback),
-              })}
-              className="size-8 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/8"
-              onClick={() => onDeleteSession(session.id)}
-              size="icon-sm"
-              type="button"
-              variant="ghost"
-            >
-              <Trash2Icon className="size-3.5" />
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button
+                    aria-label={t("sessionMenuAction", {
+                      ns: "chat",
+                      title: resolveSessionTitle(session.title, sessionTitleFallback),
+                    })}
+                    className={cn(
+                      "rounded-xl border border-transparent text-muted-foreground/86 transition-[background-color,border-color,color] duration-150",
+                      "bg-background/42 hover:border-border/70 hover:bg-secondary/68 hover:text-foreground",
+                      "md:bg-transparent md:hover:border-border/62 md:group-hover/menu-item:bg-secondary/58 md:group-hover/menu-item:text-foreground md:group-data-[active=true]/menu-item:bg-secondary/62",
+                    )}
+                    data-testid={`chat-session-menu-trigger-${session.id}`}
+                    size="icon-sm"
+                    type="button"
+                    variant="ghost"
+                  />
+                }
+              >
+                <MoreHorizontalIcon className="size-3.5" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align={isMobile ? "end" : "start"}
+                alignOffset={isMobile ? -4 : 0}
+                className={cn(
+                  "rounded-2xl p-1.5",
+                  isMobile
+                    ? "w-[min(13.5rem,calc(100vw-3rem))]"
+                    : "w-[min(15rem,calc(100vw-2rem))]",
+                )}
+                collisionPadding={isMobile ? 14 : 8}
+                portalled={!isMobile}
+                portalContainer={menuPortalContainer}
+                side={isMobile ? "bottom" : "right"}
+                sideOffset={isMobile ? 10 : 8}
+              >
+                <DropdownMenuLabel className="px-3 py-1.5 text-[11px] tracking-[0.06em]">
+                  {t("sessionMenuLabel", { ns: "chat" })}
+                </DropdownMenuLabel>
+                <DropdownMenuItem
+                  className="gap-2.5 rounded-xl px-3 py-2 text-sm"
+                  onClick={() => onBeginRename(session.id, session.title)}
+                >
+                  <PencilLineIcon className="size-4 text-muted-foreground" />
+                  <span>{t("renameSessionMenuItem", { ns: "chat" })}</span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator className="my-1.5" />
+                <DropdownMenuItem
+                  className="gap-2.5 rounded-xl px-3 py-2 text-sm"
+                  onClick={() => onDeleteSession(session.id)}
+                  variant="destructive"
+                >
+                  <Trash2Icon className="size-4" />
+                  <span>{t("deleteAction", { ns: "chat" })}</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       )}
@@ -185,6 +220,8 @@ const SessionRow = memo(function SessionRow({
  * 渲染聊天侧栏。
  */
 export function ChatSidebar({
+  accountMenuCompact = false,
+  accountMenuPortalled = true,
   className,
   onCreateSession,
   createSessionPending = false,
@@ -193,10 +230,15 @@ export function ChatSidebar({
   onSelectSession,
   pathname,
   searchValue,
+  showAccountMenu = true,
+  showWorkspaceBrand = true,
+  showWorkspaceModeSwitcher = true,
   surface = "default",
   setSearchValue,
   user,
 }: {
+  accountMenuCompact?: boolean;
+  accountMenuPortalled?: boolean;
   className?: string;
   onCreateSession: () => Promise<void>;
   createSessionPending?: boolean;
@@ -205,6 +247,9 @@ export function ChatSidebar({
   onSelectSession?: () => void;
   pathname: string;
   searchValue: string;
+  showAccountMenu?: boolean;
+  showWorkspaceBrand?: boolean;
+  showWorkspaceModeSwitcher?: boolean;
   surface?: "default" | "embedded";
   setSearchValue: (value: string) => void;
   user: AppUser;
@@ -230,6 +275,9 @@ export function ChatSidebar({
       renameChatSession(sessionId, { title }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.chat.sessions });
+    },
+    onError: () => {
+      toast.error(t("renameFailedNotice", { ns: "chat" }));
     },
   });
   const deleteSessionMutation = useMutation({
@@ -285,7 +333,9 @@ export function ChatSidebar({
       );
       setEditingSessionId(null);
       renameForm.reset({ title: "" });
-    } catch {}
+    } catch {
+      // Rename failed, error handled by mutation
+    }
   };
 
   const handleDeleteSession = useCallback(
@@ -313,29 +363,11 @@ export function ChatSidebar({
     event.currentTarget.form?.requestSubmit();
   }, []);
 
-  const handleBeginRename = useCallback(
-    (sessionId: number, title: string | null) => {
-      beginRename(sessionId, title);
-    },
-    [beginRename],
-  );
+  const handleClearSearch = useCallback(() => setSearchValue(""), []);
+  const showWorkspaceHeader = showWorkspaceBrand || showWorkspaceModeSwitcher;
 
-  const handleCreateSession = useCallback(() => {
-    void onCreateSession();
-  }, [onCreateSession]);
-
-  const handleSetSearchValue = useCallback(
-    (value: string) => {
-      setSearchValue(value);
-    },
-    [setSearchValue],
-  );
-
-  const handleClearSearch = useCallback(() => {
-    setSearchValue("");
-  }, [setSearchValue]);
-
-  const SESSION_ROW_HEIGHT = 72;
+  const SESSION_ROW_HEIGHT = 52;
+  const menuPortalRef = useRef<HTMLDivElement>(null);
   const parentRef = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
     count: filteredSessions.length,
@@ -350,67 +382,61 @@ export function ChatSidebar({
         aria-label={t("workspaceSidebarLabel", { ns: "common" })}
         className={cn(
           surface === "embedded"
-            ? "h-full w-full bg-transparent px-5 py-5"
+            ? "h-full w-full bg-transparent px-4 py-4"
             : "surface-panel-subtle h-full w-full rounded-2xl px-4 py-4",
           className,
         )}
         collapsible="none"
         role="complementary"
       >
-        <SidebarHeader className="gap-5 p-0">
-          <BrandMark
-            alt={t("workspaceLogoAlt", { ns: "common" })}
-            subtitle={t("workspaceSubtitle", { ns: "common" })}
-            title={t("workspaceTitle", { ns: "common" })}
-          />
+        <SidebarHeader className={cn("p-0", showWorkspaceHeader ? "gap-5" : "gap-3")}>
+          {showWorkspaceBrand ? (
+            <BrandMark
+              alt={t("workspaceLogoAlt", { ns: "common" })}
+              className="px-1"
+              subtitle={t("workspaceSubtitle", { ns: "common" })}
+              title={t("workspaceTitle", { ns: "common" })}
+            />
+          ) : null}
 
-          <WorkspaceModeSwitcher onNavigate={onNavigate} pathname={pathname} />
+          {showWorkspaceModeSwitcher ? (
+            <WorkspaceModeSwitcher onNavigate={onNavigate} pathname={pathname} />
+          ) : null}
 
-          <SidebarGroup className="surface-inline gap-3.5 rounded-2xl p-3.5">
-            <SidebarGroupContent>
-              <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-ui-title font-semibold">
-                    {t("sessionListTitle", { ns: "chat" })}
-                  </p>
-                  <p className="text-ui-caption mt-0.5 text-muted-foreground/72">
-                    {t("workspaceChatHint", { ns: "common" })}
-                  </p>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <Button
-                    aria-label={t("newSessionAction", { ns: "chat" })}
-                    disabled={createSessionPending}
-                    onClick={handleCreateSession}
-                    size="icon-sm"
-                    type="button"
-                    variant="secondary"
-                  >
-                    <PlusIcon aria-hidden="true" className="size-4" />
-                  </Button>
-                </div>
-              </div>
-            </SidebarGroupContent>
-            <SidebarGroupContent>
-              <label className="relative block">
-                <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground/56" />
-                <SidebarInput
-                  aria-label={t("searchSessionsLabel", { ns: "chat" })}
-                  className="h-9 rounded-xl border-border/50 bg-background/56 pr-3 pl-8.5 text-sm placeholder:text-muted-foreground/48"
-                  onChange={(event) => handleSetSearchValue(event.target.value)}
-                  placeholder={t("searchSessionsLabel", { ns: "chat" })}
-                  value={searchValue}
-                />
-              </label>
-            </SidebarGroupContent>
-          </SidebarGroup>
+          <div className={cn("space-y-1.5", showWorkspaceHeader ? "px-0.5" : "px-0")}>
+            <label className="relative block">
+              <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-3.25 -translate-y-1/2 text-muted-foreground/48" />
+              <SidebarInput
+                aria-label={t("searchSessionsLabel", { ns: "chat" })}
+                className="h-8 rounded-xl border-border/45 bg-background/44 pr-3 pl-8 text-[12px] placeholder:text-muted-foreground/42"
+                onChange={(event) => setSearchValue(event.target.value)}
+                placeholder={t("searchSessionsLabel", { ns: "chat" })}
+                value={searchValue}
+              />
+            </label>
+
+            <Button
+              aria-label={t("newSessionAction", { ns: "chat" })}
+              className="h-9 w-full justify-start rounded-xl border border-transparent bg-background/20 px-2.5 text-[12px] font-medium text-foreground shadow-none hover:bg-background/36"
+              disabled={createSessionPending}
+              onClick={onCreateSession}
+              size="sm"
+              type="button"
+              variant="ghost"
+            >
+              <span className="flex size-4 shrink-0 items-center justify-center rounded-md border border-border/52 bg-background/72">
+                <PlusIcon aria-hidden="true" className="size-3" />
+              </span>
+              <span>{t("newSessionAction", { ns: "chat" })}</span>
+            </Button>
+          </div>
         </SidebarHeader>
 
-        <SidebarContent className="min-h-0 gap-0 overflow-hidden px-0 pt-5">
-          <SidebarSeparator className="mx-0 mb-3.5 opacity-56" />
+        <SidebarContent className="min-h-0 gap-0 overflow-hidden px-0 pt-3">
+          <SidebarSeparator className="mx-0 mb-2 opacity-45" />
           <div className="min-h-0 flex-1">
             {filteredSessions.length === 0 ? (
-              <Empty className="bg-background/28 rounded-xl px-3.5 py-6">
+              <Empty className="rounded-2xl bg-background/24 px-3.5 py-6">
                 <EmptyHeader>
                   <EmptyTitle className="text-sm">
                     {searchValue
@@ -438,8 +464,8 @@ export function ChatSidebar({
             ) : (
               <div
                 ref={parentRef}
-                className="min-h-0 h-full overflow-auto pr-3"
-                data-testid="chat-sidebar-virtuoso"
+                className="h-full min-h-0 overflow-auto pr-1.5"
+                data-testid="chat-sidebar-session-list"
                 style={{ contain: "strict" }}
               >
                 <div
@@ -469,7 +495,8 @@ export function ChatSidebar({
                             activeSessionId={activeSessionId}
                             editingSessionId={editingSessionId}
                             isRenamePending={renameSessionMutation.isPending}
-                            onBeginRename={handleBeginRename}
+                            menuPortalContainer={menuPortalRef}
+                            onBeginRename={beginRename}
                             onDeleteSession={handleDeleteSession}
                             onRenameInputKeyDown={handleRenameInputKeyDown}
                             onRenameSubmit={handleRenameSubmit}
@@ -491,10 +518,21 @@ export function ChatSidebar({
           </div>
         </SidebarContent>
 
-        <SidebarFooter className="mt-auto gap-3 p-0 pt-3">
-          <SidebarSeparator className="mx-0 mb-1 opacity-56" />
-          <WorkspaceAccountMenu onLogout={onLogout} onNavigate={onNavigate} user={user} />
-        </SidebarFooter>
+        {showAccountMenu ? (
+          <SidebarFooter className="mt-auto gap-3 p-0 pt-3">
+            <SidebarSeparator className="mx-0 mb-1 opacity-56" />
+            <WorkspaceAccountMenu
+              className={accountMenuCompact ? "mx-auto" : undefined}
+              compact={accountMenuCompact}
+              contentPortalContainer={menuPortalRef}
+              contentPortalled={accountMenuPortalled}
+              onLogout={onLogout}
+              onNavigate={onNavigate}
+              user={user}
+            />
+          </SidebarFooter>
+        ) : null}
+        <div data-slot="chat-sidebar-menu-portal" ref={menuPortalRef} />
       </Sidebar>
     </SidebarProvider>
   );

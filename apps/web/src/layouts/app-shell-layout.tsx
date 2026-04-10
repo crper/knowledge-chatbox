@@ -1,13 +1,17 @@
 /**
  * @file 应用壳层布局布局模块。
+ *
+ * TODO: 当前文件包含四种布局模式（桌面聊天/移动聊天/桌面标准/移动标准），
+ * 后续可拆分为 ChatDesktopLayout / ChatMobileLayout / StandardDesktopLayout / StandardMobileLayout 子组件。
  */
 
-import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { PanelLeftIcon, PanelRightIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Outlet, useLocation, useNavigate } from "@/lib/app-router";
 import {
   Sheet,
@@ -24,16 +28,15 @@ import { ChatResourcePanel } from "@/features/workspace/components/chat-resource
 import { ChatSidebar } from "@/features/workspace/components/chat-sidebar";
 import { CollapsedEdgeHandle } from "@/features/workspace/components/collapsed-edge-handle";
 import { StandardSidebar } from "@/features/workspace/components/standard-sidebar";
+import { WorkspaceRail } from "@/features/workspace/components/workspace-rail";
 import { getWorkspaceLabelKey } from "@/features/workspace/workspace-links";
 import { queryKeys } from "@/lib/api/query-keys";
-import { clearPendingThemeSync, resolvePendingThemeSync } from "@/lib/config/theme-sync-storage";
 import { useIsMobile } from "@/lib/hooks/use-mobile";
 import type { AppUser } from "@/lib/api/client";
 import { logoutSession } from "@/lib/auth/session-manager";
 import { cn } from "@/lib/utils";
-import { useTheme } from "@/providers/theme-provider";
-import { useChatAttachmentStore } from "@/features/chat/store/chat-attachment-store";
-import { useChatUiStore } from "@/features/chat/store/chat-ui-store";
+import { clearComposer } from "@/features/chat/utils/composer-transaction";
+import { useThemeSyncService } from "@/providers/theme-sync-service";
 import {
   buildChatDesktopGridTemplate,
   type ChatWorkspacePanelsState,
@@ -41,7 +44,6 @@ import {
 
 const DEFAULT_CHAT_WORKSPACE_PANELS: ChatWorkspacePanelsState = {
   leftCollapsed: false,
-  rightCollapsed: false,
 };
 
 function isEditableHotkeyTarget(target: EventTarget | null) {
@@ -71,40 +73,8 @@ export function AppShellLayout({ user }: { user: AppUser }) {
   const [searchValue, setSearchValue] = useState("");
   const [chatWorkspacePanels, setChatWorkspacePanels] = useState(DEFAULT_CHAT_WORKSPACE_PANELS);
   const isChatRoute = location.pathname.startsWith("/chat");
-  const { setTheme } = useTheme();
-  const clearAttachments = useChatAttachmentStore((state) => state.clearAttachments);
-  const setDraft = useChatUiStore((state) => state.setDraft);
-  const pendingThemeRef = useRef<AppUser["theme_preference"] | null>(null);
-  const pendingThemeBaseRef = useRef<AppUser["theme_preference"] | null>(null);
-
-  useEffect(() => {
-    const pendingThemeSync = resolvePendingThemeSync(user.theme_preference);
-
-    if (pendingThemeSync.shouldClearPendingTheme) {
-      clearPendingThemeSync();
-      pendingThemeRef.current = null;
-      pendingThemeBaseRef.current = null;
-      setTheme(pendingThemeSync.resolvedTheme);
-      return;
-    }
-
-    if (pendingThemeRef.current !== pendingThemeSync.pendingTheme) {
-      pendingThemeRef.current = pendingThemeSync.pendingTheme;
-      pendingThemeBaseRef.current = user.theme_preference;
-      setTheme(pendingThemeSync.resolvedTheme);
-      return;
-    }
-
-    if (pendingThemeBaseRef.current === user.theme_preference) {
-      setTheme(pendingThemeSync.resolvedTheme);
-      return;
-    }
-
-    clearPendingThemeSync();
-    pendingThemeRef.current = null;
-    pendingThemeBaseRef.current = null;
-    setTheme(user.theme_preference);
-  }, [setTheme, user.theme_preference]);
+  const isSettingsRoute = location.pathname.startsWith("/settings");
+  useThemeSyncService({ user });
 
   useEffect(() => {
     setIsMobileContextOpen(false);
@@ -114,14 +84,6 @@ export function AppShellLayout({ user }: { user: AppUser }) {
   const toggleLeftWorkspacePanel = useEffectEvent(() => {
     setChatWorkspacePanels((current) => ({
       leftCollapsed: !current.leftCollapsed,
-      rightCollapsed: current.rightCollapsed,
-    }));
-  });
-
-  const collapseRightWorkspacePanel = useEffectEvent(() => {
-    setChatWorkspacePanels((current) => ({
-      leftCollapsed: current.leftCollapsed,
-      rightCollapsed: true,
     }));
   });
 
@@ -152,8 +114,7 @@ export function AppShellLayout({ user }: { user: AppUser }) {
   const createSessionMutation = useMutation({
     mutationFn: createChatSession,
     onSuccess: (session) => {
-      setDraft(session.id, "");
-      clearAttachments(session.id);
+      clearComposer(session.id);
       queryClient.setQueryData(
         queryKeys.chat.sessions,
         (current: Array<{ id: number; title: string | null }> | undefined) => {
@@ -210,6 +171,8 @@ export function AppShellLayout({ user }: { user: AppUser }) {
                   </SheetHeader>
                   <div className="min-h-0 flex-1 px-4 pb-4 pt-3">
                     <ChatSidebar
+                      accountMenuCompact
+                      accountMenuPortalled={false}
                       className="h-full"
                       onCreateSession={handleCreateSession}
                       createSessionPending={createSessionMutation.isPending}
@@ -270,6 +233,12 @@ export function AppShellLayout({ user }: { user: AppUser }) {
             }}
           >
             <div
+              className="min-h-0 min-w-0 overflow-hidden border-r border-border/50 bg-sidebar/34"
+              data-testid="chat-desktop-workspace-rail"
+            >
+              <WorkspaceRail onLogout={handleLogout} pathname={location.pathname} user={user} />
+            </div>
+            <div
               className={cn(
                 "min-h-0 min-w-0 overflow-hidden bg-sidebar/56",
                 chatWorkspacePanels.leftCollapsed ? "" : "border-r border-border/60",
@@ -283,6 +252,9 @@ export function AppShellLayout({ user }: { user: AppUser }) {
                   onLogout={handleLogout}
                   pathname={location.pathname}
                   searchValue={searchValue}
+                  showAccountMenu={false}
+                  showWorkspaceBrand={false}
+                  showWorkspaceModeSwitcher={false}
                   surface="embedded"
                   setSearchValue={setSearchValue}
                   user={user}
@@ -298,52 +270,14 @@ export function AppShellLayout({ user }: { user: AppUser }) {
                 {chatWorkspacePanels.leftCollapsed ? (
                   <CollapsedEdgeHandle
                     buttonLabel={t("expandSessionSidebarAction")}
-                    onExpand={() =>
-                      setChatWorkspacePanels((current) => ({
-                        leftCollapsed: false,
-                        rightCollapsed: current.rightCollapsed,
-                      }))
-                    }
+                    onExpand={() => setChatWorkspacePanels({ leftCollapsed: false })}
                     side="left"
-                  />
-                ) : null}
-                {chatWorkspacePanels.rightCollapsed ? (
-                  <CollapsedEdgeHandle
-                    buttonLabel={t("expandContextSidebarAction", { ns: "chat" })}
-                    onExpand={() =>
-                      setChatWorkspacePanels((current) => ({
-                        leftCollapsed: current.leftCollapsed,
-                        rightCollapsed: false,
-                      }))
-                    }
-                    side="right"
                   />
                 ) : null}
               </div>
             </div>
-            <div
-              className={cn(
-                "min-h-0 min-w-0 overflow-hidden bg-background/34",
-                chatWorkspacePanels.rightCollapsed ? "" : "border-l border-border/60",
-              )}
-            >
-              {chatWorkspacePanels.rightCollapsed ? null : (
-                <ChatResourcePanel
-                  className="h-full"
-                  headerAccessory={
-                    <Button
-                      aria-label={t("collapseContextSidebarAction", { ns: "chat" })}
-                      onClick={() => collapseRightWorkspacePanel()}
-                      size="sm"
-                      type="button"
-                      variant="ghost"
-                    >
-                      {t("collapseContextSidebarAction", { ns: "chat" })}
-                    </Button>
-                  }
-                  surface="embedded"
-                />
-              )}
+            <div className="min-h-0 min-w-0 overflow-hidden border-l border-border/60 bg-background/34">
+              <ChatResourcePanel className="h-full" surface="embedded" />
             </div>
           </div>
         )}
@@ -380,15 +314,16 @@ export function AppShellLayout({ user }: { user: AppUser }) {
                   </SheetDescription>
                 </SheetHeader>
                 <div className="min-h-0 flex-1 px-4 pb-4 pt-3">
-                  <div data-testid="mobile-navigation-surface">
-                    <StandardSidebar
-                      className="h-full"
-                      onNavigate={() => setIsMobileNavigationOpen(false)}
-                      onLogout={handleLogout}
-                      pathname={location.pathname}
-                      user={user}
-                    />
-                  </div>
+                  <StandardSidebar
+                    accountMenuCompact
+                    accountMenuPortalled={false}
+                    className="h-full"
+                    onLogout={handleLogout}
+                    onNavigate={() => setIsMobileNavigationOpen(false)}
+                    pathname={location.pathname}
+                    surface="embedded"
+                    user={user}
+                  />
                 </div>
               </SheetContent>
             </Sheet>
@@ -410,29 +345,44 @@ export function AppShellLayout({ user }: { user: AppUser }) {
           </div>
         </div>
       ) : (
-        // 桌面端标准布局：优化侧边栏比例
         <div
-          className="surface-elevated grid min-h-[calc(100dvh-1.75rem)] gap-0 overflow-hidden rounded-2xl lg:grid-cols-[252px_minmax(0,1fr)]"
+          className="surface-elevated grid h-[calc(100dvh-1.75rem)] min-h-[calc(100dvh-1.75rem)] gap-0 overflow-hidden rounded-2xl"
           data-testid="standard-desktop-layout"
+          style={{
+            height: "calc(100vh - 1.75rem)",
+            minHeight: "calc(100vh - 1.75rem)",
+            gridTemplateColumns: isSettingsRoute
+              ? "4.75rem 15.75rem minmax(0, 1fr)"
+              : "4.75rem minmax(0, 1fr)",
+          }}
         >
           <div
-            className="min-h-0 min-w-0 overflow-hidden border-r border-border/50 bg-sidebar/56"
-            data-testid="standard-desktop-sidebar-rail"
+            className="min-h-0 min-w-0 overflow-hidden border-r border-border/50 bg-sidebar/34"
+            data-testid="workspace-desktop-rail"
           >
-            <StandardSidebar
-              onLogout={handleLogout}
-              pathname={location.pathname}
-              surface="embedded"
-              user={user}
-            />
+            <WorkspaceRail onLogout={handleLogout} pathname={location.pathname} user={user} />
           </div>
-          <div
-            className="flex min-h-0 min-w-0 flex-col bg-background/34"
+          {isSettingsRoute ? (
+            <div className="min-h-0 min-w-0 overflow-hidden border-r border-border/50 bg-sidebar/56">
+              <StandardSidebar
+                mode="settings"
+                onLogout={handleLogout}
+                pathname={location.pathname}
+                surface="embedded"
+                user={user}
+              />
+            </div>
+          ) : null}
+          <ScrollArea
+            className="flex min-h-0 min-w-0 flex-col overflow-y-auto overscroll-contain bg-background/34"
+            contentClassName="min-w-0 w-full"
             data-testid="standard-desktop-content-rail"
-            id="main-content"
+            hideScrollbar
+            viewportClassName="overflow-x-hidden"
+            viewportStyle={{ overflowX: "hidden" }}
           >
             <Outlet />
-          </div>
+          </ScrollArea>
         </div>
       )}
     </main>

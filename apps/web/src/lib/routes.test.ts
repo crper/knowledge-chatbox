@@ -4,7 +4,6 @@ import {
   ADMIN_USERS_PATH,
   CHAT_INDEX_PATH,
   buildChatSessionPath,
-  buildLegacySettingsSearchPath,
   buildSettingsPath,
   normalizeSettingsSectionPath,
   parseChatSessionPathname,
@@ -17,10 +16,6 @@ describe("routes", () => {
     expect(buildSettingsPath("providers")).toBe("/settings/providers");
     expect(buildSettingsPath("prompt")).toBe("/settings/prompt");
     expect(buildSettingsPath("management")).toBe("/settings/management");
-  });
-
-  it("builds compatibility paths for legacy settings links", () => {
-    expect(buildLegacySettingsSearchPath("security")).toBe("/settings?section=security");
   });
 
   it("builds canonical chat and admin paths", () => {

@@ -1,7 +1,9 @@
 """聊天相关服务模块。"""
 
-from __future__ import annotations
-
+from knowledge_chatbox_api.models.enums import (
+    ChatMessageRole,
+    ChatMessageStatus,
+)
 from knowledge_chatbox_api.repositories.chat_repository import ChatRepository
 
 
@@ -11,6 +13,17 @@ class RetryTargetNotFoundError(Exception):
 
 class DuplicateClientRequestConflictError(Exception):
     """表示幂等键已被不同请求载荷占用。"""
+
+
+_ATTACHMENT_COMPARE_FIELDS = (
+    "attachment_id",
+    "type",
+    "name",
+    "mime_type",
+    "size_bytes",
+    "document_revision_id",
+    "archived_at",
+)
 
 
 class RetryService:
@@ -35,7 +48,7 @@ class RetryService:
         )
         if message is not None:
             if self._matches_existing_message(
-                message_id=message.id,
+                existing_message=message,
                 content=content,
                 attachments=attachments,
             ):
@@ -47,9 +60,9 @@ class RetryService:
         return self.repository.create_message(
             attachments=attachments,
             session_id=session_id,
-            role="user",
+            role=ChatMessageRole.USER,
             content=content,
-            status="succeeded",
+            status=ChatMessageStatus.SUCCEEDED,
             client_request_id=client_request_id,
         )
 
@@ -66,11 +79,10 @@ class RetryService:
         if (
             original_message is None
             or original_message.session_id != session_id
-            or original_message.role != "user"
+            or original_message.role != ChatMessageRole.USER
         ):
             raise RetryTargetNotFoundError("Retry target not found.")
 
-        del content
         original_attachments = self._serialize_attachments(original_message.id)
         existing_message = self.repository.get_user_message_by_client_request_id(
             session_id=session_id,
@@ -78,7 +90,7 @@ class RetryService:
         )
         if existing_message is not None:
             if self._matches_existing_message(
-                message_id=existing_message.id,
+                existing_message=existing_message,
                 content=original_message.content,
                 attachments=original_attachments,
                 retry_of_message_id=retry_of_message_id,
@@ -90,9 +102,9 @@ class RetryService:
         return self.repository.create_message(
             attachments=original_attachments,
             session_id=session_id,
-            role="user",
+            role=ChatMessageRole.USER,
             content=original_message.content,
-            status="succeeded",
+            status=ChatMessageStatus.SUCCEEDED,
             client_request_id=client_request_id,
             retry_of_message_id=retry_of_message_id,
         )
@@ -107,21 +119,20 @@ class RetryService:
         """创建助手回复消息。"""
         return self.repository.create_message(
             session_id=session_id,
-            role="assistant",
+            role=ChatMessageRole.ASSISTANT,
             content=content,
-            status="pending",
+            status=ChatMessageStatus.PENDING,
             reply_to_message_id=reply_to_message_id,
         )
 
     def _matches_existing_message(
         self,
         *,
-        message_id: int,
+        existing_message,
         content: str,
         attachments: list[dict] | None,
         retry_of_message_id: int | None = None,
     ) -> bool:
-        existing_message = self.repository.get_message(message_id)
         if existing_message is None:
             return False
 
@@ -129,20 +140,12 @@ class RetryService:
             content == existing_message.content
             and retry_of_message_id == existing_message.retry_of_message_id
             and self._normalize_attachments(attachments)
-            == self._normalize_attachments(self._serialize_attachments(message_id))
+            == self._normalize_attachments(self._serialize_attachments(existing_message.id))
         )
 
     def _serialize_attachments(self, message_id: int) -> list[dict]:
         return [
-            {
-                "attachment_id": attachment.attachment_id,
-                "type": attachment.type,
-                "name": attachment.name,
-                "mime_type": attachment.mime_type,
-                "size_bytes": attachment.size_bytes,
-                "document_revision_id": attachment.document_revision_id,
-                "archived_at": attachment.archived_at,
-            }
+            {field: getattr(attachment, field) for field in _ATTACHMENT_COMPARE_FIELDS}
             for attachment in self.repository.list_attachments(message_id)
         ]
 
@@ -150,14 +153,6 @@ class RetryService:
         normalized: list[dict] = []
         for attachment in attachments or []:
             normalized.append(
-                {
-                    "attachment_id": attachment["attachment_id"],
-                    "type": attachment["type"],
-                    "name": attachment["name"],
-                    "mime_type": attachment["mime_type"],
-                    "size_bytes": attachment["size_bytes"],
-                    "document_revision_id": attachment.get("document_revision_id"),
-                    "archived_at": attachment.get("archived_at"),
-                }
+                {field: attachment.get(field) for field in _ATTACHMENT_COMPARE_FIELDS}
             )
         return normalized

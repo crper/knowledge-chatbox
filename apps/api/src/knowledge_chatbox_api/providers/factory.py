@@ -1,9 +1,8 @@
 """Provider capability factories."""
 
-from __future__ import annotations
-
 from typing import Any
 
+from knowledge_chatbox_api.models.enums import ProviderName
 from knowledge_chatbox_api.providers.anthropic_provider import (
     AnthropicResponseAdapter,
     AnthropicVisionAdapter,
@@ -12,6 +11,7 @@ from knowledge_chatbox_api.providers.base import (
     BaseEmbeddingAdapter,
     BaseResponseAdapter,
     BaseVisionAdapter,
+    SimpleLRUCache,
 )
 from knowledge_chatbox_api.providers.ollama_provider import (
     OllamaEmbeddingAdapter,
@@ -34,22 +34,24 @@ from knowledge_chatbox_api.schemas.settings import (
 )
 
 _RESPONSE_REGISTRY: dict[str, type[BaseResponseAdapter]] = {
-    "anthropic": AnthropicResponseAdapter,
-    "ollama": OllamaResponseAdapter,
-    "openai": OpenAIResponseAdapter,
+    ProviderName.ANTHROPIC: AnthropicResponseAdapter,
+    ProviderName.OLLAMA: OllamaResponseAdapter,
+    ProviderName.OPENAI: OpenAIResponseAdapter,
 }
 
 _EMBEDDING_REGISTRY: dict[str, type[BaseEmbeddingAdapter]] = {
-    "ollama": OllamaEmbeddingAdapter,
-    "openai": OpenAIEmbeddingAdapter,
-    "voyage": VoyageEmbeddingAdapter,
+    ProviderName.OLLAMA: OllamaEmbeddingAdapter,
+    ProviderName.OPENAI: OpenAIEmbeddingAdapter,
+    ProviderName.VOYAGE: VoyageEmbeddingAdapter,
 }
 
 _VISION_REGISTRY: dict[str, type[BaseVisionAdapter]] = {
-    "anthropic": AnthropicVisionAdapter,
-    "ollama": OllamaVisionAdapter,
-    "openai": OpenAIVisionAdapter,
+    ProviderName.ANTHROPIC: AnthropicVisionAdapter,
+    ProviderName.OLLAMA: OllamaVisionAdapter,
+    ProviderName.OPENAI: OpenAIVisionAdapter,
 }
+
+_adapter_cache = SimpleLRUCache(max_size=16)
 
 
 def _resolve_adapter(
@@ -61,37 +63,38 @@ def _resolve_adapter(
     adapter_cls = registry.get(provider_name)
     if adapter_cls is None:
         adapter_cls = registry[default]
-    return adapter_cls()
+    cache_key = (adapter_cls.__name__, provider_name)
+    return _adapter_cache.get_or_create(cache_key, adapter_cls)
 
 
 def build_response_adapter(
     route: ResponseRouteConfig | dict[str, Any] | None,
 ) -> BaseResponseAdapter:
     parsed = parse_response_route(route) if route is not None else None
-    return _resolve_adapter(_RESPONSE_REGISTRY, "openai", parsed)
+    return _resolve_adapter(_RESPONSE_REGISTRY, ProviderName.OPENAI, parsed)
 
 
 def build_embedding_adapter(
     route: EmbeddingRouteConfig | dict[str, Any] | None,
 ) -> BaseEmbeddingAdapter:
     parsed = parse_embedding_route(route) if route is not None else None
-    return _resolve_adapter(_EMBEDDING_REGISTRY, "openai", parsed)
+    return _resolve_adapter(_EMBEDDING_REGISTRY, ProviderName.OPENAI, parsed)
 
 
 def build_vision_adapter(
     route: VisionRouteConfig | dict[str, Any] | None,
 ) -> BaseVisionAdapter:
     parsed = parse_vision_route(route) if route is not None else None
-    return _resolve_adapter(_VISION_REGISTRY, "openai", parsed)
+    return _resolve_adapter(_VISION_REGISTRY, ProviderName.OPENAI, parsed)
 
 
 def build_response_adapter_from_settings(settings_record) -> BaseResponseAdapter:
-    return build_response_adapter(getattr(settings_record, "response_route", None))
+    return build_response_adapter(settings_record.response_route)
 
 
 def build_embedding_adapter_from_settings(settings_record) -> BaseEmbeddingAdapter:
-    return build_embedding_adapter(getattr(settings_record, "embedding_route", None))
+    return build_embedding_adapter(settings_record.embedding_route)
 
 
 def build_vision_adapter_from_settings(settings_record) -> BaseVisionAdapter:
-    return build_vision_adapter(getattr(settings_record, "vision_route", None))
+    return build_vision_adapter(settings_record.vision_route)

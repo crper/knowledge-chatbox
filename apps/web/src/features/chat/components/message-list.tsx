@@ -32,7 +32,7 @@ type MessageListProps = {
 };
 
 const MESSAGE_CONTAINMENT_THRESHOLD = 80;
-export type MessageRowProps = {
+type MessageRowProps = {
   enableContainment?: boolean;
   isCompactLayout?: boolean;
   message: ChatMessageItem;
@@ -97,24 +97,37 @@ export const MessageRow = memo(function MessageRow({
       }),
     [attachmentDescriptors, previewIndexes],
   );
-  const roleLabel = isAssistantMessage ? assistantLabel : isUserMessage ? userLabel : systemLabel;
+  function resolveRoleLabel() {
+    if (isAssistantMessage) return assistantLabel;
+    if (isUserMessage) return userLabel;
+    return systemLabel;
+  }
+
+  const roleLabel = resolveRoleLabel();
   const bubbleWidthMode = isUserMessage ? "fit" : "adaptive";
   const recoveryActions =
     message.status === MessageStatus.FAILED ? (
       <div
         className={cn(
-          "flex flex-wrap items-center gap-2",
+          "flex flex-wrap items-center gap-1.5",
           isUserMessage ? "justify-end" : "justify-start",
         )}
       >
         {canRetry ? (
-          <Button onClick={triggerRetry} size="sm" type="button" variant="default">
+          <Button
+            className="rounded-xl"
+            onClick={triggerRetry}
+            size="sm"
+            type="button"
+            variant="default"
+          >
             <RotateCcwIcon data-icon="inline-start" />
             {retryLabel}
           </Button>
         ) : null}
         {isUserMessage ? (
           <Button
+            className="rounded-xl"
             onClick={() => onEditFailed?.(message)}
             size="sm"
             type="button"
@@ -126,7 +139,7 @@ export const MessageRow = memo(function MessageRow({
         ) : null}
         {isUserMessage ? (
           <Button
-            className="text-muted-foreground hover:text-destructive"
+            className="rounded-xl text-muted-foreground hover:text-destructive"
             onClick={() => onDeleteFailed?.(message)}
             size="sm"
             type="button"
@@ -148,13 +161,13 @@ export const MessageRow = memo(function MessageRow({
       data-message-width={isCompactLayout ? "full" : "adaptive"}
       data-testid={`chat-message-row-${message.id}`}
       className={cn(
-        "flex w-full min-w-0 flex-col gap-2.5",
+        "flex w-full min-w-0 flex-col gap-2",
         isUserMessage ? "items-end" : "items-start",
         enableContainment ? "contain-layout contain-paint" : "",
         isCompactLayout
           ? "max-w-full"
           : cn(
-              "max-w-[min(100%,44rem)]",
+              "max-w-[min(100%,42rem)]",
               isUserMessage ? "ml-auto pl-0 md:pl-8 xl:pl-14" : "mr-auto pr-0 md:pr-8 xl:pr-14",
             ),
       )}
@@ -164,14 +177,14 @@ export const MessageRow = memo(function MessageRow({
     >
       <div
         className={cn(
-          "flex w-full flex-wrap items-center gap-2 px-1",
+          "flex w-full flex-wrap items-center gap-1.5 px-1",
           isUserMessage ? "justify-end" : "justify-start",
         )}
       >
         {!isUserMessage ? (
           <Badge
             className={cn(
-              "rounded-full px-2.5 py-1 text-ui-caption",
+              "rounded-full px-2 py-[3px] text-[11px]",
               isAssistantMessage ? "bg-secondary/80" : "bg-muted/62 text-foreground/82",
             )}
             data-message-label-style={messageLabelStyle}
@@ -182,7 +195,7 @@ export const MessageRow = memo(function MessageRow({
         ) : null}
         <span
           className={cn(
-            "inline-flex items-center gap-2 text-ui-caption font-medium",
+            "inline-flex items-center gap-1.5 text-[11px] font-medium",
             statusMeta.tone === "error"
               ? "text-destructive"
               : statusMeta.tone === "pending"
@@ -206,7 +219,7 @@ export const MessageRow = memo(function MessageRow({
         </span>
         {isUserMessage ? (
           <Badge
-            className="rounded-full px-2.5 py-1 text-ui-caption"
+            className="rounded-full px-2 py-[3px] text-[11px]"
             data-message-label-style={messageLabelStyle}
             variant="outline"
           >
@@ -216,14 +229,14 @@ export const MessageRow = memo(function MessageRow({
       </div>
       <div
         className={cn(
-          "surface-elevated min-w-0 max-w-full overflow-hidden rounded-2xl",
+          "surface-elevated min-w-0 max-w-full overflow-hidden rounded-[22px] border border-border/44 shadow-[0_10px_28px_hsl(var(--foreground)/0.04)]",
           bubbleWidthMode === "adaptive" ? "w-full" : "w-fit",
-          isUserMessage ? "border-primary/16" : "",
+          isUserMessage ? "border-primary/14 bg-secondary/[0.34]" : "bg-background/92",
         )}
         data-message-bubble-width={bubbleWidthMode}
         data-testid={`chat-message-bubble-${message.id}`}
       >
-        <div className="space-y-3.5 px-4 py-4.5 md:px-5 md:py-5">
+        <div className="space-y-3 px-3.5 py-3.5 md:px-4 md:py-4">
           {isAssistantMessage ? (
             <MarkdownMessage
               content={assistantContent}
@@ -231,44 +244,47 @@ export const MessageRow = memo(function MessageRow({
               testId="chat-markdown-body"
             />
           ) : message.content.trim() ? (
-            <p className="text-ui-body break-words whitespace-pre-wrap text-foreground">
+            <p className="break-words whitespace-pre-wrap text-[14px] leading-6 text-foreground">
               {message.content}
             </p>
           ) : null}
         </div>
 
         {(message.sources_json ?? []).length ? (
-          <div className="border-t border-border/60 px-4 py-3 md:px-5">
+          <div className="border-t border-border/52 px-3.5 py-3 md:px-4">
             <SourceList sources={message.sources_json ?? []} />
           </div>
         ) : null}
 
         {attachments.length ? (
-          <div className="border-t border-border/60 px-4 py-3 md:px-5">
+          <div className="border-t border-border/52 px-3 py-3 md:px-3.5">
             <AttachmentList
               items={attachmentListItems}
               testId={`message-attachment-list-${message.id}`}
+              variant="compact"
             />
           </div>
         ) : null}
 
         {displayErrorMessage || recoveryActions ? (
           <div
-            className="border-t border-destructive/18 bg-destructive/[0.045] px-4 py-3 md:px-5"
+            className="border-t border-destructive/18 bg-destructive/[0.045] px-3.5 py-3 md:px-4"
             data-testid={`chat-message-recovery-${message.id}`}
           >
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-2.5">
               {displayErrorMessage ? (
                 <div
                   className={cn(
-                    "flex items-start gap-2.5",
+                    "flex items-start gap-2",
                     isUserMessage
                       ? "flex-row-reverse justify-end text-right"
                       : "justify-start text-left",
                   )}
                 >
                   <AlertTriangleIcon className="mt-0.5 size-4 shrink-0 text-destructive" />
-                  <p className="text-sm leading-6 text-destructive">{displayErrorMessage}</p>
+                  <p className="text-sm leading-[1.375rem] text-destructive">
+                    {displayErrorMessage}
+                  </p>
                 </div>
               ) : null}
               {recoveryActions}
@@ -304,7 +320,7 @@ export const MessageList = memo(function MessageList({
 
   return (
     <div
-      className="flex flex-col gap-5"
+      className="flex flex-col gap-4"
       data-chat-contained={shouldContainMessages ? "true" : "false"}
     >
       {messages.map((message) => (

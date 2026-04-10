@@ -2,26 +2,23 @@
  * @file 聊天附件列表组件模块。
  */
 
-import { useEffect, useId, useRef, useState } from "react";
-import {
-  ChevronDownIcon,
-  ChevronUpIcon,
-  EyeIcon,
-  FileImageIcon,
-  FileTextIcon,
-  XIcon,
-} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ChevronDownIcon, EyeIcon, FileImageIcon, FileTextIcon, XIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import type { AttachmentListItem } from "../utils/attachment-list-items";
 
 type AttachmentListProps = {
   defaultCollapsed?: boolean;
   expandOnItemAdd?: boolean;
+  hideScrollbar?: boolean;
   items: AttachmentListItem[];
+  listMaxHeightClassName?: string;
   testId?: string;
+  variant?: "default" | "compact";
 };
 
 function getAttachmentIcon(kind: AttachmentListItem["kind"]) {
@@ -34,63 +31,87 @@ function getAttachmentIcon(kind: AttachmentListItem["kind"]) {
 export function AttachmentList({
   defaultCollapsed = false,
   expandOnItemAdd = false,
+  hideScrollbar = false,
   items,
+  listMaxHeightClassName,
   testId,
+  variant = "default",
 }: AttachmentListProps) {
   const { t } = useTranslation("chat");
-  const contentId = useId();
-  const [collapsed, setCollapsed] = useState(defaultCollapsed);
+  const [open, setOpen] = useState(!defaultCollapsed);
   const previousCountRef = useRef(items.length);
 
   useEffect(() => {
     const previousCount = previousCountRef.current;
 
     if (items.length === 0) {
-      setCollapsed(defaultCollapsed);
+      setOpen(!defaultCollapsed);
       previousCountRef.current = items.length;
       return;
     }
 
     if (expandOnItemAdd && items.length > previousCount) {
-      setCollapsed(false);
+      setOpen(true);
     }
 
     previousCountRef.current = items.length;
   }, [defaultCollapsed, expandOnItemAdd, items.length]);
 
-  const toggleLabel = collapsed
-    ? t("expandAttachmentAction", { defaultValue: "展开附件" })
-    : t("collapseAttachmentAction", { defaultValue: "收起附件" });
-  const ToggleIcon = collapsed ? ChevronDownIcon : ChevronUpIcon;
+  const toggleLabel = open
+    ? t("collapseAttachmentAction", { defaultValue: "收起附件" })
+    : t("expandAttachmentAction", { defaultValue: "展开附件" });
+  const isCompact = variant === "compact";
 
   return (
-    <section className="surface-inline overflow-hidden rounded-xl">
-      <div className="flex select-none items-center justify-between gap-2.5 px-2.5 py-2">
-        <p className="text-[11px] font-medium text-foreground/88">
+    <Collapsible
+      className={cn(
+        "overflow-hidden",
+        isCompact ? "rounded-2xl bg-background/42" : "surface-inline rounded-xl",
+      )}
+      onOpenChange={setOpen}
+      open={open}
+    >
+      <div
+        className={cn(
+          "flex min-w-0 select-none items-center justify-between gap-2.5",
+          isCompact ? "px-3 py-2.5" : "px-2.5 py-2",
+        )}
+      >
+        <p className="min-w-0 flex-1 truncate font-medium text-[11px] text-foreground/88">
           {t("attachmentPanelLabel", {
             count: items.length,
             defaultValue: "附件 {{count}}",
           })}
         </p>
-        <Button
-          aria-controls={contentId}
-          aria-expanded={!collapsed}
-          aria-label={toggleLabel}
-          className="h-6 gap-1 rounded-full px-1.5 text-[11px] text-muted-foreground/68 hover:text-foreground"
-          onClick={() => setCollapsed((current) => !current)}
-          size="sm"
-          type="button"
-          variant="ghost"
+        <CollapsibleTrigger
+          render={
+            <Button
+              aria-label={toggleLabel}
+              className={cn(
+                "h-6 shrink-0 gap-1 rounded-full px-1.5 text-[11px] text-muted-foreground/68 hover:text-foreground",
+              )}
+              size="sm"
+              type="button"
+              variant="ghost"
+            />
+          }
         >
-          <ToggleIcon className="size-3" />
+          <ChevronDownIcon className="size-3 transition-transform duration-150 group-data-[panel-open]/collapsible:rotate-180" />
           <span>{toggleLabel}</span>
-        </Button>
+        </CollapsibleTrigger>
       </div>
-      {!collapsed ? (
+      <CollapsibleContent>
         <ul
-          className="max-h-40 divide-y divide-border/50 overflow-y-auto border-t border-border/50"
+          className={cn(
+            "overflow-x-hidden overflow-y-auto",
+            hideScrollbar ? "no-visible-scrollbar" : null,
+            isCompact
+              ? "max-h-44 space-y-2 border-t border-border/42 px-2.5 py-2.5"
+              : "max-h-40 divide-y divide-border/50 border-t border-border/50",
+            listMaxHeightClassName,
+          )}
+          data-attachment-list-variant={variant}
           data-testid={testId}
-          id={contentId}
         >
           {items.map((item, index) => {
             const AttachmentIcon = getAttachmentIcon(item.kind);
@@ -99,25 +120,52 @@ export function AttachmentList({
             return (
               <li
                 key={itemKey}
-                className="flex min-w-0 items-center gap-2 px-2.5 py-1.5"
+                className={cn(
+                  "flex min-w-0 items-center gap-2 overflow-hidden",
+                  isCompact
+                    ? "rounded-2xl border border-border/42 bg-background/84 px-2.5 py-2 shadow-[inset_0_1px_0_hsl(var(--surface-highlight)/0.08)]"
+                    : "px-2.5 py-1.5",
+                )}
                 title={item.rawName ?? item.displayName}
               >
                 <span
                   className={cn(
-                    "flex size-6 shrink-0 items-center justify-center rounded-full border",
+                    "flex shrink-0 items-center justify-center border",
+                    isCompact ? "size-9 rounded-2xl" : "size-6 rounded-full",
                     item.kind === "image"
                       ? "border-primary/16 bg-primary/7 text-primary/82"
                       : "border-border/56 bg-background/62 text-muted-foreground/72",
                   )}
                 >
-                  <AttachmentIcon className="size-3" />
+                  <AttachmentIcon className={isCompact ? "size-4" : "size-3"} />
                 </span>
-                <p className="min-w-0 flex-1 truncate text-xs font-medium text-foreground">
-                  {item.displayName}
-                </p>
+                <div className="min-w-0 flex-1">
+                  <p
+                    className={cn(
+                      "truncate font-medium text-foreground",
+                      isCompact ? "text-[13px] leading-5" : "text-xs",
+                    )}
+                  >
+                    {item.displayName}
+                  </p>
+                  {isCompact ? (
+                    <p className="mt-0.5 truncate text-[11px] text-muted-foreground/62">
+                      {item.kind === "image"
+                        ? t("imageTypeLabel", { defaultValue: "图片" })
+                        : t("documentTypeLabel", { defaultValue: "文件" })}
+                    </p>
+                  ) : null}
+                </div>
                 <div className="flex shrink-0 select-none items-center gap-1">
                   {item.statusLabel ? (
-                    <span className="max-w-24 truncate text-[10px] text-muted-foreground/64">
+                    <span
+                      className={cn(
+                        "truncate text-muted-foreground/64",
+                        isCompact
+                          ? "max-w-20 rounded-full bg-foreground/[0.04] px-2 py-0.5 text-[10px]"
+                          : "max-w-24 text-[10px]",
+                      )}
+                    >
                       {item.statusLabel}
                     </span>
                   ) : null}
@@ -127,7 +175,10 @@ export function AttachmentList({
                         defaultValue: "预览附件 {{name}}",
                         name: item.displayName,
                       })}
-                      className="text-muted-foreground/68 hover:text-foreground"
+                      className={cn(
+                        "text-muted-foreground/68 hover:text-foreground",
+                        isCompact ? "rounded-xl" : "",
+                      )}
                       onClick={item.onPreview}
                       size="icon-xs"
                       type="button"
@@ -139,7 +190,10 @@ export function AttachmentList({
                   {item.onRemove ? (
                     <Button
                       aria-label={t("removeAttachmentAction", { name: item.displayName })}
-                      className="text-muted-foreground/68 hover:text-foreground"
+                      className={cn(
+                        "text-muted-foreground/68 hover:text-foreground",
+                        isCompact ? "rounded-xl" : "",
+                      )}
                       onClick={item.onRemove}
                       size="icon-xs"
                       type="button"
@@ -153,8 +207,8 @@ export function AttachmentList({
             );
           })}
         </ul>
-      ) : null}
-    </section>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 

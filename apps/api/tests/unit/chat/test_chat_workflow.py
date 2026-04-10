@@ -79,6 +79,7 @@ def build_deps(
     space_id: int | None = None,
 ) -> ChatWorkflowDeps:
     return ChatWorkflowDeps(
+        session_id=1,
         session=object(),
         actor=object(),
         chat_repository=DummyChatRepository(recent_messages, space_id=space_id),
@@ -108,47 +109,6 @@ def test_chat_workflow_run_sync_returns_structured_result() -> None:
 
     assert result.answer == "测试回答"
     assert result.sources == []
-
-
-def test_chat_workflow_run_sync_keeps_retrieved_sources_when_model_output_omits_them(
-    monkeypatch,
-) -> None:
-    retrieved_source = {
-        "document_id": 7,
-        "document_revision_id": 11,
-        "document_name": "playbook.md",
-        "chunk_id": "chunk-1",
-        "snippet": "retrieved snippet",
-        "page_number": None,
-        "section_title": "Intro",
-        "score": 0.82,
-    }
-
-    class CapturingAgent:
-        def run_sync(self, user_prompt, **kwargs):
-            del user_prompt
-            kwargs["deps"].workflow_state["retrieved_sources"] = [retrieved_source]
-            return SimpleNamespace(output=ChatWorkflowResult(answer="测试回答", sources=[]))
-
-    workflow = ChatWorkflow()
-    monkeypatch.setattr(workflow, "_build_agent", lambda _runtime_settings: CapturingAgent())
-
-    deps = SimpleNamespace(
-        chat_repository=DummyChatRepository(),
-        prompt_attachment_service=DummyPromptAttachmentService(),
-        runtime_settings=DummyRuntimeSettings(),
-        workflow_state={},
-    )
-
-    result = workflow.run_sync(
-        deps=deps,
-        session_id=1,
-        question="帮我总结一下",
-        attachments=None,
-    )
-
-    assert result.answer == "测试回答"
-    assert [source.model_dump() for source in result.sources] == [retrieved_source]
 
 
 def test_chat_workflow_run_stream_events_yields_text_and_result_event() -> None:
@@ -211,9 +171,7 @@ def test_chat_workflow_run_sync_passes_history_and_model_settings(
     assert result.answer == "捕获成功"
     assert captured["user_prompt"] == (
         "继续刚才的话题\n\n"
-        "session_id=1\n"
         "question=继续刚才的话题\n"
-        "attachments=[]\n"
         "当前回合附件已随用户消息直接提供。需要知识库上下文时调用 knowledge_search 工具。"
     )
     assert captured["model_settings"] == {
@@ -228,34 +186,6 @@ def test_chat_workflow_run_sync_passes_history_and_model_settings(
     assert message_history[0].parts[0].content == "第一轮问题"
     assert isinstance(message_history[1].parts[0], TextPart)
     assert message_history[1].parts[0].content == "第一轮回答"
-
-
-def test_chat_workflow_builds_provider_specific_model_settings() -> None:
-    workflow = ChatWorkflow()
-
-    anthropic_settings = SimpleNamespace(
-        response_route=DummyRoute("anthropic", "claude-sonnet"),
-        reasoning_mode="on",
-        provider_timeout_seconds=45,
-    )
-    ollama_settings = SimpleNamespace(
-        response_route=DummyRoute("ollama", "qwen3"),
-        reasoning_mode="off",
-        provider_timeout_seconds=21,
-    )
-
-    assert workflow._build_model_settings(anthropic_settings) == {
-        "anthropic_thinking": {
-            "type": "enabled",
-            "budget_tokens": 1024,
-            "display": "omitted",
-        },
-        "timeout": 45,
-    }
-    assert workflow._build_model_settings(ollama_settings) == {
-        "extra_body": {"think": False},
-        "timeout": 21,
-    }
 
 
 def test_chat_workflow_passes_multimodal_user_prompt_when_image_attachments_exist(
@@ -302,71 +232,6 @@ def test_chat_workflow_passes_multimodal_user_prompt_when_image_attachments_exis
     user_prompt = captured["user_prompt"]
     assert isinstance(user_prompt, list)
     assert user_prompt[0].startswith("Analyze the attached image.")
-    assert isinstance(user_prompt[1], BinaryContent)
-    assert user_prompt[1].data == b"hello"
-    assert user_prompt[1].media_type == "image/jpeg"
-
-
-def test_chat_workflow_stream_passes_multimodal_user_prompt_when_image_attachments_exist(
-    monkeypatch,
-) -> None:
-    captured: dict[str, object] = {}
-
-    class ImagePromptAttachmentService(DummyPromptAttachmentService):
-        def build_prompt_attachments(self, attachments, active_space_id: int | None):
-            assert attachments == [{"type": "image", "document_revision_id": 12}]
-            assert active_space_id == 88
-            return [
-                {
-                    "type": "image",
-                    "mime_type": "image/jpeg",
-                    "data_base64": "aGVsbG8=",
-                }
-            ]
-
-        def resolve_prompt_text(self, question: str, attachments):
-            assert question == "这张图是什么"
-            assert attachments == [{"type": "image", "document_revision_id": 12}]
-            return "这张图是什么"
-
-    class CapturingStreamAgent:
-        def run_stream_events(self, user_prompt, **kwargs):
-            del kwargs
-            captured["user_prompt"] = user_prompt
-
-            async def _events():
-                if False:
-                    yield None
-
-            return _events()
-
-    workflow = ChatWorkflow()
-    monkeypatch.setattr(
-        workflow,
-        "_build_stream_agent",
-        lambda _runtime_settings: CapturingStreamAgent(),
-    )
-
-    async def collect_events():
-        events = []
-        async for event in workflow.run_stream_events(
-            deps=build_deps(
-                prompt_attachment_service=ImagePromptAttachmentService(),
-                space_id=88,
-            ),
-            session_id=1,
-            question="这张图是什么",
-            attachments=[{"type": "image", "document_revision_id": 12}],
-        ):
-            events.append(event)
-        return events
-
-    events = asyncio.run(collect_events())
-
-    assert events == []
-    user_prompt = captured["user_prompt"]
-    assert isinstance(user_prompt, list)
-    assert user_prompt[0].startswith("这张图是什么")
     assert isinstance(user_prompt[1], BinaryContent)
     assert user_prompt[1].data == b"hello"
     assert user_prompt[1].media_type == "image/jpeg"

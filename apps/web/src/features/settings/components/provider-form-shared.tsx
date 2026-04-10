@@ -15,7 +15,7 @@ import {
   type TemplateProviderName,
 } from "./provider-form-state";
 
-export type ProfileFieldDefinition = {
+type ProfileFieldDefinition = {
   hint?: string;
   key: "api_key" | "base_url" | "chat_model" | "embedding_model" | "vision_model";
   label: string;

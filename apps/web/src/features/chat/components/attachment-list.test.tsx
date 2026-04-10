@@ -90,4 +90,13 @@ describe("AttachmentList", () => {
     expect(screen.getByTestId("attachment-list")).toBeInTheDocument();
     expect(screen.getByText("guide.pdf")).toBeInTheDocument();
   });
+
+  it("supports a compact card presentation for in-message attachments", () => {
+    render(<AttachmentList items={buildItems()} testId="attachment-list" variant="compact" />);
+
+    expect(screen.getByTestId("attachment-list")).toHaveAttribute(
+      "data-attachment-list-variant",
+      "compact",
+    );
+  });
 });

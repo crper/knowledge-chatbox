@@ -37,26 +37,4 @@ describe("WorkspacePage", () => {
     expect(screen.getByText("主内容区域")).toBeInTheDocument();
     expect(screen.getByText("辅助内容")).toBeInTheDocument();
   });
-
-  it("supports a compact flat rail for pages that should align with the chat content track", () => {
-    render(
-      <WorkspacePage
-        dataTestId="workspace-page-flat-rail"
-        description="和会话页使用同一条内容轨道。"
-        main={<div>主内容区域</div>}
-        surface="flat"
-        title="资源"
-        width="content"
-      />,
-    );
-
-    expect(screen.getByTestId("workspace-page-flat-rail")).toHaveAttribute(
-      "data-layout-surface",
-      "flat",
-    );
-    expect(screen.getByTestId("workspace-page-flat-rail")).toHaveAttribute(
-      "data-layout-width",
-      "content",
-    );
-  });
 });

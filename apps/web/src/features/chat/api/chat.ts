@@ -67,23 +67,8 @@ export type ChatMessageItem = {
   created_at?: string;
 };
 
-export type ChatMessagePair = {
-  assistant_message: ChatMessageItem;
-  user_message: ChatMessageItem;
-};
-
 type ChatMessageRead = components["schemas"]["ChatMessageRead"];
 type ChatAttachmentRead = NonNullable<ChatMessageRead["attachments_json"]>[number];
-
-type ArchiveChatAttachmentRequest = {
-  document_revision_id: number;
-};
-
-type CreateChatMessageRequest = {
-  content: string;
-  client_request_id: string;
-  retry_of_message_id?: number | null;
-};
 
 type CreateChatSessionRequest = {
   reasoning_mode: ChatReasoningMode;
@@ -141,15 +126,6 @@ export function getChatSessions() {
 
 export function getChatProfile() {
   return openapiRequestRequired<ChatProfileItem>(apiFetchClient.GET("/api/chat/profile"));
-}
-
-export async function getChatMessages(sessionId: number) {
-  const messages = await openapiRequestRequired<ChatMessageRead[]>(
-    apiFetchClient.GET("/api/chat/sessions/{session_id}/messages", {
-      params: { path: { session_id: sessionId } },
-    }),
-  );
-  return messages.map(toChatMessageItem);
 }
 
 export async function getChatMessagesWindow(
@@ -215,47 +191,4 @@ export function deleteChatMessage(messageId: number) {
       params: { path: { message_id: messageId } },
     }),
   );
-}
-
-export async function sendChatMessage(
-  sessionId: number,
-  input: { content: string; client_request_id: string; retry_of_message_id?: number },
-) {
-  const body: CreateChatMessageRequest = {
-    content: input.content,
-    client_request_id: input.client_request_id,
-    retry_of_message_id: input.retry_of_message_id ?? null,
-  };
-  const pair = await openapiRequestRequired<components["schemas"]["ChatMessagePairRead"]>(
-    apiFetchClient.POST("/api/chat/sessions/{session_id}/messages", {
-      params: { path: { session_id: sessionId } },
-      body,
-    }),
-  );
-  return {
-    user_message: toChatMessageItem(pair.user_message),
-    assistant_message: toChatMessageItem(pair.assistant_message),
-  } satisfies ChatMessagePair;
-}
-
-export async function archiveChatMessageAttachment(
-  messageId: number,
-  attachmentId: string,
-  input: { document_revision_id?: number; document_id?: number },
-) {
-  const body: ArchiveChatAttachmentRequest = {
-    document_revision_id: input.document_revision_id ?? input.document_id ?? 0,
-  };
-  const message = await openapiRequestRequired<ChatMessageRead>(
-    apiFetchClient.POST("/api/chat/messages/{message_id}/attachments/{attachment_id}/archive", {
-      params: {
-        path: {
-          message_id: messageId,
-          attachment_id: attachmentId,
-        },
-      },
-      body,
-    }),
-  );
-  return toChatMessageItem(message);
 }

@@ -6,7 +6,6 @@ import { infiniteQueryOptions, queryOptions, skipToken } from "@tanstack/react-q
 
 import { queryKeys } from "@/lib/api/query-keys";
 import {
-  getChatMessages,
   getChatMessagesWindow,
   getChatProfile,
   getChatSessionContext,
@@ -14,7 +13,7 @@ import {
 } from "./chat";
 
 const CHAT_CONTEXT_STALE_TIME_MS = 15 * 1000;
-export const CHAT_MESSAGES_WINDOW_SIZE = 80;
+const CHAT_MESSAGES_WINDOW_SIZE = 80;
 const CHAT_PROFILE_STALE_TIME_MS = 60 * 1000;
 const CHAT_SESSIONS_STALE_TIME_MS = 30 * 1000;
 const CHAT_MESSAGES_STALE_TIME_MS = 15 * 1000;
@@ -49,19 +48,6 @@ export function chatContextQueryOptions(sessionId: number | null) {
     queryKey: queryKeys.chat.context(sessionId),
     queryFn: sessionId === null ? skipToken : () => getChatSessionContext(sessionId),
     staleTime: CHAT_CONTEXT_STALE_TIME_MS,
-  });
-}
-
-/**
- * 获取聊天消息查询配置。
- */
-export function chatMessagesQueryOptions(sessionId: number | null) {
-  return queryOptions({
-    queryKey: queryKeys.chat.messages(sessionId),
-    queryFn: sessionId === null ? skipToken : () => getChatMessages(sessionId),
-    placeholderData: (previousData, previousQuery) =>
-      previousQuery?.queryKey?.[2] === sessionId ? previousData : undefined,
-    staleTime: CHAT_MESSAGES_STALE_TIME_MS,
   });
 }
 

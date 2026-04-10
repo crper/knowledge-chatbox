@@ -5,7 +5,7 @@
 import { parseServerSentEvents, type ServerSentEvent } from "parse-sse";
 
 import { authenticatedFetch } from "@/lib/api/authenticated-fetch";
-import { extractErrorDetail, getUserFacingErrorMessage } from "@/lib/api/error-response";
+import { parseErrorResponse } from "@/lib/api/error-response";
 import { env } from "@/lib/config/env";
 import {
   CHAT_STREAM_EVENT,
@@ -119,17 +119,7 @@ export async function startChatStream({ sessionId, body, onEvent }: StartChatStr
   );
 
   if (!response.ok) {
-    const rawBody = await response.text();
-    let parsedBody: unknown = null;
-
-    try {
-      parsedBody = rawBody ? (JSON.parse(rawBody) as unknown) : null;
-    } catch {
-      parsedBody = null;
-    }
-
-    const detail = extractErrorDetail(rawBody, parsedBody, response);
-    throw new Error(getUserFacingErrorMessage(detail, response));
+    await parseErrorResponse(response);
   }
 
   if (!response.body) {

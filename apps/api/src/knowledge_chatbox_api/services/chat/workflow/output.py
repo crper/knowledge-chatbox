@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -40,6 +38,21 @@ def merge_sources_by_key(
             source.get("chunk_id"),
             source.get("snippet"),
         )
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(source)
+    return merged
+
+
+def merge_workflow_sources(
+    current: list[WorkflowSource],
+    new: list[WorkflowSource],
+) -> list[WorkflowSource]:
+    seen = {(s.document_revision_id, s.chunk_id, s.snippet) for s in current}
+    merged = list(current)
+    for source in new:
+        key = (source.document_revision_id, source.chunk_id, source.snippet)
         if key in seen:
             continue
         seen.add(key)

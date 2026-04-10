@@ -7,7 +7,8 @@ import { ChevronLeftIcon, ChevronRightIcon, DownloadIcon, ExternalLinkIcon } fro
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
-import { authenticatedFetch } from "@/lib/api/authenticated-fetch";
+import { fetchProtectedFileBlob } from "@/lib/api/protected-file";
+import { triggerDownload } from "@/lib/dom";
 import {
   Dialog,
   DialogContent,
@@ -49,18 +50,6 @@ function clampIndex(index: number, length: number) {
   return Math.min(Math.max(index, 0), length - 1);
 }
 
-function triggerDownload(url: string, filename: string) {
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  link.rel = "noreferrer";
-  link.target = "_blank";
-  link.click();
-}
-
-/**
- * 渲染会话图片查看器。
- */
 export function ImageViewerDialog({
   initialIndex = 0,
   items,
@@ -111,15 +100,7 @@ export function ImageViewerDialog({
       };
     }
 
-    void authenticatedFetch(currentItem.originalUrl, {
-      credentials: "include",
-    })
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error("image viewer request failed");
-        }
-        return response.blob();
-      })
+    void fetchProtectedFileBlob(currentItem.originalUrl)
       .then((blob) => {
         if (disposed) {
           return;

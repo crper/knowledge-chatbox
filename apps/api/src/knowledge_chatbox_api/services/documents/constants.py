@@ -1,11 +1,13 @@
 """文档相关服务模块。"""
 
-from __future__ import annotations
+from knowledge_chatbox_api.models.enums import IngestStatus
 
-from knowledge_chatbox_api.utils import document_types
-
-LISTABLE_DOCUMENT_STATUSES = ("uploaded", "processing", "indexed", "failed")
-DEDUPLICABLE_DOCUMENT_STATUSES = ("uploaded", "processing", "indexed")
+LISTABLE_DOCUMENT_STATUSES = tuple(m.value for m in IngestStatus)
+DEDUPLICABLE_DOCUMENT_STATUSES = (
+    IngestStatus.UPLOADED.value,
+    IngestStatus.PROCESSING.value,
+    IngestStatus.INDEXED.value,
+)
 TEXT_DOCUMENT_FILE_TYPES = frozenset({"txt"})
 MARKDOWN_DOCUMENT_FILE_TYPES = frozenset({"md"})
 DOCX_DOCUMENT_FILE_TYPES = frozenset({"docx"})
@@ -20,5 +22,3 @@ SUPPORTED_DOCUMENT_FILE_TYPES = frozenset(
         *IMAGE_DOCUMENT_FILE_TYPES,
     }
 )
-
-CONTENT_TYPE_TO_FILE_TYPE = document_types.CONTENT_TYPE_TO_FILE_TYPE

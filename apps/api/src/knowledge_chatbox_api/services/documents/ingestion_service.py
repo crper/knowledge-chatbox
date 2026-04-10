@@ -1,7 +1,5 @@
 """Document ingestion workflow with one commit per user-facing use case."""
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -9,6 +7,7 @@ from time import perf_counter
 
 from knowledge_chatbox_api.core.logging import get_logger
 from knowledge_chatbox_api.models.document import Document, DocumentRevision
+from knowledge_chatbox_api.models.enums import IngestStatus
 from knowledge_chatbox_api.providers.factory import (
     build_embedding_adapter,
     build_vision_adapter_from_settings,
@@ -17,9 +16,8 @@ from knowledge_chatbox_api.repositories.document_repository import DocumentRepos
 from knowledge_chatbox_api.schemas.settings import (
     ProviderRuntimeSettings,
 )
-from knowledge_chatbox_api.services.documents.chunking_service import ChunkingService
+from knowledge_chatbox_api.services.documents.chunking_service import get_default_chunking_service
 from knowledge_chatbox_api.services.documents.constants import (
-    CONTENT_TYPE_TO_FILE_TYPE,
     IMAGE_DOCUMENT_FILE_TYPES,
     SUPPORTED_DOCUMENT_FILE_TYPES,
 )
@@ -38,8 +36,12 @@ from knowledge_chatbox_api.services.settings.settings_service import (
     SettingsService,
 )
 from knowledge_chatbox_api.utils.chroma import get_chroma_store
-from knowledge_chatbox_api.utils.document_types import derive_section_title
+from knowledge_chatbox_api.utils.document_types import (
+    CONTENT_TYPE_TO_FILE_TYPE,
+    derive_section_title,
+)
 from knowledge_chatbox_api.utils.files import PersistedUpload
+from knowledge_chatbox_api.utils.timing import elapsed_ms
 
 
 @dataclass
@@ -72,6 +74,9 @@ class IngestionMetrics:
         return self.normalize_latency_ms + self.index_latency_ms
 
 
+logger = get_logger(__name__)
+
+
 class IngestionService:
     """Coordinate file save, normalization, indexing, and cleanup for documents."""
 
@@ -82,10 +87,9 @@ class IngestionService:
         self.query_service = DocumentQueryService(session)
         self.settings_service = SettingsService(session, app_settings)
         self.versioning_service = VersioningService(session, app_settings)
-        self._chunking_service = ChunkingService()
+        self._chunking_service = get_default_chunking_service()
         self._chroma_store = get_chroma_store()
-
-    logger = get_logger(__name__)
+        self._normalization_service: NormalizationService | None = None
 
     def upload_document(
         self,
@@ -114,7 +118,7 @@ class IngestionService:
             if versioning_result.duplicate_content:
                 self._remove_file(str(upload_artifact.path))
                 self.session.refresh(document_version)
-                self.logger.info(
+                logger.info(
                     "document_upload_completed",
                     filename=filename,
                     file_type=file_type,
@@ -129,14 +133,14 @@ class IngestionService:
                     document=document_entity,
                     revision=document_version,
                 )
-            document_version.lifecycle_status = "processing"
+            document_version.lifecycle_status = IngestStatus.PROCESSING
             document_version.error_message = None
             document_version.indexed_at = None
 
             if file_type in IMAGE_DOCUMENT_FILE_TYPES:
                 self.session.commit()
                 self.session.refresh(document_version)
-                self.logger.info(
+                logger.info(
                     "document_upload_completed",
                     filename=filename,
                     file_type=file_type,
@@ -158,7 +162,7 @@ class IngestionService:
                 use_vision=True,
             )
             self._commit_revision_indexed(document_version)
-            self.logger.info(
+            logger.info(
                 "document_upload_completed",
                 filename=filename,
                 file_type=file_type,
@@ -193,7 +197,7 @@ class IngestionService:
                 self._remove_file(str(upload_artifact.path))
             if normalized_path:
                 self._remove_file(normalized_path)
-            self.logger.exception(
+            logger.exception(
                 "document_upload_failed",
                 filename=filename,
                 file_type=file_type,
@@ -208,7 +212,7 @@ class IngestionService:
         document_version = self.document_repository.get_by_id(revision_id)
         if document_version is None:
             raise DocumentNotFoundError()
-        if document_version.lifecycle_status == "indexed":
+        if document_version.lifecycle_status == IngestStatus.INDEXED:
             return document_version
 
         normalized_path: str | None = None
@@ -216,7 +220,7 @@ class IngestionService:
         ingestion_metrics: IngestionMetrics | None = None
         processing_started_at = perf_counter()
         try:
-            document_version.lifecycle_status = "processing"
+            document_version.lifecycle_status = IngestStatus.PROCESSING
             document_version.error_message = None
             document_version.indexed_at = None
             normalized_path, indexing_targets, ingestion_metrics = self._ingest_revision(
@@ -225,14 +229,11 @@ class IngestionService:
                 use_vision=True,
             )
             self._commit_revision_indexed(document_version)
-            self.logger.info(
+            logger.info(
                 "document_background_ingestion_completed",
                 document_id=document_version.document_id,
                 document_revision_id=document_version.id,
-                background_processing_latency_ms=max(
-                    int(round((perf_counter() - processing_started_at) * 1000)),
-                    0,
-                ),
+                background_processing_latency_ms=elapsed_ms(processing_started_at),
                 chunk_count=document_version.chunk_count,
                 file_type=document_version.file_type,
                 file_size_bytes=document_version.file_size,
@@ -248,7 +249,7 @@ class IngestionService:
             failed_revision = self.document_repository.get_by_id(revision_id)
             if failed_revision is None:
                 raise
-            self.logger.exception(
+            logger.exception(
                 "document_background_ingestion_failed",
                 document_revision_id=revision_id,
                 file_type=document_version.file_type,
@@ -338,6 +339,18 @@ class IngestionService:
                 self._remove_file(normalized_path)
             self._remove_file(origin_path)
 
+    def _get_normalization_service(self, *, use_vision: bool = True) -> NormalizationService:
+        if self._normalization_service is None:
+            settings_record = self.settings_service.get_or_create_settings_record()
+            self._normalization_service = NormalizationService(
+                normalized_dir=self.app_settings.normalized_dir,
+                provider=(
+                    build_vision_adapter_from_settings(settings_record) if use_vision else None
+                ),
+                provider_settings=settings_record,
+            )
+        return self._normalization_service
+
     def _normalize_document(
         self,
         origin_path: str,
@@ -345,12 +358,7 @@ class IngestionService:
         *,
         use_vision: bool = True,
     ):
-        settings_record = self.settings_service.get_or_create_settings_record()
-        service = NormalizationService(
-            normalized_dir=self.app_settings.normalized_dir,
-            provider=build_vision_adapter_from_settings(settings_record) if use_vision else None,
-            provider_settings=settings_record,
-        )
+        service = self._get_normalization_service(use_vision=use_vision)
         return service.normalize(Path(origin_path), file_type)
 
     def _background_ingestion_error_message(self, file_type: str) -> str:
@@ -371,12 +379,11 @@ class IngestionService:
             file_type,
             use_vision=use_vision,
         )
-        normalize_latency_ms = max(int(round((perf_counter() - normalize_started_at) * 1000)), 0)
+        normalize_latency_ms = elapsed_ms(normalize_started_at)
         document_version.normalized_path = normalized.normalized_path
         settings_record = self.settings_service.get_or_create_settings_record()
         indexing_targets = self._build_indexing_targets(settings_record)
 
-        # 优化：复用 indexing_service 实例并只计算一次 section_title
         index_started_at = perf_counter()
         section_title = derive_section_title(normalized.content)
         indexing_services = {
@@ -390,7 +397,7 @@ class IngestionService:
                 generation=target.generation,
                 section_title=section_title,
             )
-        index_latency_ms = max(int(round((perf_counter() - index_started_at) * 1000)), 0)
+        index_latency_ms = elapsed_ms(index_started_at)
         self._set_revision_indexed(document_version)
         return (
             normalized.normalized_path,
@@ -401,13 +408,15 @@ class IngestionService:
             ),
         )
 
-    def _build_indexing_service(self, settings_record) -> IndexingService:
+    def _build_indexing_service(self, settings_with_embedding_route) -> IndexingService:
         return IndexingService(
             session=self.session,
             chunking_service=self._chunking_service,
             chroma_store=self._chroma_store,
-            embedding_provider=build_embedding_adapter(settings_record.embedding_route),
-            settings=settings_record,
+            embedding_provider=build_embedding_adapter(
+                settings_with_embedding_route.embedding_route
+            ),
+            settings=settings_with_embedding_route,
         )
 
     def _build_indexing_targets(self, settings_record) -> list[IndexingTarget]:
@@ -443,7 +452,6 @@ class IngestionService:
         注意：当前顺序执行以确保事务一致性。如有性能需求，可考虑使用 asyncio.gather 并行化。
         """
         section_title = derive_section_title(content)
-        # 复用 indexing_service 实例避免重复构建
         indexing_services = {
             id(target.settings): self._build_indexing_service(target.settings)
             for target in indexing_targets
@@ -486,7 +494,7 @@ class IngestionService:
         )
 
     def _set_revision_indexed(self, document_version: DocumentRevision) -> None:
-        document_version.lifecycle_status = "indexed"
+        document_version.lifecycle_status = IngestStatus.INDEXED
         document_version.error_message = None
         document_version.indexed_at = datetime.now(UTC)
 
@@ -504,7 +512,7 @@ class IngestionService:
         document_version.normalized_path = None
         document_version.chunk_count = None
         document_version.indexed_at = None
-        document_version.lifecycle_status = "failed"
+        document_version.lifecycle_status = IngestStatus.FAILED
         document_version.error_message = error_message
         self.session.commit()
 
@@ -531,7 +539,7 @@ class IngestionService:
             self.session.commit()
         except Exception:  # noqa: BLE001
             self.session.rollback()
-            self.logger.exception(
+            logger.exception(
                 "document_index_restore_failed",
                 revision_ids=revision_ids,
             )

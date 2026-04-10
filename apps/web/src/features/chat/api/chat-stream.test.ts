@@ -22,12 +22,12 @@ describe("chat stream api", () => {
             run_id: 1,
             assistant_message_id: 11,
           }),
-          createChatStreamFrame(CHAT_STREAM_EVENT.legacyMessageDelta, {
+          createChatStreamFrame(CHAT_STREAM_EVENT.partTextDelta, {
             run_id: 1,
             assistant_message_id: 11,
             delta: "hello ",
           }),
-          createChatStreamFrame(CHAT_STREAM_EVENT.legacyMessageDelta, {
+          createChatStreamFrame(CHAT_STREAM_EVENT.partTextDelta, {
             run_id: 1,
             assistant_message_id: 11,
             delta: "world",
@@ -54,17 +54,17 @@ describe("chat stream api", () => {
 
     expect(events.map((event) => event.event)).toEqual([
       CHAT_STREAM_EVENT.runStarted,
-      CHAT_STREAM_EVENT.legacyMessageDelta,
-      CHAT_STREAM_EVENT.legacyMessageDelta,
+      CHAT_STREAM_EVENT.partTextDelta,
+      CHAT_STREAM_EVENT.partTextDelta,
       CHAT_STREAM_EVENT.runCompleted,
       CHAT_STREAM_EVENT.done,
     ]);
     expect(events[1]).toMatchObject({
-      event: CHAT_STREAM_EVENT.legacyMessageDelta,
+      event: CHAT_STREAM_EVENT.partTextDelta,
       data: { delta: "hello " },
     });
     expect(events[2]).toMatchObject({
-      event: CHAT_STREAM_EVENT.legacyMessageDelta,
+      event: CHAT_STREAM_EVENT.partTextDelta,
       data: { delta: "world" },
     });
   });
@@ -189,7 +189,7 @@ describe("chat stream api", () => {
       http.post("*/api/chat/sessions/7/messages/stream", () => {
         return createChatStreamResponse([
           [
-            `event: ${CHAT_STREAM_EVENT.legacyMessageDelta}`,
+            `event: ${CHAT_STREAM_EVENT.partTextDelta}`,
             'data: {"run_id":1,',
             'data: "assistant_message_id":11,',
             'data: "delta":"hello"}',
@@ -218,7 +218,7 @@ describe("chat stream api", () => {
 
     expect(events).toHaveLength(2);
     expect(events[0]).toMatchObject({
-      event: CHAT_STREAM_EVENT.legacyMessageDelta,
+      event: CHAT_STREAM_EVENT.partTextDelta,
       data: { assistant_message_id: 11, delta: "hello", run_id: 1 },
     });
     expect(events[1]?.event).toBe(CHAT_STREAM_EVENT.runCompleted);
@@ -229,7 +229,7 @@ describe("chat stream api", () => {
     const frame = encoder.encode(
       [
         createRawChatStreamFrame(
-          CHAT_STREAM_EVENT.legacyMessageDelta,
+          CHAT_STREAM_EVENT.partTextDelta,
           ['{"run_id":1,"assistant_message_id":11,"delta":"你"}'],
           { trailingBlankLine: false },
         ),
@@ -263,7 +263,7 @@ describe("chat stream api", () => {
 
     expect(events).toHaveLength(2);
     expect(events[0]).toMatchObject({
-      event: CHAT_STREAM_EVENT.legacyMessageDelta,
+      event: CHAT_STREAM_EVENT.partTextDelta,
       data: { delta: "你" },
     });
     expect(events[1]?.event).toBe(CHAT_STREAM_EVENT.runCompleted);
@@ -316,7 +316,7 @@ describe("chat stream api", () => {
             run_id: 1,
             assistant_message_id: 11,
           }),
-          createChatStreamFrame(CHAT_STREAM_EVENT.legacyMessageDelta, {
+          createChatStreamFrame(CHAT_STREAM_EVENT.partTextDelta, {
             run_id: 1,
             assistant_message_id: 11,
             delta: "partial",
@@ -340,7 +340,7 @@ describe("chat stream api", () => {
 
     expect(events.map((event) => event.event)).toEqual([
       CHAT_STREAM_EVENT.runStarted,
-      CHAT_STREAM_EVENT.legacyMessageDelta,
+      CHAT_STREAM_EVENT.partTextDelta,
     ]);
   });
 

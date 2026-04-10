@@ -1,9 +1,8 @@
 """Runtime settings contract for provider-facing service code."""
 
-from __future__ import annotations
-
 from typing import Any
 
+from knowledge_chatbox_api.models.enums import ProviderName, ReasoningMode
 from knowledge_chatbox_api.schemas._validators import ReasoningModeLiteral
 from knowledge_chatbox_api.schemas.settings import (
     EmbeddingRouteConfig,
@@ -14,11 +13,11 @@ from knowledge_chatbox_api.schemas.settings import (
     parse_response_route,
     parse_vision_route,
 )
-from knowledge_chatbox_api.utils.compat import safe_getattr
+from knowledge_chatbox_api.utils.helpers import safe_getattr
 
-DEFAULT_RESPONSE_ROUTE = {"provider": "ollama", "model": "unknown"}
-DEFAULT_EMBEDDING_ROUTE = {"provider": "ollama", "model": "unknown"}
-DEFAULT_VISION_ROUTE = {"provider": "ollama", "model": "unknown"}
+DEFAULT_RESPONSE_ROUTE = {"provider": ProviderName.OLLAMA, "model": "unknown"}
+DEFAULT_EMBEDDING_ROUTE = {"provider": ProviderName.OLLAMA, "model": "unknown"}
+DEFAULT_VISION_ROUTE = {"provider": ProviderName.OLLAMA, "model": "unknown"}
 DEFAULT_PROVIDER_TIMEOUT_SECONDS = 60
 
 
@@ -62,7 +61,7 @@ def parse_runtime_settings(value: object) -> ProviderRuntimeSettings:
         return ProviderRuntimeSettings(
             **_runtime_settings_payload(
                 value,
-                reasoning_mode=safe_getattr(value, "reasoning_mode", "default"),
+                reasoning_mode=safe_getattr(value, "reasoning_mode", ReasoningMode.DEFAULT),
             )
         )
 
@@ -71,7 +70,7 @@ def build_runtime_settings(
     settings_source: Any,
     *,
     embedding_route: EmbeddingRouteConfig | dict[str, Any] | None = None,
-    reasoning_mode: ReasoningModeLiteral = "default",
+    reasoning_mode: ReasoningModeLiteral = ReasoningMode.DEFAULT,
 ) -> ProviderRuntimeSettings:
     """从 settings-like 对象构造 provider 运行时所需的统一配置。"""
     return ProviderRuntimeSettings(

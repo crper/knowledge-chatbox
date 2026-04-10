@@ -52,7 +52,6 @@
   "sessionListEmptyTitle": "No sessions yet",
   "sessionListEmptyDescription": "Create a session above to begin. If you do not have material yet, upload a file in Resources first.",
   "recentSessionsTitle": "Recent Sessions",
-  "sessionListTitle": "Sessions",
   "sessionResourceUploadAction": "Upload Resources",
   "sessionTitleFallback": "Untitled Session",
   "newSessionAction": "New Session",
@@ -77,6 +76,9 @@
   "editAction": "Edit",
   "deleteAction": "Delete",
   "retryAction": "Retry",
+  "sessionMenuAction": "Open session menu for {{title}}",
+  "sessionMenuLabel": "Session Actions",
+  "renameSessionMenuItem": "Rename",
   "renameSessionAction": "Rename {{title}}",
   "deleteSessionAction": "Delete {{title}}",
   "sessionRenameLabel": "Session Name",
@@ -151,5 +153,6 @@
   "messageShortcutHintEnter": "Current shortcut: Enter to send",
   "messageShortcutHintShiftEnter": "Current shortcut: Shift+Enter to send",
   "sourceReferenceAction": "View reference {{index}}",
-  "sourcePage": "Page {{page}}"
+  "sourcePage": "Page {{page}}",
+  "newMessagesBanner": "New messages"
 }

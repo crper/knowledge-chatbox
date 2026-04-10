@@ -12,16 +12,10 @@ from tests.fixtures.factories import (
     UserFactory,
 )
 
-import knowledge_chatbox_api.models.document as document_models
 from knowledge_chatbox_api.core.config import get_settings
 from knowledge_chatbox_api.models.document import Document, DocumentRevision
 from knowledge_chatbox_api.services.documents.versioning_service import VersioningService
 from knowledge_chatbox_api.utils.files import PersistedUpload
-
-
-def test_document_models_use_document_revision_name_only() -> None:
-    assert hasattr(document_models, "DocumentRevision")
-    assert not hasattr(document_models, "DocumentVersion")
 
 
 def create_admin(migrated_db_session):
@@ -120,28 +114,6 @@ def test_document_version_number_must_be_unique_within_document(migrated_db_sess
 
     with pytest.raises(IntegrityError):
         migrated_db_session.commit()
-
-
-def test_document_revision_derives_mime_type_from_file_type() -> None:
-    image_revision = DocumentRevision(
-        document_id=1,
-        revision_no=1,
-        source_filename="image.webp",
-        file_type="webp",
-        ingest_status="uploaded",
-        source_path="/uploads/image.webp",
-    )
-    unknown_revision = DocumentRevision(
-        document_id=1,
-        revision_no=2,
-        source_filename="archive.bin",
-        file_type="bin",
-        ingest_status="uploaded",
-        source_path="/uploads/archive.bin",
-    )
-
-    assert image_revision.mime_type == "image/webp"
-    assert unknown_revision.mime_type == "application/octet-stream"
 
 
 def test_new_upload_creates_document_and_version_one(

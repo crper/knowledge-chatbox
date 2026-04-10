@@ -1,12 +1,11 @@
 """认证相关服务模块。"""
 
-from __future__ import annotations
-
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from knowledge_chatbox_api.core.security import PasswordManager
 from knowledge_chatbox_api.models.auth import User
+from knowledge_chatbox_api.models.enums import ThemePreference, UserRole, UserStatus
 from knowledge_chatbox_api.repositories.chat_repository import ChatRepository
 from knowledge_chatbox_api.repositories.space_repository import SpaceRepository
 from knowledge_chatbox_api.repositories.user_repository import UserRepository
@@ -57,18 +56,20 @@ class UserService:
     def create_user(self, actor: User, username: str, password: str, role: str) -> User:
         """创建用户。"""
         self._require_admin(actor)
-        if role not in {"admin", "user"}:
-            raise ValidationError("Invalid role.")
+        try:
+            validated_role = UserRole(role)
+        except ValueError as exc:
+            raise ValidationError("Invalid role.") from exc
         if self.user_repository.get_by_username(username) is not None:
             raise ConflictError("Username already exists.")
 
         user = User(
             username=username,
             password_hash=self.password_manager.hash_password(password),
-            role=role,
-            status="active",
+            role=validated_role,
+            status=UserStatus.ACTIVE,
             created_by_user_id=actor.id,
-            theme_preference="system",
+            theme_preference=ThemePreference.SYSTEM,
         )
         self.user_repository.add(user)
         self.space_repository.ensure_personal_space(user_id=user.id)
@@ -88,27 +89,33 @@ class UserService:
         self._require_admin(actor)
         user = self._get_required_user(user_id)
         if status is not None:
-            if status not in {"active", "disabled"}:
-                raise ValidationError("Invalid status.")
-            if user.role == "admin":
+            try:
+                validated_status = UserStatus(status)
+            except ValueError as exc:
+                raise ValidationError("Invalid status.") from exc
+            if user.role == UserRole.ADMIN:
                 raise ValidationError("Admin users cannot be disabled.")
-            user.status = status
-            if status == "disabled":
+            user.status = validated_status
+            if validated_status == UserStatus.DISABLED:
                 self.auth_service.auth_session_repository.revoke_by_user_id(user.id)
         if role is not None:
-            if role not in {"admin", "user"}:
-                raise ValidationError("Invalid role.")
+            try:
+                validated_role = UserRole(role)
+            except ValueError as exc:
+                raise ValidationError("Invalid role.") from exc
             if (
-                user.role == "admin"
-                and role != "admin"
+                user.role == UserRole.ADMIN
+                and validated_role != UserRole.ADMIN
                 and self.user_repository.count_admins() <= 1
             ):
                 raise ValidationError("At least one admin user is required.")
-            user.role = role
+            user.role = validated_role
         if theme_preference is not None:
-            if theme_preference not in {"light", "dark", "system"}:
-                raise ValidationError("Invalid theme preference.")
-            user.theme_preference = theme_preference
+            try:
+                validated_theme = ThemePreference(theme_preference)
+            except ValueError as exc:
+                raise ValidationError("Invalid theme preference.") from exc
+            user.theme_preference = validated_theme
         self.session.commit()
         self.session.refresh(user)
         return user
@@ -117,7 +124,7 @@ class UserService:
         """删除用户。"""
         self._require_admin(actor)
         user = self._get_required_user(user_id)
-        if user.role == "admin":
+        if user.role == UserRole.ADMIN:
             raise ValidationError("Admin users cannot be deleted.")
 
         self.auth_service.auth_session_repository.delete_by_user_id(user.id)
@@ -140,7 +147,7 @@ class UserService:
         return user
 
     def _require_admin(self, actor: User) -> None:
-        if actor.role != "admin":
+        if actor.role != UserRole.ADMIN:
             raise AuthorizationError("Admin permission required.")
 
     def _get_required_user(self, user_id: int) -> User:

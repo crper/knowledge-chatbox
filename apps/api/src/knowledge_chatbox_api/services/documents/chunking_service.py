@@ -1,26 +1,31 @@
-"""文档相关服务模块。"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
 
+from chonkie import RecursiveChunker
+
 
 @dataclass
 class Chunk:
-    """封装切块。"""
-
     chunk_id: str
     chunk_index: int
     text: str
     metadata: dict
 
 
-class ChunkingService:
-    """封装文本切块逻辑。"""
+_DEFAULT_CHUNK_SIZE = 512
 
-    def __init__(self, max_chunk_length: int = 800, overlap: int = 120) -> None:
-        self.max_chunk_length = max_chunk_length
-        self.overlap = overlap
+
+class ChunkingService:
+    def __init__(
+        self,
+        *,
+        chunk_size: int = _DEFAULT_CHUNK_SIZE,
+    ) -> None:
+        self._chunker = RecursiveChunker.from_recipe(
+            "markdown",
+            chunk_size=chunk_size,
+        )
 
     def chunk_text(
         self,
@@ -30,54 +35,46 @@ class ChunkingService:
         section_title: str | None = None,
         page_number: int | None = None,
     ) -> list[Chunk]:
-        """处理切块Text相关逻辑。"""
-        paragraphs = [part.strip() for part in content.split("\n\n") if part.strip()]
-        chunks: list[Chunk] = []
-        chunk_index = 0
+        if not content.strip():
+            return []
 
-        for paragraph in paragraphs:
-            for text in self._split_paragraph(paragraph):
-                chunk_id = f"{document_id}:{chunk_index}"
-                chunks.append(
-                    Chunk(
-                        chunk_id=chunk_id,
-                        chunk_index=chunk_index,
-                        text=text,
-                        metadata=self._build_chunk_metadata(
-                            document_id, chunk_id, chunk_index, section_title, page_number
-                        ),
-                    )
+        chonkie_chunks = self._chunker.chunk(content)
+        chunks: list[Chunk] = []
+
+        for idx, chonkie_chunk in enumerate(chonkie_chunks):
+            chunk_id = f"{document_id}:{idx}"
+            chunks.append(
+                Chunk(
+                    chunk_id=chunk_id,
+                    chunk_index=idx,
+                    text=chonkie_chunk.text,
+                    metadata=_build_chunk_metadata(
+                        document_id, chunk_id, idx, section_title, page_number
+                    ),
                 )
-                chunk_index += 1
+            )
 
         return chunks
 
-    def _build_chunk_metadata(
-        self,
-        document_id: int,
-        chunk_id: str,
-        chunk_index: int,
-        section_title: str | None,
-        page_number: int | None,
-    ) -> dict:
-        return {
-            "document_id": document_id,
-            "chunk_id": chunk_id,
-            "chunk_index": chunk_index,
-            "section_title": section_title,
-            "page_number": page_number,
-        }
 
-    def _split_paragraph(self, paragraph: str) -> list[str]:
-        if len(paragraph) <= self.max_chunk_length:
-            return [paragraph]
+def _build_chunk_metadata(
+    document_id: int,
+    chunk_id: str,
+    chunk_index: int,
+    section_title: str | None,
+    page_number: int | None,
+) -> dict:
+    return {
+        "document_id": document_id,
+        "chunk_id": chunk_id,
+        "chunk_index": chunk_index,
+        "section_title": section_title,
+        "page_number": page_number,
+    }
 
-        parts: list[str] = []
-        start = 0
-        while start < len(paragraph):
-            end = min(start + self.max_chunk_length, len(paragraph))
-            parts.append(paragraph[start:end])
-            if end >= len(paragraph):
-                break
-            start = end - self.overlap
-        return parts
+
+_default_chunking_service = ChunkingService()
+
+
+def get_default_chunking_service() -> ChunkingService:
+    return _default_chunking_service

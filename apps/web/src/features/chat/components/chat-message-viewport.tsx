@@ -13,6 +13,8 @@ import {
   type ComponentProps,
 } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { useTranslation } from "react-i18next";
+import { ChevronDownIcon } from "lucide-react";
 
 import { useIsMobile } from "@/lib/hooks/use-mobile";
 import type { ChatMessageItem } from "../api/chat";
@@ -76,6 +78,7 @@ export const ChatMessageViewport = memo(function ChatMessageViewport({
   onRetry,
   scrollToLatestRequestKey = 0,
 }: ChatMessageViewportProps) {
+  const { t } = useTranslation("chat");
   const isMobile = useIsMobile();
   const parentRef = useRef<HTMLDivElement>(null);
   const previousLatestMessageSignatureRef = useRef<string>("empty");
@@ -86,6 +89,7 @@ export const ChatMessageViewport = memo(function ChatMessageViewport({
   const olderLoadTriggerArmedRef = useRef(true);
   const initialPositionHandledRef = useRef(false);
   const [scrollElement, setScrollElement] = useState<HTMLElement | null>(null);
+  const [hasNewMessage, setHasNewMessage] = useState(false);
   const latestMessage = messages.at(-1) ?? null;
   const latestMessageSignature = useMemo(
     () => buildLatestMessageSignature(latestMessage),
@@ -110,6 +114,11 @@ export const ChatMessageViewport = memo(function ChatMessageViewport({
     [messages.length, virtualizer],
   );
 
+  const handleNewMessageBannerClick = useCallback(() => {
+    setHasNewMessage(false);
+    scrollToLatest("smooth");
+  }, [scrollToLatest]);
+
   useEffect(() => {
     if (previousScrollRequestKeyRef.current === scrollToLatestRequestKey) {
       return;
@@ -129,7 +138,12 @@ export const ChatMessageViewport = memo(function ChatMessageViewport({
     previousLatestMessageSignatureRef.current = intent.nextPreviousLatestMessageSignature;
     pendingScrollToLatestRef.current = intent.nextPendingScrollToLatest;
 
+    if (intent.shouldIndicateNewMessage) {
+      setHasNewMessage(true);
+    }
+
     if (intent.shouldScrollToLatest) {
+      setHasNewMessage(false);
       scrollToLatest("auto");
     }
   }, [latestMessageSignature, scrollToLatest, scrollElement]);
@@ -140,6 +154,10 @@ export const ChatMessageViewport = memo(function ChatMessageViewport({
     }
 
     const handleScroll = () => {
+      if (isNearBottom(scrollElement)) {
+        setHasNewMessage(false);
+      }
+
       const intent = resolveOlderMessagesLoadIntent({
         hasOlderMessages,
         isLoadingOlderMessages,
@@ -225,7 +243,7 @@ export const ChatMessageViewport = memo(function ChatMessageViewport({
         data-scroll-padding="comfortable"
         style={{ contain: "strict" }}
       >
-        <ChatViewportList data-testid="virtuoso-item-list">
+        <ChatViewportList data-testid="chat-message-virtual-list">
           <div
             style={{
               height: `${virtualizer.getTotalSize()}px`,
@@ -271,6 +289,20 @@ export const ChatMessageViewport = memo(function ChatMessageViewport({
           </div>
         </ChatViewportList>
       </div>
+
+      {hasNewMessage && (
+        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 animate-fade-in-up">
+          <button
+            className="flex items-center gap-1.5 rounded-full border border-border/40 bg-background/90 px-3 py-1.5 text-xs font-medium text-foreground shadow-md backdrop-blur-sm transition-colors hover:bg-background hover:border-border/60"
+            data-testid="new-message-banner"
+            onClick={handleNewMessageBannerClick}
+            type="button"
+          >
+            <ChevronDownIcon aria-hidden="true" className="size-3.5" />
+            {t("newMessagesBanner")}
+          </button>
+        </div>
+      )}
     </div>
   );
 });

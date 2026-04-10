@@ -4,7 +4,6 @@
 
 import { ApiRequestError, openapiRequestRequired } from "@/lib/api/client";
 import { requestAccessTokenRefresh } from "@/lib/api/authenticated-fetch";
-import { clearAccessToken, setAccessToken } from "@/lib/auth/token-store";
 import type { AppUser } from "@/lib/api/client";
 import { apiFetchClient } from "@/lib/api/generated/client";
 import type { components } from "@/lib/api/generated/client";
@@ -66,7 +65,6 @@ export async function login(input: { username: string; password: string }) {
   const result = await openapiRequestRequired<LoginEnvelope>(
     apiFetchClient.POST("/api/auth/login", { body }),
   );
-  setAccessToken(result.access_token);
   return {
     accessToken: result.access_token,
     expiresIn: result.expires_in,
@@ -90,11 +88,9 @@ export async function bootstrapAuthSession() {
   );
 
   if (!result.authenticated || !result.access_token || !result.user) {
-    clearAccessToken();
     return null;
   }
 
-  setAccessToken(result.access_token);
   return {
     accessToken: result.access_token,
     expiresIn: result.expires_in ?? 0,
@@ -106,13 +102,7 @@ export async function bootstrapAuthSession() {
  * 定义登出。
  */
 export async function logout() {
-  try {
-    return await openapiRequestRequired<{ status: string }>(
-      apiFetchClient.POST("/api/auth/logout"),
-    );
-  } finally {
-    clearAccessToken();
-  }
+  return await openapiRequestRequired<{ status: string }>(apiFetchClient.POST("/api/auth/logout"));
 }
 
 /**

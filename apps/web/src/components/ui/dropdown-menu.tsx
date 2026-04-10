@@ -2,8 +2,6 @@
  * @file 下拉菜单 Menu 基础 UI 组件模块。
  */
 
-"use client";
-
 import * as React from "react";
 import { Menu as DropdownMenuPrimitive } from "@base-ui/react/menu";
 
@@ -29,6 +27,8 @@ function DropdownMenuTrigger({
 type DropdownMenuContentProps = React.ComponentProps<typeof DropdownMenuPrimitive.Positioner> & {
   children?: React.ReactNode;
   className?: string;
+  portalled?: boolean;
+  portalContainer?: React.ComponentProps<typeof DropdownMenuPrimitive.Portal>["container"];
 };
 
 function DropdownMenuContent({
@@ -36,25 +36,31 @@ function DropdownMenuContent({
   align = "start",
   sideOffset = 4,
   children,
+  portalled = true,
+  portalContainer,
   ...props
 }: DropdownMenuContentProps) {
-  return (
-    <DropdownMenuPrimitive.Portal>
-      <DropdownMenuPrimitive.Positioner
-        align={align}
-        className={cn("outline-hidden", className)}
-        sideOffset={sideOffset}
-        {...props}
+  const positioner = (
+    <DropdownMenuPrimitive.Positioner
+      align={align}
+      className={cn("outline-hidden", className)}
+      sideOffset={sideOffset}
+      {...props}
+    >
+      <DropdownMenuPrimitive.Popup
+        data-slot="dropdown-menu-content"
+        className={cn(
+          "surface-floating z-[60] min-w-32 origin-[var(--transform-origin)] overflow-x-hidden overflow-y-auto rounded-xl p-1 text-popover-foreground shadow-lg transition-[opacity,transform] duration-100 data-[ending-style]:scale-95 data-[ending-style]:opacity-0 data-[starting-style]:scale-95 data-[starting-style]:opacity-0",
+        )}
       >
-        <DropdownMenuPrimitive.Popup
-          data-slot="dropdown-menu-content"
-          className={cn(
-            "surface-floating z-50 min-w-32 origin-[var(--transform-origin)] overflow-x-hidden overflow-y-auto rounded-xl p-1 text-popover-foreground shadow-lg transition-[opacity,transform] duration-100 data-[ending-style]:scale-95 data-[ending-style]:opacity-0 data-[starting-style]:scale-95 data-[starting-style]:opacity-0",
-          )}
-        >
-          {children}
-        </DropdownMenuPrimitive.Popup>
-      </DropdownMenuPrimitive.Positioner>
+        {children}
+      </DropdownMenuPrimitive.Popup>
+    </DropdownMenuPrimitive.Positioner>
+  );
+
+  return (
+    <DropdownMenuPrimitive.Portal container={portalled ? undefined : portalContainer}>
+      {positioner}
     </DropdownMenuPrimitive.Portal>
   );
 }
@@ -88,6 +94,7 @@ function DropdownMenuItem({
 
 function DropdownMenuLinkItem({
   className,
+  closeOnClick = true,
   inset,
   variant = "default",
   ...props
@@ -97,6 +104,7 @@ function DropdownMenuLinkItem({
 }) {
   return (
     <DropdownMenuPrimitive.LinkItem
+      closeOnClick={closeOnClick}
       data-inset={inset}
       data-slot="dropdown-menu-link-item"
       data-variant={variant}
@@ -269,7 +277,7 @@ function DropdownMenuSubContent({
       <DropdownMenuPrimitive.Positioner className={className} sideOffset={4} {...props}>
         <DropdownMenuPrimitive.Popup
           data-slot="dropdown-menu-sub-content"
-          className="surface-floating z-50 min-w-[96px] origin-[var(--transform-origin)] overflow-hidden rounded-xl p-1 text-popover-foreground shadow-lg transition-[opacity,transform] duration-100 data-[ending-style]:scale-95 data-[ending-style]:opacity-0 data-[starting-style]:scale-95 data-[starting-style]:opacity-0"
+          className="surface-floating z-[60] min-w-[96px] origin-[var(--transform-origin)] overflow-hidden rounded-xl p-1 text-popover-foreground shadow-lg transition-[opacity,transform] duration-100 data-[ending-style]:scale-95 data-[ending-style]:opacity-0 data-[starting-style]:scale-95 data-[starting-style]:opacity-0"
         >
           {children}
         </DropdownMenuPrimitive.Popup>

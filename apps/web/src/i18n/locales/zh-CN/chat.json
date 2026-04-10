@@ -52,7 +52,6 @@
   "sessionListEmptyTitle": "还没有会话",
   "sessionListEmptyDescription": "点击上方新建会话开始；如果还没有资料，先去资源区上传文件。",
   "recentSessionsTitle": "最近会话",
-  "sessionListTitle": "会话",
   "sessionResourceUploadAction": "上传资源",
   "sessionTitleFallback": "未命名会话",
   "newSessionAction": "新建会话",
@@ -77,6 +76,9 @@
   "editAction": "编辑",
   "deleteAction": "删除",
   "retryAction": "重试",
+  "sessionMenuAction": "打开 {{title}} 的会话菜单",
+  "sessionMenuLabel": "会话操作",
+  "renameSessionMenuItem": "重命名",
   "renameSessionAction": "重命名 {{title}}",
   "deleteSessionAction": "删除 {{title}}",
   "sessionRenameLabel": "会话名称",
@@ -151,5 +153,6 @@
   "messageShortcutHintEnter": "当前快捷键：Enter 发送",
   "messageShortcutHintShiftEnter": "当前快捷键：Shift+Enter 发送",
   "sourceReferenceAction": "查看引用 {{index}}",
-  "sourcePage": "第 {{page}} 页"
+  "sourcePage": "第 {{page}} 页",
+  "newMessagesBanner": "有新消息"
 }

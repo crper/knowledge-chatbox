@@ -1,17 +1,18 @@
 import { runDocumentUpload } from "@/lib/document-upload";
+import { getErrorMessage } from "@/lib/utils";
 import { uploadDocument, type KnowledgeDocument } from "@/features/knowledge/api/documents";
-import type { ChatAttachmentItem } from "../store/chat-ui-store";
+import type { ComposerAttachmentItem } from "../store/chat-attachment-store";
 import type { ReadyChatAttachment } from "./chat-submit-helpers";
 
 type UploadQueuedChatAttachmentsInput = {
-  attachments: ChatAttachmentItem[];
+  attachments: ComposerAttachmentItem[];
   concurrency?: number;
   failedMessage?: string;
-  onPatch: (attachmentId: string, patch: Partial<ChatAttachmentItem>) => void;
-  uploadFile?: (attachment: ChatAttachmentItem) => Promise<KnowledgeDocument>;
+  onPatch: (attachmentId: string, patch: Partial<ComposerAttachmentItem>) => void;
+  uploadFile?: (attachment: ComposerAttachmentItem) => Promise<KnowledgeDocument>;
 };
 
-function toReadyAttachment(attachment: ChatAttachmentItem): ReadyChatAttachment | null {
+function toReadyAttachment(attachment: ComposerAttachmentItem): ReadyChatAttachment | null {
   if (
     attachment.status !== "uploaded" ||
     !(attachment.file instanceof File) ||
@@ -32,7 +33,7 @@ function toReadyAttachment(attachment: ChatAttachmentItem): ReadyChatAttachment 
   };
 }
 
-function defaultUploadFile(attachment: ChatAttachmentItem, failedMessage: string) {
+function defaultUploadFile(attachment: ComposerAttachmentItem, failedMessage: string) {
   if (!(attachment.file instanceof File)) {
     throw new Error("missing attachment file");
   }
@@ -59,7 +60,7 @@ export async function uploadQueuedChatAttachments({
 
   const runUpload =
     uploadFile ??
-    ((attachment: ChatAttachmentItem) => defaultUploadFile(attachment, failedMessage));
+    ((attachment: ComposerAttachmentItem) => defaultUploadFile(attachment, failedMessage));
 
   const workers = Array.from(
     { length: Math.min(boundedConcurrency, attachments.length) },
@@ -98,7 +99,7 @@ export async function uploadQueuedChatAttachments({
           });
           uploadedAttachments[currentIndex] = uploadedAttachment;
         } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : failedMessage;
+          const errorMessage = getErrorMessage(error, failedMessage);
           onPatch(attachment.id, {
             errorMessage,
             progress: 0,

@@ -3,6 +3,8 @@ import tailwindcss from "@tailwindcss/vite";
 import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import { defineConfig } from "vite-plus";
 
+import { resolveDevApiProxyTarget } from "./dev-proxy.ts";
+
 const srcDir = new URL("./src", import.meta.url).pathname;
 
 export default defineConfig({
@@ -24,7 +26,7 @@ export default defineConfig({
   server: {
     proxy: {
       "/api": {
-        target: "http://localhost:8000",
+        target: resolveDevApiProxyTarget(process.env),
         changeOrigin: true,
       },
     },

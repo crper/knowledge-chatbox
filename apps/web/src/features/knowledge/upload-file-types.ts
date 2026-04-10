@@ -8,7 +8,7 @@ export const UNSUPPORTED_UPLOAD_FILE_ERROR_CODE = "unsupported-file-type";
 
 export type SupportedUploadKind = "image" | "document";
 
-const SUPPORTED_UPLOAD_TYPES = [
+export const SUPPORTED_UPLOAD_TYPES = [
   { extensions: [".txt"], kind: "document", mimeType: "text/plain" },
   { extensions: [".md"], kind: "document", mimeType: "text/markdown" },
   { extensions: [".pdf"], kind: "document", mimeType: "application/pdf" },

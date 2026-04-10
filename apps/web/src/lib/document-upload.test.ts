@@ -1,10 +1,6 @@
 import type { FileRejection } from "react-dropzone";
 
-import {
-  getDocumentUploadErrorMessage,
-  getDocumentUploadRejectionMessage,
-  runDocumentUpload,
-} from "./document-upload";
+import { getDocumentUploadRejectionMessage, runDocumentUpload } from "./document-upload";
 
 describe("document upload workflow", () => {
   it("maps unsupported file rejections to the provided unsupported message", () => {
@@ -62,6 +58,5 @@ describe("document upload workflow", () => {
       { errorMessage: undefined, progress: 0, status: "uploading" },
       { errorMessage: "网络中断", progress: 0, status: "failed" },
     ]);
-    expect(getDocumentUploadErrorMessage(new Error("网络中断"), "上传失败")).toBe("网络中断");
   });
 });

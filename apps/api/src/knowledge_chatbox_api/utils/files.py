@@ -1,7 +1,5 @@
 """Files工具模块。"""
 
-from __future__ import annotations
-
 import hashlib
 from dataclasses import dataclass
 from pathlib import Path
@@ -40,20 +38,13 @@ def build_storage_filename(original_name: str) -> str:
     return f"{uuid4().hex}{suffix}"
 
 
-def save_bytes(base_dir: Path, original_name: str, content: bytes) -> Path:
-    """保存字节数据到文件。"""
-    ensure_directory(base_dir)
-    output_path = base_dir / build_storage_filename(original_name)
-    output_path.write_bytes(content)
-    return output_path
-
-
 async def save_upload_stream(
     base_dir: Path,
     original_name: str,
     upload: AsyncReadableUpload,
     *,
     chunk_size: int = 1024 * 1024,
+    size_limit: int | None = None,
 ) -> PersistedUpload:
     """按块把上传流落盘，并增量计算 hash 与大小。"""
     ensure_directory(base_dir)
@@ -67,9 +58,12 @@ async def save_upload_stream(
                 chunk = await upload.read(chunk_size)
                 if not chunk:
                     break
+                file_size += len(chunk)
+                if size_limit is not None and file_size > size_limit:
+                    output_path.unlink(missing_ok=True)
+                    raise ValueError(f"File exceeds maximum allowed size of {size_limit} bytes")
                 output_file.write(chunk)
                 hasher.update(chunk)
-                file_size += len(chunk)
     except Exception:
         logger.warning(
             "upload_stream_write_failed",

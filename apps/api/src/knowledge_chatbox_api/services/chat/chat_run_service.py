@@ -1,16 +1,16 @@
 """聊天运行时服务。"""
 
-from __future__ import annotations
-
 import asyncio
 from typing import Any
 
 from knowledge_chatbox_api.core.logging import get_logger
-from knowledge_chatbox_api.services.chat.attachment_metadata import build_attachment_metadata
+from knowledge_chatbox_api.models.enums import ChatMessageRole, ChatMessageStatus, ChatRunStatus
+from knowledge_chatbox_api.schemas.chat import dump_chat_attachments
 from knowledge_chatbox_api.services.chat.stream_events import (
     MESSAGE_STARTED_EVENT,
     RUN_STARTED_EVENT,
     StreamEventBatchItem,
+    append_event_batch,
 )
 from knowledge_chatbox_api.services.chat.workflow import ChatWorkflow, build_chat_workflow_deps
 from knowledge_chatbox_api.services.chat.workflow_stream_runner import (
@@ -68,7 +68,7 @@ class ChatRunService:
             )
         else:
             user_message = self.retry_service.create_or_reuse_user_message(
-                attachments=build_attachment_metadata(attachments),
+                attachments=dump_chat_attachments(attachments),
                 session_id=session_id,
                 content=content,
                 client_request_id=client_request_id,
@@ -81,11 +81,13 @@ class ChatRunService:
             yield from self._replay_existing_run(existing_run)
             return
 
+        response_provider = self.settings.response_route.provider
+        response_model = self.settings.response_route.model
         run = self.chat_run_repository.create_run(
             session_id=session_id,
-            status="pending",
-            response_provider=self._response_provider_name(),
-            response_model=self._response_model(),
+            status=ChatRunStatus.PENDING,
+            response_provider=response_provider,
+            response_model=response_model,
             reasoning_mode=self._reasoning_mode(),
             client_request_id=client_request_id,
         )
@@ -106,8 +108,8 @@ class ChatRunService:
             run_id=run.id,
             session_id=session_id,
             attachment_count=len(attachments or []),
-            response_provider=self._response_provider_name(),
-            response_model=self._response_model(),
+            response_provider=response_provider,
+            response_model=response_model,
         )
 
         try:
@@ -129,6 +131,7 @@ class ChatRunService:
                 presenter=self.presenter,
                 workflow=self.workflow_factory(),
                 workflow_deps=build_chat_workflow_deps(
+                    session_id=session_id,
                     session=self.session,
                     actor=None,
                     chat_repository=self.chat_repository,
@@ -182,7 +185,7 @@ class ChatRunService:
                 {
                     "run_id": run_id,
                     "assistant_message_id": assistant_message_id,
-                    "role": "assistant",
+                    "role": ChatMessageRole.ASSISTANT,
                 },
             ),
         ]
@@ -193,34 +196,18 @@ class ChatRunService:
         current_seq: int,
         events: list[StreamEventBatchItem],
     ):
-        if not events:
-            return current_seq, []
-
-        next_seq = current_seq
-        presented_events = []
-        for event_name, data in events:
-            next_seq += 1
-            self.chat_run_event_repository.append_event(
-                run_id=run.id,
-                seq=next_seq,
-                event_type=event_name,
-                payload_json=data,
-                flush=False,
-            )
-            presented_events.append(self.presenter.event(event_name, data))
-
-        self.session.commit()
-        return next_seq, presented_events
+        return append_event_batch(
+            run_id=run.id,
+            current_seq=current_seq,
+            events=events,
+            event_repository=self.chat_run_event_repository,
+            presenter=self.presenter,
+            session=self.session,
+        )
 
     def _replay_existing_run(self, run):
         for event in self.chat_run_event_repository.list_for_run(run.id):
             yield self.presenter.event(event.event_type, event.payload_json)
-
-    def _response_provider_name(self) -> str:
-        return self.settings.response_route.provider
-
-    def _response_model(self) -> str:
-        return self.settings.response_route.model
 
     def _reasoning_mode(self) -> str:
         return self.settings.reasoning_mode
@@ -232,11 +219,11 @@ class ChatRunService:
         assistant_message,
         current_seq: int,
     ) -> None:
-        if run.status not in {"pending", "running"}:
+        if run.status not in {ChatRunStatus.PENDING, ChatRunStatus.RUNNING}:
             return
-        run.status = "failed"
+        run.status = ChatRunStatus.FAILED
         run.error_message = STREAM_INTERRUPTED_ERROR_MESSAGE
-        assistant_message.status = "failed"
+        assistant_message.status = ChatMessageStatus.FAILED
         assistant_message.error_message = STREAM_INTERRUPTED_ERROR_MESSAGE
         self.chat_run_event_repository.append_event(
             run_id=run.id,

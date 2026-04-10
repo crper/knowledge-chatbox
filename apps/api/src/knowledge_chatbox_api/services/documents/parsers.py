@@ -1,22 +1,19 @@
 """文档相关服务模块。"""
 
-from __future__ import annotations
-
 from collections.abc import Sequence
 from dataclasses import dataclass
-from io import BytesIO
 from pathlib import Path
 from typing import Any, Protocol
 from zipfile import BadZipFile
 
-import fitz
+import pymupdf
 from docx import Document as WordDocument
 from docx.opc.exceptions import PackageNotFoundError
 from docx.table import Table
 from docx.text.paragraph import Paragraph
-from PIL import Image, ImageOps
 
 from knowledge_chatbox_api.services.documents.errors import InvalidDocumentError
+from knowledge_chatbox_api.utils.image import prepare_image_bytes
 
 
 @dataclass(frozen=True)
@@ -60,7 +57,7 @@ class PdfDocumentParser:
 
     def parse(self, file_path: Path) -> ParsedDocument:
         """处理Parse相关逻辑。"""
-        document = fitz.open(str(file_path))
+        document = pymupdf.open(str(file_path))
         try:
             parts = []
             for page in document:
@@ -191,17 +188,7 @@ class ImageDocumentParser:
         return ParsedDocument(content=content, media_type="text/markdown")
 
     def _build_image_payload(self, file_path: Path) -> tuple[int, int, bytes]:
-        with Image.open(file_path) as source_image:
-            prepared_image = ImageOps.exif_transpose(source_image).convert("RGB")
-
-        try:
-            width, height = prepared_image.size
-            prepared_image.thumbnail((1600, 1600))
-            buffer = BytesIO()
-            prepared_image.save(buffer, format="JPEG", quality=85)
-            return width, height, buffer.getvalue()
-        finally:
-            prepared_image.close()
+        return prepare_image_bytes(file_path, max_dimension=1600)
 
     def _build_image_fallback_content(
         self,

@@ -1,7 +1,5 @@
 """认证会话仓储数据访问实现。"""
 
-from __future__ import annotations
-
 from datetime import UTC, datetime
 
 from sqlalchemy import delete, select, update

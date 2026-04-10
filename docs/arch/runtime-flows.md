@@ -48,6 +48,8 @@ flowchart TD
 
 ## 3. 认证启动与刷新
 
+详细认证接口与时序见 [auth-and-session-flow.md](./auth-and-session-flow.md)，这里只保留运行时关键约束。
+
 1. 登录成功后，后端返回短期 bearer `access token`
 2. 后端同时通过 HttpOnly cookie 写入可轮换 `refresh session`
 3. 前端启动期若内存里没有 access token，会先请求 `/api/auth/bootstrap`
@@ -62,7 +64,7 @@ flowchart TD
 - refresh session 继续以服务端 `auth_sessions` 为真相源
 - 启动期匿名探测和业务请求续期当前已分开：前者走 `/api/auth/bootstrap`，后者走 `/api/auth/refresh`
 - refresh cookie 默认按请求 scheme 自动决定是否带 `Secure`；如果 HTTPS 终止在反向代理而应用层拿不到 `https`，要显式设置 `SESSION_COOKIE_SECURE=true`
-- 资源上传、普通 JSON 请求和 SSE 流式聊天共享同一套 `401 -> refresh -> retry once` 语义
+- 资源上传、普通 JSON 请求和 SSE 流式问答共享同一套 `401 -> refresh -> retry once` 语义
 - `/api/auth/me` 在鉴权阶段保持纯读，不为 session 心跳同步写库
 - 鉴权探测失败时，受保护页面会进入认证降级页；`/login` 保持可访问
 
@@ -100,12 +102,13 @@ flowchart TD
 
 关键约束：
 
+- `reasoning_mode` 是会话级思考模式覆盖，取值为 `default`（模型默认行为）、`on`（启用思考/推理）、`off`（关闭思考/推理）；该字段存在于 `ChatSessionRead`、`ChatRunRead`、`ActiveChatRunRead` 三个响应模型中；创建会话时可通过 `CreateChatSessionRequest.reasoning_mode` 指定，更新会话时可通过 `UpdateChatSessionRequest.reasoning_mode` 修改；`ChatWorkflow` 在构建 `ModelSettings` 时会根据当前 provider 和 `reasoning_mode` 生成对应的推理配置（OpenAI: `reasoning.effort`，Anthropic: `thinking`）
 - `ChatWorkflow + PydanticAI` 当前按两条输出链路接入：同步问答走结构化输出，流式问答走文本增量事件，并在最终结果事件里回收 `sources_json / usage_json`
 - 当前轮附件采用 eager hydration：文档附件先转成标准化文本块，图片附件先转成稳定 JPEG bytes，然后直接作为多模态 user content 随本轮 user prompt 进入模型；`load_prompt_attachments` 工具只作为确认或补读手段，不再承担“图片是否能进模型”的主路径
 - 检索范围默认按当前会话 `space_id` 过滤
 - 若本轮消息带文档附件，检索会进一步限域到当前附件对应的 `document_revision_id`
 - 多文档附件检索当前会先按附件集合做一次批量限域召回，再按 `document_revision_id` 在内存里做轮转式公平选取，减少单个文档吃满全局 `top_k`，也避免附件数增多时把检索请求线性放大
-- 当两类条件同时存在时，后端会先归一化成 Chroma 兼容的复合过滤表达式；避免 `InMemoryChromaStore` 与持久化 Chroma 在真实流式链路上出现语义漂移
+- 当两类条件同时存在时，后端会先归一化成 Chroma 兼容的复合过滤表达式；确保测试用内存 store 与持久化 Chroma 在 where 过滤语义上保持一致
 - 若向量命中不足或当前轮 query embedding 生成失败，本轮会降级到 SQLite `FTS5` 词法候选兜底，再做轻量重排；不会退回整代索引的全量词法扫描
 - 纯图片泛化看图请求默认跳过 retrieval
 - 无附件时，问答仍会继续查询当前用户 personal `space` 里已入库的历史知识
@@ -118,6 +121,32 @@ flowchart TD
 - 文档重建或删除失败时，后端补偿路径不再通过 Chroma 回读整份 chunk + embedding 快照，而是改为从 `normalized_path` 重新构建索引，避免失败路径把大文档向量整体拉进 Python 内存
 - 图片不可解码或 provider 仍拒绝处理时，后端先收敛成稳定语义，不把 provider 原始格式报错直接暴露为长期契约
 
+### SSE 流式事件类型
+
+后端 `stream_events.py` 定义了完整的 `StreamEventName` 枚举，前端 `chat-stream-events.ts` 消费对应事件。事件按流式执行时序大致排列如下：
+
+| 事件名 | 方向 | 说明 |
+| --- | --- | --- |
+| `run.started` | 后端 → 前端 | 运行开始，携带 `run_id`、`session_id`、`user_message_id`、`assistant_message_id` |
+| `message.started` | 后端 → 前端 | assistant 消息开始，携带 `run_id`、`assistant_message_id`、`role` |
+| `tool.call` | 后端 → 前端 | 工具调用开始，携带 `run_id`、`tool_name`、`input` |
+| `tool.result` | 后端 → 前端 | 工具调用结果，携带 `run_id`、`tool_name`、`sources_count` |
+| `part.source` | 后端 → 前端 | 检索来源片段，携带 `run_id`、`assistant_message_id`、`source` |
+| `part.text.start` | 后端 → 前端 | 文本输出开始，携带 `run_id`、`assistant_message_id` |
+| `part.text.delta` | 后端 → 前端 | 文本增量，携带 `run_id`、`delta` |
+| `part.text.end` | 后端 → 前端 | 文本输出结束，携带 `run_id`、`assistant_message_id` |
+| `usage.final` | 后端 → 前端 | 最终用量统计，携带 `run_id`、`usage` |
+| `message.completed` | 后端 → 前端 | assistant 消息完成，携带 `run_id`、`assistant_message_id`、`status` |
+| `run.completed` | 后端 → 前端 | 运行完成，携带 `run_id`、`assistant_message_id` |
+| `run.failed` | 后端 → 前端 | 运行失败，携带 `run_id`、`error_message` |
+| `done` | 前端内部 | 前端流结束标记，非后端事件 |
+
+补充说明：
+
+- 前端 `CHAT_STREAM_EVENT` 常量对象和 `ChatStreamEventMap` 类型集中定义了所有事件名及其 payload 结构
+- 后端 `StreamEventName` 是 `Literal` 类型，与前端事件名一一对应（`done` 除外）
+- 事件按 `chat_run_events` 表的 `seq` 字段严格递增；幂等重放时按原序回放
+
 关键入口：
 
 - `apps/api/src/knowledge_chatbox_api/services/chat/chat_application_service.py`
@@ -125,8 +154,15 @@ flowchart TD
 - `apps/api/src/knowledge_chatbox_api/services/chat/chat_persistence_service.py`
 - `apps/api/src/knowledge_chatbox_api/services/chat/workflow_stream_runner.py`
 - `apps/api/src/knowledge_chatbox_api/services/chat/workflow/*`
-- `apps/api/src/knowledge_chatbox_api/services/chat/chat_service.py`
+- `apps/api/src/knowledge_chatbox_api/services/chat/retrieval_service.py`
+- `apps/api/src/knowledge_chatbox_api/services/chat/retrieval/policy.py`
+- `apps/api/src/knowledge_chatbox_api/services/chat/prompt_attachment_service.py`
+- `apps/api/src/knowledge_chatbox_api/services/chat/chat_stream_presenter.py`
 - `apps/api/src/knowledge_chatbox_api/utils/chroma.py`
+
+补充说明：
+
+- `ChatRunService.__init__` 接受可选的 `workflow_factory` 参数（默认 `None`）；当为 `None` 时回退到 `ChatWorkflow`，即 `workflow_factory or ChatWorkflow`；该参数主要用于测试注入 mock workflow，生产环境始终使用默认值
 
 ## 6. 发送前附件上传
 

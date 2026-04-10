@@ -6,7 +6,6 @@ from pydantic_ai import RunContext
 from pydantic_ai.models.test import TestModel
 from pydantic_ai.usage import RunUsage
 
-from knowledge_chatbox_api.services.chat.workflow.agent import build_chat_agent
 from knowledge_chatbox_api.services.chat.workflow.deps import ChatWorkflowDeps
 from knowledge_chatbox_api.services.chat.workflow.tools import (
     knowledge_search_tool,
@@ -66,6 +65,7 @@ class FakePromptAttachmentService:
 
 def build_test_context() -> RunContext[ChatWorkflowDeps]:
     deps = ChatWorkflowDeps(
+        session_id=1,
         session=object(),
         actor=object(),
         chat_repository=FakeChatRepository(space_id=42),
@@ -84,17 +84,11 @@ def build_test_context() -> RunContext[ChatWorkflowDeps]:
     )
 
 
-def test_build_chat_agent_returns_agent_instance() -> None:
-    agent = build_chat_agent(model=TestModel(call_tools=[]))
-    assert agent is not None
-
-
 def test_knowledge_search_tool_returns_typed_output() -> None:
     result = asyncio.run(
         knowledge_search_tool(
             build_test_context(),
             query="帮我总结",
-            session_id=1,
             attachments=[{"type": "document", "document_revision_id": 2}],
         )
     )
@@ -109,7 +103,6 @@ def test_load_prompt_attachments_tool_returns_prompt_text_and_attachments() -> N
         load_prompt_attachments_tool(
             build_test_context(),
             question="",
-            session_id=1,
             attachments=[{"type": "document", "document_revision_id": 2}],
         )
     )

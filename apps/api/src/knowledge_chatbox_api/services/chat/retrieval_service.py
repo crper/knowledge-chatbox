@@ -1,7 +1,5 @@
 """Knowledge retrieval helpers used by chat prompt assembly."""
 
-from __future__ import annotations
-
 from time import perf_counter
 from typing import Any
 
@@ -14,6 +12,10 @@ from knowledge_chatbox_api.services.chat.retrieval.policy import (
     should_retrieve_knowledge,
 )
 from knowledge_chatbox_api.services.chat.retrieval.querying import RetrievalQueryEngine
+from knowledge_chatbox_api.utils.text_matching import (
+    normalize_and_tokenize,
+    quoted_phrases,
+)
 
 
 class RetrievalService:
@@ -46,8 +48,12 @@ class RetrievalService:
     ) -> RetrievedContext:
         started_at = perf_counter()
         normalized_query = query_text.strip()
+        query_normalized, query_tokens = normalize_and_tokenize(normalized_query)
+        query_quoted_phrases = list(quoted_phrases(normalized_query))
         attachment_revision_ids = sorted(collect_attachment_revision_ids(attachments))
-        where_filter = build_retrieval_where_filter(active_space_id, attachments)
+        where_filter = build_retrieval_where_filter(
+            active_space_id, attachments, attachment_revision_ids=attachment_revision_ids
+        )
         attachment_revision_scope_count = len(attachment_revision_ids)
 
         if not should_retrieve_knowledge(normalized_query, attachments=attachments):
@@ -78,7 +84,13 @@ class RetrievalService:
         relevant_vector_chunks = [
             record
             for record in vector_chunks
-            if self.query_engine.is_relevant_retrieval_hit(record, normalized_query)
+            if self.query_engine.is_relevant_retrieval_hit(
+                record,
+                normalized_query,
+                query_normalized=query_normalized,
+                query_tokens=query_tokens,
+                query_quoted_phrases=query_quoted_phrases,
+            )
         ]
         if relevant_vector_chunks:
             return self.context_builder.build_context(
@@ -101,7 +113,13 @@ class RetrievalService:
         relevant_lexical_chunks = [
             record
             for record in lexical_chunks
-            if self.query_engine.is_relevant_retrieval_hit(record, normalized_query)
+            if self.query_engine.is_relevant_retrieval_hit(
+                record,
+                normalized_query,
+                query_normalized=query_normalized,
+                query_tokens=query_tokens,
+                query_quoted_phrases=query_quoted_phrases,
+            )
         ]
         if relevant_lexical_chunks:
             return self.context_builder.build_context(

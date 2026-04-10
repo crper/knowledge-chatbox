@@ -1,19 +1,18 @@
-from __future__ import annotations
-
 from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.anthropic import AnthropicProvider
 from pydantic_ai.providers.openai import OpenAIProvider
 
+from knowledge_chatbox_api.models.enums import ProviderName
 from knowledge_chatbox_api.providers.ollama_url import build_ollama_openai_base_url
-from knowledge_chatbox_api.utils.compat import strip_or_none
+from knowledge_chatbox_api.utils.helpers import strip_or_none
 
 
 def build_chat_agent_model(runtime_settings):
     route = runtime_settings.response_route
     profiles = runtime_settings.provider_profiles
 
-    if route.provider == "anthropic":
+    if route.provider == ProviderName.ANTHROPIC:
         return AnthropicModel(
             route.model,
             provider=AnthropicProvider(
@@ -22,7 +21,7 @@ def build_chat_agent_model(runtime_settings):
             ),
         )
 
-    if route.provider == "ollama":
+    if route.provider == ProviderName.OLLAMA:
         return OpenAIChatModel(
             route.model,
             provider=OpenAIProvider(

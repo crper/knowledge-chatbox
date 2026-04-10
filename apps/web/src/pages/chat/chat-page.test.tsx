@@ -335,15 +335,15 @@ function setupAuthenticatedWorkspace(options?: {
             user_message_id: sessionId * 10 + 3,
             assistant_message_id: sessionId * 10 + 4,
           }),
-          createChatStreamFrame(CHAT_STREAM_EVENT.legacyMessageDelta, {
+          createChatStreamFrame(CHAT_STREAM_EVENT.partTextDelta, {
             run_id: sessionId * 10 + 5,
             assistant_message_id: sessionId * 10 + 4,
             delta: "streamed answer",
           }),
-          createChatStreamFrame(CHAT_STREAM_EVENT.legacySourcesFinal, {
+          createChatStreamFrame(CHAT_STREAM_EVENT.partSource, {
             run_id: sessionId * 10 + 5,
             assistant_message_id: sessionId * 10 + 4,
-            sources: [],
+            source: {},
           }),
           createChatStreamFrame(CHAT_STREAM_EVENT.runCompleted, {
             run_id: sessionId * 10 + 5,
@@ -612,7 +612,7 @@ describe("chat workspace", () => {
 
     const style = document.createElement("style");
     style.textContent = `
-      [data-testid="chat-sidebar-virtuoso"],
+      [data-testid="chat-sidebar-session-list"],
       [data-testid="chat-message-viewport-root"],
       [data-testid="chat-message-viewport-scroll"],
       .h-full { height: 512px !important; }
@@ -620,14 +620,16 @@ describe("chat workspace", () => {
     document.head.appendChild(style);
   });
 
-  it("renders a three-column chat workspace with session controls and an overview-first context panel", async () => {
+  it("renders a dock-first chat workspace with session controls and an overview-first context panel", async () => {
     setupAuthenticatedWorkspace();
 
     renderChatRoute("/chat/2");
 
     expect(await screen.findByRole("button", { name: "新建会话" })).toBeInTheDocument();
-    expect(screen.getByText("会话")).toBeInTheDocument();
-    expect(screen.getByText("工作模式")).toBeInTheDocument();
+    expect(screen.queryByText("工作模式")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "对话" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "资源" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "图谱" })).toBeInTheDocument();
     expect(screen.queryByText("最近会话")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "打开账户菜单" })).toBeInTheDocument();
     expect(screen.queryByText("工作台工具")).not.toBeInTheDocument();
@@ -636,7 +638,6 @@ describe("chat workspace", () => {
     expect(screen.queryByRole("link", { name: "用户" })).not.toBeInTheDocument();
     expect(screen.queryByText("⌘B")).not.toBeInTheDocument();
     expect(screen.getByText("会话概览")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "收起上下文侧栏" })).toBeInTheDocument();
     expect(screen.queryByText("首条预览")).not.toBeInTheDocument();
     expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
 
@@ -691,22 +692,18 @@ describe("chat workspace", () => {
     expect(await screen.findByRole("textbox", { name: "搜索会话" })).toBeInTheDocument();
   });
 
-  it("toggles the right context sidebar with an explicit collapse control", async () => {
+  it("keeps the right context sidebar visible without collapse controls", async () => {
     setupAuthenticatedWorkspace();
 
     renderChatRoute("/chat/1");
 
     expect(await screen.findByText("会话概览")).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "收起上下文侧栏" }));
-
-    expect(screen.queryByText("提问后，这里会显示附件和引用。")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "展开上下文侧栏" }));
-
-    expect(await screen.findByText("会话概览")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "收起上下文侧栏" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "展开上下文侧栏" })).not.toBeInTheDocument();
+    expect(screen.getByText("提问后，这里会显示附件和引用。")).toBeInTheDocument();
   });
 
-  it("renders compact icon-only rails after collapsing desktop sidebars", async () => {
+  it("renders compact icon-only rail after collapsing only the left desktop sidebar", async () => {
     setupAuthenticatedWorkspace();
 
     renderChatRoute("/chat/1");
@@ -716,10 +713,7 @@ describe("chat workspace", () => {
     fireEvent.keyDown(document, { key: "b", metaKey: true });
     const leftRail = screen.getByRole("button", { name: "展开会话侧栏" });
     expect(leftRail.textContent?.trim()).toBe("");
-
-    fireEvent.click(screen.getByRole("button", { name: "收起上下文侧栏" }));
-    const rightRail = screen.getByRole("button", { name: "展开上下文侧栏" });
-    expect(rightRail.textContent?.trim()).toBe("");
+    expect(screen.queryByRole("button", { name: "展开上下文侧栏" })).not.toBeInTheDocument();
   });
 
   it("renders a guided empty-session canvas after creating a new session", async () => {
@@ -840,18 +834,6 @@ describe("chat workspace", () => {
     });
     expect(await findTextContent("Title")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "查看引用 1" })).toBeInTheDocument();
-  });
-
-  it("uses a compact chat header and avoids duplicate composer guidance", async () => {
-    setupAuthenticatedWorkspace();
-
-    renderChatRoute("/chat/1");
-
-    const sessionHeading = await screen.findByRole("heading", { name: "Session A" });
-    expect(sessionHeading).toBeInTheDocument();
-    expect(
-      screen.queryByText("回答会结合当前会话上下文，并在右侧持续整理引用。"),
-    ).not.toBeInTheDocument();
   });
 
   it("embeds the composer directly without an extra outer surface shell", async () => {
@@ -1051,7 +1033,7 @@ describe("chat workspace", () => {
           session_id: 1,
           assistant_message_id: 4,
         }),
-        createChatStreamFrame(CHAT_STREAM_EVENT.legacyMessageDelta, {
+        createChatStreamFrame(CHAT_STREAM_EVENT.partTextDelta, {
           run_id: 5,
           assistant_message_id: 4,
           delta: "作为",
@@ -1118,7 +1100,7 @@ describe("chat workspace", () => {
           user_message_id: 3,
           assistant_message_id: 4,
         }),
-        createChatStreamFrame(CHAT_STREAM_EVENT.legacyMessageDelta, {
+        createChatStreamFrame(CHAT_STREAM_EVENT.partTextDelta, {
           run_id: 5,
           assistant_message_id: 4,
           delta: "作为",
@@ -1238,7 +1220,7 @@ describe("chat workspace", () => {
             user_message_id: 27,
             assistant_message_id: 28,
           }),
-          createChatStreamFrame(CHAT_STREAM_EVENT.legacyMessageDelta, {
+          createChatStreamFrame(CHAT_STREAM_EVENT.partTextDelta, {
             run_id: 25,
             assistant_message_id: 28,
             delta: "fixed answer",
@@ -1310,7 +1292,7 @@ describe("chat workspace", () => {
           user_message_id: 5,
           assistant_message_id: 6,
         }),
-        createChatStreamFrame(CHAT_STREAM_EVENT.legacyMessageDelta, {
+        createChatStreamFrame(CHAT_STREAM_EVENT.partTextDelta, {
           run_id: 9,
           assistant_message_id: 6,
           delta: "重试中的回答",
@@ -1844,7 +1826,8 @@ describe("chat workspace", () => {
 
     renderChatRoute("/chat/1");
 
-    fireEvent.click(await screen.findByLabelText("重命名 Session A"));
+    fireEvent.click(await screen.findByLabelText("打开 Session A 的会话菜单"));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "重命名" }));
     fireEvent.change(screen.getByLabelText("会话名称"), {
       target: { value: "Session A Renamed" },
     });
@@ -1869,7 +1852,8 @@ describe("chat workspace", () => {
 
     renderChatRoute("/chat/1");
 
-    fireEvent.click(await screen.findByLabelText("删除 Session A"));
+    fireEvent.click(await screen.findByLabelText("打开 Session A 的会话菜单"));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "删除" }));
 
     await waitFor(() => {
       expect(

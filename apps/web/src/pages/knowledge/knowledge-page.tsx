@@ -2,18 +2,12 @@
  * @file 资源页面模块。
  */
 
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  FilesIcon,
-  ScanSearchIcon,
-  SearchIcon,
-  SlidersHorizontalIcon,
-  UploadIcon,
-} from "lucide-react";
+import { FilesIcon, ScanSearchIcon, UploadIcon } from "lucide-react";
 
 import { FileDropzone } from "@/components/upload/file-dropzone";
-import { useLocation, useNavigate } from "@/lib/app-router";
+import { useNavigate } from "@/lib/app-router";
 import { WorkspaceMetricCard, WorkspacePage } from "@/components/shared/workspace-page";
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
@@ -36,38 +30,22 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
-import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
 import { Spinner } from "@/components/ui/spinner";
+import { WorkbenchLayout } from "@/layouts/workbench-layout";
 import type {
   KnowledgeDocument,
   KnowledgeDocumentStatus,
 } from "@/features/knowledge/api/documents";
 import { KNOWLEDGE_DOCUMENT_STATUSES } from "@/features/knowledge/api/documents";
+import { DocumentInspectorPanel } from "@/features/knowledge/components/document-inspector-panel";
+import type { DocumentInspectorTabValue } from "@/features/knowledge/components/document-inspector-panel";
+import { DocumentMainPreview } from "@/features/knowledge/components/document-main-preview";
 import { DocumentPreviewSheet } from "@/features/knowledge/components/document-preview-sheet";
 import { ResourceDocumentList } from "@/features/knowledge/components/resource-document-list";
-import { SelectedResourceBand } from "@/features/knowledge/components/selected-resource-band";
-import {
-  buildKnowledgeRoutePath,
-  KNOWLEDGE_TYPE_FILTER_VALUES,
-  normalizeKnowledgeRouteSearch,
-  readKnowledgeRouteSearch,
-} from "@/features/knowledge/route-search";
+import { ResourceWorkbenchToolbar } from "@/features/knowledge/components/resource-workbench-toolbar";
+import { KNOWLEDGE_TYPE_FILTER_VALUES } from "@/features/knowledge/route-search";
 import { UploadQueueSummary } from "@/features/knowledge/components/upload-queue-summary";
+import { useKnowledgeSearch } from "@/features/knowledge/hooks/use-knowledge-search";
 import { useKnowledgeWorkspace } from "@/features/knowledge/hooks/use-knowledge-workspace";
 import { VersionDrawer } from "@/features/knowledge/components/version-drawer";
 import { useIsMobile } from "@/lib/hooks/use-mobile";
@@ -92,32 +70,38 @@ function getStatusFilterLabel(value: "all" | KnowledgeDocumentStatus, t: (key: s
     : t(`status${value.charAt(0).toUpperCase()}${value.slice(1)}`);
 }
 
+function resolveSelectedResourceEmptyState(hasDocuments: boolean, hasActiveFilters: boolean) {
+  if (hasDocuments) {
+    return "selection-required" as const;
+  }
+
+  if (hasActiveFilters) {
+    return "no-match" as const;
+  }
+
+  return "selection-required" as const;
+}
+
 /**
  * 渲染资源页面。
  */
 export function KnowledgePage() {
   const { t } = useTranslation("knowledge");
   const isMobile = useIsMobile();
-  const location = useLocation();
   const navigate = useNavigate();
   const [pendingDeleteDocument, setPendingDeleteDocument] = useState<KnowledgeDocument | null>(
     null,
   );
-  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
-  const routeSearch = useMemo(
-    () => readKnowledgeRouteSearch(new URLSearchParams(location.search)),
-    [location.search],
-  );
-  const routeQuery = routeSearch.query ?? "";
-  const [searchValue, setSearchValue] = useState(routeQuery);
+  const { deferredSearchValue, routeSearch, searchValue, setSearchValue, updateRouteSearch } =
+    useKnowledgeSearch();
   const [previewOpen, setPreviewOpen] = useState(false);
   const [selectedDocumentId, setSelectedDocumentId] = useState<number | null>(null);
-  const deferredSearchValue = useDeferredValue(searchValue);
+  const [inspectorTab, setInspectorTab] = useState<DocumentInspectorTabValue>("details");
   const hadDocumentsRef = useRef(false);
   const [filterTransitioning, setFilterTransitioning] = useState(false);
   const typeFilter = (routeSearch.type ?? "all") as ResourceTypeFilter;
   const statusFilter = (routeSearch.status ?? "all") as "all" | KnowledgeDocumentStatus;
-  const documentFilters = useMemo(() => normalizeKnowledgeRouteSearch(routeSearch), [routeSearch]);
+  const documentFilters = useMemo(() => routeSearch, [routeSearch]);
   const {
     canManageDocuments,
     canManageProviderSettings,
@@ -140,14 +124,19 @@ export function KnowledgePage() {
     versionDrawerOpen,
     versions,
   } = useKnowledgeWorkspace(documentFilters);
-  const filteredDocuments = documents;
-  const indexedCount = documents.filter((document) => document.status === "indexed").length;
+  const indexedCount = useMemo(
+    () => documents.filter((document) => document.status === "indexed").length,
+    [documents],
+  );
   const hasDocuments = documents.length > 0;
   const hasSearchQuery = deferredSearchValue.trim().length > 0;
   const activeFilterCount =
     Number(hasSearchQuery) + Number(typeFilter !== "all") + Number(statusFilter !== "all");
   const hasActiveFilters = activeFilterCount > 0;
-  const showFilteredListShell = hasDocuments || hasActiveFilters || filterTransitioning;
+  const selectedResourceEmptyState = resolveSelectedResourceEmptyState(
+    hasDocuments,
+    hasActiveFilters,
+  );
   const selectedDocument = useMemo(
     () => documents.find((document) => document.id === selectedDocumentId) ?? null,
     [documents, selectedDocumentId],
@@ -159,56 +148,21 @@ export function KnowledgePage() {
   const uploadReadinessChecking = uploadReadinessPending && uploadReadiness === undefined;
   const uploadBlocked = uploadReadiness?.can_upload === false;
   const imageUploadFallback = !uploadBlocked && uploadReadiness?.image_fallback === true;
-  const mobileSummaryBadges = (
-    <div className="flex flex-wrap items-center gap-2">
-      <Badge className="rounded-full px-3 py-1" variant="outline">
-        {t("summaryTotalValue", { count: documents.length })}
-      </Badge>
-      <Badge className="rounded-full px-3 py-1" variant="outline">
-        {t("summaryProcessingValue", { count: processingCount })}
-      </Badge>
-      <Badge className="rounded-full px-3 py-1" variant="outline">
-        {t("summaryIndexedValue", { count: indexedCount })}
-      </Badge>
-    </div>
-  );
-
-  useEffect(() => {
-    setSearchValue((currentValue) => (currentValue === routeQuery ? currentValue : routeQuery));
-  }, [routeQuery]);
-
-  useEffect(() => {
-    const nextQuery = deferredSearchValue.trim() || undefined;
-    if ((routeSearch.query ?? undefined) === nextQuery) {
-      return;
-    }
-
-    void navigate(
-      buildKnowledgeRoutePath(
-        normalizeKnowledgeRouteSearch({
-          ...routeSearch,
-          query: nextQuery,
-        }),
-      ),
-      { replace: true },
-    );
-  }, [deferredSearchValue, navigate, routeSearch, routeSearch.query]);
 
   useEffect(() => {
     if (selectedDocumentId === null) {
       return;
     }
 
-    const hasSelectedDocument = filteredDocuments.some(
-      (document) => document.id === selectedDocumentId,
-    );
+    const hasSelectedDocument = documents.some((document) => document.id === selectedDocumentId);
     if (hasSelectedDocument) {
       return;
     }
 
     setPreviewOpen(false);
     setSelectedDocumentId(null);
-  }, [filteredDocuments, selectedDocumentId]);
+    setInspectorTab("details");
+  }, [documents, selectedDocumentId]);
 
   useEffect(() => {
     if (documents.length > 0) {
@@ -218,26 +172,59 @@ export function KnowledgePage() {
   }, [documents.length, documentsUpdatedAt]);
 
   useEffect(() => {
+    if (isMobile || selectedDocumentId !== null || documents.length === 0) {
+      return;
+    }
+
+    setInspectorTab("details");
+    setSelectedDocumentId(documents[0]?.id ?? null);
+  }, [documents, isMobile, selectedDocumentId]);
+
+  useEffect(() => {
     if (hadDocumentsRef.current) {
       setFilterTransitioning(true);
     }
   }, [documentFilters.query, documentFilters.status, documentFilters.type]);
 
   const openPreviewForDocument = (document: KnowledgeDocument) => {
-    setSelectedDocumentId(document.id);
-    setPreviewOpen(true);
-  };
-
-  const handleSelectDocument = (document: KnowledgeDocument) => {
+    setInspectorTab("details");
     setSelectedDocumentId(document.id);
     if (isMobile) {
       setPreviewOpen(true);
     }
   };
 
+  const handleSelectDocument = (document: KnowledgeDocument) => {
+    setInspectorTab("details");
+    setSelectedDocumentId(document.id);
+    if (isMobile) {
+      setPreviewOpen(true);
+    }
+  };
+
+  const handleShowVersions = (documentId: number) => {
+    const targetDocument =
+      documents.find((document) => document.document_id === documentId) ?? null;
+    if (targetDocument) {
+      setSelectedDocumentId(targetDocument.id);
+    }
+
+    if (isMobile) {
+      void showVersions(documentId);
+      return;
+    }
+
+    setPreviewOpen(false);
+    setInspectorTab("versions");
+  };
+
   const clearFilters = () => {
     setSearchValue("");
-    void navigate("/knowledge");
+    updateRouteSearch({
+      query: undefined,
+      status: undefined,
+      type: undefined,
+    });
   };
 
   const renderUploadReadinessAlert = () => {
@@ -335,149 +322,200 @@ export function KnowledgePage() {
     );
   };
 
-  const mobileFilterSheet = (
-    <Sheet onOpenChange={setMobileFiltersOpen} open={mobileFiltersOpen}>
-      <SheetTrigger
-        render={
-          <Button
-            className="w-full sm:flex-none"
-            type="button"
-            variant={activeFilterCount > 0 ? "secondary" : "outline"}
-          />
-        }
-      >
-        <SlidersHorizontalIcon data-icon="inline-start" />
-        {activeFilterCount > 0
-          ? t("mobileFilterActionWithCount", { count: activeFilterCount })
-          : t("mobileFilterAction")}
-      </SheetTrigger>
-      <SheetContent
-        className="max-h-[85dvh] gap-0 rounded-t-[1.5rem] border-x-0 border-b-0 bg-background/98 p-0"
-        closeLabel={t("closeAction")}
-        side="bottom"
-      >
-        <SheetHeader className="border-b border-border/70">
-          <SheetTitle>{t("mobileFilterTitle")}</SheetTitle>
-          <SheetDescription>{t("mobileFilterDescription")}</SheetDescription>
-        </SheetHeader>
-        <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4">
-          <section className="space-y-3">
-            <div className="space-y-1">
-              <p className="text-ui-title">{t("filterTypeSectionTitle")}</p>
-              <p className="text-ui-subtle text-muted-foreground">{t("searchInputPlaceholder")}</p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {TYPE_FILTER_VALUES.map((value) => (
-                <Button
-                  key={value}
-                  onClick={() =>
-                    void navigate(
-                      buildKnowledgeRoutePath(
-                        normalizeKnowledgeRouteSearch({
-                          ...routeSearch,
-                          type: value === "all" ? undefined : value,
-                        }),
-                      ),
-                    )
-                  }
-                  size="sm"
-                  type="button"
-                  variant={typeFilter === value ? "default" : "outline"}
-                >
-                  {getTypeFilterLabel(value, t)}
-                </Button>
-              ))}
-            </div>
-          </section>
+  const desktopTypeFilterButtons = TYPE_FILTER_VALUES.map((value) => (
+    <Button
+      key={value}
+      onClick={() => updateRouteSearch({ type: value === "all" ? undefined : value })}
+      size="sm"
+      type="button"
+      variant={typeFilter === value ? "default" : "outline"}
+    >
+      {getTypeFilterLabel(value, t)}
+    </Button>
+  ));
 
-          <section className="space-y-3">
-            <div className="space-y-1">
-              <p className="text-ui-title">{t("filterStatusSectionTitle")}</p>
-              <p className="text-ui-subtle text-muted-foreground">{t("processingInlineHint")}</p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {STATUS_FILTER_VALUES.map((value) => (
-                <Button
-                  key={value}
-                  onClick={() =>
-                    void navigate(
-                      buildKnowledgeRoutePath(
-                        normalizeKnowledgeRouteSearch({
-                          ...routeSearch,
-                          status: value === "all" ? undefined : value,
-                        }),
-                      ),
-                    )
-                  }
-                  size="sm"
-                  type="button"
-                  variant={statusFilter === value ? "secondary" : "outline"}
-                >
-                  {getStatusFilterLabel(value, t)}
-                </Button>
-              ))}
-            </div>
-          </section>
+  const desktopStatusFilterButtons = STATUS_FILTER_VALUES.map((value) => (
+    <Button
+      key={value}
+      onClick={() => updateRouteSearch({ status: value === "all" ? undefined : value })}
+      size="sm"
+      type="button"
+      variant={statusFilter === value ? "secondary" : "outline"}
+    >
+      {getStatusFilterLabel(value, t)}
+    </Button>
+  ));
 
-          {activeFilterCount > 0 ? (
-            <Button className="w-full" onClick={clearFilters} type="button" variant="ghost">
-              {t("clearFiltersAction")}
-            </Button>
-          ) : null}
+  const resourcesSectionPane = (
+    <div className="flex h-full min-h-0 flex-col gap-4">
+      {renderUploadReadinessAlert()}
+      {uploadItems.length > 0 ? (
+        <UploadQueueSummary
+          items={uploadItems}
+          onCancel={cancelUpload}
+          onRemove={removeUpload}
+          onRetry={retryUpload}
+        />
+      ) : null}
+
+      <ResourceWorkbenchToolbar
+        activeFilterBadges={activeFilterBadges}
+        activeFilterCount={activeFilterCount}
+        clearFilters={clearFilters}
+        isMobile={isMobile}
+        renderUploadAction={renderUploadAction}
+        searchValue={searchValue}
+        setSearchValue={setSearchValue}
+        statusFilterButtons={desktopStatusFilterButtons}
+        typeFilterButtons={desktopTypeFilterButtons}
+      />
+
+      {processingCount > 0 ? (
+        <div className="flex items-center gap-2 rounded-lg bg-primary/4 px-3 py-2 text-xs text-muted-foreground">
+          <span className="relative flex size-2">
+            <span className="absolute inline-flex size-2 animate-ping opacity-75 bg-primary/60" />
+            <span className="relative inline-flex size-2 rounded-full bg-primary/80" />
+          </span>
+          {t("processingInlineHint")}
         </div>
-      </SheetContent>
-    </Sheet>
+      ) : null}
+
+      {filterTransitioning ? (
+        <div className="flex items-center gap-2 px-1 text-xs text-muted-foreground/70">
+          <span className="size-1.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+          <span>{t("searchRefreshingHint")}</span>
+        </div>
+      ) : null}
+
+      <div className="min-h-0 flex-1 overflow-hidden">
+        <ResourceDocumentList
+          canDelete={canManageDocuments}
+          className="h-full"
+          documents={documents}
+          onDelete={setPendingDeleteDocument}
+          onPreviewDocument={openPreviewForDocument}
+          onReindex={(document) => void reindexDocument(document.document_id)}
+          onSelectDocument={handleSelectDocument}
+          onShowVersions={handleShowVersions}
+          selectedDocumentId={selectedDocumentId}
+        />
+      </div>
+    </div>
+  );
+
+  const resourcesMainPane =
+    !hasDocuments && !hasActiveFilters && !filterTransitioning ? (
+      canManageDocuments ? (
+        <FileDropzone
+          disabled={uploadBlocked}
+          onFilesAccepted={enqueueUploads}
+          onFilesRejected={rejectFiles}
+        >
+          {({ getInputProps, getRootProps, isDragAccept, isDragActive, isDragReject, open }) => (
+            <Empty
+              {...getRootProps({
+                className: cn(
+                  "min-h-[24rem] select-none rounded-3xl border border-dashed border-border/70 bg-[radial-gradient(ellipse_56%_40%_at_top,hsl(var(--primary)/0.07),transparent_44%),linear-gradient(180deg,hsl(var(--background)/0.72),hsl(var(--muted)/0.34))] px-6 py-8 transition-[color,border-color,background,transform,box-shadow] duration-200 ease-out",
+                  isDragAccept &&
+                    "border-primary/46 bg-primary/6 scale-[1.005] shadow-[0_16px_36px_-20px_hsl(var(--primary)/0.18)]",
+                  isDragReject && "border-destructive/46 bg-destructive/8 scale-[0.998]",
+                ),
+              })}
+            >
+              <input {...getInputProps({ "aria-label": t("uploadAction") })} />
+              <EmptyHeader className="max-w-xl gap-3">
+                <Badge className="text-ui-kicker rounded-full px-3 py-1" variant="outline">
+                  {t("emptyOnboardingFlowBadge")}
+                </Badge>
+                <EmptyMedia
+                  className="surface-light size-12 rounded-2xl text-primary [&_svg]:size-5"
+                  variant="icon"
+                >
+                  <UploadIcon aria-hidden="true" />
+                </EmptyMedia>
+                <EmptyTitle aria-level={2} className="text-ui-heading" role="heading">
+                  {t("emptyOnboardingTitle")}
+                </EmptyTitle>
+                <EmptyDescription className="text-ui-body measure-readable max-w-xl">
+                  {t("emptyOnboardingDescription")}
+                </EmptyDescription>
+              </EmptyHeader>
+              <EmptyContent className="max-w-xl gap-4">
+                <div className="grid w-full gap-2 text-left">
+                  <div className="surface-light text-ui-subtle select-none rounded-2xl px-4 py-3 text-muted-foreground">
+                    {t("emptyOnboardingStepOne")}
+                  </div>
+                  <div className="surface-light text-ui-subtle select-none rounded-2xl px-4 py-3 text-muted-foreground">
+                    {t("emptyOnboardingStepTwo")}
+                  </div>
+                </div>
+                <div className="surface-light select-none rounded-2xl border-dashed px-4 py-3 text-left">
+                  <p className="text-sm font-medium text-foreground">{t("dropzoneTitle")}</p>
+                  <p
+                    className={cn(
+                      "mt-1 text-xs text-muted-foreground",
+                      isDragReject && "text-destructive",
+                      isDragAccept && "text-primary",
+                    )}
+                  >
+                    {isDragReject
+                      ? t("dropzoneRejectHint")
+                      : isDragActive
+                        ? t("dropzoneActiveHint")
+                        : t("dropzoneHint")}
+                  </p>
+                </div>
+                <Button
+                  disabled={uploadBlocked || uploadReadinessChecking}
+                  onClick={open}
+                  type="button"
+                >
+                  <UploadIcon data-icon="inline-start" />
+                  {t("uploadAction")}
+                </Button>
+              </EmptyContent>
+            </Empty>
+          )}
+        </FileDropzone>
+      ) : (
+        <Empty className="min-h-[24rem] rounded-3xl border border-dashed border-border/70 bg-[radial-gradient(circle_at_top,hsl(var(--primary)/0.08),transparent_36%),linear-gradient(180deg,hsl(var(--background)/0.72),hsl(var(--muted)/0.34))] px-6 py-8">
+          <EmptyHeader className="max-w-xl gap-3">
+            <Badge className="text-ui-kicker rounded-full px-3 py-1" variant="outline">
+              {t("emptyReadonlyFlowBadge")}
+            </Badge>
+            <EmptyMedia
+              className="surface-light size-12 rounded-2xl text-primary [&_svg]:size-5"
+              variant="icon"
+            >
+              <UploadIcon aria-hidden="true" />
+            </EmptyMedia>
+            <EmptyTitle aria-level={2} className="text-ui-heading" role="heading">
+              {t("emptyReadonlyTitle")}
+            </EmptyTitle>
+            <EmptyDescription className="text-ui-body measure-readable max-w-xl">
+              {t("emptyReadonlyDescription")}
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      )
+    ) : (
+      <DocumentMainPreview document={selectedDocument} emptyState={selectedResourceEmptyState} />
+    );
+
+  const resourcesInspectorPane = (
+    <DocumentInspectorPanel
+      activeTab={inspectorTab}
+      document={selectedDocument}
+      emptyState={selectedResourceEmptyState}
+      onActiveTabChange={setInspectorTab}
+      onDelete={setPendingDeleteDocument}
+      onReindex={(document) => void reindexDocument(document.document_id)}
+    />
   );
 
   return (
     <>
       <WorkspacePage
-        actions={
-          isMobile ? (
-            <div className="flex w-full flex-col gap-3">
-              <label className="relative w-full">
-                <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground/72" />
-                <Input
-                  aria-label={t("searchInputLabel")}
-                  className="h-11 rounded-xl border-border/50 bg-background/80 pl-9 text-sm"
-                  onChange={(event) => setSearchValue(event.target.value)}
-                  placeholder={t("searchInputPlaceholder")}
-                  value={searchValue}
-                />
-              </label>
-              <div className="grid w-full grid-cols-2 gap-2.5">
-                {mobileFilterSheet}
-                {renderUploadAction(true)}
-              </div>
-              {hasActiveFilters ? (
-                <div className="flex flex-wrap items-center gap-2">
-                  {activeFilterBadges.map((label) => (
-                    <Badge className="rounded-full px-3 py-1" key={label} variant="outline">
-                      {label}
-                    </Badge>
-                  ))}
-                  <Button onClick={clearFilters} size="sm" type="button" variant="ghost">
-                    {t("clearFiltersAction")}
-                  </Button>
-                </div>
-              ) : null}
-            </div>
-          ) : (
-            <div className="flex w-full flex-wrap items-center gap-3 md:justify-end">
-              <label className="relative min-w-[min(18rem,100%)] flex-1 basis-[18rem]">
-                <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground/72" />
-                <Input
-                  aria-label={t("searchInputLabel")}
-                  className="h-11 rounded-xl border-border/50 bg-background/80 pl-9 text-sm"
-                  onChange={(event) => setSearchValue(event.target.value)}
-                  placeholder={t("searchInputPlaceholder")}
-                  value={searchValue}
-                />
-              </label>
-              {renderUploadAction()}
-            </div>
-          )
-        }
         badge={t("workspaceBadge")}
         className="h-full min-h-0 xl:mx-0"
         description={t("pageDescription")}
@@ -508,262 +546,47 @@ export function KnowledgePage() {
             </>
           )
         }
-        metricsClassName="xl:grid-cols-[minmax(0,1.15fr)_repeat(2,minmax(0,1fr))] gap-3"
+        metricsClassName="gap-3 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-[minmax(0,1.15fr)_repeat(2,minmax(0,1fr))]"
         main={
-          <div
-            className="flex h-full min-h-0 flex-col gap-4"
-            data-surface-style="flat"
-            data-testid="knowledge-main-surface"
-          >
-            <div className="flex min-h-0 flex-1 flex-col gap-4 xl:pr-2">
-              {renderUploadReadinessAlert()}
-              {uploadItems.length > 0 ? (
-                <UploadQueueSummary
-                  items={uploadItems}
-                  onCancel={cancelUpload}
-                  onRemove={removeUpload}
-                  onRetry={retryUpload}
-                />
-              ) : null}
-              {showFilteredListShell ? (
-                <section className="surface-panel-subtle space-y-3 rounded-2xl border-border/50 p-3.5 md:p-4">
-                  <div className="flex flex-col gap-2.5 md:flex-row md:items-start md:justify-between">
-                    <div className="space-y-1.5">
-                      <p className="text-ui-title">{t("tableSectionTitle")}</p>
-                      <p className="text-ui-subtle text-muted-foreground">
-                        {t("tableSectionDescription")}
-                      </p>
-                    </div>
-                    <Badge className="rounded-full px-3 py-1" variant="outline">
-                      {t("resultCount", { count: filteredDocuments.length })}
-                    </Badge>
-                  </div>
-
-                  {isMobile ? mobileSummaryBadges : null}
-
-                  {processingCount > 0 ? (
-                    <div className="surface-light rounded-lg px-3 py-2">
-                      <p className="text-ui-subtle text-muted-foreground">
-                        {t("processingInlineHint")}
-                      </p>
-                    </div>
-                  ) : null}
-                  {filterTransitioning ? (
-                    <div className="flex items-center gap-2 px-1 text-ui-subtle text-muted-foreground">
-                      <Spinner aria-hidden="true" className="size-3.5" />
-                      <span>{t("searchRefreshingHint")}</span>
-                    </div>
-                  ) : null}
-
-                  {isMobile ? null : (
-                    <div className="flex flex-wrap items-center gap-3">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="text-ui-caption text-muted-foreground">
-                          {t("filterTypeSectionTitle")}
-                        </span>
-                        {TYPE_FILTER_VALUES.map((value) => (
-                          <Button
-                            key={value}
-                            onClick={() =>
-                              void navigate(
-                                buildKnowledgeRoutePath(
-                                  normalizeKnowledgeRouteSearch({
-                                    ...routeSearch,
-                                    type: value === "all" ? undefined : value,
-                                  }),
-                                ),
-                              )
-                            }
-                            size="xs"
-                            type="button"
-                            variant={typeFilter === value ? "default" : "outline"}
-                          >
-                            {getTypeFilterLabel(value, t)}
-                          </Button>
-                        ))}
-                      </div>
-                      <div className="ml-1 h-5 w-px bg-border/60" />
-                      <Select
-                        items={STATUS_FILTER_VALUES.map((value) => ({
-                          label: getStatusFilterLabel(value, t),
-                          value,
-                        }))}
-                        value={statusFilter}
-                        onValueChange={(value) =>
-                          void navigate(
-                            buildKnowledgeRoutePath(
-                              normalizeKnowledgeRouteSearch({
-                                ...routeSearch,
-                                status: value === "all" ? undefined : value,
-                              }),
-                            ),
-                          )
-                        }
-                      >
-                        <SelectTrigger
-                          aria-label={t("filterStatusSectionTitle")}
-                          className="h-8 w-auto min-w-[7rem] rounded-lg px-2.5 text-xs"
-                        >
-                          <SelectValue>{() => getStatusFilterLabel(statusFilter, t)}</SelectValue>
-                        </SelectTrigger>
-                        <SelectContent>
-                          {STATUS_FILTER_VALUES.map((value) => (
-                            <SelectItem key={value} value={value}>
-                              {getStatusFilterLabel(value, t)}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
-                </section>
-              ) : null}
-              {!hasDocuments && !hasActiveFilters && !filterTransitioning ? (
-                canManageDocuments ? (
-                  <FileDropzone
-                    disabled={uploadBlocked}
-                    onFilesAccepted={enqueueUploads}
-                    onFilesRejected={rejectFiles}
-                  >
-                    {({
-                      getInputProps,
-                      getRootProps,
-                      isDragAccept,
-                      isDragActive,
-                      isDragReject,
-                      open,
-                    }) => (
-                      <Empty
-                        {...getRootProps({
-                          className: cn(
-                            "min-h-[20rem] select-none rounded-3xl border border-dashed border-border/70 bg-[radial-gradient(ellipse_56%_40%_at_top,hsl(var(--primary)/0.07),transparent_44%),linear-gradient(180deg,hsl(var(--background)/0.72),hsl(var(--muted)/0.34))] px-6 py-8 transition-[color,border-color,background,transform,box-shadow] duration-200 ease-out",
-                            isDragAccept &&
-                              "border-primary/46 bg-primary/6 scale-[1.005] shadow-[0_16px_36px_-20px_hsl(var(--primary)/0.18)]",
-                            isDragReject && "border-destructive/46 bg-destructive/8 scale-[0.998]",
-                          ),
-                        })}
-                      >
-                        <input {...getInputProps({ "aria-label": t("uploadAction") })} />
-                        <EmptyHeader className="max-w-xl gap-3">
-                          <Badge
-                            className="text-ui-kicker rounded-full px-3 py-1"
-                            variant="outline"
-                          >
-                            {t("emptyOnboardingFlowBadge")}
-                          </Badge>
-                          <EmptyMedia
-                            className="surface-light size-12 rounded-2xl text-primary [&_svg]:size-5"
-                            variant="icon"
-                          >
-                            <UploadIcon aria-hidden="true" />
-                          </EmptyMedia>
-                          <EmptyTitle aria-level={2} className="text-ui-heading" role="heading">
-                            {t("emptyOnboardingTitle")}
-                          </EmptyTitle>
-                          <EmptyDescription className="text-ui-body measure-readable max-w-xl">
-                            {t("emptyOnboardingDescription")}
-                          </EmptyDescription>
-                        </EmptyHeader>
-                        <EmptyContent className="max-w-xl gap-4">
-                          <div className="grid w-full gap-2 text-left">
-                            <div className="surface-light text-ui-subtle select-none rounded-2xl px-4 py-3 text-muted-foreground">
-                              {t("emptyOnboardingStepOne")}
-                            </div>
-                            <div className="surface-light text-ui-subtle select-none rounded-2xl px-4 py-3 text-muted-foreground">
-                              {t("emptyOnboardingStepTwo")}
-                            </div>
-                          </div>
-                          <div className="surface-light select-none rounded-2xl border-dashed px-4 py-3 text-left">
-                            <p className="text-sm font-medium text-foreground">
-                              {t("dropzoneTitle")}
-                            </p>
-                            <p
-                              className={cn(
-                                "mt-1 text-xs text-muted-foreground",
-                                isDragReject && "text-destructive",
-                                isDragAccept && "text-primary",
-                              )}
-                            >
-                              {isDragReject
-                                ? t("dropzoneRejectHint")
-                                : isDragActive
-                                  ? t("dropzoneActiveHint")
-                                  : t("dropzoneHint")}
-                            </p>
-                          </div>
-                          <Button
-                            disabled={uploadBlocked || uploadReadinessChecking}
-                            onClick={open}
-                            type="button"
-                          >
-                            <UploadIcon data-icon="inline-start" />
-                            {t("uploadAction")}
-                          </Button>
-                        </EmptyContent>
-                      </Empty>
-                    )}
-                  </FileDropzone>
-                ) : (
-                  <Empty className="min-h-[20rem] rounded-3xl border border-dashed border-border/70 bg-[radial-gradient(circle_at_top,hsl(var(--primary)/0.08),transparent_36%),linear-gradient(180deg,hsl(var(--background)/0.72),hsl(var(--muted)/0.34))] px-6 py-8">
-                    <EmptyHeader className="max-w-xl gap-3">
-                      <Badge className="text-ui-kicker rounded-full px-3 py-1" variant="outline">
-                        {t("emptyReadonlyFlowBadge")}
-                      </Badge>
-                      <EmptyMedia
-                        className="surface-light size-12 rounded-2xl text-primary [&_svg]:size-5"
-                        variant="icon"
-                      >
-                        <UploadIcon aria-hidden="true" />
-                      </EmptyMedia>
-                      <EmptyTitle aria-level={2} className="text-ui-heading" role="heading">
-                        {t("emptyReadonlyTitle")}
-                      </EmptyTitle>
-                      <EmptyDescription className="text-ui-body measure-readable max-w-xl">
-                        {t("emptyReadonlyDescription")}
-                      </EmptyDescription>
-                    </EmptyHeader>
-                  </Empty>
-                )
-              ) : (
-                <>
-                  <ResourceDocumentList
-                    canDelete={canManageDocuments}
-                    className="min-h-0 flex-1 basis-[17rem]"
-                    documents={filteredDocuments}
-                    onDelete={setPendingDeleteDocument}
-                    onPreviewDocument={openPreviewForDocument}
-                    onReindex={(document) => void reindexDocument(document.document_id)}
-                    onSelectDocument={handleSelectDocument}
-                    onShowVersions={(documentId) => void showVersions(documentId)}
-                    selectedDocumentId={selectedDocumentId}
-                  />
-                  {isMobile ? null : (
-                    <SelectedResourceBand
-                      document={selectedDocument}
-                      onPreviewDocument={openPreviewForDocument}
-                      onShowVersions={(documentId) => void showVersions(documentId)}
-                    />
-                  )}
-                </>
-              )}
-            </div>
-          </div>
+          isMobile ? (
+            resourcesSectionPane
+          ) : (
+            <WorkbenchLayout
+              inspector={resourcesInspectorPane}
+              inspectorDescription={t("previewDescription")}
+              inspectorTitle={t("previewTitle")}
+              main={resourcesMainPane}
+              mainClassName="2xl:pr-2"
+              mobileTitle={t("pageTitle")}
+              section={resourcesSectionPane}
+              sectionDescription={t("tableSectionDescription")}
+              sectionTitle={t("tableSectionTitle")}
+            />
+          )
         }
         surface="flat"
         title={t("pageTitle")}
         width="wide"
       />
 
-      <DocumentPreviewSheet
-        document={selectedDocument}
-        onDelete={setPendingDeleteDocument}
-        onOpenChange={setPreviewOpen}
-        onReindex={(document) => void reindexDocument(document.document_id)}
-        onShowVersions={(documentId) => void showVersions(documentId)}
-        open={previewOpen && selectedDocument !== null}
-      />
+      {isMobile ? (
+        <>
+          <DocumentPreviewSheet
+            document={selectedDocument}
+            onDelete={setPendingDeleteDocument}
+            onOpenChange={setPreviewOpen}
+            onReindex={(document) => void reindexDocument(document.document_id)}
+            onShowVersions={handleShowVersions}
+            open={previewOpen && selectedDocument !== null}
+          />
 
-      <VersionDrawer onClose={closeVersionDrawer} open={versionDrawerOpen} versions={versions} />
+          <VersionDrawer
+            onClose={closeVersionDrawer}
+            open={versionDrawerOpen}
+            versions={versions}
+          />
+        </>
+      ) : null}
 
       <AlertDialog
         onOpenChange={(nextOpen) => !nextOpen && setPendingDeleteDocument(null)}

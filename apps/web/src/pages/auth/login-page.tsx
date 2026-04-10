@@ -30,7 +30,7 @@ import { getApiErrorMessage } from "@/lib/api/client";
 import { login, updatePreferences } from "@/features/auth/api/auth";
 import { LoginForm } from "@/features/auth/components/login-form";
 import { resolvePostLoginPath } from "@/lib/auth/auth-redirect";
-import { setAuthenticatedSession } from "@/lib/auth/session-manager";
+import { applyAuthenticatedAccessToken, setAuthenticatedSession } from "@/lib/auth/session-manager";
 import { BrandMark } from "@/components/shared/brand-mark";
 import { LanguageToggle } from "@/features/settings/components/language-toggle";
 import { ThemeToggle } from "@/features/settings/components/theme-toggle";
@@ -89,6 +89,7 @@ export function LoginPage() {
     setLoginError(null);
     try {
       const authenticatedUser = await login(input);
+      applyAuthenticatedAccessToken(authenticatedUser.accessToken);
       const pendingThemeSync = resolvePendingThemeSync(authenticatedUser.user.theme_preference);
       const nextUser = pendingThemeSync.shouldClearPendingTheme
         ? authenticatedUser.user

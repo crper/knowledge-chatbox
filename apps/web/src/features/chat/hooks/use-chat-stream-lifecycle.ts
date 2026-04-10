@@ -3,11 +3,11 @@
  */
 
 import { useCallback } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
-import type { ChatSessionContextItem, ChatSourceItem } from "../api/chat";
+import type { ChatMessageItem, ChatSessionContextItem, ChatSourceItem } from "../api/chat";
 import { startChatStream, type ChatStreamAttachmentInput } from "../api/chat-stream";
 import { CHAT_STREAM_EVENT } from "../api/chat-stream-events";
 import type { useChatStreamRun } from "../hooks/use-chat-stream-run";
@@ -22,6 +22,19 @@ type UseChatStreamLifecycleParams = {
     userMessageId: number;
   }) => void;
   currentSessionIdRef: React.RefObject<number | null>;
+  invalidateMessagesWindow: (sessionId: number) => Promise<void>;
+  patchAssistantMessage: (input: {
+    appendIfMissing?: ChatMessageItem[];
+    assistantMessageId: number;
+    patch: {
+      content?: string;
+      error_message?: string | null;
+      sources_json?: ChatSourceItem[] | null;
+      status?: string;
+    };
+    sessionId: number;
+  }) => boolean;
+  patchRetriedUserMessage: (input: { sessionId: number; userMessageId: number }) => void;
   patchSessionContext: (input: {
     attachments?: ChatSessionContextItem["attachments"];
     latestAssistantMessageId?: number;
@@ -34,11 +47,13 @@ type UseChatStreamLifecycleParams = {
 export function useChatStreamLifecycle({
   appendStartedUserMessage,
   currentSessionIdRef,
+  invalidateMessagesWindow,
+  patchAssistantMessage,
+  patchRetriedUserMessage,
   patchSessionContext,
   streamRun,
 }: UseChatStreamLifecycleParams) {
   const { t } = useTranslation(["chat", "common"]);
-  const queryClient = useQueryClient();
 
   const finalizeStreamRun = useCallback(
     ({
@@ -56,8 +71,10 @@ export function useChatStreamLifecycle({
         currentRun: streamRun.getRun(runId) ?? null,
         currentSessionId: currentSessionIdRef.current,
         errorMessage,
+        invalidateMessagesWindow,
+        patchAssistantMessage,
+        patchRetriedUserMessage,
         patchSessionContext,
-        queryClient,
         sessionId,
         status,
       }).then((result) => {
@@ -66,7 +83,14 @@ export function useChatStreamLifecycle({
         }
       });
     },
-    [currentSessionIdRef, patchSessionContext, queryClient, streamRun],
+    [
+      currentSessionIdRef,
+      invalidateMessagesWindow,
+      patchAssistantMessage,
+      patchRetriedUserMessage,
+      patchSessionContext,
+      streamRun,
+    ],
   );
 
   const sendMutation = useMutation({
@@ -119,10 +143,7 @@ export function useChatStreamLifecycle({
               return;
             }
 
-            if (
-              event.event === CHAT_STREAM_EVENT.partTextDelta ||
-              event.event === CHAT_STREAM_EVENT.legacyMessageDelta
-            ) {
+            if (event.event === CHAT_STREAM_EVENT.partTextDelta) {
               streamRun.appendDelta(
                 runId,
                 typeof event.data.delta === "string" ? event.data.delta : "",
@@ -131,17 +152,7 @@ export function useChatStreamLifecycle({
             }
 
             if (event.event === CHAT_STREAM_EVENT.partSource && event.data.source) {
-              streamRun.addSource(runId, event.data.source as Record<string, unknown>);
-              return;
-            }
-
-            if (
-              event.event === CHAT_STREAM_EVENT.legacySourcesFinal &&
-              Array.isArray(event.data.sources)
-            ) {
-              for (const source of event.data.sources) {
-                streamRun.addSource(runId, source as ChatSourceItem as Record<string, unknown>);
-              }
+              streamRun.addSource(runId, event.data.source as Record<string, unknown>); // TODO: 定义 ChatStreamSource 接口与后端 schema 对齐，替换 Record<string, unknown>
               return;
             }
 

@@ -57,6 +57,7 @@ function ViewModelHost({
   const viewModel = useChatWorkspaceViewModel({
     activeSessionId,
     isSessionSubmitPending: () => submitPending,
+    sessionRunsById: {},
   });
 
   return (

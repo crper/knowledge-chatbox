@@ -1,12 +1,15 @@
 """文档仓储数据访问实现。"""
 
-from __future__ import annotations
-
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.engine import Row
 from sqlalchemy.orm import Session
 
-from knowledge_chatbox_api.models.document import Document, DocumentRevision
+from knowledge_chatbox_api.models.document import (
+    Document,
+    DocumentRevision,
+    latest_revision_join_condition,
+)
+from knowledge_chatbox_api.models.enums import DocumentStatus, IngestStatus
 from knowledge_chatbox_api.services.documents.constants import (
     DOCX_DOCUMENT_FILE_TYPES,
     IMAGE_DOCUMENT_FILE_TYPES,
@@ -22,7 +25,7 @@ DOCUMENT_TYPE_FILTERS = {
     "pdf": ("pdf",),
     "text": tuple(TEXT_DOCUMENT_FILE_TYPES),
 }
-PENDING_LATEST_DOCUMENT_STATUSES = ("uploaded", "processing")
+PENDING_LATEST_DOCUMENT_STATUSES = (IngestStatus.UPLOADED, IngestStatus.PROCESSING)
 
 
 class DocumentRepository:
@@ -47,9 +50,29 @@ class DocumentRepository:
         """获取ById。"""
         return self.session.get(DocumentRevision, document_id)
 
+    def list_revisions_by_ids(self, revision_ids: list[int]) -> dict[int, DocumentRevision]:
+        """批量获取指定修订。"""
+        normalized_ids = sorted(set(revision_ids))
+        if not normalized_ids:
+            return {}
+
+        statement = select(DocumentRevision).where(DocumentRevision.id.in_(normalized_ids))
+        revisions = list(self.session.scalars(statement).all())
+        return {revision.id: revision for revision in revisions}
+
     def get_document_entity(self, document_id: int) -> Document | None:
         """获取文档Entity。"""
         return self.session.get(Document, document_id)
+
+    def list_documents_by_ids(self, document_ids: list[int]) -> dict[int, Document]:
+        """批量获取指定文档实体。"""
+        normalized_ids = sorted(set(document_ids))
+        if not normalized_ids:
+            return {}
+
+        statement = select(Document).where(Document.id.in_(normalized_ids))
+        documents = list(self.session.scalars(statement).all())
+        return {document.id: document for document in documents}
 
     def get_document_for_version(self, version_id: int) -> Document | None:
         """获取文档For版本。"""
@@ -85,17 +108,10 @@ class DocumentRepository:
             select(Document, DocumentRevision)
             .join(
                 DocumentRevision,
-                or_(
-                    DocumentRevision.id == Document.latest_revision_id,
-                    and_(
-                        Document.latest_revision_id.is_(None),
-                        DocumentRevision.document_id == Document.id,
-                        DocumentRevision.revision_no == Document.current_version_number,
-                    ),
-                ),
+                latest_revision_join_condition(),
             )
             .where(
-                Document.status == "active",
+                Document.status == DocumentStatus.ACTIVE,
                 DocumentRevision.ingest_status.in_(LISTABLE_DOCUMENT_STATUSES),
             )
             .order_by(Document.updated_at.desc(), Document.id.desc())
@@ -170,17 +186,10 @@ class DocumentRepository:
             .select_from(Document)
             .join(
                 DocumentRevision,
-                or_(
-                    DocumentRevision.id == Document.latest_revision_id,
-                    and_(
-                        Document.latest_revision_id.is_(None),
-                        DocumentRevision.document_id == Document.id,
-                        DocumentRevision.revision_no == Document.current_version_number,
-                    ),
-                ),
+                latest_revision_join_condition(),
             )
             .where(
-                Document.status == "active",
+                Document.status == DocumentStatus.ACTIVE,
                 DocumentRevision.ingest_status.in_(PENDING_LATEST_DOCUMENT_STATUSES),
             )
         )
@@ -190,7 +199,9 @@ class DocumentRepository:
 
     def list_processing_documents(self) -> list[DocumentRevision]:
         """列出Processing文档。"""
-        statement = select(DocumentRevision).where(DocumentRevision.ingest_status == "processing")
+        statement = select(DocumentRevision).where(
+            DocumentRevision.ingest_status == IngestStatus.PROCESSING
+        )
         return list(self.session.scalars(statement).all())
 
     def delete(self, document: Document) -> None:

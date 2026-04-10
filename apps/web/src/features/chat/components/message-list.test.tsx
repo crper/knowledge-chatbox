@@ -66,6 +66,10 @@ describe("MessageList", () => {
     expect(screen.getByText("会话图片附件 2")).toBeInTheDocument();
     expect(screen.getByText("third.png")).toBeInTheDocument();
     expect(screen.getByText("夜航记录.pdf")).toBeInTheDocument();
+    expect(screen.getByTestId("message-attachment-list-1")).toHaveAttribute(
+      "data-attachment-list-variant",
+      "compact",
+    );
     expect(screen.queryByText("+2")).not.toBeInTheDocument();
     expect(screen.queryByRole("img")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "预览附件 夜航记录.pdf" })).not.toBeInTheDocument();

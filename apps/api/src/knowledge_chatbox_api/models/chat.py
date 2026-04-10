@@ -1,7 +1,5 @@
 """聊天数据模型定义。"""
 
-from __future__ import annotations
-
 from datetime import datetime
 
 from sqlalchemy import (
@@ -16,11 +14,10 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.orm import Mapped, mapped_column, synonym
+from sqlalchemy.orm import Mapped, mapped_column
 
 from knowledge_chatbox_api.db.base import Base
-
-REASONING_MODE_VALUES = ("default", "off", "on")
+from knowledge_chatbox_api.models.enums import ChatSessionStatus, ReasoningMode
 
 
 class ChatSession(Base):
@@ -41,10 +38,21 @@ class ChatSession(Base):
     space_id: Mapped[int] = mapped_column(
         ForeignKey("spaces.id", ondelete="CASCADE"), nullable=False
     )
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
     title: Mapped[str | None] = mapped_column(String(255))
-    status: Mapped[str] = mapped_column(String(16), nullable=False, default="active")
-    reasoning_mode: Mapped[str] = mapped_column(String(16), nullable=False, default="default")
+    status: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        default=ChatSessionStatus.ACTIVE,
+    )
+    reasoning_mode: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        default=ReasoningMode.DEFAULT,
+    )
     last_message_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -87,7 +95,11 @@ class ChatRun(Base):
     status: Mapped[str] = mapped_column(String(16), nullable=False)
     response_provider: Mapped[str] = mapped_column(String(32), nullable=False)
     response_model: Mapped[str] = mapped_column(String(255), nullable=False)
-    reasoning_mode: Mapped[str] = mapped_column(String(16), nullable=False, default="default")
+    reasoning_mode: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        default=ReasoningMode.DEFAULT,
+    )
     client_request_id: Mapped[str] = mapped_column(String(64), nullable=False)
     usage_json: Mapped[dict | None] = mapped_column(JSON)
     error_code: Mapped[str | None] = mapped_column(String(64))
@@ -205,10 +217,8 @@ class ChatMessageAttachment(Base):
     document_revision_id: Mapped[int | None] = mapped_column(
         ForeignKey("document_revisions.id", ondelete="SET NULL")
     )
-    archived_at: Mapped[str | None] = mapped_column(String(64))
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
-    document_id: int | None = None
-
-    resource_document_version_id = synonym("document_revision_id")
+    document_id: int | None = None  # noqa: E702 — 动态填充，非映射列；session.refresh() 后需重新调用 _attach_document_ids

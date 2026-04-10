@@ -1,7 +1,5 @@
 """健康检查路由定义。"""
 
-from __future__ import annotations
-
 from fastapi import APIRouter
 from pydantic import BaseModel
 
@@ -39,9 +37,8 @@ def health() -> Envelope[HealthData]:
 def capability_health(
     session: DbSessionDep,
     settings: SettingsDep,
-    current_user: AdminUserDep,
+    _current_user: AdminUserDep,
 ) -> Envelope[CapabilityHealthData]:
-    del current_user
     service = SettingsService(session, settings)
     runtime_settings = service.get_runtime_settings()
     results = run_parallel_checks(

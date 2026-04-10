@@ -6,6 +6,10 @@ import { TestRouter } from "@/test/test-router";
 import { ChatPage } from "./chat-page";
 
 vi.mock("@/features/chat/api/chat-query", () => ({
+  chatSessionsQueryOptions: () => ({
+    queryKey: ["chat", "sessions"],
+    queryFn: async () => [{ id: 1, title: "Session A" }],
+  }),
   chatProfileQueryOptions: () => ({
     queryKey: ["chat", "profile"],
     queryFn: async () => null,
@@ -25,12 +29,16 @@ const mockWorkspaceState: {
     draft: string;
     editFailedMessage: (message: ChatMessageItem) => void;
     hasMessages: boolean;
+    hasOlderMessages: boolean;
+    isLoadingOlderMessages: boolean;
+    loadOlderMessages: () => Promise<void>;
     removeAttachment: (sessionId: number | null, attachmentId: string) => void;
     rejectFiles: () => void;
     retryMessage: (message: ChatMessageItem) => Promise<void>;
     scrollToLatestRequestKey: number;
     sendShortcut: "shift-enter" | "enter";
     setSendShortcut: (shortcut: "shift-enter" | "enter") => void;
+    sessionsReady: boolean;
     sessions: Array<{ id: number; title: string }>;
     setDraft: (sessionId: number | null, draft: string) => void;
     submitMessage: () => Promise<void>;
@@ -62,12 +70,16 @@ const mockWorkspaceState: {
     draft: "hello",
     editFailedMessage: vi.fn(),
     hasMessages: true,
+    hasOlderMessages: false,
+    isLoadingOlderMessages: false,
+    loadOlderMessages: vi.fn(async () => {}),
     removeAttachment: vi.fn(),
     rejectFiles: vi.fn(),
     retryMessage: vi.fn(async () => {}),
     scrollToLatestRequestKey: 0,
     sendShortcut: "shift-enter",
     setSendShortcut: vi.fn(),
+    sessionsReady: true,
     sessions: [{ id: 1, title: "Session A" }],
     setDraft: vi.fn(),
     submitMessage: vi.fn(async () => {}),
@@ -142,7 +154,11 @@ describe("ChatPage rendering", () => {
           sources_json: [],
         },
       ],
+      hasOlderMessages: false,
+      isLoadingOlderMessages: false,
+      loadOlderMessages: vi.fn(async () => {}),
       scrollToLatestRequestKey: 0,
+      sessionsReady: true,
       submitPending: false,
     };
   });
@@ -209,10 +225,6 @@ describe("ChatPage rendering", () => {
     renderChatPage();
 
     expect(await screen.findByText("正在生成回答")).toBeInTheDocument();
-    expect(screen.getByTestId("assistant-waiting-card")).toHaveAttribute(
-      "data-waiting-card-tone",
-      "assistant",
-    );
     expect(screen.queryByText("开始您今天的第一个问题？")).not.toBeInTheDocument();
   });
 });

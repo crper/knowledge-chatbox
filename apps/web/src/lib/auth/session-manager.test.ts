@@ -6,11 +6,15 @@ import {
 import { useChatAttachmentStore } from "@/features/chat/store/chat-attachment-store";
 import { useSessionStore } from "@/lib/auth/session-store";
 import { useChatUiStore } from "@/features/chat/store/chat-ui-store";
-import { setAccessToken } from "@/lib/auth/token-store";
+import { getAccessToken, setAccessToken } from "@/lib/auth/token-store";
 import { http } from "msw";
 import { apiResponse, overrideHandler } from "@/test/msw";
 import { createTestQueryClient } from "@/test/query-client";
-import { bootstrapSession } from "./session-manager";
+import {
+  applyAuthenticatedAccessToken,
+  bootstrapSession,
+  expireSessionIfStaleAccessToken,
+} from "./session-manager";
 
 function createQueryClient() {
   return createTestQueryClient({
@@ -62,6 +66,23 @@ describe("session-manager", () => {
   beforeEach(() => {
     setAccessToken(null);
     useSessionStore.getState().reset();
+  });
+
+  it("stores the access token and marks the session authenticated through session-manager", () => {
+    applyAuthenticatedAccessToken("fresh-token");
+
+    expect(getAccessToken()).toBe("fresh-token");
+    expect(useSessionStore.getState().status).toBe("authenticated");
+  });
+
+  it("does not expire a newer session when the stale request token no longer matches", () => {
+    applyAuthenticatedAccessToken("fresh-token");
+
+    const expired = expireSessionIfStaleAccessToken("stale-token");
+
+    expect(expired).toBe(false);
+    expect(getAccessToken()).toBe("fresh-token");
+    expect(useSessionStore.getState().status).toBe("authenticated");
   });
 
   it("marks the session anonymous when bootstrap endpoint reports no active session", async () => {

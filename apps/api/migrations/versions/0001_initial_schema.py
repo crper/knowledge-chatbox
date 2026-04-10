@@ -322,7 +322,7 @@ def upgrade() -> None:
         sa.Column("mime_type", sa.String(length=128), nullable=False),
         sa.Column("size_bytes", sa.Integer(), nullable=False),
         sa.Column("document_revision_id", sa.Integer(), nullable=True),
-        sa.Column("archived_at", sa.String(length=64), nullable=True),
+        sa.Column("archived_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column(
             "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
         ),

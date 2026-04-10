@@ -1,7 +1,5 @@
 """后端包导出。"""
 
-from __future__ import annotations
-
 from knowledge_chatbox_api.core.config import get_settings
 
 __all__ = ["__version__", "main"]

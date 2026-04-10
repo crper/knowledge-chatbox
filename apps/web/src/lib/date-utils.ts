@@ -6,8 +6,6 @@ import { isValid, parseISO } from "date-fns";
 
 type DateInput = Date | string | number;
 
-export const DATE_FORMAT = "yyyy-MM-dd";
-
 function toDate(date: DateInput): Date | null {
   if (date instanceof Date) {
     return date;

@@ -2,8 +2,6 @@
  * @file 抽屉基础 UI 组件模块。
  */
 
-"use client";
-
 import * as React from "react";
 import { Drawer as SheetPrimitive } from "@base-ui/react/drawer";
 
@@ -23,9 +21,11 @@ const swipeDirectionBySide: Record<SheetSide, "up" | "right" | "down" | "left"> 
 
 function Sheet({
   side,
+  disableSwipe,
   ...props
 }: React.ComponentProps<typeof SheetPrimitive.Root> & {
   side?: SheetSide;
+  disableSwipe?: boolean;
 }) {
   const [contentSide, setContentSide] = React.useState<SheetSide>("right");
   const resolvedSide = side ?? contentSide;
@@ -34,7 +34,7 @@ function Sheet({
     <SheetSideContext.Provider value={setContentSide}>
       <SheetPrimitive.Root
         data-slot="sheet"
-        swipeDirection={swipeDirectionBySide[resolvedSide]}
+        swipeDirection={disableSwipe ? undefined : swipeDirectionBySide[resolvedSide]}
         {...props}
       />
     </SheetSideContext.Provider>

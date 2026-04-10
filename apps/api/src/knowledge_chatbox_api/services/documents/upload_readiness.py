@@ -1,10 +1,10 @@
 """Document upload readiness checks."""
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 
+from knowledge_chatbox_api.models.enums import ProviderName
 from knowledge_chatbox_api.services.settings.settings_service import INDEX_REBUILD_STATUS_RUNNING
+from knowledge_chatbox_api.utils.helpers import strip_or_none
 
 
 @dataclass(frozen=True)
@@ -17,7 +17,7 @@ class DocumentUploadReadiness:
 
 
 def _has_text(value: str | None) -> bool:
-    return bool((value or "").strip())
+    return bool(strip_or_none(value))
 
 
 def _is_embedding_route_configured(settings_record, route) -> bool:
@@ -25,9 +25,9 @@ def _is_embedding_route_configured(settings_record, route) -> bool:
         return False
 
     profiles = settings_record.provider_profiles
-    if route.provider == "voyage":
+    if route.provider == ProviderName.VOYAGE:
         return _has_text(profiles.voyage.api_key)
-    if route.provider == "ollama":
+    if route.provider == ProviderName.OLLAMA:
         return _has_text(profiles.ollama.base_url)
     return _has_text(profiles.openai.api_key)
 
@@ -38,9 +38,9 @@ def _is_vision_route_configured(settings_record) -> bool:
         return False
 
     profiles = settings_record.provider_profiles
-    if route.provider == "anthropic":
+    if route.provider == ProviderName.ANTHROPIC:
         return _has_text(profiles.anthropic.api_key)
-    if route.provider == "ollama":
+    if route.provider == ProviderName.OLLAMA:
         return _has_text(profiles.ollama.base_url)
     return _has_text(profiles.openai.api_key)
 

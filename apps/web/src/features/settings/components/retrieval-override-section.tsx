@@ -2,9 +2,11 @@
  * @file Provider 检索覆盖分区模块。
  */
 
-import { Button } from "@/components/ui/button";
+const EMBEDDING_PROVIDER_OPTIONS = ["openai", "voyage", "ollama"] as const;
+
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { getFieldErrorItems } from "@/lib/form/form-feedback";
 import {
   Select,
@@ -52,17 +54,18 @@ export function RetrievalOverrideSection({
             {t("retrievalOverrideDescription")}
           </p>
         </div>
-        <Button
-          aria-pressed={draft.retrievalOverrideEnabled}
-          onClick={() => handleViewChange(toggleRetrievalOverride)}
-          size="sm"
-          type="button"
-          variant={draft.retrievalOverrideEnabled ? "secondary" : "outline"}
-        >
-          {draft.retrievalOverrideEnabled
-            ? t("retrievalOverrideDisableAction")
-            : t("retrievalOverrideAction")}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Switch
+            aria-label={t("retrievalOverrideTitle")}
+            checked={draft.retrievalOverrideEnabled}
+            onCheckedChange={() => handleViewChange(toggleRetrievalOverride)}
+          />
+          <span className="text-sm text-muted-foreground">
+            {draft.retrievalOverrideEnabled
+              ? t("retrievalOverrideDisableAction")
+              : t("retrievalOverrideAction")}
+          </span>
+        </div>
       </div>
 
       {draft.retrievalOverrideEnabled ? (
@@ -70,7 +73,7 @@ export function RetrievalOverrideSection({
           <Field>
             <FieldLabel>{t("retrievalProviderLabel")}</FieldLabel>
             <Select
-              items={["openai", "voyage", "ollama"].map((provider) => ({
+              items={EMBEDDING_PROVIDER_OPTIONS.map((provider) => ({
                 label: getProviderLabel(provider as EmbeddingProviderName, t),
                 value: provider,
               }))}
@@ -89,7 +92,7 @@ export function RetrievalOverrideSection({
                 <SelectValue>{() => getProviderLabel(draft.retrievalProvider, t)}</SelectValue>
               </SelectTrigger>
               <SelectContent>
-                {["openai", "voyage", "ollama"].map((provider) => (
+                {EMBEDDING_PROVIDER_OPTIONS.map((provider) => (
                   <SelectItem key={provider} value={provider}>
                     {getProviderLabel(provider as EmbeddingProviderName, t)}
                   </SelectItem>

@@ -19,6 +19,12 @@ type AppLocation = {
   search: string;
 };
 
+type AppNavigateTarget = {
+  replace?: boolean;
+  search?: Record<string, unknown>;
+  to: string;
+};
+
 function stringifySearchValue(value: unknown) {
   if (value == null) {
     return null;
@@ -67,7 +73,17 @@ export function useNavigate() {
   const navigate = useTanStackNavigate();
 
   return useCallback(
-    (to: string, options?: { replace?: boolean }) => navigate({ replace: options?.replace, to }),
+    (to: string | AppNavigateTarget, options?: { replace?: boolean }) => {
+      if (typeof to === "string") {
+        return navigate({ replace: options?.replace, to });
+      }
+
+      return navigate({
+        replace: to.replace,
+        search: to.search as never,
+        to: to.to,
+      });
+    },
     [navigate],
   );
 }
@@ -76,8 +92,12 @@ export function useParams<TParams extends Record<string, string | undefined>>() 
   return useTanStackParams({ strict: false } as never) as TParams;
 }
 
+export function useSearch<TSearch extends Record<string, unknown>>() {
+  return useTanStackSearch({ strict: false } as never) as TSearch;
+}
+
 export function useSearchParams() {
-  const search = useTanStackSearch({ strict: false });
+  const search = useSearch<Record<string, unknown>>();
   const searchParams = useMemo(() => {
     const params = new URLSearchParams();
 

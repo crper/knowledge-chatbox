@@ -23,6 +23,7 @@ export function resolveLatestMessageScrollIntent({
     return {
       nextPendingScrollToLatest: false,
       nextPreviousLatestMessageSignature: "empty",
+      shouldIndicateNewMessage: false,
       shouldScrollToLatest: false,
     };
   }
@@ -31,6 +32,7 @@ export function resolveLatestMessageScrollIntent({
     return {
       nextPendingScrollToLatest: pendingScrollToLatest,
       nextPreviousLatestMessageSignature: previousLatestMessageSignature,
+      shouldIndicateNewMessage: false,
       shouldScrollToLatest: false,
     };
   }
@@ -39,6 +41,7 @@ export function resolveLatestMessageScrollIntent({
     return {
       nextPendingScrollToLatest: false,
       nextPreviousLatestMessageSignature: latestMessageSignature,
+      shouldIndicateNewMessage: false,
       shouldScrollToLatest: true,
     };
   }
@@ -47,6 +50,7 @@ export function resolveLatestMessageScrollIntent({
     return {
       nextPendingScrollToLatest: false,
       nextPreviousLatestMessageSignature: latestMessageSignature,
+      shouldIndicateNewMessage: false,
       shouldScrollToLatest: false,
     };
   }
@@ -54,6 +58,7 @@ export function resolveLatestMessageScrollIntent({
   return {
     nextPendingScrollToLatest: pendingScrollToLatest,
     nextPreviousLatestMessageSignature: latestMessageSignature,
+    shouldIndicateNewMessage: !isNearBottom,
     shouldScrollToLatest: isNearBottom,
   };
 }

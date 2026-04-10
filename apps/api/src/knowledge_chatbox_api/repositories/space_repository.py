@@ -1,10 +1,9 @@
 """空间仓储数据访问实现。"""
 
-from __future__ import annotations
-
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from knowledge_chatbox_api.models.enums import SpaceKind
 from knowledge_chatbox_api.models.space import Space
 
 PERSONAL_SPACE_SLUG_PREFIX = "personal-space"
@@ -37,7 +36,7 @@ class SpaceRepository:
             owner_user_id=user_id,
             slug=self.personal_space_slug(user_id),
             name=f"User {user_id} Space",
-            kind="personal",
+            kind=SpaceKind.PERSONAL,
         )
         self.session.add(space)
         self.session.flush()

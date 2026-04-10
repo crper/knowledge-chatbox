@@ -1,6 +1,12 @@
 import { i18n } from "@/i18n";
 import { useSessionStore } from "@/lib/auth/session-store";
-import { ApiRequestError, getApiErrorMessage, openapiRequestRequired } from "./client";
+import { getAccessToken, setAccessToken } from "@/lib/auth/token-store";
+import {
+  ApiRequestError,
+  getApiErrorMessage,
+  setResponseAuthTokenSnapshot,
+  openapiRequestRequired,
+} from "./client";
 
 describe("api client", () => {
   beforeEach(async () => {
@@ -10,6 +16,7 @@ describe("api client", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    setAccessToken(null);
   });
 
   it("maps known api error codes to localized messages for UI display", () => {
@@ -252,6 +259,13 @@ describe("api client", () => {
   });
 
   it("marks the session as expired when the backend returns unauthorized", async () => {
+    setAccessToken("current-token");
+    const response = new Response(null, {
+      status: 401,
+      statusText: "Unauthorized",
+    });
+    setResponseAuthTokenSnapshot(response, "current-token");
+
     await expect(
       openapiRequestRequired(
         Promise.resolve({
@@ -263,10 +277,7 @@ describe("api client", () => {
               message: "登录状态已失效，请重新登录。",
             },
           },
-          response: new Response(null, {
-            status: 401,
-            statusText: "Unauthorized",
-          }),
+          response,
         }),
       ),
     ).rejects.toMatchObject({
@@ -275,5 +286,37 @@ describe("api client", () => {
     });
 
     expect(useSessionStore.getState().status).toBe("expired");
+  });
+
+  it("ignores unauthorized responses that belong to a stale superseded token", async () => {
+    setAccessToken("fresh-token");
+    useSessionStore.getState().setStatus("authenticated");
+    const response = new Response(null, {
+      status: 401,
+      statusText: "Unauthorized",
+    });
+    setResponseAuthTokenSnapshot(response, "stale-token");
+
+    await expect(
+      openapiRequestRequired(
+        Promise.resolve({
+          error: {
+            success: false,
+            data: null,
+            error: {
+              code: "unauthorized",
+              message: "登录状态已失效，请重新登录。",
+            },
+          },
+          response,
+        }),
+      ),
+    ).rejects.toMatchObject({
+      code: "unauthorized",
+      status: 401,
+    });
+
+    expect(getAccessToken()).toBe("fresh-token");
+    expect(useSessionStore.getState().status).toBe("authenticated");
   });
 });

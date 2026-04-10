@@ -1,9 +1,9 @@
 import { trim } from "es-toolkit";
 
 import type { ChatMessageItem } from "../api/chat";
-import type { ChatAttachmentItem } from "../store/chat-ui-store";
+import type { ComposerAttachmentItem } from "../store/chat-attachment-store";
 
-export type ReadyChatAttachment = ChatAttachmentItem & {
+export type ReadyChatAttachment = ComposerAttachmentItem & {
   file: File;
   kind: "image" | "document";
   mimeType: string;
@@ -32,7 +32,7 @@ export function serializeChatAttachments(attachments: ReadyChatAttachment[]): Ar
   }));
 }
 
-export function cloneChatAttachments(attachments: ChatAttachmentItem[]) {
+export function cloneChatAttachments(attachments: ComposerAttachmentItem[]) {
   return attachments.map((attachment) => ({ ...attachment }));
 }
 
@@ -40,7 +40,7 @@ export function buildLocalAttachmentFingerprint(file: File) {
   return [file.name, file.type, file.size, file.lastModified].join("::");
 }
 
-export function collectLocalAttachmentFingerprints(attachments: ChatAttachmentItem[]) {
+export function collectLocalAttachmentFingerprints(attachments: ComposerAttachmentItem[]) {
   return new Set(
     attachments.flatMap((attachment) =>
       attachment.file instanceof File ? [buildLocalAttachmentFingerprint(attachment.file)] : [],
@@ -75,7 +75,7 @@ function toAttachmentSignature(input: AttachmentSignatureInput): string {
   return JSON.stringify(input);
 }
 
-function toComposerAttachmentSignature(attachment: ChatAttachmentItem): string {
+function toComposerAttachmentSignature(attachment: ComposerAttachmentItem): string {
   return toAttachmentSignature({
     attachmentId: attachment.id,
     documentId: attachment.resourceDocumentId ?? null,
@@ -107,7 +107,7 @@ export function shouldResetComposerSnapshotForRetry({
   retryAttachments,
   retryContent,
 }: {
-  composerAttachments: ChatAttachmentItem[];
+  composerAttachments: ComposerAttachmentItem[];
   composerDraft: string;
   retryAttachments: ChatMessageItem["attachments_json"];
   retryContent: string;

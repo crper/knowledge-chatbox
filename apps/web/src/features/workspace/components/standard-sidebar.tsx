@@ -3,6 +3,7 @@
  */
 
 import { useTranslation } from "react-i18next";
+import { useRef } from "react";
 import { BrandMark } from "@/components/shared/brand-mark";
 import { Link, NavLink } from "@/lib/app-router";
 import {
@@ -60,7 +61,7 @@ export function WorkspaceModeSwitcher({
                 render={<NavLink className="w-full" onClick={onNavigate} to={link.to} />}
                 size="lg"
               >
-                <Icon aria-hidden="true" />
+                <Icon aria-hidden="true" className="size-[1.15rem] shrink-0 stroke-[2.05]" />
                 <span className="text-center leading-none">{t(link.labelKey)}</span>
               </SidebarMenuButton>
             );
@@ -124,12 +125,20 @@ function SettingsSidebarNav({
  * 定义工作区底部。
  */
 function WorkspaceFooter({
+  accountMenuCompact = false,
+  accountMenuPortalled = true,
   className,
+  contentPortalContainer,
   onNavigate,
   onLogout,
   user,
 }: {
+  accountMenuCompact?: boolean;
+  accountMenuPortalled?: boolean;
   className?: string;
+  contentPortalContainer?: React.ComponentProps<
+    typeof WorkspaceAccountMenu
+  >["contentPortalContainer"];
   onNavigate?: () => void;
   onLogout: () => Promise<void>;
   user: AppUser;
@@ -137,7 +146,15 @@ function WorkspaceFooter({
   return (
     <SidebarFooterSection className={cn("mt-auto gap-3.5 p-4 pt-4", className)}>
       <SidebarSeparator className="mx-0 mb-1 opacity-56" />
-      <WorkspaceAccountMenu onLogout={onLogout} onNavigate={onNavigate} user={user} />
+      <WorkspaceAccountMenu
+        className={accountMenuCompact ? "mx-auto" : undefined}
+        compact={accountMenuCompact}
+        contentPortalContainer={contentPortalContainer}
+        contentPortalled={accountMenuPortalled}
+        onLogout={onLogout}
+        onNavigate={onNavigate}
+        user={user}
+      />
     </SidebarFooterSection>
   );
 }
@@ -146,14 +163,20 @@ function WorkspaceFooter({
  * 渲染标准侧栏。
  */
 export function StandardSidebar({
+  accountMenuCompact = false,
+  accountMenuPortalled = true,
   className,
+  mode = "full",
   onNavigate,
   onLogout,
   pathname,
   surface = "default",
   user,
 }: {
+  accountMenuCompact?: boolean;
+  accountMenuPortalled?: boolean;
   className?: string;
+  mode?: "full" | "settings";
   onNavigate?: () => void;
   onLogout: () => Promise<void>;
   pathname: string;
@@ -162,6 +185,8 @@ export function StandardSidebar({
 }) {
   const { t } = useTranslation("common");
   const isEmbedded = surface === "embedded";
+  const settingsOnly = mode === "settings";
+  const menuPortalRef = useRef<HTMLDivElement>(null);
 
   return (
     <SidebarProvider className="h-full min-h-0 w-full">
@@ -176,27 +201,37 @@ export function StandardSidebar({
         collapsible="none"
         role="complementary"
       >
-        <SidebarHeader className={isEmbedded ? "p-0 pb-4" : "p-4 pb-3"}>
-          <BrandMark
-            alt={t("workspaceLogoAlt")}
-            subtitle={t("workspaceSubtitle")}
-            title={t("workspaceTitle")}
-          />
-        </SidebarHeader>
+        {settingsOnly ? null : (
+          <SidebarHeader className={isEmbedded ? "p-0 pb-4" : "p-4 pb-3"}>
+            <BrandMark
+              alt={t("workspaceLogoAlt")}
+              subtitle={t("workspaceSubtitle")}
+              title={t("workspaceTitle")}
+            />
+          </SidebarHeader>
+        )}
 
         <SidebarContent
           className={isEmbedded ? "gap-0 overflow-auto px-0 py-5" : "gap-0 overflow-auto px-4 py-4"}
         >
-          <WorkspaceModeSwitcher onNavigate={onNavigate} pathname={pathname} />
+          {settingsOnly ? null : (
+            <WorkspaceModeSwitcher onNavigate={onNavigate} pathname={pathname} />
+          )}
           <SettingsSidebarNav onNavigate={onNavigate} pathname={pathname} user={user} />
         </SidebarContent>
 
-        <WorkspaceFooter
-          className={isEmbedded ? "p-0 pt-3" : undefined}
-          onNavigate={onNavigate}
-          onLogout={onLogout}
-          user={user}
-        />
+        {settingsOnly ? null : (
+          <WorkspaceFooter
+            accountMenuCompact={accountMenuCompact}
+            accountMenuPortalled={accountMenuPortalled}
+            className={isEmbedded ? "p-0 pt-3" : undefined}
+            contentPortalContainer={menuPortalRef}
+            onNavigate={onNavigate}
+            onLogout={onLogout}
+            user={user}
+          />
+        )}
+        <div data-slot="standard-sidebar-menu-portal" ref={menuPortalRef} />
       </Sidebar>
     </SidebarProvider>
   );

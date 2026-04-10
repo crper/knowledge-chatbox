@@ -53,8 +53,10 @@
 - `ollama.base_url` 对外始终表示 Ollama 服务根地址，例如 `http://localhost:11434`
 - 如果用户误填了 `.../v1`，服务端会在读写设置和运行时统一收口回根地址
 - 聊天主链路内部再从这个根地址派生 OpenAI 兼容端点 `.../v1`；原生 Ollama SDK 与健康检查继续使用根地址
+- `anthropic.base_url` 归一化方向与 Ollama 相反：服务端会自动确保路径以 `/v1` 结尾；如果用户只填写了 `https://api.anthropic.com`，运行时会自动补全为 `https://api.anthropic.com/v1`；已包含 `/v1` 的地址则保持不变
+- `openai.base_url` 同样会自动补全路径：如果用户填写的地址有 scheme 和 host 但路径为空，服务端会自动补 `/v1`；已有路径的地址则保留原路径并去除尾部斜杠；留空时使用 OpenAI SDK 默认地址
 
-这些模板字段会在保存 route 后同步回 profile，保证设置页再次打开时看到的是“当前真实会生效的模型值”。
+这些模板字段会在保存 route 后同步回 profile，保证设置中心再次打开时看到的是“当前真实会生效的模型值”。
 
 当前 bootstrap 约定：
 
@@ -67,6 +69,7 @@
 ### response
 
 - 保存后立即生效
+- provider 允许值当前只收敛到 `openai / anthropic / ollama`
 - 会同步更新对应 provider 的 `chat_model`
 - 不触发索引重建
 - `response_route` 当前直接服务 `ChatWorkflow + PydanticAI` 聊天执行链路；同步和流式问答都消费同一份 `ProviderRuntimeSettings`
@@ -77,6 +80,7 @@
 ### vision
 
 - 保存后立即生效
+- provider 允许值当前只收敛到 `openai / anthropic / ollama`
 - 会同步更新对应 provider 的 `vision_model`
 - 影响文档标准化阶段，以及纯图片泛化问法的视觉分析
 - 图片解码失败时返回稳定语义，再由前端按当前语言展示
@@ -84,6 +88,7 @@
 ### embedding
 
 - 保存后不会立刻替换 `embedding_route`
+- provider 允许值当前只收敛到 `openai / voyage / ollama`
 - 新目标先写入 `pending_embedding_route`
 - 同时推进 `building_index_generation`，并把 `index_rebuild_status` 置为 `running`
 - 后台重建成功后，再把 `pending_embedding_route` promote 为活动 route
@@ -92,6 +97,8 @@
 ## 4. Settings API
 
 ### `GET /api/chat/profile`
+
+> 路由归属：`api/routes/chat.py`（非 settings 路由，因语义属于聊天能力探测而放在此处统一说明）
 
 当前返回：
 
@@ -106,6 +113,8 @@
 
 ### `GET /api/documents/upload-readiness`
 
+> 路由归属：`api/routes/documents.py`（非 settings 路由，因语义属于上传前置条件而放在此处统一说明）
+
 当前返回：
 
 - `can_upload`
@@ -119,7 +128,7 @@
   - 当前活动 `embedding_route` 缺少最小配置时，返回 `embedding_not_configured`
   - `index_rebuild_status=running` 且 `pending_embedding_route` 缺少最小配置时，返回 `pending_embedding_not_configured`
 - `vision_route` 缺配置不会阻断上传；这时 `image_fallback=true`，前端应提示“图片会以基础信息入库，不做视觉解析”
-- 资源页会在进入上传流程前先读这条接口；设置页保存成功后，前端会主动失效并刷新这条 query
+- 资源页会在进入上传流程前先读这条接口；设置中心保存成功后，前端会主动失效并刷新这条 query
 
 ### `GET /api/settings`
 
@@ -164,13 +173,13 @@
 - 如果 OpenAI 兼容端点返回 401 / `INVALID_API_KEY`，测试结果会稳定归类为“API Key 无效或被拒绝”，前端按当前语言展示，不直接透传原始 SDK 异常
 - Ollama 连接测试在返回 502 或请求失败时，会提示当前 Base URL 是否更适合本机直跑的 `localhost:11434`，还是容器场景下的 `host.docker.internal:11434`
 
-## 5. 前端设置页约束
+## 5. 前端设置中心约束
 
-- `ProviderForm` 当前复用同一份本地 draft model 处理“保存设置”和“测试连接”
+- `ProviderForm` 当前复用同一份本地 draft model 处理"保存设置"和"测试连接"
 - 主区保留当前状态摘要、主配置表单和必要操作入口；高级区只承载检索覆盖、备用模板和 Timeout
 - 本地校验 helper 只返回稳定的 validation key；具体文案在组件层通过 i18n 翻译
 - 本地校验只负责字段完整性和基础数值约束；provider 可达性、鉴权和模型存在性仍通过 `POST /api/settings/test-routes` 判断
-- 设置页里的 `Ollama Base URL` 只提示填写服务根地址，不暴露内部 OpenAI 兼容 `/v1` 细节
+- 设置中心里的 `Ollama Base URL` 只提示填写服务根地址，不暴露内部 OpenAI 兼容 `/v1` 细节
 - `system_prompt` 的默认值当前是“知识工作台助手”聚焦版：强调先给结论、再给依据、优先引用资料事实；如果管理员明确清空并保存空字符串，后续对话就不再附带默认 system prompt
 - `账号安全` 分组里的修改密码弹窗沿用同一原则：前端先做字段校验，后端保留 `invalid_credentials` 这类稳定语义码；修改密码成功后当前登录状态立即失效，前端回到登录页要求重新登录
 - 设置中心的页面组织与交互边界，统一看 [frontend-workspace.md](./frontend-workspace.md)
@@ -183,7 +192,7 @@
 
 前端显示逻辑：
 
-- 如果 `pending_embedding_route` 非空，设置页会优先把它作为“当前检索目标”展示
+- 如果 `pending_embedding_route` 非空，设置中心会优先把它作为“当前检索目标”展示
 - `rebuild_started / reindex_required` 是一次保存操作返回给前端的即时反馈，不是长期状态字段
 
 ## 7. 关键代码入口

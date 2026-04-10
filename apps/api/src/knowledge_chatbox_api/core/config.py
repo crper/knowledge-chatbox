@@ -1,7 +1,5 @@
 """Typed runtime configuration loaded from the repository root `.env`."""
 
-from __future__ import annotations
-
 import json
 from functools import lru_cache
 from pathlib import Path
@@ -10,13 +8,16 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
+from knowledge_chatbox_api.models.enums import ProviderName
 from knowledge_chatbox_api.schemas._validators import (
     EmbeddingProviderLiteral,
     PositiveInt,
     ResponseProviderLiteral,
     VisionProviderLiteral,
 )
+from knowledge_chatbox_api.utils.helpers import unwrap_secret
 
+# src/knowledge_chatbox_api/core/ → 5 levels up to repo root
 PROJECT_ROOT = Path(__file__).resolve().parents[5]
 EnvironmentLiteral = Literal["local", "test", "staging", "production"]
 LogLevelLiteral = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
@@ -121,13 +122,14 @@ class Settings(BaseSettings):
     initial_ollama_chat_model: str = "qwen3.5:4b"
     initial_ollama_embedding_model: str = "nomic-embed-text"
     initial_ollama_vision_model: str = "qwen3.5:4b"
-    initial_response_provider: ResponseProviderLiteral = "ollama"
+    initial_response_provider: ResponseProviderLiteral = ProviderName.OLLAMA
     initial_response_model: str = "qwen3.5:4b"
-    initial_embedding_provider: EmbeddingProviderLiteral = "ollama"
+    initial_embedding_provider: EmbeddingProviderLiteral = ProviderName.OLLAMA
     initial_embedding_model: str = "nomic-embed-text"
-    initial_vision_provider: VisionProviderLiteral = "ollama"
+    initial_vision_provider: VisionProviderLiteral = ProviderName.OLLAMA
     initial_vision_model: str = "qwen3.5:4b"
     initial_provider_timeout_seconds: PositiveInt = 60
+    max_upload_size_mb: PositiveInt = 100
     project_root: Path = Field(default_factory=lambda: PROJECT_ROOT)
     data_dir: Path = Field(default=Path("data"))
     upload_dir: Path = Field(default=Path("uploads"))
@@ -136,12 +138,16 @@ class Settings(BaseSettings):
     chroma_path: Path = Field(default=Path("chroma"))
 
     def _resolve_path(self, value: Path | None, default: Path) -> Path:
-        """Resolve optional path settings against the repository root."""
         if value is None:
             return default
         if value.is_absolute():
             return value
         return self.project_root / value
+
+    def _resolve_path_field(self, field_name: str, value: Path, default: Path) -> Path:
+        if field_name in self.model_fields_set:
+            return self._resolve_path(value, default)
+        return default
 
     @field_validator("cors_allow_origins", mode="before")
     @classmethod
@@ -175,32 +181,23 @@ class Settings(BaseSettings):
         return value
 
     @model_validator(mode="after")
-    def _resolve_runtime_paths(self) -> Settings:
-        """在启动时把路径字段统一解析为绝对运行时路径。"""
+    def _resolve_runtime_paths(self) -> "Settings":
         project_root = self._resolve_path(self.project_root, PROJECT_ROOT)
         data_dir = self._resolve_path(self.data_dir, project_root / "data")
 
         self.project_root = project_root
         self.data_dir = data_dir
-        self.upload_dir = (
-            self._resolve_path(self.upload_dir, data_dir / "uploads")
-            if "upload_dir" in self.model_fields_set
-            else data_dir / "uploads"
+        self.upload_dir = self._resolve_path_field(
+            "upload_dir", self.upload_dir, data_dir / "uploads"
         )
-        self.normalized_dir = (
-            self._resolve_path(self.normalized_dir, data_dir / "normalized")
-            if "normalized_dir" in self.model_fields_set
-            else data_dir / "normalized"
+        self.normalized_dir = self._resolve_path_field(
+            "normalized_dir", self.normalized_dir, data_dir / "normalized"
         )
-        self.sqlite_path = (
-            self._resolve_path(self.sqlite_path, data_dir / "sqlite/ai_qa.db")
-            if "sqlite_path" in self.model_fields_set
-            else data_dir / "sqlite/ai_qa.db"
+        self.sqlite_path = self._resolve_path_field(
+            "sqlite_path", self.sqlite_path, data_dir / "sqlite/ai_qa.db"
         )
-        self.chroma_path = (
-            self._resolve_path(self.chroma_path, data_dir / "chroma")
-            if "chroma_path" in self.model_fields_set
-            else data_dir / "chroma"
+        self.chroma_path = self._resolve_path_field(
+            "chroma_path", self.chroma_path, data_dir / "chroma"
         )
         return self
 
@@ -232,33 +229,18 @@ class Settings(BaseSettings):
         )
 
     def should_use_secure_session_cookie(self, request_scheme: str) -> bool:
-        """根据显式配置或请求协议决定是否启用 Secure cookie。"""
         if self.session_cookie_secure is not None:
             return self.session_cookie_secure
-
         return request_scheme.lower() == "https"
 
     @property
     def provider_bootstrap(self) -> ProviderBootstrapSettings:
-        """返回 provider bootstrap 设置分组。"""
         return ProviderBootstrapSettings(
-            initial_openai_api_key=(
-                self.initial_openai_api_key.get_secret_value()
-                if self.initial_openai_api_key is not None
-                else None
-            ),
+            initial_openai_api_key=unwrap_secret(self.initial_openai_api_key),
             initial_openai_base_url=self.initial_openai_base_url,
-            initial_anthropic_api_key=(
-                self.initial_anthropic_api_key.get_secret_value()
-                if self.initial_anthropic_api_key is not None
-                else None
-            ),
+            initial_anthropic_api_key=unwrap_secret(self.initial_anthropic_api_key),
             initial_anthropic_base_url=self.initial_anthropic_base_url,
-            initial_voyage_api_key=(
-                self.initial_voyage_api_key.get_secret_value()
-                if self.initial_voyage_api_key is not None
-                else None
-            ),
+            initial_voyage_api_key=unwrap_secret(self.initial_voyage_api_key),
             initial_voyage_base_url=self.initial_voyage_base_url,
             initial_ollama_base_url=self.initial_ollama_base_url,
             initial_openai_chat_model=self.initial_openai_chat_model,

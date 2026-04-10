@@ -1,6 +1,5 @@
 import {
   detectSupportedUploadKind,
-  SUPPORTED_UPLOAD_ACCEPT_MAP,
   UNSUPPORTED_UPLOAD_FILE_ERROR_CODE,
   validateUploadFile,
 } from "./upload-file-types";
@@ -27,14 +26,6 @@ describe("upload file types", () => {
     ).toEqual({
       code: UNSUPPORTED_UPLOAD_FILE_ERROR_CODE,
       message: UNSUPPORTED_UPLOAD_FILE_ERROR_CODE,
-    });
-  });
-
-  it("exposes the shared accept map for dropzones", () => {
-    expect(SUPPORTED_UPLOAD_ACCEPT_MAP).toMatchObject({
-      "application/pdf": [".pdf"],
-      "image/jpeg": [".jpg", ".jpeg"],
-      "text/plain": [".txt"],
     });
   });
 });

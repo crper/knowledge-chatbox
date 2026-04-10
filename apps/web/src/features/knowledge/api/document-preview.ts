@@ -5,16 +5,29 @@
 import type { KnowledgeDocument } from "./documents";
 import { getDocumentFileUrl } from "@/features/chat/utils/document-file-url";
 import { fetchProtectedFileText } from "@/lib/api/protected-file";
+import { SUPPORTED_UPLOAD_TYPES } from "../upload-file-types";
 
-export const DOCUMENT_TEXT_PREVIEW_LIMIT_BYTES = 1024 * 1024;
+const DOCUMENT_TEXT_PREVIEW_LIMIT_BYTES = 1024 * 1024;
 
-const IMAGE_FILE_TYPES = new Set(["png", "jpg", "jpeg", "webp", "gif"]);
-const MARKDOWN_FILE_TYPES = new Set(["md", "markdown"]);
-const TEXT_FILE_TYPES = new Set(["txt"]);
+const IMAGE_FILE_TYPES = new Set(
+  SUPPORTED_UPLOAD_TYPES.filter(({ kind }) => kind === "image").flatMap(({ extensions }) =>
+    extensions.map((e: string) => e.slice(1)),
+  ),
+);
+const MARKDOWN_FILE_TYPES = new Set(
+  SUPPORTED_UPLOAD_TYPES.filter(({ mimeType }) => mimeType === "text/markdown").flatMap(
+    ({ extensions }) => extensions.map((e: string) => e.slice(1)),
+  ),
+);
+const TEXT_FILE_TYPES = new Set(
+  SUPPORTED_UPLOAD_TYPES.filter(({ mimeType }) => mimeType === "text/plain").flatMap(
+    ({ extensions }) => extensions.map((e: string) => e.slice(1)),
+  ),
+);
 
 export type DocumentPreviewKind = "image" | "markdown" | "text" | "pdf" | "docx" | "unsupported";
 
-export type DocumentTextPreviewResult =
+type DocumentTextPreviewResult =
   | {
       kind: "text";
       content: string;

@@ -14,13 +14,11 @@ import type {
   ChatSessionContextItem,
 } from "../api/chat";
 import type { ChatStreamAttachmentInput } from "../api/chat-stream";
-import { useChatAttachmentStore } from "../store/chat-attachment-store";
-import { useChatUiStore } from "../store/chat-ui-store";
 import {
-  cloneChatAttachments,
   serializeChatAttachments,
   shouldResetComposerSnapshotForRetry,
 } from "../utils/chat-submit-helpers";
+import { clearComposer, restoreComposer, snapshotComposer } from "../utils/composer-transaction";
 import { uploadQueuedChatAttachments } from "../utils/upload-chat-attachments";
 import { MessageRole, MessageStatus } from "../constants";
 
@@ -78,6 +76,25 @@ function toPersistedChatAttachments(
   );
 }
 
+function buildRestoredComposerSnapshot({
+  composerSnapshot,
+  workingAttachments,
+}: {
+  composerSnapshot: ReturnType<typeof snapshotComposer>;
+  workingAttachments: typeof composerSnapshot.attachments;
+}) {
+  const attachmentById = new Map(
+    workingAttachments.map((attachment) => [attachment.id, attachment]),
+  );
+
+  return {
+    draft: composerSnapshot.draft,
+    attachments: composerSnapshot.attachments.map(
+      (attachment) => attachmentById.get(attachment.id) ?? attachment,
+    ),
+  };
+}
+
 export function useChatComposerSubmit({
   beginSessionSubmit,
   finishSessionSubmit,
@@ -91,9 +108,6 @@ export function useChatComposerSubmit({
 }: UseChatComposerSubmitParams) {
   const { t } = useTranslation(["chat", "common"]);
   const queryClient = useQueryClient();
-  const clearAttachments = useChatAttachmentStore((state) => state.clearAttachments);
-  const setAttachments = useChatAttachmentStore((state) => state.setAttachments);
-  const setDraft = useChatUiStore((state) => state.setDraft);
 
   const submitMessage = useCallback(async () => {
     if (resolvedActiveSessionId === null) {
@@ -105,23 +119,27 @@ export function useChatComposerSubmit({
       return;
     }
 
-    const nextDraft = useChatUiStore.getState().draftsBySession[String(sessionId)] ?? "";
-    const snapshotAttachments = cloneChatAttachments(
-      useChatAttachmentStore.getState().attachmentsBySession[String(sessionId)] ?? [],
-    );
-    const sendableAttachments = snapshotAttachments.filter(
+    const composerSnapshot = snapshotComposer(sessionId);
+    const sendableAttachments = composerSnapshot.attachments.filter(
       (attachment) => attachment.status !== MessageStatus.FAILED,
     );
 
-    if (!nextDraft.trim() && sendableAttachments.length === 0) {
+    if (!composerSnapshot.draft.trim() && sendableAttachments.length === 0) {
       finishSessionSubmit(sessionId);
       return;
     }
 
-    setDraft(sessionId, "");
-    clearAttachments(sessionId);
+    clearComposer(sessionId);
 
-    const workingAttachments = cloneChatAttachments(snapshotAttachments);
+    const workingAttachments = sendableAttachments.map((a) => ({ ...a }));
+    const restoreComposerSnapshot = () =>
+      restoreComposer(
+        sessionId,
+        buildRestoredComposerSnapshot({
+          composerSnapshot,
+          workingAttachments,
+        }),
+      );
 
     try {
       const { uploadedAttachments: persistedAttachments, uploadedCount } =
@@ -144,7 +162,7 @@ export function useChatComposerSubmit({
 
       const serializedAttachments = serializeChatAttachments(persistedAttachments);
       const persistedChatAttachments = toPersistedChatAttachments(serializedAttachments);
-      if (!nextDraft.trim() && serializedAttachments.length === 0) {
+      if (!composerSnapshot.draft.trim() && serializedAttachments.length === 0) {
         return;
       }
 
@@ -152,7 +170,7 @@ export function useChatComposerSubmit({
       const streamResult = await sendStreamMessage({
         attachments: serializedAttachments,
         sessionId,
-        content: nextDraft,
+        content: composerSnapshot.draft,
       });
       if (streamResult.userMessageId && serializedAttachments.length > 0) {
         const patched = patchUserMessageAttachments({
@@ -172,15 +190,13 @@ export function useChatComposerSubmit({
         void invalidateDocuments(queryClient);
       }
     } catch {
-      setDraft(sessionId, nextDraft);
-      setAttachments(sessionId, workingAttachments);
+      restoreComposerSnapshot();
       return;
     } finally {
       finishSessionSubmit(sessionId);
     }
   }, [
     beginSessionSubmit,
-    clearAttachments,
     finishSessionSubmit,
     patchSessionContext,
     patchUserMessageAttachments,
@@ -188,8 +204,6 @@ export function useChatComposerSubmit({
     requestScrollToLatest,
     resolvedActiveSessionId,
     sendStreamMessage,
-    setAttachments,
-    setDraft,
     t,
   ]);
 
@@ -221,20 +235,16 @@ export function useChatComposerSubmit({
         message.role === MessageRole.ASSISTANT
           ? (messages.find((item) => item.id === retryOfMessageId)?.attachments_json ?? null)
           : (message.attachments_json ?? null);
-      const draftSnapshot = useChatUiStore.getState().draftsBySession[String(sessionId)] ?? "";
-      const attachmentSnapshot = cloneChatAttachments(
-        useChatAttachmentStore.getState().attachmentsBySession[String(sessionId)] ?? [],
-      );
+      const composerSnapshot = snapshotComposer(sessionId);
       const shouldResetComposerSnapshot = shouldResetComposerSnapshotForRetry({
-        composerAttachments: attachmentSnapshot,
-        composerDraft: draftSnapshot,
+        composerAttachments: composerSnapshot.attachments,
+        composerDraft: composerSnapshot.draft,
         retryAttachments,
         retryContent,
       });
 
       if (shouldResetComposerSnapshot) {
-        setDraft(sessionId, "");
-        clearAttachments(sessionId);
+        clearComposer(sessionId);
       }
 
       try {
@@ -246,8 +256,7 @@ export function useChatComposerSubmit({
         });
       } catch {
         if (shouldResetComposerSnapshot) {
-          setDraft(sessionId, draftSnapshot);
-          setAttachments(sessionId, attachmentSnapshot);
+          restoreComposer(sessionId, composerSnapshot);
         }
         return;
       } finally {
@@ -256,15 +265,12 @@ export function useChatComposerSubmit({
     },
     [
       beginSessionSubmit,
-      clearAttachments,
       finishSessionSubmit,
       findRunByAssistantMessageId,
       messages,
       requestScrollToLatest,
       resolvedActiveSessionId,
       sendStreamMessage,
-      setAttachments,
-      setDraft,
     ],
   );
 

@@ -1,24 +1,29 @@
 """Anthropic capability adapters."""
 
-from __future__ import annotations
-
 import base64
-import time
+from time import perf_counter
 from typing import Any
 
 from anthropic import Anthropic
 
+from knowledge_chatbox_api.models.enums import ChatMessageRole
 from knowledge_chatbox_api.providers.base import (
+    DEFAULT_VISION_PROMPT,
     BaseResponseAdapter,
     BaseVisionAdapter,
+    ClientCacheMixin,
     ProviderHealthResult,
+    ProviderName,
     ProviderSettings,
     ResponseRuntimeSettings,
     ResponseSettings,
     ResponseStreamChunk,
     VisionSettings,
+    build_reasoning_config,
+    provider_retry,
 )
-from knowledge_chatbox_api.utils.compat import safe_getattr
+from knowledge_chatbox_api.utils.helpers import safe_getattr
+from knowledge_chatbox_api.utils.timing import elapsed_ms
 
 DEFAULT_ANTHROPIC_BASE_URL = "https://api.anthropic.com"
 DEFAULT_MAX_TOKENS = 4096
@@ -43,10 +48,10 @@ def _usage_to_dict(usage: Any) -> dict[str, Any] | None:
     return result or None
 
 
-class _AnthropicClientMixin:
+class _AnthropicClientMixin(ClientCacheMixin):
     def __init__(self, client_factory=None) -> None:
+        super().__init__()
         self.client_factory = client_factory or Anthropic
-        self._client_cache: dict[tuple[str | None, str, float], Any] = {}
 
     def _request_timeout(self, settings: ProviderSettings) -> float:
         return float(settings.provider_timeout_seconds)
@@ -65,21 +70,16 @@ class _AnthropicClientMixin:
         base_url = self._normalize_base_url(settings.provider_profiles.anthropic.base_url)
         timeout = self._request_timeout(settings)
         cache_key = (api_key, base_url, timeout)
-        client = self._client_cache.get(cache_key)
-        if client is None:
-            client = self.client_factory(
-                api_key=api_key,
-                base_url=base_url,
-                timeout=timeout,
-            )
-            self._client_cache[cache_key] = client
-        return client
+        return self._get_or_create_client(
+            cache_key,
+            lambda: self.client_factory(api_key=api_key, base_url=base_url, timeout=timeout),
+        )
 
     def _quick_model_check(self, settings: ProviderSettings, model: str) -> None:
         self._client(settings).models.retrieve(model)
 
     def _run_health_check(self, settings: ProviderSettings, model: str) -> ProviderHealthResult:
-        start = time.perf_counter()
+        start = perf_counter()
         if not self._api_key(settings):
             return ProviderHealthResult(healthy=False, message="Anthropic API key is missing.")
 
@@ -90,20 +90,12 @@ class _AnthropicClientMixin:
         return ProviderHealthResult(
             healthy=True,
             message="ok",
-            latency_ms=int((time.perf_counter() - start) * 1000),
+            latency_ms=elapsed_ms(start),
         )
 
     def _thinking_config(self, settings: ResponseRuntimeSettings) -> dict[str, Any] | None:
-        mode = settings.reasoning_mode
-        if mode == "on":
-            return {
-                "type": "enabled",
-                "budget_tokens": 1024,
-                "display": "omitted",
-            }
-        if mode == "off":
-            return {"type": "disabled"}
-        return None
+        config = build_reasoning_config(ProviderName.ANTHROPIC, settings.reasoning_mode)
+        return config.get("anthropic_thinking")
 
     def _serialize_messages(
         self,
@@ -115,12 +107,16 @@ class _AnthropicClientMixin:
         for message in messages:
             role = message.get("role")
             content = message.get("content")
-            if role == "system":
+            if role == ChatMessageRole.SYSTEM:
                 if isinstance(content, str) and content.strip():
                     system_parts.append(content.strip())
                 continue
 
-            normalized_role = "assistant" if role == "assistant" else "user"
+            normalized_role = (
+                ChatMessageRole.ASSISTANT
+                if role == ChatMessageRole.ASSISTANT
+                else ChatMessageRole.USER
+            )
             serialized_messages.append(
                 {
                     "role": normalized_role,
@@ -230,6 +226,7 @@ class AnthropicVisionAdapter(_AnthropicClientMixin, BaseVisionAdapter):
 
     supports_vision = True
 
+    @provider_retry
     def analyze_image(self, inputs: list[dict[str, Any]], settings: VisionSettings) -> str:
         response = self._client(settings).messages.create(
             model=settings.vision_route.model,
@@ -238,7 +235,7 @@ class AnthropicVisionAdapter(_AnthropicClientMixin, BaseVisionAdapter):
                 {
                     "role": "user",
                     "content": [
-                        {"type": "text", "text": "Describe the image content in markdown."},
+                        {"type": "text", "text": DEFAULT_VISION_PROMPT},
                         *[
                             {
                                 "type": "image",

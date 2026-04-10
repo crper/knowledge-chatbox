@@ -16,7 +16,7 @@ describe("auth api", () => {
     setAccessToken(null);
   });
 
-  it("calls login endpoint", async () => {
+  it("calls login endpoint without mutating the access token store", async () => {
     overrideHandler(
       http.post("*/api/auth/login", () => {
         return apiResponse({
@@ -31,6 +31,7 @@ describe("auth api", () => {
     const result = await login({ username: "admin", password: "secret" });
 
     expect(result.accessToken).toBe("access-token");
+    expect(getAccessToken()).toBeNull();
   });
 
   it("calls refresh endpoint and stores the next access token", async () => {
@@ -48,7 +49,7 @@ describe("auth api", () => {
     expect(getAccessToken()).toBe("refreshed-token");
   });
 
-  it("calls bootstrap endpoint and stores the access token when a refresh session can be restored", async () => {
+  it("calls bootstrap endpoint without mutating the access token store", async () => {
     overrideHandler(
       http.post("*/api/auth/bootstrap", () => {
         return apiResponse({
@@ -66,10 +67,11 @@ describe("auth api", () => {
       user: { username: "admin" },
     });
 
-    expect(getAccessToken()).toBe("bootstrapped-token");
+    expect(getAccessToken()).toBeNull();
   });
 
-  it("returns null when bootstrap endpoint reports an anonymous session", async () => {
+  it("returns null when bootstrap endpoint reports an anonymous session without clearing an existing token", async () => {
+    setAccessToken("existing-token");
     overrideHandler(
       http.post("*/api/auth/bootstrap", () => {
         return apiResponse({
@@ -83,10 +85,11 @@ describe("auth api", () => {
     );
 
     await expect(bootstrapAuthSession()).resolves.toBeNull();
-    expect(getAccessToken()).toBeNull();
+    expect(getAccessToken()).toBe("existing-token");
   });
 
-  it("calls logout endpoint", async () => {
+  it("calls logout endpoint without mutating the access token store", async () => {
+    setAccessToken("existing-token");
     overrideHandler(
       http.post("*/api/auth/logout", () => {
         return apiResponse({ status: "ok" });
@@ -94,6 +97,7 @@ describe("auth api", () => {
     );
 
     await logout();
+    expect(getAccessToken()).toBe("existing-token");
   });
 
   it("calls auth me endpoint", async () => {

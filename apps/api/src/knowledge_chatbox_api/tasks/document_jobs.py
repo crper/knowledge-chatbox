@@ -1,11 +1,10 @@
 """文档Jobs任务模块。"""
 
-from __future__ import annotations
-
 from datetime import UTC, datetime
 from pathlib import Path
 
 from knowledge_chatbox_api.db.session import create_session_factory
+from knowledge_chatbox_api.models.enums import ChatMessageStatus, ChatRunStatus, IngestStatus
 from knowledge_chatbox_api.repositories.chat_repository import ChatRepository
 from knowledge_chatbox_api.repositories.chat_run_repository import ChatRunRepository
 from knowledge_chatbox_api.repositories.document_repository import DocumentRepository
@@ -14,6 +13,7 @@ from knowledge_chatbox_api.services.documents.constants import IMAGE_DOCUMENT_FI
 from knowledge_chatbox_api.services.documents.ingestion_service import IngestionService
 from knowledge_chatbox_api.services.documents.rebuild_service import RebuildService
 from knowledge_chatbox_api.services.settings.settings_service import (
+    INDEX_REBUILD_STATUS_FAILED,
     INDEX_REBUILD_STATUS_RUNNING,
     SettingsService,
 )
@@ -24,7 +24,7 @@ def complete_document_ingestion(settings, revision_id: int) -> bool:
     session_factory = create_session_factory()
     with session_factory() as session:
         revision = IngestionService(session, settings).complete_document_ingestion(revision_id)
-        return revision.lifecycle_status == "indexed"
+        return revision.lifecycle_status == IngestStatus.INDEXED
 
 
 def compensate_processing_documents(session, settings) -> int:
@@ -36,7 +36,7 @@ def compensate_processing_documents(session, settings) -> int:
         if document.file_type in IMAGE_DOCUMENT_FILE_TYPES and Path(document.origin_path).exists():
             pending_resume_ids.append(document.id)
             continue
-        document.lifecycle_status = "failed"
+        document.lifecycle_status = IngestStatus.FAILED
         document.error_message = "Processing interrupted during previous run."
     session.commit()
     for revision_id in pending_resume_ids:
@@ -54,7 +54,7 @@ def compensate_active_chat_runs(session) -> int:
 
     now = datetime.now(UTC)
     for run in runs:
-        run.status = "failed"
+        run.status = ChatRunStatus.FAILED
         run.error_message = STREAM_INTERRUPTED_ERROR_MESSAGE
         run.finished_at = now
         if run.assistant_message_id is None:
@@ -62,7 +62,7 @@ def compensate_active_chat_runs(session) -> int:
         assistant_message = chat_repository.get_message(run.assistant_message_id)
         if assistant_message is None:
             continue
-        assistant_message.status = "failed"
+        assistant_message.status = ChatMessageStatus.FAILED
         assistant_message.error_message = STREAM_INTERRUPTED_ERROR_MESSAGE
     session.commit()
     return len(runs)
@@ -74,7 +74,7 @@ def compensate_index_rebuild_status(session, settings) -> bool:
     settings_record = service.get_or_create_settings_record()
     if settings_record.index_rebuild_status != INDEX_REBUILD_STATUS_RUNNING:
         return False
-    settings_record.index_rebuild_status = "failed"
+    settings_record.index_rebuild_status = INDEX_REBUILD_STATUS_FAILED
     session.commit()
     return True
 

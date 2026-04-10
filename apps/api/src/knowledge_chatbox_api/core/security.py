@@ -1,7 +1,5 @@
 """安全核心模块。"""
 
-from __future__ import annotations
-
 import hashlib
 import secrets
 from datetime import UTC, datetime, timedelta

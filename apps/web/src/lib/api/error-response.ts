@@ -89,46 +89,53 @@ export function getUserFacingErrorMessage(detail: ErrorDetail, response: Respons
   return translateCommonErrorMessage("apiErrorGeneric");
 }
 
+function extractNestedMessage(body: unknown, key: string): ErrorDetail | null {
+  if (!body || typeof body !== "object" || !(key in body)) {
+    return null;
+  }
+
+  const container = (body as Record<string, unknown>)[key];
+  if (!container || typeof container !== "object") {
+    return null;
+  }
+
+  if (!("message" in container) || typeof container.message !== "string") {
+    return null;
+  }
+
+  const code =
+    "code" in container && typeof container.code === "string" ? container.code : undefined;
+  return { code, message: container.message, source: "payload" };
+}
+
 export function extractErrorDetail(
   rawBody: string,
   parsedBody: unknown,
   response: Pick<Response, "status" | "statusText">,
 ): ErrorDetail {
-  if (
-    parsedBody &&
-    typeof parsedBody === "object" &&
-    "error" in parsedBody &&
-    parsedBody.error &&
-    typeof parsedBody.error === "object" &&
-    "message" in parsedBody.error &&
-    typeof parsedBody.error.message === "string"
-  ) {
-    const code =
-      "code" in parsedBody.error && typeof parsedBody.error.code === "string"
-        ? parsedBody.error.code
-        : undefined;
-    return { code, message: parsedBody.error.message, source: "payload" };
-  }
+  const fromError = extractNestedMessage(parsedBody, "error");
+  if (fromError) return fromError;
 
-  if (
-    parsedBody &&
-    typeof parsedBody === "object" &&
-    "detail" in parsedBody &&
-    parsedBody.detail &&
-    typeof parsedBody.detail === "object" &&
-    "message" in parsedBody.detail &&
-    typeof parsedBody.detail.message === "string"
-  ) {
-    const code =
-      "code" in parsedBody.detail && typeof parsedBody.detail.code === "string"
-        ? parsedBody.detail.code
-        : undefined;
-    return { code, message: parsedBody.detail.message, source: "payload" };
-  }
+  const fromDetail = extractNestedMessage(parsedBody, "detail");
+  if (fromDetail) return fromDetail;
 
   if (rawBody.trim()) {
     return { message: rawBody.trim(), source: "raw" };
   }
 
   return { message: `${response.status} ${response.statusText}`.trim(), source: "status" };
+}
+
+export async function parseErrorResponse(response: Response): Promise<never> {
+  const rawBody = await response.text();
+  let parsedBody: unknown = null;
+
+  try {
+    parsedBody = rawBody.trim() ? (JSON.parse(rawBody) as unknown) : null;
+  } catch {
+    parsedBody = null;
+  }
+
+  const detail = extractErrorDetail(rawBody, parsedBody, response);
+  throw new Error(getUserFacingErrorMessage(detail, response));
 }

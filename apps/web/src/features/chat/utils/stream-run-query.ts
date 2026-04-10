@@ -1,11 +1,15 @@
 import type { QueryClient, QueryKey } from "@tanstack/react-query";
 
 import { queryKeys } from "@/lib/api/query-keys";
-import type { StreamingRun } from "../store/chat-stream-store";
+import { normalizeStreamingRun, type StreamingRun, type StreamingRunLike } from "./streaming-run";
 
 type StreamRunEntry = readonly [runId: number, run: StreamingRun];
+export type StreamRunChange = {
+  runId: number;
+  run: StreamingRun | undefined;
+};
 
-function isStreamRunQueryKey(
+export function isStreamRunQueryKey(
   queryKey: QueryKey,
 ): queryKey is ReturnType<typeof queryKeys.chat.streamRun> {
   return (
@@ -16,9 +20,16 @@ function isStreamRunQueryKey(
   );
 }
 
+export function getStreamRunIdFromQueryKey(queryKey: QueryKey): number | null {
+  if (!isStreamRunQueryKey(queryKey)) {
+    return null;
+  }
+  return queryKey[2];
+}
+
 export function getStreamRunEntries(queryClient: QueryClient): StreamRunEntry[] {
   return queryClient
-    .getQueriesData<StreamingRun>({
+    .getQueriesData<StreamingRunLike>({
       queryKey: queryKeys.chat.streamRuns,
     })
     .flatMap(([queryKey, run]) => {
@@ -26,7 +37,7 @@ export function getStreamRunEntries(queryClient: QueryClient): StreamRunEntry[] 
         return [];
       }
 
-      return [[queryKey[2], run] as const];
+      return [[queryKey[2], normalizeStreamingRun(run)] as const];
     });
 }
 
@@ -52,10 +63,18 @@ export function findStreamRunByAssistantMessageId(
   )?.[1];
 }
 
-export function subscribeToStreamRunChanges(queryClient: QueryClient, onChange: () => void) {
+export function subscribeToStreamRunChanges(
+  queryClient: QueryClient,
+  onChange: (change: StreamRunChange) => void,
+) {
   return queryClient.getQueryCache().subscribe((event) => {
-    if (event && isStreamRunQueryKey(event.query.queryKey)) {
-      onChange();
-    }
+    if (!event) return;
+    const runId = getStreamRunIdFromQueryKey(event.query.queryKey);
+    if (runId === null) return;
+    const rawRun = event.query.state.data as StreamingRunLike | undefined;
+    onChange({
+      runId,
+      run: event.type === "removed" || !rawRun ? undefined : normalizeStreamingRun(rawRun),
+    });
   });
 }

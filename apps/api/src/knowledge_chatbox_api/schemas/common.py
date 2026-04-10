@@ -1,22 +1,14 @@
-"""CommonPydantic 模型定义。"""
-
-from __future__ import annotations
+"""Common Pydantic 模型定义。"""
 
 from typing import Any
 
 from pydantic import BaseModel
 
 
-class AppErrorPayload(BaseModel):
-    """定义统一错误载荷。"""
-
+class ErrorInfo(BaseModel):
     code: str
     message: str
     details: Any | None = None
-
-
-class ErrorInfo(AppErrorPayload):
-    """定义异常Info数据结构。"""
 
 
 class Envelope[T](BaseModel):

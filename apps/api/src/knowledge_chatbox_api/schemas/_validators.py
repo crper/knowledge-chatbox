@@ -1,19 +1,39 @@
 """Schema 共享校验类型。"""
 
-from __future__ import annotations
-
 from typing import Annotated, Literal
 
 from pydantic import Field, StringConstraints
 
-RoleLiteral = Literal["admin", "user"]
-ThemeLiteral = Literal["light", "dark", "system"]
-ProviderLiteral = Literal["openai", "anthropic", "voyage", "ollama"]
-ResponseProviderLiteral = Literal["openai", "anthropic", "ollama"]
-EmbeddingProviderLiteral = Literal["openai", "voyage", "ollama"]
-VisionProviderLiteral = Literal["openai", "anthropic", "ollama"]
-StatusLiteral = Literal["active", "disabled"]
-ReasoningModeLiteral = Literal["default", "off", "on"]
+from knowledge_chatbox_api.models.enums import (
+    IngestStatus,
+    ProviderName,
+    ReasoningMode,
+    ThemePreference,
+    UserRole,
+    UserStatus,
+)
+
+RoleLiteral = UserRole
+ThemeLiteral = ThemePreference
+ProviderLiteral = ProviderName
+ResponseProviderLiteral = Literal[
+    ProviderName.OPENAI,
+    ProviderName.ANTHROPIC,
+    ProviderName.OLLAMA,
+]
+EmbeddingProviderLiteral = Literal[
+    ProviderName.OPENAI,
+    ProviderName.VOYAGE,
+    ProviderName.OLLAMA,
+]
+VisionProviderLiteral = Literal[
+    ProviderName.OPENAI,
+    ProviderName.ANTHROPIC,
+    ProviderName.OLLAMA,
+]
+StatusLiteral = UserStatus
+ReasoningModeLiteral = ReasoningMode
+IngestStatusLiteral = IngestStatus
 
 UsernameStr = Annotated[
     str,

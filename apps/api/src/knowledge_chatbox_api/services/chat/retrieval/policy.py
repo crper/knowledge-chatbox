@@ -1,9 +1,8 @@
-from __future__ import annotations
-
 from typing import Any
 
+from knowledge_chatbox_api.models.enums import ChatAttachmentType
 from knowledge_chatbox_api.services.chat.retrieval.models import ATTACHMENT_SCOPED_QUERY_MULTIPLIER
-from knowledge_chatbox_api.utils.chroma import _normalize_match_text
+from knowledge_chatbox_api.utils.text_matching import normalize_match_text as _normalize_match_text
 
 SMALL_TALK_QUERIES = frozenset(
     {
@@ -71,7 +70,7 @@ def collect_attachment_revision_ids(attachments: list[dict[str, Any]] | None) ->
 def has_only_image_attachments(attachments: list[dict[str, Any]] | None) -> bool:
     if not attachments:
         return False
-    return all(attachment.get("type") == "image" for attachment in attachments)
+    return all(attachment.get("type") == ChatAttachmentType.IMAGE for attachment in attachments)
 
 
 def is_image_only_analysis_turn(
@@ -105,12 +104,15 @@ def should_retrieve_knowledge(
 def build_retrieval_where_filter(
     active_space_id: int | None,
     attachments: list[dict[str, Any]] | None,
+    *,
+    attachment_revision_ids: list[int] | None = None,
 ) -> dict[str, Any] | None:
     conditions: list[dict[str, Any]] = []
     if active_space_id is not None:
         conditions.append({"space_id": active_space_id})
 
-    attachment_revision_ids = sorted(collect_attachment_revision_ids(attachments))
+    if attachment_revision_ids is None:
+        attachment_revision_ids = sorted(collect_attachment_revision_ids(attachments))
     if attachment_revision_ids:
         conditions.append({"document_revision_id": {"$in": attachment_revision_ids}})
 

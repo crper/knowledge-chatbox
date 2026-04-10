@@ -7,7 +7,27 @@ import {
   getUserFacingErrorMessage,
   translateCommonErrorMessage,
 } from "./error-response";
-import { useSessionStore } from "@/lib/auth/session-store";
+import { expireSessionIfStaleAccessToken } from "@/lib/auth/session-manager";
+import { getAccessToken } from "@/lib/auth/token-store";
+import { env } from "@/lib/config/env";
+
+const responseAuthTokenSnapshots = new WeakMap<Response, string | null>();
+
+export function buildApiUrl(path: string, apiBaseUrl: string = env.apiBaseUrl) {
+  const normalizedBaseUrl = apiBaseUrl.endsWith("/") ? apiBaseUrl.slice(0, -1) : apiBaseUrl;
+  if (!normalizedBaseUrl) {
+    return path;
+  }
+  return `${normalizedBaseUrl}${path}`;
+}
+
+export function setResponseAuthTokenSnapshot(response: Response, accessToken: string | null) {
+  responseAuthTokenSnapshots.set(response, accessToken);
+}
+
+export function getResponseAuthTokenSnapshot(response: Response) {
+  return responseAuthTokenSnapshots.get(response) ?? null;
+}
 
 /**
  * 描述统一 API 响应包裹结构。
@@ -167,9 +187,15 @@ export async function openapiRequestRequired<T>(request: OpenApiEnvelopeResult):
 
   const detail = extractErrorDetail("", error ?? payload ?? null, response);
   const classification = classifyApiError(response.status);
+  const requestAccessToken = getResponseAuthTokenSnapshot(response);
 
-  if (response.status === 401 && detail.code === "unauthorized") {
-    useSessionStore.getState().setStatus("expired");
+  if (
+    response.status === 401 &&
+    detail.code === "unauthorized" &&
+    requestAccessToken !== null &&
+    requestAccessToken === getAccessToken()
+  ) {
+    expireSessionIfStaleAccessToken(requestAccessToken);
   }
 
   throw new ApiRequestError(getUserFacingErrorMessage(detail, response), {

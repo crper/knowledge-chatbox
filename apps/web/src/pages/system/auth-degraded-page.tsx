@@ -5,9 +5,8 @@
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
+import { buildCurrentAuthRedirectTarget, buildLoginPath } from "@/lib/auth/auth-redirect";
 import { markSessionAnonymous } from "@/lib/auth/session-manager";
-
-const LOGIN_PATH = "/login";
 
 type AuthDegradedPageProps = {
   onBackToLogin?: () => void;
@@ -19,8 +18,8 @@ export function redirectToLoginPage() {
     return;
   }
 
-  // Recover via a fresh document request so we don't stay trapped in a degraded SPA tree.
-  window.location.replace(LOGIN_PATH);
+  const redirectTarget = buildCurrentAuthRedirectTarget(window.location);
+  window.location.replace(buildLoginPath(redirectTarget));
 }
 
 /**

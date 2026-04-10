@@ -2,7 +2,7 @@
  * @file 聊天页面模块。
  */
 
-import { useCallback, useEffect } from "react";
+import { useCallback } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
@@ -15,11 +15,6 @@ import { Spinner } from "@/components/ui/spinner";
 import { updateChatSession, type ChatReasoningMode } from "@/features/chat/api/chat";
 import { chatProfileQueryOptions } from "@/features/chat/api/chat-query";
 import type { ChatProfileItem } from "@/features/chat/api/chat";
-import {
-  clearLastVisitedChatSessionId,
-  readLastVisitedChatSessionId,
-  writeLastVisitedChatSessionId,
-} from "@/features/chat/utils/chat-session-recovery";
 import {
   Empty,
   EmptyContent,
@@ -59,8 +54,8 @@ export function ChatPage() {
   const { t } = useTranslation(["chat", "common"]);
   const { t: tSettings } = useTranslation("settings");
   const navigate = useNavigate();
-  const { sessionId: sessionIdParam } = useParams<{ sessionId?: string }>();
   const queryClient = useQueryClient();
+  const { sessionId: sessionIdParam } = useParams<{ sessionId?: string }>();
   const routeSessionId = parseChatSessionId(sessionIdParam);
   const chatProfileQuery = useQuery(chatProfileQueryOptions());
   const updateSessionMutation = useMutation({
@@ -77,6 +72,7 @@ export function ChatPage() {
   });
   const {
     activeSession,
+    activeSessionId,
     attachments,
     attachFiles,
     deleteFailedMessage,
@@ -92,13 +88,11 @@ export function ChatPage() {
     retryMessage,
     scrollToLatestRequestKey,
     sendShortcut,
-    activeSessionId,
     sessionsReady,
     setDraft,
     submitMessage,
     submitPending,
   } = useChatWorkspace(routeSessionId);
-  const isSessionsReady = sessionsReady !== false;
   const activeProfileConfigured = chatProfileQuery.data?.configured ?? true;
   const activeModelLabel = formatActiveModelLabel(chatProfileQuery.data, tSettings);
   const activeModelActionLabel = activeProfileConfigured ? null : t("configureOllamaAction");
@@ -150,32 +144,7 @@ export function ChatPage() {
     void submitMessage();
   }, [activeProfileConfigured, submitMessage, t]);
 
-  useEffect(() => {
-    if (!sessionIdParam) {
-      return;
-    }
-
-    if (!isSessionsReady) {
-      return;
-    }
-
-    if (activeSessionId === null) {
-      const redirectTimer = window.setTimeout(() => {
-        if (routeSessionId !== null && readLastVisitedChatSessionId() === routeSessionId) {
-          clearLastVisitedChatSessionId();
-        }
-        void navigate("/chat", { replace: true });
-      }, 0);
-
-      return () => window.clearTimeout(redirectTimer);
-    }
-
-    writeLastVisitedChatSessionId(activeSessionId);
-  }, [activeSessionId, isSessionsReady, navigate, routeSessionId, sessionIdParam]);
-
-  const shouldShowResolvingState =
-    (!sessionIdParam && !isSessionsReady) ||
-    (Boolean(sessionIdParam) && (!isSessionsReady || activeSessionId === null));
+  const shouldShowResolvingState = routeSessionId !== null && !sessionsReady;
   const shouldShowPendingEmptyState = submitPending && !hasMessages;
 
   if (shouldShowResolvingState) {
@@ -254,6 +223,7 @@ export function ChatPage() {
                 <AssistantWaitingCard
                   caption={t("sendingAction")}
                   detail={t("assistantStreamingFallback")}
+                  frame="plain"
                   statusLabel={t("assistantStreamingStatus")}
                   testId="assistant-waiting-card"
                 />

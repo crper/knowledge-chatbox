@@ -1,8 +1,5 @@
 """Local chunk store adapters backed by Chroma or in-memory state."""
 
-from __future__ import annotations
-
-import re
 from functools import cache
 from pathlib import Path
 from typing import Any, Protocol, cast
@@ -10,6 +7,22 @@ from typing import Any, Protocol, cast
 from chromadb import PersistentClient
 
 from knowledge_chatbox_api.core.config import get_settings
+from knowledge_chatbox_api.utils.files import ensure_directory
+from knowledge_chatbox_api.utils.text_matching import (
+    has_text_overlap,
+)
+from knowledge_chatbox_api.utils.text_matching import (
+    normalize_match_text as _normalize_match_text,
+)
+from knowledge_chatbox_api.utils.text_matching import (
+    quoted_phrases as _quoted_phrases,
+)
+from knowledge_chatbox_api.utils.text_matching import (
+    raw_quoted_phrases as _raw_quoted_phrases,
+)
+from knowledge_chatbox_api.utils.text_matching import (
+    tokenize_text as _tokenize_text,
+)
 
 CHROMA_COLLECTION_NAME = "knowledge_chatbox_chunks"
 METADATA_PREFIX = "meta__"
@@ -61,85 +74,14 @@ def collection_name_for_generation(generation: int) -> str:
     return f"{CHROMA_COLLECTION_NAME}__gen_{generation:04d}"
 
 
-def _normalize_term(term: str) -> str:
-    return term.lower().strip(".,!?()[]{}:;\"'")
+def _is_collection_missing_error(error: BaseException) -> bool:
+    from chromadb.errors import NotFoundError
 
-
-def _is_cjk_character(char: str) -> bool:
-    codepoint = ord(char)
-    return (
-        0x3400 <= codepoint <= 0x4DBF
-        or 0x4E00 <= codepoint <= 0x9FFF
-        or 0xF900 <= codepoint <= 0xFAFF
-    )
-
-
-def _normalize_match_text(text: str) -> str:
-    return "".join(
-        char.lower()
-        for char in text
-        if (char.isascii() and char.isalnum()) or _is_cjk_character(char)
-    )
-
-
-def _is_collection_missing_error(error: Exception) -> bool:
-    message = str(error).lower()
-    return "not found" in message or "does not exist" in message or "doesn't exist" in message
-
-
-def _quoted_phrases(text: str) -> set[str]:
-    pattern = r'[\""「『](.+?)[\""」』]'
-    phrases = {_normalize_match_text(match.strip()) for match in re.findall(pattern, text)}
-    return {phrase for phrase in phrases if len(phrase) >= 2}
-
-
-def _raw_quoted_phrases(text: str) -> list[str]:
-    pattern = r'[\""「『](.+?)[\""」』]'
-    return [match.strip() for match in re.findall(pattern, text) if len(match.strip()) >= 2]
-
-
-def _tokenize_text(text: str) -> set[str]:
-    """将文本分词为 tokens，支持 ASCII 和 CJK 字符。"""
-    tokens: set[str] = set()
-    ascii_buffer: list[str] = []
-    cjk_run: list[str] = []
-
-    for char in text:
-        if char.isascii() and char.isalnum():
-            # Flush CJK buffer when encountering ASCII
-            if cjk_run:
-                tokens.update(_extract_cjk_tokens(cjk_run))
-                cjk_run.clear()
-            ascii_buffer.append(char.lower())
-        elif _is_cjk_character(char):
-            # Flush ASCII buffer when encountering CJK
-            if ascii_buffer:
-                tokens.add("".join(ascii_buffer))
-                ascii_buffer.clear()
-            cjk_run.append(char)
-        else:
-            # Delimiter: flush both buffers
-            if ascii_buffer:
-                tokens.add("".join(ascii_buffer))
-                ascii_buffer.clear()
-            if cjk_run:
-                tokens.update(_extract_cjk_tokens(cjk_run))
-                cjk_run.clear()
-
-    # Flush remaining buffers
-    if ascii_buffer:
-        tokens.add("".join(ascii_buffer))
-    if cjk_run:
-        tokens.update(_extract_cjk_tokens(cjk_run))
-
-    return tokens
-
-
-def _extract_cjk_tokens(cjk_chars: list[str]) -> set[str]:
-    """从 CJK 字符列表中提取 tokens（单字或双字组合）。"""
-    if len(cjk_chars) == 1:
-        return {cjk_chars[0]}
-    return {cjk_chars[i] + cjk_chars[i + 1] for i in range(len(cjk_chars) - 1)}
+    if isinstance(error, NotFoundError):
+        return True
+    if error.__cause__ is not None:
+        return _is_collection_missing_error(error.__cause__)
+    return False
 
 
 def _text_fallback_where_document_terms(query_text: str) -> list[str]:
@@ -191,19 +133,22 @@ def _score_records(
     for record in records:
         section_title = record.get("metadata", {}).get("section_title") or ""
         haystack = f"{record.get('text', '')} {section_title}"
+        normalized_haystack = _normalize_match_text(haystack)
+        if not has_text_overlap(
+            query_text,
+            haystack,
+            query_normalized=normalized_query,
+            query_tokens=query_terms,
+            query_quoted_phrases=query_phrases,
+        ):
+            continue
         tokens = _tokenize_text(haystack)
         overlap = len(query_terms & tokens)
-        normalized_haystack = _normalize_match_text(haystack)
-        phrase_hits = sum(1 for phrase in query_phrases if phrase in normalized_haystack)
-        normalized_query_hit = (
-            len(normalized_query) >= 2 and normalized_query in normalized_haystack
-        )
-        if overlap == 0 and phrase_hits == 0 and not normalized_query_hit:
-            continue
         score = overlap / query_term_count
+        phrase_hits = sum(1 for phrase in query_phrases if phrase in normalized_haystack)
         if phrase_hits:
             score += float(phrase_hits)
-        if normalized_query_hit:
+        if len(normalized_query) >= 2 and normalized_query in normalized_haystack:
             score += 1.0
         scored_records.append((score, record))
 
@@ -212,20 +157,13 @@ def _score_records(
 
 
 def _record_filter_value(record: dict[str, Any], key: str) -> Any:
-    """从记录中提取过滤值，支持多种字段名映射。"""
     actual = record.get(key)
     if actual is None:
         actual = record.get("metadata", {}).get(key)
-    if actual is None and key == "space_id":
-        actual = record.get("knowledge_base_id")
-        if actual is None:
-            actual = record.get("metadata", {}).get("knowledge_base_id")
     return actual
 
 
 def _matches_where_clause(record: dict[str, Any], clause: dict[str, Any]) -> bool:
-    """检查记录是否匹配 WHERE 子句条件。"""
-    # 处理 $and 操作符
     if "$and" in clause:
         and_clauses = clause["$and"]
         if isinstance(and_clauses, list):
@@ -234,7 +172,6 @@ def _matches_where_clause(record: dict[str, Any], clause: dict[str, Any]) -> boo
                 for item in and_clauses
             )
 
-    # 处理 $or 操作符
     if "$or" in clause:
         or_clauses = clause["$or"]
         if isinstance(or_clauses, list):
@@ -243,7 +180,6 @@ def _matches_where_clause(record: dict[str, Any], clause: dict[str, Any]) -> boo
                 for item in or_clauses
             )
 
-    # 处理字段条件
     for key, expected in clause.items():
         if key.startswith("$"):
             return False
@@ -258,7 +194,6 @@ def _matches_where_clause(record: dict[str, Any], clause: dict[str, Any]) -> boo
 
 
 def _normalize_chroma_where(where: dict[str, Any] | None) -> dict[str, Any] | None:
-    """标准化 Chroma WHERE 条件格式。"""
     if not where:
         return None
     if len(where) == 1 or any(key.startswith("$") for key in where):
@@ -266,84 +201,12 @@ def _normalize_chroma_where(where: dict[str, Any] | None) -> dict[str, Any] | No
     return {"$and": [{key: value} for key, value in where.items()]}
 
 
-class InMemoryChromaStore:
-    """Cheap in-memory store used by unit tests and isolated service checks."""
-
-    def __init__(self) -> None:
-        self._records_by_generation: dict[int, dict[str, dict[str, Any]]] = {}
-
-    def upsert(
-        self,
-        records: list[dict[str, Any]],
-        *,
-        embeddings: list[list[float]] | None = None,
-        generation: int = 1,
-    ) -> None:
-        """Insert or replace records in the in-memory map."""
-        store = self._records_by_generation.setdefault(generation, {})
-        for index, record in enumerate(records):
-            stored_record = dict(record)
-            if embeddings is not None and index < len(embeddings):
-                stored_record["embedding"] = embeddings[index]
-            store[record["id"]] = stored_record
-
-    def list_by_document_id(
-        self,
-        document_id: int,
-        *,
-        generation: int = 1,
-    ) -> list[dict[str, Any]]:
-        """Return all in-memory records for one document version."""
-        records = self._records_by_generation.get(generation, {})
-        return [
-            record for record in records.values() if record["document_revision_id"] == document_id
-        ]
-
-    def delete_by_document_id(self, document_id: int, *, generation: int = 1) -> None:
-        """Remove all in-memory records for one document version."""
-        ids_to_delete = [
-            record_id
-            for record_id, record in self._records_by_generation.get(generation, {}).items()
-            if record["document_revision_id"] == document_id
-        ]
-        for record_id in ids_to_delete:
-            self._records_by_generation.get(generation, {}).pop(record_id, None)
-
-    def clear_generation(self, generation: int) -> None:
-        """Drop all in-memory records for a generation."""
-        self._records_by_generation.pop(generation, None)
-
-    def query(
-        self,
-        query_text: str,
-        *,
-        query_embedding: list[float] | None = None,
-        top_k: int = 3,
-        generation: int = 1,
-        where: dict[str, Any] | None = None,
-    ) -> list[dict[str, Any]]:
-        """Score in-memory records with the same lightweight ranking as production."""
-        del query_embedding
-        records = list(self._records_by_generation.get(generation, {}).values())
-        filtered = self._apply_where_filter(records, where)
-        return _score_records(filtered, query_text, top_k=top_k)
-
-    def _apply_where_filter(
-        self,
-        records: list[dict[str, Any]],
-        where: dict[str, Any] | None,
-    ) -> list[dict[str, Any]]:
-        if not where:
-            return records
-        return [record for record in records if _matches_where_clause(record, where)]
-
-
 class PersistentChromaStore:
     """Persist chunk records in a local Chroma collection under `chroma_path`."""
 
     def __init__(self, storage_path: Path) -> None:
         self.storage_path = storage_path
-        self.storage_path.mkdir(parents=True, exist_ok=True)
+        ensure_directory(storage_path)
         self._client = PersistentClient(path=str(storage_path))
         self._collections: dict[int, Any] = {}
 
@@ -422,7 +285,6 @@ class PersistentChromaStore:
         collection = self._collection_for_generation(generation)
         chroma_where = _normalize_chroma_where(where)
 
-        # 如果没有 embedding，直接返回空结果
         if query_embedding is None:
             return []
 
@@ -489,18 +351,13 @@ class PersistentChromaStore:
         embedding: list | None = None,
         score: float | None = None,
     ) -> dict[str, Any]:
-        """从 Chroma metadata 构建统一格式的 record dict。"""
         record: dict[str, Any] = {
             "id": record_id,
             "document_id": int(metadata["document_id"]),
             "document_revision_id": int(
                 metadata.get("document_revision_id", metadata["document_id"])
             ),
-            "space_id": int(metadata["space_id"])
-            if "space_id" in metadata
-            else int(metadata["knowledge_base_id"])
-            if "knowledge_base_id" in metadata
-            else None,
+            "space_id": int(metadata["space_id"]) if "space_id" in metadata else None,
             "text": text or "",
             "metadata": {
                 key.removeprefix(METADATA_PREFIX): value

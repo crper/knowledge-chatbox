@@ -1,7 +1,5 @@
 """设置数据模型定义。"""
 
-from __future__ import annotations
-
 from datetime import datetime
 from typing import Any
 
@@ -19,7 +17,8 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column
 
 from knowledge_chatbox_api.db.base import Base
-from knowledge_chatbox_api.schemas.settings import (
+from knowledge_chatbox_api.models.enums import IndexRebuildStatus, ProviderName, SettingsScopeType
+from knowledge_chatbox_api.schemas.settings import (  # noqa: E402 — 模型层依赖 schema 层的 JSON 序列化/反序列化函数，待后续重构解耦
     EmbeddingRouteConfig,
     ProviderProfiles,
     ResponseRouteConfig,
@@ -61,9 +60,9 @@ DEFAULT_PROVIDER_PROFILES = {
     },
 }
 
-DEFAULT_RESPONSE_ROUTE = {"provider": "ollama", "model": "qwen3.5:4b"}
-DEFAULT_EMBEDDING_ROUTE = {"provider": "ollama", "model": "nomic-embed-text"}
-DEFAULT_VISION_ROUTE = {"provider": "ollama", "model": "qwen3.5:4b"}
+DEFAULT_RESPONSE_ROUTE = {"provider": ProviderName.OLLAMA, "model": "qwen3.5:4b"}
+DEFAULT_EMBEDDING_ROUTE = {"provider": ProviderName.OLLAMA, "model": "nomic-embed-text"}
+DEFAULT_VISION_ROUTE = {"provider": ProviderName.OLLAMA, "model": "qwen3.5:4b"}
 
 
 class AppSettings(Base):
@@ -87,8 +86,16 @@ class AppSettings(Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    scope_type: Mapped[str] = mapped_column(String(16), nullable=False, default="global")
-    scope_id: Mapped[str] = mapped_column(String(64), nullable=False, default="global")
+    scope_type: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        default=SettingsScopeType.GLOBAL,
+    )
+    scope_id: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        default=SettingsScopeType.GLOBAL,
+    )
     provider_profiles_json: Mapped[dict[str, Any]] = mapped_column(
         JSON,
         nullable=False,
@@ -117,7 +124,11 @@ class AppSettings(Base):
     )
     active_index_generation: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     building_index_generation: Mapped[int | None] = mapped_column(Integer)
-    index_rebuild_status: Mapped[str] = mapped_column(String(16), nullable=False, default="idle")
+    index_rebuild_status: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        default=IndexRebuildStatus.IDLE,
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )

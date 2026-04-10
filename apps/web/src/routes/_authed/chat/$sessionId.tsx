@@ -4,16 +4,40 @@
 
 import { createFileRoute, redirect } from "@tanstack/react-router";
 
-import { parseChatSessionId } from "@/features/chat/utils/chat-session-route";
+import { chatSessionsQueryOptions } from "@/features/chat/api/chat-query";
+import { buildChatSessionPath, parseChatSessionId } from "@/features/chat/utils/chat-session-route";
+import {
+  clearLastVisitedChatSessionId,
+  resolveRestorableChatSessionId,
+  writeLastVisitedChatSessionId,
+} from "@/features/chat/utils/chat-session-recovery";
 import { ChatPageRoute } from "@/router/route-shells";
 
 export const Route = createFileRoute("/_authed/chat/$sessionId")({
-  beforeLoad: ({ params }) => {
+  beforeLoad: async ({ context, params }) => {
     const sessionId = parseChatSessionId(params.sessionId);
 
     if (sessionId === null) {
       throw redirect({ replace: true, to: "/chat" });
     }
+
+    const sessions = await context.queryClient.ensureQueryData(chatSessionsQueryOptions());
+    const nextSessionId = resolveRestorableChatSessionId(sessions, sessionId);
+
+    if (nextSessionId === null) {
+      clearLastVisitedChatSessionId();
+      throw redirect({ replace: true, to: "/chat" });
+    }
+
+    if (nextSessionId !== sessionId) {
+      writeLastVisitedChatSessionId(nextSessionId);
+      throw redirect({
+        replace: true,
+        to: buildChatSessionPath(nextSessionId),
+      });
+    }
+
+    writeLastVisitedChatSessionId(sessionId);
   },
   component: ChatPageRoute,
 });

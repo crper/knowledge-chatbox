@@ -8,6 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 from sqlalchemy import text
+from tests.fixtures.stubs import InMemoryChromaStore
 
 from knowledge_chatbox_api.core.config import get_settings
 from knowledge_chatbox_api.db.session import create_session_factory
@@ -20,7 +21,7 @@ from knowledge_chatbox_api.services.settings.settings_service import (
     SettingsService,
 )
 from knowledge_chatbox_api.tasks import document_jobs
-from knowledge_chatbox_api.utils.chroma import InMemoryChromaStore, get_chroma_store
+from knowledge_chatbox_api.utils.chroma import get_chroma_store
 from knowledge_chatbox_api.utils.document_types import derive_section_title
 
 
@@ -466,6 +467,36 @@ def test_reindex_document_rebuilds_lexical_index_rows(
 
     assert reindex_response.status_code == 200
     assert count_lexical_rows(revision_id, generation=active_generation) > 0
+
+
+def test_reindex_document_returns_error_when_image_retry_still_fails(
+    api_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    login_admin(api_client)
+    monkeypatch.setattr(document_jobs, "complete_document_ingestion", lambda *_args: True)
+
+    upload_response = api_client.post(
+        "/api/documents/upload",
+        files={"file": ("image.png", build_png_bytes(), "image/png")},
+    )
+    assert upload_response.status_code == 202
+    payload = upload_response.json()["data"]
+
+    def _explode_normalize(self, origin_path: str, file_type: str, *, use_vision: bool = True):
+        del self, origin_path, file_type, use_vision
+        raise RuntimeError("vision exploded")
+
+    monkeypatch.setattr(IngestionService, "_normalize_document", _explode_normalize)
+
+    reindex_response = api_client.post(f"/api/documents/{payload['document']['id']}/reindex")
+
+    assert reindex_response.status_code == 500
+    assert reindex_response.json()["error"] == {
+        "code": "document_reindex_failed",
+        "message": "Image processing failed.",
+        "details": None,
+    }
 
 
 def test_delete_document_clears_lexical_index_rows(

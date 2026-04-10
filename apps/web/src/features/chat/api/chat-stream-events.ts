@@ -1,7 +1,5 @@
 export const CHAT_STREAM_EVENT = {
   done: "done",
-  legacyMessageDelta: "message.delta",
-  legacySourcesFinal: "sources.final",
   messageCompleted: "message.completed",
   messageStarted: "message.started",
   partSource: "part.source",
@@ -16,20 +14,10 @@ export const CHAT_STREAM_EVENT = {
   usageFinal: "usage.final",
 } as const;
 
-export type ChatStreamSourcePayload = Record<string, unknown>;
+type ChatStreamSourcePayload = Record<string, unknown>;
 
 export type ChatStreamEventMap = {
   done: Record<string, unknown>;
-  "message.delta": {
-    assistant_message_id?: number;
-    delta: string;
-    run_id: number;
-  };
-  "sources.final": {
-    assistant_message_id?: number;
-    run_id: number;
-    sources: ChatStreamSourcePayload[];
-  };
   "message.completed": {
     assistant_message_id: number;
     run_id: number;

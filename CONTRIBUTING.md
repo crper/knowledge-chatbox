@@ -89,6 +89,10 @@ vp run api:check
 - [docs/arch/repo-map-and-conventions.md](./docs/arch/repo-map-and-conventions.md)
 - [docs/arch/deployment-and-operations.md](./docs/arch/deployment-and-operations.md)
 
+若变更涉及 provider 或设置中心，还要同步 [docs/arch/provider-and-settings.md](./docs/arch/provider-and-settings.md)。
+
+完整文档同步规则见 [docs/arch/repo-map-and-conventions.md](./docs/arch/repo-map-and-conventions.md) 的"文档同步规则"一节。
+
 ## 代码与测试约定
 
 - 优先选择简单、易维护、适合生产环境的方案

@@ -28,6 +28,7 @@ describe("chat-message-viewport-intent", () => {
     ).toMatchObject({
       nextPendingScrollToLatest: false,
       nextPreviousLatestMessageSignature: "8:succeeded:done",
+      shouldIndicateNewMessage: false,
       shouldScrollToLatest: true,
     });
   });
@@ -43,6 +44,67 @@ describe("chat-message-viewport-intent", () => {
     ).toMatchObject({
       nextPendingScrollToLatest: false,
       nextPreviousLatestMessageSignature: "1:succeeded:first",
+      shouldIndicateNewMessage: false,
+      shouldScrollToLatest: false,
+    });
+  });
+
+  it("indicates new message when user is not near bottom and a new message arrives", () => {
+    expect(
+      resolveLatestMessageScrollIntent({
+        isNearBottom: false,
+        latestMessageSignature: "8:succeeded:done",
+        pendingScrollToLatest: false,
+        previousLatestMessageSignature: "7:streaming:hi",
+      }),
+    ).toMatchObject({
+      nextPendingScrollToLatest: false,
+      nextPreviousLatestMessageSignature: "8:succeeded:done",
+      shouldIndicateNewMessage: true,
+      shouldScrollToLatest: false,
+    });
+  });
+
+  it("auto-scrolls without banner when user is near bottom and a new message arrives", () => {
+    expect(
+      resolveLatestMessageScrollIntent({
+        isNearBottom: true,
+        latestMessageSignature: "8:succeeded:done",
+        pendingScrollToLatest: false,
+        previousLatestMessageSignature: "7:streaming:hi",
+      }),
+    ).toMatchObject({
+      nextPendingScrollToLatest: false,
+      nextPreviousLatestMessageSignature: "8:succeeded:done",
+      shouldIndicateNewMessage: false,
+      shouldScrollToLatest: true,
+    });
+  });
+
+  it("does not indicate new message when signature has not changed", () => {
+    expect(
+      resolveLatestMessageScrollIntent({
+        isNearBottom: false,
+        latestMessageSignature: "7:streaming:hi",
+        pendingScrollToLatest: false,
+        previousLatestMessageSignature: "7:streaming:hi",
+      }),
+    ).toMatchObject({
+      shouldIndicateNewMessage: false,
+      shouldScrollToLatest: false,
+    });
+  });
+
+  it("does not indicate new message when messages are empty", () => {
+    expect(
+      resolveLatestMessageScrollIntent({
+        isNearBottom: false,
+        latestMessageSignature: "empty",
+        pendingScrollToLatest: false,
+        previousLatestMessageSignature: "7:streaming:hi",
+      }),
+    ).toMatchObject({
+      shouldIndicateNewMessage: false,
       shouldScrollToLatest: false,
     });
   });

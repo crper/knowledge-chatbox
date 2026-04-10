@@ -23,7 +23,8 @@
   - `just test` / `just t`：前后端检查与测试。
   - `just api-check`、`just api-test`：后端检查与测试。
   - `just web-check`、`just web-test`、`just web-build`：前端检查、测试与构建。
-  - `just reset-data`、`just reset-dev`：清空本地数据，必要时同步依赖并重新进入开发态。
+  - `just reset-data`：清空本地数据（上传文件/标准化结果/向量索引/SQLite）并重建数据库 schema。
+  - `just reset-dev`：清空本地数据 + 重装依赖 + 重启前后端开发态。
   - `just docker-up` / `just dc`：本地 Docker 一键启动。
   - `just docker-down`：停止并清理本地 Docker 运行态。
 - 需要项目入口、可执行任务、默认工作流时，先看 `justfile`，不要自己发明命令。
@@ -35,6 +36,8 @@
 - 后端依赖和运行统一使用 `uv`。
 - 后端测试统一使用 `uv run --group dev python -m pytest`。
 - 前端基础交互组件统一基于 `Base UI` 组装；组合优先使用 `render`，不要再新增 `asChild` 或重新引入 `radix-ui`。
+- 文档切块使用 `chonkie` 的 Markdown 感知递归策略（`RecursiveChunker.from_recipe("markdown")`），不要恢复为固定字符硬切。
+- Provider 层 API 调用重试使用 `tenacity`（`provider_retry` 装饰器），不要在各 provider 里手写重试循环。
 
 ## 测试约束
 
@@ -50,6 +53,7 @@
   - `docs/arch/repo-map-and-conventions.md`
   - `docs/arch/deployment-and-operations.md`
   - 若涉及 provider / 设置语义，再同步 `docs/arch/provider-and-settings.md`
+- 完整文档同步规则（含条件性需同步的 frontend-workspace、runtime-flows、database-design 等）见 `docs/arch/repo-map-and-conventions.md` 的"文档同步规则"一节。
 - 目标是让 README、架构文档和当前实现保持一致，避免未来任务被过时描述干扰。
 
 ## 实现边界

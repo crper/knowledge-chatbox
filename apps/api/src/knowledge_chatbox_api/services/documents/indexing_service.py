@@ -1,7 +1,5 @@
 """Chunk indexing logic for document revisions."""
 
-from __future__ import annotations
-
 from knowledge_chatbox_api.core.logging import get_logger
 from knowledge_chatbox_api.models.document import Document
 from knowledge_chatbox_api.repositories.retrieval_chunk_repository import RetrievalChunkRepository

@@ -1,8 +1,8 @@
 import type { KnowledgeDocument } from "@/features/knowledge/api/documents";
-import type { ChatAttachmentItem } from "../store/chat-ui-store";
+import type { ComposerAttachmentItem } from "../store/chat-attachment-store";
 import { uploadQueuedChatAttachments } from "./upload-chat-attachments";
 
-function buildQueuedAttachment(id: string, name: string): ChatAttachmentItem {
+function buildQueuedAttachment(id: string, name: string): ComposerAttachmentItem {
   return {
     id,
     file: new File(["hello"], name, { type: "image/png" }),

@@ -10,6 +10,7 @@ import { useTranslation } from "react-i18next";
 
 import { FileDropzone } from "@/components/upload/file-dropzone";
 import { Button } from "@/components/ui/button";
+import { isInputComposing } from "@/lib/dom";
 import {
   Select,
   SelectContent,
@@ -20,7 +21,8 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import type { ChatReasoningMode } from "../api/chat";
-import type { ChatAttachmentItem, ChatSendShortcut } from "../store/chat-ui-store";
+import type { ComposerAttachmentItem } from "../store/chat-attachment-store";
+import type { ChatSendShortcut } from "../store/chat-ui-store";
 import { hasSendableChatAttachments } from "../utils/chat-attachments";
 import {
   buildAttachmentPreviewIndexes,
@@ -35,7 +37,7 @@ type MessageInputProps = {
   onActiveModelAction?: () => void;
   activeModelLabel?: string | null;
   attachmentScopeHint?: string | null;
-  attachments?: ChatAttachmentItem[];
+  attachments?: ComposerAttachmentItem[];
   draft: string;
   onAttachFiles?: (files: File[]) => void;
   onChange: (value: string) => void;
@@ -153,7 +155,7 @@ export function MessageInput({
   );
 
   const attachmentListItems = useMemo(() => {
-    const getStatusLabel = (attachment: ChatAttachmentItem) => {
+    const getStatusLabel = (attachment: ComposerAttachmentItem) => {
       switch (attachment.status) {
         case "uploading":
           return statusLabels.uploading(attachment.progress);
@@ -191,11 +193,7 @@ export function MessageInput({
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent<HTMLTextAreaElement>) => {
-      const isComposing =
-        event.nativeEvent.isComposing ||
-        (event as KeyboardEvent<HTMLTextAreaElement> & { isComposing?: boolean }).isComposing;
-
-      if (isComposing) return;
+      if (isInputComposing(event)) return;
 
       const shouldSubmit =
         sendShortcut === "enter"
@@ -413,15 +411,7 @@ export function MessageInput({
                           "w-full min-w-0 rounded-xl px-2.5 text-ui-caption sm:min-w-28 sm:w-auto sm:px-3",
                         )}
                       >
-                        <SelectValue>
-                          {() =>
-                            reasoningMode === "default"
-                              ? reasoningLabels.default
-                              : reasoningMode === "off"
-                                ? reasoningLabels.off
-                                : reasoningLabels.on
-                          }
-                        </SelectValue>
+                        <SelectValue>{() => reasoningLabels[reasoningMode]}</SelectValue>
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="default">{reasoningLabels.default}</SelectItem>

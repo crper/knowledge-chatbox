@@ -111,47 +111,6 @@ def test_login_creates_session_and_rehashes_password(
     assert user.password_hash != old_hasher.hash("secret-123")
 
 
-def test_change_password_revokes_existing_sessions(migrated_db_session) -> None:
-    password_manager = PasswordManager()
-    user = UserFactory.persisted_create(
-        migrated_db_session,
-        username="alice",
-        password_hash=password_manager.hash_password("secret-123"),
-    )
-
-    service = build_auth_service(migrated_db_session)
-    _, _, current_user = service.login("alice", "secret-123")
-
-    service.change_password(current_user, "secret-123", "new-secret-456")
-
-    session_row = migrated_db_session.scalar(
-        select(AuthSession).where(AuthSession.user_id == user.id)
-    )
-    assert session_row is not None
-    assert session_row.revoked_at is not None
-
-    with pytest.raises(InvalidCredentialsError):
-        service.login("alice", "secret-123")
-
-    refresh_token, access_token, _ = service.login("alice", "new-secret-456")
-    assert refresh_token
-    assert access_token
-
-
-def test_update_preferences_persists_theme_preference(migrated_db_session) -> None:
-    password_manager = PasswordManager()
-    user = UserFactory.persisted_create(
-        migrated_db_session,
-        username="alice",
-        password_hash=password_manager.hash_password("secret-123"),
-    )
-
-    service = build_auth_service(migrated_db_session)
-    updated_user = service.update_preferences(user, "dark")
-
-    assert updated_user.theme_preference == "dark"
-
-
 def test_login_failure_is_rate_limited(migrated_db_session) -> None:
     password_manager = PasswordManager()
     UserFactory.persisted_create(

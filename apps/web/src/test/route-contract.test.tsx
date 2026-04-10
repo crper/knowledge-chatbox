@@ -283,7 +283,9 @@ describe("route contract (TanStack runtime)", () => {
     expect(await screen.findByRole("heading", { name: "偏好与外观" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "偏好与外观" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "账号安全" })).toBeInTheDocument();
-    expect(await screen.findByLabelText("语言")).toBeInTheDocument();
+    expect(await screen.findByText("语言")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "简体中文" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "English" })).toBeInTheDocument();
     expect(
       screen.queryByRole("combobox", { name: "Response Route Provider" }),
     ).not.toBeInTheDocument();

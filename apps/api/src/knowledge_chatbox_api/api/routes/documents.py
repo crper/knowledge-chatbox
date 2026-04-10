@@ -1,7 +1,5 @@
 """文档路由定义。"""
 
-from __future__ import annotations
-
 from pathlib import Path
 from typing import Annotated, Literal
 
@@ -24,8 +22,10 @@ from knowledge_chatbox_api.services.documents.constants import IMAGE_DOCUMENT_FI
 from knowledge_chatbox_api.services.documents.errors import (
     DocumentFileNotFoundError,
     DocumentNotFoundError,
+    DocumentReindexFailedError,
     DocumentUploadFailedError,
     EmbeddingNotConfiguredError,
+    FileTooLargeError,
     InvalidDocumentError,
     PendingEmbeddingNotConfiguredError,
     UnsupportedFileTypeError,
@@ -43,10 +43,6 @@ DocumentListTypeFilter = Literal["document", "image", "markdown", "pdf", "text"]
 DocumentListStatusFilter = Literal["uploaded", "processing", "indexed", "failed"]
 DOCUMENT_TYPE_QUERY = Query(default=None, alias="type")
 DOCUMENT_STATUS_QUERY = Query(default=None, alias="status")
-
-
-def _document_not_found() -> DocumentNotFoundError:
-    return DocumentNotFoundError()
 
 
 def to_document_revision_read(document_revision) -> DocumentRevisionRead:
@@ -135,10 +131,9 @@ def ensure_document_upload_ready(settings_record) -> None:
 def get_document_upload_readiness_route(
     session: DbSessionDep,
     settings: SettingsDep,
-    current_user: CurrentUserDep,
+    _current_user: CurrentUserDep,
 ) -> Envelope[DocumentUploadReadinessRead]:
     """返回资源上传所需的最小配置是否就绪。"""
-    del current_user
     ingestion_service = IngestionService(session, settings)
     settings_record = ingestion_service.settings_service.get_or_create_settings_record()
     return Envelope(
@@ -201,7 +196,7 @@ def get_document(
     repository = DocumentRepository(session)
     document = service.get_document(current_user, document_id)
     if document is None:
-        raise _document_not_found()
+        raise DocumentNotFoundError()
     latest_revision = repository.get_latest_revision(document)
     return Envelope(
         success=True,
@@ -250,14 +245,22 @@ async def upload_document(
     ensure_document_upload_ready(service.settings_service.get_or_create_settings_record())
     filename = file.filename or "upload.bin"
     content_type = file.content_type or "application/octet-stream"
+    max_bytes = settings.max_upload_size_mb * 1024 * 1024
     try:
-        upload_artifact = await save_upload_stream(settings.upload_dir, filename, file)
+        upload_artifact = await save_upload_stream(
+            settings.upload_dir,
+            filename,
+            file,
+            size_limit=max_bytes,
+        )
         upload_result = service.upload_document(
             current_user,
             filename,
             upload_artifact,
             content_type,
         )
+    except ValueError:
+        raise FileTooLargeError(settings.max_upload_size_mb) from None
     except (UnsupportedFileTypeError, InvalidDocumentError):
         raise
     except Exception as exc:  # noqa: BLE001
@@ -309,6 +312,8 @@ def reindex_document(
     """重新索引文档。"""
     service = IngestionService(session, settings)
     document = service.reindex_document(current_user, document_id)
+    if document.ingest_status == "failed":
+        raise DocumentReindexFailedError(document.error_message)
     return Envelope(success=True, data=to_document_revision_read(document), error=None)
 
 
@@ -336,17 +341,17 @@ def get_document_file(
     service = DocumentQueryService(session)
     document = service.get_document(current_user, document_id)
     if document is None:
-        raise _document_not_found()
+        raise DocumentNotFoundError()
 
     document_revision = DocumentRepository(session).get_latest_revision(document)
     if document_revision is None:
-        raise _document_not_found()
+        raise DocumentNotFoundError()
 
     file_path = Path(document_revision.origin_path)
-    if not file_path.exists():
-        raise DocumentFileNotFoundError()
-
-    return FileResponse(path=file_path, filename=document_revision.file_name)
+    try:
+        return FileResponse(path=file_path, filename=document_revision.file_name)
+    except FileNotFoundError:
+        raise DocumentFileNotFoundError() from None
 
 
 @router.get("/revisions/{revision_id}/file")
@@ -362,10 +367,10 @@ def get_document_revision_file(
         revision_id,
     )
     if document_revision is None:
-        raise _document_not_found()
+        raise DocumentNotFoundError()
 
     file_path = Path(document_revision.origin_path)
-    if not file_path.exists():
-        raise DocumentFileNotFoundError()
-
-    return FileResponse(path=file_path, filename=document_revision.file_name)
+    try:
+        return FileResponse(path=file_path, filename=document_revision.file_name)
+    except FileNotFoundError:
+        raise DocumentFileNotFoundError() from None

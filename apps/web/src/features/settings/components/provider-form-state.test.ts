@@ -7,7 +7,6 @@ import {
   getPrimaryVisionModel,
   getDefaultEmbeddingModel,
   getRetrievalEmbeddingModel,
-  getDefaultEmbeddingProvider,
 } from "./provider-form-state";
 import { validateProviderSettingsForm } from "./provider-form.validation";
 import type { AppSettings } from "../api/settings";
@@ -271,6 +270,29 @@ describe("provider-form-state validation", () => {
     });
   });
 
+  it("trims persisted route models before building the settings payload", () => {
+    const view = buildProviderSettingsView(buildSettings());
+
+    const payload = toSettingsPayload({
+      ...view,
+      providerProfiles: {
+        ...view.providerProfiles,
+        openai: {
+          ...view.providerProfiles.openai,
+          chat_model: "  gpt-5.4-mini  ",
+          embedding_model: "  text-embedding-3-large  ",
+          vision_model: "  gpt-5.4-vision  ",
+        },
+      },
+    });
+
+    expect(payload).toMatchObject({
+      response_route: { provider: "openai", model: "gpt-5.4-mini" },
+      embedding_route: { provider: "openai", model: "text-embedding-3-large" },
+      vision_route: { provider: "openai", model: "gpt-5.4-vision" },
+    });
+  });
+
   it("switches the default embedding provider when the primary provider changes", () => {
     const nextView = updatePrimaryProvider(buildProviderSettingsView(buildSettings()), "anthropic");
 
@@ -330,20 +352,6 @@ describe("model getters", () => {
     );
 
     expect(getRetrievalEmbeddingModel(view)).toBe("voyage-lite");
-  });
-});
-
-describe("getDefaultEmbeddingProvider", () => {
-  it("returns 'openai' for openai primary", () => {
-    expect(getDefaultEmbeddingProvider("openai")).toBe("openai");
-  });
-
-  it("returns 'voyage' for anthropic primary", () => {
-    expect(getDefaultEmbeddingProvider("anthropic")).toBe("voyage");
-  });
-
-  it("returns 'ollama' for ollama primary", () => {
-    expect(getDefaultEmbeddingProvider("ollama")).toBe("ollama");
   });
 });
 

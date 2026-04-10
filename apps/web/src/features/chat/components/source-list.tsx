@@ -1,13 +1,9 @@
-/**
- * @file 聊天相关界面组件模块。
- */
-
 import { memo } from "react";
 import { FileSearchIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { PreviewCard, PreviewCardContent, PreviewCardTrigger } from "@/components/ui/preview-card";
 
 type SourceItem = {
   chunk_id: string;
@@ -29,8 +25,9 @@ const SourceItem = memo(function SourceItem({ index, source, t }: SourceItemProp
     source.page_number != null ? t("sourcePage", { page: source.page_number }) : null;
 
   return (
-    <Tooltip key={source.chunk_id}>
-      <TooltipTrigger
+    <PreviewCard key={source.chunk_id}>
+      <PreviewCardTrigger
+        delay={200}
         render={
           <Button
             aria-label={t("sourceReferenceAction", {
@@ -46,17 +43,17 @@ const SourceItem = memo(function SourceItem({ index, source, t }: SourceItemProp
       >
         <FileSearchIcon aria-hidden="true" className="size-3.5 text-primary" />
         <span>{index + 1}</span>
-      </TooltipTrigger>
-      <TooltipContent className="max-w-sm">
+      </PreviewCardTrigger>
+      <PreviewCardContent className="max-w-sm" side="top">
         <div className="space-y-1">
-          <p className="font-medium">{title}</p>
+          <p className="text-sm font-medium">{title}</p>
           {pageLabel ? <p className="text-[11px] opacity-80">{pageLabel}</p> : null}
           {source.snippet ? (
             <p className="text-[11px] leading-5 opacity-90">{source.snippet}</p>
           ) : null}
         </div>
-      </TooltipContent>
-    </Tooltip>
+      </PreviewCardContent>
+    </PreviewCard>
   );
 });
 
@@ -64,9 +61,6 @@ type SourceListProps = {
   sources: SourceItem[];
 };
 
-/**
- * 渲染消息来源列表。
- */
 export const SourceList = memo(function SourceList({ sources }: SourceListProps) {
   const { t } = useTranslation("chat");
 
@@ -75,12 +69,10 @@ export const SourceList = memo(function SourceList({ sources }: SourceListProps)
   }
 
   return (
-    <TooltipProvider delayDuration={0}>
-      <div className="flex flex-wrap items-center gap-1.5">
-        {sources.map((source, index) => (
-          <SourceItem index={index} key={source.chunk_id} source={source} t={t} />
-        ))}
-      </div>
-    </TooltipProvider>
+    <div className="flex flex-wrap items-center gap-1.5">
+      {sources.map((source, index) => (
+        <SourceItem index={index} key={source.chunk_id} source={source} t={t} />
+      ))}
+    </div>
   );
 });

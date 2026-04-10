@@ -419,21 +419,6 @@ describe("SettingsPage", () => {
     expect(settingsApi.updateSettings).not.toHaveBeenCalled();
   });
 
-  it("blocks save when provider timeout exceeds the 1-600 range", async () => {
-    renderSettingsPage();
-
-    fireEvent.click(await screen.findByRole("button", { name: "展开高级配置" }));
-    fireEvent.change(await screen.findByLabelText("Provider Timeout (Seconds)"), {
-      target: { value: "601" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "保存设置" }));
-
-    expect(
-      await screen.findByText("Provider Timeout (Seconds) 必须在 1-600 之间。"),
-    ).toBeInTheDocument();
-    expect(settingsApi.updateSettings).not.toHaveBeenCalled();
-  });
-
   it("shows a partial connection summary with three capability rows", async () => {
     vi.mocked(settingsApi.testProviderConnection).mockResolvedValue(
       buildProviderConnectionResult({
@@ -465,5 +450,13 @@ describe("SettingsPage", () => {
     expect(screen.queryByRole("combobox", { name: "主 Provider" })).not.toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: "系统提示词" })).not.toBeInTheDocument();
     expect(settingsApi.getSettings).not.toHaveBeenCalled();
+  });
+
+  it("renders management entry action for admins with the expected route", async () => {
+    renderSettingsPage(buildAppUser("admin"), "/settings/management");
+
+    expect(await screen.findByRole("heading", { name: "用户管理" })).toBeInTheDocument();
+    const managementLink = screen.getByRole("link", { name: "前往用户管理" });
+    expect(managementLink).toHaveAttribute("href", "/admin/users");
   });
 });

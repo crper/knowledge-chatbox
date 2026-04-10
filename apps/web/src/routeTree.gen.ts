@@ -16,6 +16,7 @@ import { Route as AuthedIndexRouteImport } from './routes/_authed/index'
 import { Route as AuthedUsersRouteImport } from './routes/_authed/users'
 import { Route as AuthedSettingsIndexRouteImport } from './routes/_authed/settings/index'
 import { Route as AuthedKnowledgeIndexRouteImport } from './routes/_authed/knowledge/index'
+import { Route as AuthedGraphIndexRouteImport } from './routes/_authed/graph/index'
 import { Route as AuthedChatIndexRouteImport } from './routes/_authed/chat/index'
 import { Route as AuthedSettingsSectionRouteImport } from './routes/_authed/settings/$section'
 import { Route as AuthedChatSessionIdRouteImport } from './routes/_authed/chat/$sessionId'
@@ -55,6 +56,11 @@ const AuthedKnowledgeIndexRoute = AuthedKnowledgeIndexRouteImport.update({
   path: '/knowledge/',
   getParentRoute: () => AuthedRouteRoute,
 } as any)
+const AuthedGraphIndexRoute = AuthedGraphIndexRouteImport.update({
+  id: '/graph/',
+  path: '/graph/',
+  getParentRoute: () => AuthedRouteRoute,
+} as any)
 const AuthedChatIndexRoute = AuthedChatIndexRouteImport.update({
   id: '/chat/',
   path: '/chat/',
@@ -85,6 +91,7 @@ export interface FileRoutesByFullPath {
   '/chat/$sessionId': typeof AuthedChatSessionIdRoute
   '/settings/$section': typeof AuthedSettingsSectionRoute
   '/chat/': typeof AuthedChatIndexRoute
+  '/graph/': typeof AuthedGraphIndexRoute
   '/knowledge/': typeof AuthedKnowledgeIndexRoute
   '/settings/': typeof AuthedSettingsIndexRoute
 }
@@ -97,6 +104,7 @@ export interface FileRoutesByTo {
   '/chat/$sessionId': typeof AuthedChatSessionIdRoute
   '/settings/$section': typeof AuthedSettingsSectionRoute
   '/chat': typeof AuthedChatIndexRoute
+  '/graph': typeof AuthedGraphIndexRoute
   '/knowledge': typeof AuthedKnowledgeIndexRoute
   '/settings': typeof AuthedSettingsIndexRoute
 }
@@ -111,6 +119,7 @@ export interface FileRoutesById {
   '/_authed/chat/$sessionId': typeof AuthedChatSessionIdRoute
   '/_authed/settings/$section': typeof AuthedSettingsSectionRoute
   '/_authed/chat/': typeof AuthedChatIndexRoute
+  '/_authed/graph/': typeof AuthedGraphIndexRoute
   '/_authed/knowledge/': typeof AuthedKnowledgeIndexRoute
   '/_authed/settings/': typeof AuthedSettingsIndexRoute
 }
@@ -125,6 +134,7 @@ export interface FileRouteTypes {
     | '/chat/$sessionId'
     | '/settings/$section'
     | '/chat/'
+    | '/graph/'
     | '/knowledge/'
     | '/settings/'
   fileRoutesByTo: FileRoutesByTo
@@ -137,6 +147,7 @@ export interface FileRouteTypes {
     | '/chat/$sessionId'
     | '/settings/$section'
     | '/chat'
+    | '/graph'
     | '/knowledge'
     | '/settings'
   id:
@@ -150,6 +161,7 @@ export interface FileRouteTypes {
     | '/_authed/chat/$sessionId'
     | '/_authed/settings/$section'
     | '/_authed/chat/'
+    | '/_authed/graph/'
     | '/_authed/knowledge/'
     | '/_authed/settings/'
   fileRoutesById: FileRoutesById
@@ -211,6 +223,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthedKnowledgeIndexRouteImport
       parentRoute: typeof AuthedRouteRoute
     }
+    '/_authed/graph/': {
+      id: '/_authed/graph/'
+      path: '/graph'
+      fullPath: '/graph/'
+      preLoaderRoute: typeof AuthedGraphIndexRouteImport
+      parentRoute: typeof AuthedRouteRoute
+    }
     '/_authed/chat/': {
       id: '/_authed/chat/'
       path: '/chat'
@@ -249,6 +268,7 @@ interface AuthedRouteRouteChildren {
   AuthedChatSessionIdRoute: typeof AuthedChatSessionIdRoute
   AuthedSettingsSectionRoute: typeof AuthedSettingsSectionRoute
   AuthedChatIndexRoute: typeof AuthedChatIndexRoute
+  AuthedGraphIndexRoute: typeof AuthedGraphIndexRoute
   AuthedKnowledgeIndexRoute: typeof AuthedKnowledgeIndexRoute
   AuthedSettingsIndexRoute: typeof AuthedSettingsIndexRoute
 }
@@ -260,6 +280,7 @@ const AuthedRouteRouteChildren: AuthedRouteRouteChildren = {
   AuthedChatSessionIdRoute: AuthedChatSessionIdRoute,
   AuthedSettingsSectionRoute: AuthedSettingsSectionRoute,
   AuthedChatIndexRoute: AuthedChatIndexRoute,
+  AuthedGraphIndexRoute: AuthedGraphIndexRoute,
   AuthedKnowledgeIndexRoute: AuthedKnowledgeIndexRoute,
   AuthedSettingsIndexRoute: AuthedSettingsIndexRoute,
 }

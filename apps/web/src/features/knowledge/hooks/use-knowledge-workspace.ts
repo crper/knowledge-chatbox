@@ -2,7 +2,7 @@
  * @file 资源相关 Hook 模块。
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { FileRejection } from "react-dropzone";
 import { useTranslation } from "react-i18next";
@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { currentUserQueryOptions } from "@/features/auth/api/auth-query";
 import { queryKeys } from "@/lib/api/query-keys";
 import { getDocumentUploadRejectionMessage, runDocumentUpload } from "@/lib/document-upload";
+import { getErrorMessage } from "@/lib/utils";
 import {
   deleteDocumentMutationOptions,
   documentListSummaryQueryOptions,
@@ -79,7 +80,7 @@ export function useKnowledgeWorkspace(filters?: KnowledgeDocumentListFilters) {
       toast.success(t("reindexSuccessToast", { name: document.name }));
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : t("reindexFailedToast"));
+      toast.error(getErrorMessage(error, t("reindexFailedToast")));
     },
   });
 
@@ -119,13 +120,13 @@ export function useKnowledgeWorkspace(filters?: KnowledgeDocumentListFilters) {
           signal: controller.signal,
           upload: uploadDocument,
         });
-        await invalidateDocuments(queryClient);
         removeUploadItem(uploadId);
         toast.success(
           document.deduplicated
             ? t("uploadDeduplicatedToast", { name: document.name })
             : t("uploadSuccessToast", { name: document.name }),
         );
+        void invalidateDocuments(queryClient);
       } catch (error) {
         if (canceledUploadIdsRef.current.has(uploadId) || controller.signal.aborted) {
           removeUploadItem(uploadId);
@@ -138,11 +139,11 @@ export function useKnowledgeWorkspace(filters?: KnowledgeDocumentListFilters) {
         }
 
         updateUploadItem(uploadId, {
-          errorMessage: error instanceof Error ? error.message : t("uploadFailedToast"),
+          errorMessage: getErrorMessage(error, t("uploadFailedToast")),
           progress: 0,
           status: "failed",
         });
-        toast.error(error instanceof Error ? error.message : t("uploadFailedToast"));
+        toast.error(getErrorMessage(error, t("uploadFailedToast")));
       } finally {
         uploadControllersRef.current.delete(uploadId);
         canceledUploadIdsRef.current.delete(uploadId);
@@ -240,11 +241,24 @@ export function useKnowledgeWorkspace(filters?: KnowledgeDocumentListFilters) {
     [removeUploadItem],
   );
 
-  const showVersions = async (documentId: number) => {
-    const result = await queryClient.fetchQuery(documentVersionsQueryOptions(documentId));
-    setVersions(result);
-    setVersionDrawerOpen(true);
-  };
+  const showVersions = useCallback(
+    async (documentId: number) => {
+      const result = await queryClient.fetchQuery(documentVersionsQueryOptions(documentId));
+      setVersions(result);
+      setVersionDrawerOpen(true);
+    },
+    [queryClient],
+  );
+
+  const localUploadingCount = useMemo(
+    () => uploadItems.filter((item) => item.status === "uploading").length,
+    [uploadItems],
+  );
+
+  const processingCount = useMemo(
+    () => documents.filter((document) => document.status === "processing").length,
+    [documents],
+  );
 
   return {
     canManageDocuments: Boolean(currentUserQuery.data),
@@ -256,11 +270,11 @@ export function useKnowledgeWorkspace(filters?: KnowledgeDocumentListFilters) {
     documentsUpdatedAt: documentsQuery.dataUpdatedAt,
     cancelUpload,
     enqueueUploads,
-    localUploadingCount: uploadItems.filter((item) => item.status === "uploading").length,
+    localUploadingCount,
     rejectFiles,
     removeUpload,
     retryUpload,
-    processingCount: documents.filter((document) => document.status === "processing").length,
+    processingCount,
     reindexDocument: (documentId: number) => reindexMutation.mutateAsync(documentId),
     reindexPending: reindexMutation.isPending,
     showVersions,

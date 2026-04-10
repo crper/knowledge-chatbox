@@ -9,7 +9,7 @@ import { bootstrapAuthSession } from "@/features/auth/api/auth";
 import { resetChatSessionState } from "@/features/chat/utils/reset-chat-session-state";
 import { ApiRequestError, type AppUser } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/query-keys";
-import { clearAccessToken, getAccessToken } from "./token-store";
+import { clearAccessToken, getAccessToken, setAccessToken } from "./token-store";
 import { useSessionStore } from "./session-store";
 
 const SESSION_SCOPED_QUERY_KEYS = [
@@ -52,11 +52,25 @@ async function applyAuthenticatedSession(
 ) {
   await resetSessionScopedClientState(queryClient, options);
   queryClient.setQueryData(queryKeys.auth.me, user);
-  useSessionStore.getState().setStatus("authenticated");
+  markSessionAuthenticated();
 }
 
 export async function setAuthenticatedSession(queryClient: QueryClient, user: AppUser) {
   await applyAuthenticatedSession(queryClient, user);
+}
+
+export function applyAuthenticatedAccessToken(accessToken: string) {
+  setAccessToken(accessToken);
+  markSessionAuthenticated();
+}
+
+export function expireSessionIfStaleAccessToken(requestAccessToken: string | null) {
+  if (requestAccessToken === null || requestAccessToken !== getAccessToken()) {
+    return false;
+  }
+
+  markSessionExpired();
+  return true;
 }
 
 export async function logoutSession(queryClient: QueryClient) {
@@ -81,6 +95,7 @@ export async function bootstrapSession(queryClient: QueryClient) {
         return null;
       }
 
+      applyAuthenticatedAccessToken(restored.accessToken);
       await applyAuthenticatedSession(queryClient, restored.user, {
         preserveChatRecovery: true,
       });
@@ -101,7 +116,11 @@ export async function bootstrapSession(queryClient: QueryClient) {
     retry: false,
   });
 
-  useSessionStore.getState().setStatus(user ? "authenticated" : "anonymous");
+  if (user) {
+    markSessionAuthenticated();
+  } else {
+    markSessionAnonymous();
+  }
   return user;
 }
 
@@ -130,6 +149,13 @@ export async function ensureSessionBootstrap(
   }
 
   return pendingBootstrapPromise;
+}
+
+/**
+ * 标记当前会话已认证。
+ */
+export function markSessionAuthenticated() {
+  useSessionStore.getState().setStatus("authenticated");
 }
 
 /**

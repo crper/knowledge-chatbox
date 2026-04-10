@@ -11,7 +11,7 @@ export type EmbeddingProviderName = "openai" | "voyage" | "ollama";
 export type VisionProviderName = "openai" | "anthropic" | "ollama";
 export type IndexRebuildStatus = "idle" | "running" | "failed";
 
-export type CapabilityRoute<TProvider extends string> = {
+type CapabilityRoute<TProvider extends string> = {
   provider: TProvider;
   model: string;
 };
@@ -78,15 +78,39 @@ export type ProviderConnectionResult = {
 };
 
 type SettingsRead = components["schemas"]["SettingsRead"];
+type RouteLike = { provider: string; model: string };
+
+function narrowCapabilityRoute<TProvider extends string>(
+  route: RouteLike,
+  allowedProviders: readonly TProvider[],
+): CapabilityRoute<TProvider> {
+  if (!allowedProviders.includes(route.provider as TProvider)) {
+    throw new Error(`Unsupported provider ${route.provider}`);
+  }
+  return {
+    provider: route.provider as TProvider,
+    model: route.model,
+  };
+}
 
 function toAppSettings(settings: SettingsRead): AppSettings {
   return {
     id: settings.id,
     provider_profiles: settings.provider_profiles as ProviderProfiles,
-    response_route: settings.response_route,
-    embedding_route: settings.embedding_route,
-    pending_embedding_route: settings.pending_embedding_route ?? null,
-    vision_route: settings.vision_route,
+    response_route: narrowCapabilityRoute(settings.response_route, [
+      "openai",
+      "anthropic",
+      "ollama",
+    ]),
+    embedding_route: narrowCapabilityRoute(settings.embedding_route, [
+      "openai",
+      "voyage",
+      "ollama",
+    ]),
+    pending_embedding_route: settings.pending_embedding_route
+      ? narrowCapabilityRoute(settings.pending_embedding_route, ["openai", "voyage", "ollama"])
+      : null,
+    vision_route: narrowCapabilityRoute(settings.vision_route, ["openai", "anthropic", "ollama"]),
     system_prompt: settings.system_prompt ?? null,
     provider_timeout_seconds: settings.provider_timeout_seconds,
     updated_by_user_id: settings.updated_by_user_id ?? null,

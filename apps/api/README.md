@@ -67,7 +67,7 @@
 
 ## 启动补偿
 
-API 启动不是“只起一个 Web 服务”，还会执行一轮 bootstrap，把默认数据和异常中断后的残留状态一起收拾干净：
+API 启动不是"只起一个 Web 服务"，还会执行一轮 bootstrap，把默认数据和异常中断后的残留状态一起收拾干净：
 
 1. 确保默认 `admin` 存在
 2. 确保管理员 personal `space`
@@ -162,43 +162,64 @@ uv run -m uvicorn knowledge_chatbox_api.main:app --reload --host 0.0.0.0 --port 
 
 ## 运行约束
 
+### API 行为与错误码
+
 - 配置统一从仓库根目录 `.env` 读取，路径类变量按仓库根目录解析
 - API 启动后默认暴露 `/docs`、`/redoc`、`/openapi.json`；它们与 `scripts/export_openapi.py` 共用同一份 FastAPI OpenAPI 真相源
+- 后端业务异常统一返回 `Envelope(success=false, error={ code, message, details })`
+- 文档相关稳定错误码：`409 embedding_not_configured`、`404 document_not_found`、`409 document_not_normalized`、`409 pending_embedding_not_configured`、`500 document_upload_failed`
+
+### 认证与 Cookie
+
+- 当前认证是"`PyJWT` 短期 access token + 服务端 refresh session"混合模式
+- 受保护接口、资源上传和 SSE 流式问答都优先接受 `Authorization: Bearer <token>`
+- same-origin Web 部署仍使用相对 `/api/*` 路径，不依赖绝对 API origin
+- 启动期会话恢复与业务请求续期当前已分开：前者走 `/api/auth/bootstrap`，匿名态返回 `200 + authenticated=false`；后者仍通过 `/api/auth/refresh` 轮换 refresh session 并续发 access token
+- 详细认证时序见 [auth-and-session-flow.md](../../docs/arch/auth-and-session-flow.md)
+
+### 上传与索引
+
 - 数据默认落在 `data/uploads`、`data/normalized`、`data/sqlite`、`data/chroma`
 - `/api/documents/upload` 当前会先把上传内容按块落到 `data/uploads`，同时增量计算 `content_hash` 和 `file_size`；命中重复内容时会复用现有修订，并清理本次临时源文件
-- `/api/documents/upload-readiness` 会返回资源上传所需的最小配置是否就绪；它不是 provider 实时健康检查，只判断当前 settings 形状是否允许进入上传链路
-- `/api/documents/upload` 现在会在落盘前先校验 upload readiness：活动 `embedding_route` 缺配置时直接返回 `409 embedding_not_configured`；索引重建中若 `pending_embedding_route` 缺配置，则返回 `409 pending_embedding_not_configured`
-- 文本文档（`txt / md / pdf / docx`）当前仍在请求内完成标准化与索引；图片（`png / jpg / jpeg / webp`）会先返回 `processing`，再由后台任务补做 vision 标准化与索引
+- `/api/documents/upload-readiness` 返回资源上传所需的最小配置是否就绪；它不是 provider 实时健康检查，只判断当前 settings 形状是否允许进入上传链路
+- `/api/documents/upload` 在落盘前先校验 upload readiness：活动 `embedding_route` 缺配置时返回 `409 embedding_not_configured`；索引重建中若 `pending_embedding_route` 缺配置，则返回 `409 pending_embedding_not_configured`
+- 文本文档在请求内完成标准化与索引；图片会先返回 `processing`，再由后台任务补做 vision 标准化与索引
 - `vision_route` 缺配置时不会阻断图片上传；图片会退化成仅保留基础信息的标准化结果
+- 上传链路详细约束见 [system-overview.md](../../docs/arch/system-overview.md) 的资源上传链路
+
+### 聊天执行与检索
+
+- 聊天执行 owner 当前统一由 `services/chat/workflow/*` 驱动，同步和流式问答共享同一套 `ChatWorkflow + PydanticAI` 路径
+- 当前轮附件会在进入 `ChatWorkflow` 前先由服务端物化成真实 prompt 内容：文档附件转标准化文本片段，图片附件转稳定 JPEG 多模态 payload
+- `/api/chat/sessions/{session_id}/messages` 当前支持可选 `before_id`、`limit`，用于 Web 主区按尾部窗口读取长会话
+- `/api/chat/sessions/{session_id}/context` 返回聊天右栏需要的紧凑摘要：已去重附件、最近一次 assistant 引用和对应消息 id
+- 聊天检索、附件限域、多附件合并和 Chroma `where` 归一化等更细语义，统一以 [runtime-flows.md](../../docs/arch/runtime-flows.md) 为准
+
+### 存储与并发
+
 - SQLite 连接默认开启 `WAL` 和 `busy_timeout=30000`；API 响应头与日志都带 `X-Request-ID` / `request_id`
-- 当前认证是“`PyJWT` 短期 access token + 服务端 refresh session”混合模式；受保护接口、资源上传和 SSE 流式聊天都优先接受 `Authorization: Bearer <token>`；same-origin Web 部署仍使用相对 `/api/*` 路径，不依赖绝对 API origin
-- 启动期会话恢复与业务请求续期当前已分开：前者走 `/api/auth/bootstrap`，匿名态返回 `200 + authenticated=false`；后者仍通过 `/api/auth/refresh` 轮换 refresh session 并续发 access token
-- provider 设置收敛到 `app_settings` 一条记录，核心字段是 `provider_profiles_json`、`response_route_json`、`embedding_route_json`、`pending_embedding_route_json`、`vision_route_json`
-- `ollama.base_url` 对外当前统一表示服务根地址，例如 `http://localhost:11434`；如果用户误填了 `/v1`，服务端会在读写设置和运行时自动收口，真正需要 OpenAI 兼容接口时再内部派生 `.../v1`
-- 当前 capability route 支持独立选择 `response / embedding / vision`；切换检索 provider 或 embedding model 会触发后台 generation 重建
-- 聊天执行 owner 当前统一由 `services/chat/workflow/*` 驱动，同步和流式问答共享同一套 `ChatWorkflow + PydanticAI` 路径；HTTP 契约、`sources_json` 语义和 `client_request_id` 幂等语义保持不变
-- 当前轮附件会在进入 `ChatWorkflow` 前先由服务端物化成真实 prompt 内容：文档附件转标准化文本片段，图片附件转稳定 JPEG 多模态 payload，再直接随 user prompt 进入模型，不再把“是否读取图片附件”交给模型自己决定
-- 后端业务异常统一返回 `Envelope(success=false, error={ code, message, details })`
-- `/api/chat/sessions/{session_id}/messages` 当前支持可选 `before_id`、`limit`，用于 Web 主区按尾部窗口读取长会话；不带参数时仍保留全量历史返回作兼容路径
-- `/api/chat/sessions/{session_id}/context` 当前返回聊天右栏需要的紧凑摘要：已去重附件、最近一次 assistant 引用和对应消息 id
 - `/api/auth/me`、`/api/settings` 这类受保护读取接口在鉴权阶段保持纯读，避免长时间流式写入把标准页面读取锁成 `500 database is locked`
-- 流式问答的 assistant projection 与 run event 当前按短批次提交，避免整段回答长期持有 SQLite 写事务，把会话改名、新建会话这类并发写操作一起锁住
-- 文档相关稳定错误码：
-  - `409 embedding_not_configured`
-  - `404 document_not_found`
-  - `409 document_not_normalized`
-  - `409 pending_embedding_not_configured`
-  - `500 document_upload_failed`
-- 聊天检索、附件限域、多附件合并、OpenClaw 归一匹配和 Chroma `where` 归一化等更细语义，统一以 [docs/arch/system-overview.md](../../docs/arch/system-overview.md) 和 [docs/arch/runtime-flows.md](../../docs/arch/runtime-flows.md) 为准
+- 流式问答的 assistant projection 与 run event 当前按短批次提交，避免整段回答长期持有 SQLite 写事务
+
+### Provider 与设置
+
+- provider 设置收敛到 `app_settings` 一条记录，核心字段是 `provider_profiles_json`、`response_route_json`、`embedding_route_json`、`pending_embedding_route_json`、`vision_route_json`
+- `ollama.base_url` 对外当前统一表示服务根地址，例如 `http://localhost:11434`；如果用户误填了 `/v1`，服务端会在读写设置和运行时自动收口
+- 当前 capability route 支持独立选择 `response / embedding / vision`；切换检索 provider 或 embedding model 会触发后台 generation 重建
+- 详细设置语义见 [provider-and-settings.md](../../docs/arch/provider-and-settings.md)
 
 ## 主要环境变量
 
-- 核心运行：`API_HOST`、`API_PORT`、`LOG_LEVEL`、`CORS_ALLOW_ORIGINS`
-- 认证：`ACCESS_TOKEN_TTL_MINUTES`、`JWT_ALGORITHM`、`JWT_SECRET_KEY`
-- 初始化：admin bootstrap 的 `INITIAL_ADMIN_USERNAME`、`INITIAL_ADMIN_PASSWORD`
-- 路径：`UPLOAD_DIR`、`NORMALIZED_DIR`、`SQLITE_PATH`、`CHROMA_PATH`
-- Provider bootstrap：`INITIAL_RESPONSE_PROVIDER`、`INITIAL_EMBEDDING_PROVIDER`、`INITIAL_VISION_PROVIDER`，以及各 provider 对应的 `API_KEY / BASE_URL / *_MODEL`
-- 默认模型与完整示例以仓库根目录 `.env.example` 为准；如果只想核对 provider 语义，再看 [docs/arch/provider-and-settings.md](../../docs/arch/provider-and-settings.md)
+| 变量 | 说明 |
+|------|------|
+| `API_HOST`、`API_PORT`、`LOG_LEVEL`、`CORS_ALLOW_ORIGINS` | 核心运行 |
+| `ACCESS_TOKEN_TTL_MINUTES`、`JWT_ALGORITHM`、`JWT_SECRET_KEY` | 认证 |
+| `INITIAL_ADMIN_USERNAME`、`INITIAL_ADMIN_PASSWORD` | 初始化 |
+| `UPLOAD_DIR`、`NORMALIZED_DIR`、`SQLITE_PATH`、`CHROMA_PATH` | 路径 |
+| `INITIAL_RESPONSE_PROVIDER`、`INITIAL_EMBEDDING_PROVIDER`、`INITIAL_VISION_PROVIDER` | Provider bootstrap |
+| 各 provider 对应的 `API_KEY / BASE_URL / *_MODEL` | Provider 连接 |
+
+默认模型与完整示例以仓库根目录 `.env.example` 为准；如果只想核对 provider 语义，再看 [provider-and-settings.md](../../docs/arch/provider-and-settings.md)
 
 ## 容器与脚本
 
@@ -211,12 +232,13 @@ just init-env
 just docker-check
 just docker-build
 just docker-up
+just docker-restart
 just docker-health
 just docker-down
 just reset-data
 ```
 
-更细的容器拓扑、Compose 语义和重置数据 runbook 见 [docs/arch/deployment-and-operations.md](../../docs/arch/deployment-and-operations.md)。
+更细的容器拓扑、Compose 语义和重置数据 runbook 见 [deployment-and-operations.md](../../docs/arch/deployment-and-operations.md)。
 
 ## 测试与验证
 
@@ -240,8 +262,8 @@ scripts/docker-deploy.sh build
 
 补充约定：
 
-- 后端测试目录当前以 `tests/integration`、`tests/unit`、`tests/runtime`、`tests/migrations`、`tests/fixtures` 为准，不再保留旧的平铺重复目录
-- `apps/api/tests/conftest.py` 当前统一收敛 TestClient、环境变量、SQLite/Chroma 临时目录，以及 HTTPS / `SESSION_COOKIE_SECURE` 相关测试场景；新增 API 集成测试时优先复用这里的 helper，而不是在各测试文件里重复拼装初始化流程
+- 后端测试目录当前以 `tests/integration`、`tests/unit`、`tests/runtime`、`tests/migrations`、`tests/fixtures` 为准
+- `apps/api/tests/conftest.py` 当前统一收敛 TestClient、环境变量、SQLite/Chroma 临时目录，以及 HTTPS / `SESSION_COOKIE_SECURE` 相关测试场景；新增 API 集成测试时优先复用这里的 helper
 
 ## 排查入口
 
@@ -259,10 +281,9 @@ scripts/docker-deploy.sh build
 先看：
 
 - 当前 `app_settings.embedding_route_json / pending_embedding_route_json` 与 `app_settings.active/building_index_generation`
-- 当前 `active_index_generation`、`building_index_generation`、`index_rebuild_status`
 - 同步问答时 `chat_messages.status`
 - 流式问答时 `chat_runs.status` 和 `chat_run_events(run_id, seq)`
-- 若带附件的流式问答在 `tool.call` 后直接失败，优先检查 `services/chat/chat_service.py` 生成的检索过滤条件，以及 `utils/chroma.py` 是否已把复合条件归一化成 Chroma 兼容 `where`
+- 若带附件的流式问答在 `tool.call` 后直接失败，优先检查 `services/chat/retrieval/policy.py` 生成的检索过滤条件，以及 `utils/chroma.py` 是否已把复合条件归一化成 Chroma 兼容 `where`
 - 资源是否已经成功 `indexed`
 
 ### 启动问题

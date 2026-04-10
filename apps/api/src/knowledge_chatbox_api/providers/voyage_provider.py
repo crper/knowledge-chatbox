@@ -1,28 +1,28 @@
 """Voyage embedding adapter."""
 
-from __future__ import annotations
-
-import time
-from typing import Any
+from time import perf_counter
 
 import httpx
 
 from knowledge_chatbox_api.providers.base import (
     BaseEmbeddingAdapter,
+    ClientCacheMixin,
     EmbeddingSettings,
     ProviderHealthResult,
     ProviderSettings,
+    provider_retry,
 )
+from knowledge_chatbox_api.utils.timing import elapsed_ms
 
 DEFAULT_VOYAGE_BASE_URL = "https://api.voyageai.com/v1"
 
 
-class VoyageEmbeddingAdapter(BaseEmbeddingAdapter):
+class VoyageEmbeddingAdapter(ClientCacheMixin, BaseEmbeddingAdapter):
     """Voyage embedding 适配器。"""
 
     def __init__(self, client_factory=None) -> None:
+        super().__init__()
         self.client_factory = client_factory or httpx.Client
-        self._client_cache: dict[tuple[str, str], Any] = {}
 
     def _request_timeout(self, settings: ProviderSettings) -> float:
         return float(settings.provider_timeout_seconds)
@@ -34,9 +34,9 @@ class VoyageEmbeddingAdapter(BaseEmbeddingAdapter):
             base_url = f"{base_url}/v1"
         api_key = profile.api_key or ""
         key = (base_url, api_key)
-        client = self._client_cache.get(key)
-        if client is None:
-            client = self.client_factory(
+
+        def create_client():
+            return self.client_factory(
                 base_url=base_url,
                 headers={
                     "Authorization": f"Bearer {api_key}",
@@ -44,9 +44,10 @@ class VoyageEmbeddingAdapter(BaseEmbeddingAdapter):
                 },
                 trust_env=False,
             )
-            self._client_cache[key] = client
-        return client
 
+        return self._get_or_create_client(key, create_client)
+
+    @provider_retry
     def embed(self, texts: list[str], settings: EmbeddingSettings) -> list[list[float]]:
         response = self._client(settings).post(
             "/embeddings",
@@ -58,7 +59,7 @@ class VoyageEmbeddingAdapter(BaseEmbeddingAdapter):
         return [item["embedding"] for item in payload.get("data", [])]
 
     def health_check(self, settings: EmbeddingSettings) -> ProviderHealthResult:
-        start = time.perf_counter()
+        start = perf_counter()
         try:
             self.embed(["ping"], settings)
         except Exception as exc:  # noqa: BLE001
@@ -66,5 +67,5 @@ class VoyageEmbeddingAdapter(BaseEmbeddingAdapter):
         return ProviderHealthResult(
             healthy=True,
             message="ok",
-            latency_ms=int((time.perf_counter() - start) * 1000),
+            latency_ms=elapsed_ms(start),
         )

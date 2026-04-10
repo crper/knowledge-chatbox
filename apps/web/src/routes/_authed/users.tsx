@@ -1,5 +1,5 @@
 /**
- * @file TanStack Router legacy users 入口。
+ * @file TanStack Router /users 入口 — 根据角色重定向到对应页面。
  */
 
 import { createFileRoute, redirect } from "@tanstack/react-router";

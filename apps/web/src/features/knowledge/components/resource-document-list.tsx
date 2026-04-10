@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
 import { ResourceDocumentRow } from "./resource-document-row";
 
 const VIRTUALIZATION_THRESHOLD = 24;
-const VIRTUAL_ROW_HEIGHT = 92;
+const VIRTUAL_ROW_HEIGHT = 80;
 const VIRTUAL_LIST_MAX_HEIGHT = 560;
 
 type ResourceDocumentListProps = {
@@ -58,7 +58,7 @@ export const ResourceDocumentList = memo(function ResourceDocumentList({
 
   if (documents.length === 0) {
     return (
-      <div className={cn("surface-panel-subtle rounded-2xl p-4", className)}>
+      <div className={cn("flex items-center justify-center py-16", className)}>
         <Empty className="bg-transparent">
           <EmptyHeader>
             <EmptyTitle>{t("selectedResourceEmptyTitle")}</EmptyTitle>
@@ -73,17 +73,18 @@ export const ResourceDocumentList = memo(function ResourceDocumentList({
     return (
       <section
         className={cn(
-          "surface-panel-subtle min-h-0 overflow-hidden rounded-2xl p-3 md:p-4",
+          "min-h-0 overflow-hidden rounded-xl border border-border/40 bg-background/60 backdrop-blur-sm",
           className,
         )}
       >
         <div
           ref={parentRef}
-          className="h-full min-h-0 overflow-auto pr-1 [scrollbar-gutter:stable_both-edges]"
+          className="h-full min-h-0 overflow-auto [scrollbar-gutter:stable_both-edges]"
           data-testid="resource-document-list-virtual-scroll"
           style={{ contain: "strict", minHeight: `${Math.min(virtualListHeight, 320)}px` }}
         >
           <div
+            className="divide-y divide-border/40"
             style={{
               height: `${virtualizer.getTotalSize()}px`,
               width: "100%",
@@ -106,18 +107,16 @@ export const ResourceDocumentList = memo(function ResourceDocumentList({
                     transform: `translateY(${virtualItem.start}px)`,
                   }}
                 >
-                  <div className="pb-2.5 last:pb-0">
-                    <ResourceDocumentRow
-                      canDelete={canDelete}
-                      document={document}
-                      isSelected={selectedDocumentId === document.id}
-                      onDelete={onDelete}
-                      onPreviewDocument={onPreviewDocument}
-                      onReindex={onReindex}
-                      onSelectDocument={onSelectDocument}
-                      onShowVersions={onShowVersions}
-                    />
-                  </div>
+                  <ResourceDocumentRow
+                    canDelete={canDelete}
+                    document={document}
+                    isSelected={selectedDocumentId === document.id}
+                    onDelete={onDelete}
+                    onPreviewDocument={onPreviewDocument}
+                    onReindex={onReindex}
+                    onSelectDocument={onSelectDocument}
+                    onShowVersions={onShowVersions}
+                  />
                 </div>
               );
             })}
@@ -128,9 +127,14 @@ export const ResourceDocumentList = memo(function ResourceDocumentList({
   }
 
   return (
-    <section className={cn("surface-panel-subtle min-h-0 overflow-hidden rounded-2xl", className)}>
-      <ScrollArea className="h-full min-h-0 p-3 md:p-4">
-        <div className="space-y-2.5">
+    <section
+      className={cn(
+        "min-h-0 overflow-hidden rounded-xl border border-border/40 bg-background/60 backdrop-blur-sm",
+        className,
+      )}
+    >
+      <ScrollArea className="h-full min-h-0">
+        <div className="divide-y divide-border/40">
           {documents.map((document) => (
             <ResourceDocumentRow
               canDelete={canDelete}

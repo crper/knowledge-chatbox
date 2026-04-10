@@ -1,7 +1,5 @@
 """共享应用异常模型。"""
 
-from __future__ import annotations
-
 from typing import Any
 
 from knowledge_chatbox_api.schemas.common import ErrorInfo

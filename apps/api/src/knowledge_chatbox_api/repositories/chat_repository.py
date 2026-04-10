@@ -1,12 +1,11 @@
 """聊天仓储数据访问实现。"""
 
-from __future__ import annotations
-
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from knowledge_chatbox_api.models.chat import ChatMessage, ChatMessageAttachment, ChatSession
 from knowledge_chatbox_api.models.document import DocumentRevision
+from knowledge_chatbox_api.models.enums import ChatMessageRole, ReasoningMode
 from knowledge_chatbox_api.repositories.space_repository import SpaceRepository
 
 _UNSET = object()
@@ -24,7 +23,7 @@ class ChatRepository:
         user_id: int,
         title: str | None = None,
         *,
-        reasoning_mode: str = "default",
+        reasoning_mode: str = ReasoningMode.DEFAULT,
     ) -> ChatSession:
         """创建会话。"""
         space = self.space_repository.ensure_personal_space(
@@ -89,7 +88,7 @@ class ChatRepository:
         """按会话和请求幂等键获取用户消息。"""
         statement = select(ChatMessage).where(
             ChatMessage.session_id == session_id,
-            ChatMessage.role == "user",
+            ChatMessage.role == ChatMessageRole.USER,
             ChatMessage.client_request_id == client_request_id,
         )
         return self.session.scalar(statement)
@@ -201,12 +200,13 @@ class ChatRepository:
             revision = revisions.get(attachment.document_revision_id or -1)
             attachment.document_id = revision.document_id if revision is not None else None
 
-    def list_messages(self, session_id: int) -> list[ChatMessage]:
+    def list_messages(self, session_id: int, *, limit: int = 500) -> list[ChatMessage]:
         """列出消息。"""
         statement = (
             select(ChatMessage)
             .where(ChatMessage.session_id == session_id)
             .order_by(ChatMessage.id.asc())
+            .limit(limit)
         )
         return list(self.session.scalars(statement).all())
 
@@ -232,7 +232,7 @@ class ChatRepository:
             select(ChatMessage)
             .where(
                 ChatMessage.session_id == session_id,
-                ChatMessage.role == "assistant",
+                ChatMessage.role == ChatMessageRole.ASSISTANT,
             )
             .order_by(ChatMessage.id.desc())
         )
@@ -258,7 +258,7 @@ class ChatRepository:
             select(ChatMessage)
             .where(
                 ChatMessage.reply_to_message_id == reply_to_message_id,
-                ChatMessage.role == "assistant",
+                ChatMessage.role == ChatMessageRole.ASSISTANT,
             )
             .order_by(ChatMessage.id.desc())
         )
@@ -270,7 +270,7 @@ class ChatRepository:
             select(ChatMessage)
             .where(
                 ChatMessage.reply_to_message_id == reply_to_message_id,
-                ChatMessage.role == "assistant",
+                ChatMessage.role == ChatMessageRole.ASSISTANT,
             )
             .order_by(ChatMessage.id.asc())
         )

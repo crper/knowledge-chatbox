@@ -1,7 +1,3 @@
-/**
- * @file 资源行卡组件模块。
- */
-
 import {
   EyeIcon,
   FolderOpenIcon,
@@ -20,6 +16,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { cn } from "@/lib/utils";
 import {
   formatKnowledgeDocumentDateTime,
@@ -38,9 +41,6 @@ type ResourceDocumentRowProps = {
   onShowVersions: (documentId: number) => void;
 };
 
-/**
- * 渲染资源行卡。
- */
 export function ResourceDocumentRow({
   canDelete,
   document,
@@ -56,87 +56,141 @@ export function ResourceDocumentRow({
   const logicalName = document.logical_name || t("rowLogicalNameFallback");
 
   return (
-    <article
-      className={cn(
-        "surface-light grid gap-2.5 rounded-xl px-3 py-2.5 transition-[border-color,background-color,box-shadow] md:grid-cols-[minmax(0,1.4fr)_minmax(10rem,0.72fr)_auto] md:items-center md:px-4",
-        isSelected &&
-          "border-primary/25 bg-[linear-gradient(135deg,hsl(var(--primary)/0.08),transparent_48%),linear-gradient(180deg,hsl(var(--surface-highlight)/0.06),transparent_52%),hsl(var(--surface-base)/0.12)] shadow-[0_18px_34px_-28px_hsl(var(--primary)/0.28)]",
-      )}
-      data-state={isSelected ? "selected" : "idle"}
-    >
-      <button
-        aria-label={document.name}
-        className="grid min-w-0 gap-2 rounded-xl text-left outline-none transition-transform focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-        onClick={() => onSelectDocument(document)}
-        type="button"
-      >
-        <div className="min-w-0">
-          <p className="truncate text-ui-title font-medium text-foreground">{document.name}</p>
-          <p className="truncate text-ui-caption text-muted-foreground">{logicalName}</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Badge variant="outline">
-            {getKnowledgeDocumentCategoryLabel(document.file_type, t)}
-          </Badge>
-          <Badge variant="outline">{t("versionValue", { version: document.version })}</Badge>
-        </div>
-      </button>
-
-      <div className="grid gap-2 md:justify-items-start">
-        <Badge variant={statusMeta.variant}>{statusMeta.label}</Badge>
-        <p className="text-xs text-muted-foreground">
-          {t("rowUpdatedLabel")}{" "}
-          {formatKnowledgeDocumentDateTime(document.updated_at, i18n.resolvedLanguage ?? "zh-CN")}
-        </p>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2 md:justify-self-end">
-        <Button
-          aria-label={t("previewActionWithName", { name: document.name })}
-          onClick={() => onPreviewDocument(document)}
-          size="sm"
-          type="button"
-          variant="outline"
+    <ContextMenu>
+      <ContextMenuTrigger className="contents">
+        <article
+          className={cn(
+            "group relative grid gap-3 px-4 py-3.5 transition-all duration-200 ease-out",
+            "first:rounded-t-xl last:rounded-b-xl",
+            "hover:bg-muted/40",
+            "active:scale-[0.998]",
+            "focus-within:bg-muted/30",
+            isSelected && [
+              "bg-primary/4 border-l-[3px] border-l-primary/70 pl-[calc(1rem-3px)]",
+              "shadow-[inset_0_0_24px_-12px_hsl(var(--primary)/0.10)]",
+            ],
+          )}
+          data-state={isSelected ? "selected" : "idle"}
         >
-          <EyeIcon data-icon="inline-start" />
-          {t("previewAction")}
-        </Button>
-        <Button
-          onClick={() => onShowVersions(document.document_id)}
-          size="sm"
-          type="button"
-          variant="ghost"
-        >
-          <FolderOpenIcon data-icon="inline-start" />
-          {t("viewVersionsAction")}
-        </Button>
-        {canDelete ? (
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <Button
-                  aria-label={t("rowOpenMenuAction", { name: document.name })}
-                  size="icon-sm"
-                  type="button"
-                  variant="ghost"
-                />
-              }
+          <button
+            aria-label={document.name}
+            className="grid min-w-0 gap-1.5 text-left outline-none transition-transform duration-200 focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-lg"
+            onClick={() => onSelectDocument(document)}
+            type="button"
+          >
+            <div className="min-w-0 flex items-center gap-3">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold text-foreground tracking-tight leading-snug">
+                  {document.name}
+                </p>
+                <p className="truncate text-xs text-muted-foreground/80 mt-0.5">{logicalName}</p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              <Badge className="font-medium text-[11px] px-2 py-0 h-6 rounded-md" variant="outline">
+                {getKnowledgeDocumentCategoryLabel(document.file_type, t)}
+              </Badge>
+              <Badge
+                className="font-medium text-[11px] px-2 py-0 h-6 rounded-md"
+                variant="secondary"
+              >
+                v{document.version}
+              </Badge>
+              <Badge
+                className={cn(
+                  "font-medium text-[11px] px-2 py-0 h-6 rounded-md",
+                  statusMeta.variant === "secondary" &&
+                    "bg-muted/60 text-muted-foreground border-border/50",
+                  statusMeta.variant === "destructive" &&
+                    "bg-destructive/8 text-destructive border-destructive/20",
+                  statusMeta.variant === "outline" && "bg-transparent",
+                )}
+                variant={statusMeta.variant}
+              >
+                {statusMeta.label}
+              </Badge>
+              <span className="text-[11px] text-muted-foreground/60 tabular-nums ml-auto">
+                {formatKnowledgeDocumentDateTime(
+                  document.updated_at,
+                  i18n.resolvedLanguage ?? "zh-CN",
+                )}
+              </span>
+            </div>
+          </button>
+
+          <div className="flex items-center gap-1.5 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100">
+            <Button
+              aria-label={t("previewActionWithName", { name: document.name })}
+              className="h-7 gap-1.5 text-xs font-medium"
+              onClick={(e) => {
+                e.stopPropagation();
+                onPreviewDocument(document);
+              }}
+              size="sm"
+              type="button"
+              variant="ghost"
             >
-              <MoreHorizontalIcon />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="min-w-44">
-              <DropdownMenuItem onClick={() => onReindex(document)}>
-                <RotateCcwIcon />
-                <span>{t("reindexAction")}</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onDelete(document)} variant="destructive">
-                <Trash2Icon />
-                <span>{t("deleteAction")}</span>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        ) : null}
-      </div>
-    </article>
+              <EyeIcon className="size-3.5" />
+              {t("previewAction")}
+            </Button>
+            <Button
+              className="h-7 gap-1.5 text-xs font-medium"
+              onClick={(e) => {
+                e.stopPropagation();
+                onShowVersions(document.document_id);
+              }}
+              size="sm"
+              type="button"
+              variant="ghost"
+            >
+              <FolderOpenIcon className="size-3.5" />
+              {t("viewVersionsAction")}
+            </Button>
+            {canDelete ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <Button
+                      aria-label={t("rowOpenMenuAction", { name: document.name })}
+                      className="h-7 size-7"
+                      size="icon-sm"
+                      type="button"
+                      variant="ghost"
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  }
+                >
+                  <MoreHorizontalIcon className="size-3.5" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="min-w-40">
+                  <DropdownMenuItem onClick={() => onReindex(document)}>
+                    <RotateCcwIcon className="size-3.5" />
+                    <span className="text-xs">{t("reindexAction")}</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onDelete(document)} variant="destructive">
+                    <Trash2Icon className="size-3.5" />
+                    <span className="text-xs">{t("deleteAction")}</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : null}
+          </div>
+        </article>
+      </ContextMenuTrigger>
+      {canDelete ? (
+        <ContextMenuContent>
+          <ContextMenuItem onClick={() => onReindex(document)}>
+            <RotateCcwIcon />
+            <span>{t("reindexAction")}</span>
+          </ContextMenuItem>
+          <ContextMenuSeparator />
+          <ContextMenuItem onClick={() => onDelete(document)} variant="destructive">
+            <Trash2Icon />
+            <span>{t("deleteAction")}</span>
+          </ContextMenuItem>
+        </ContextMenuContent>
+      ) : null}
+    </ContextMenu>
   );
 }

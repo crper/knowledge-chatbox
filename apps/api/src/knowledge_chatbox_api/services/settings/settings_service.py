@@ -1,7 +1,5 @@
 """Settings persistence and capability bootstrap logic."""
 
-from __future__ import annotations
-
 from collections.abc import Mapping
 from copy import deepcopy
 from typing import Any
@@ -10,6 +8,12 @@ from sqlalchemy import func, update
 
 from knowledge_chatbox_api.core.config import Settings
 from knowledge_chatbox_api.models.auth import User
+from knowledge_chatbox_api.models.enums import (
+    IndexRebuildStatus,
+    ReasoningMode,
+    SettingsScopeType,
+    UserRole,
+)
 from knowledge_chatbox_api.models.settings import (
     DEFAULT_PROVIDER_PROFILES,
     AppSettings,
@@ -37,6 +41,7 @@ from knowledge_chatbox_api.schemas.settings import (
 from knowledge_chatbox_api.services.auth.auth_service import ValidationError
 from knowledge_chatbox_api.services.auth.user_service import AuthorizationError
 from knowledge_chatbox_api.services.settings.runtime_settings import build_runtime_settings
+from knowledge_chatbox_api.utils.helpers import strip_or_none, unwrap_secret
 
 DEFAULT_SYSTEM_PROMPT = (
     "你是 Knowledge Chatbox 的知识工作台助手。\n"
@@ -49,28 +54,15 @@ DEFAULT_SYSTEM_PROMPT = (
     "永远回复中文。"
 )
 MASKED_SECRET_VALUE = "********"
-INDEX_REBUILD_STATUS_IDLE = "idle"
-INDEX_REBUILD_STATUS_RUNNING = "running"
-INDEX_REBUILD_STATUS_FAILED = "failed"
+INDEX_REBUILD_STATUS_IDLE = IndexRebuildStatus.IDLE
+INDEX_REBUILD_STATUS_RUNNING = IndexRebuildStatus.RUNNING
+INDEX_REBUILD_STATUS_FAILED = IndexRebuildStatus.FAILED
 PROFILE_SECRET_FIELDS = {
     "openai": ("api_key",),
     "anthropic": ("api_key",),
     "voyage": ("api_key",),
     "ollama": (),
 }
-
-
-def _secret_value(value: object) -> str | None:
-    """兼容 SecretStr / str / None 的取值。"""
-    if value is None:
-        return None
-    get_secret_value = getattr(value, "get_secret_value", None)
-    if callable(get_secret_value):
-        secret = get_secret_value()
-        return secret if isinstance(secret, str) and secret else None
-    if isinstance(value, str) and value:
-        return value
-    return None
 
 
 class SettingsService:
@@ -80,7 +72,7 @@ class SettingsService:
         self.session = session
         self.settings = settings
         self.repository = SettingsRepository(session)
-        self._settings_record_cache: AppSettings | None = None
+        self._settings_record_cache: AppSettings | None = None  # 实例级缓存，仅在同一请求内复用
 
     def get_or_create_settings(self) -> SettingsRead:
         settings_record = self.get_or_create_settings_record()
@@ -89,7 +81,7 @@ class SettingsService:
     def get_runtime_settings(
         self,
         *,
-        reasoning_mode: ReasoningModeLiteral = "default",
+        reasoning_mode: ReasoningModeLiteral = ReasoningMode.DEFAULT,
     ) -> ProviderRuntimeSettings:
         """返回当前生效设置对应的统一 runtime settings。"""
         settings_record = self.get_or_create_settings_record()
@@ -100,7 +92,7 @@ class SettingsService:
         settings_source,
         *,
         embedding_route: EmbeddingRouteConfig | dict[str, Any] | None = None,
-        reasoning_mode: ReasoningModeLiteral = "default",
+        reasoning_mode: ReasoningModeLiteral = ReasoningMode.DEFAULT,
     ) -> ProviderRuntimeSettings:
         """从 settings-like 对象构造统一 runtime settings。"""
         return build_runtime_settings(
@@ -114,7 +106,7 @@ class SettingsService:
         actor: User,
         payload: UpdateSettingsRequest | Mapping[str, Any],
         *,
-        reasoning_mode: ReasoningModeLiteral = "default",
+        reasoning_mode: ReasoningModeLiteral = ReasoningMode.DEFAULT,
     ) -> tuple[SettingsRead, ProviderRuntimeSettings]:
         """返回测试连接所需的 draft read model 与 runtime settings。"""
         draft = self.build_test_settings(actor, payload)
@@ -147,7 +139,7 @@ class SettingsService:
         payload: UpdateSettingsRequest | Mapping[str, Any],
     ) -> SettingsRead:
         """更新系统设置，并在 embedding route 变更时标记重建。"""
-        if actor.role != "admin":
+        if actor.role != UserRole.ADMIN:
             raise AuthorizationError("Admin permission required.")
 
         update_request = self._normalize_update_request(payload)
@@ -189,7 +181,7 @@ class SettingsService:
                         AppSettings.active_index_generation,
                     )
                     + 1,
-                    index_rebuild_status=INDEX_REBUILD_STATUS_RUNNING,
+                    index_rebuild_status=IndexRebuildStatus.RUNNING,
                 )
             )
             self.session.execute(increment_statement)
@@ -212,7 +204,7 @@ class SettingsService:
         payload: UpdateSettingsRequest | Mapping[str, Any],
     ) -> SettingsRead:
         """构造一次仅用于 capability 连接测试的临时设置。"""
-        if actor.role != "admin":
+        if actor.role != UserRole.ADMIN:
             raise AuthorizationError("Admin permission required.")
 
         update_request = self._normalize_update_request(payload)
@@ -243,19 +235,19 @@ class SettingsService:
             updated_at=settings_record.updated_at,
             active_index_generation=settings_record.active_index_generation,
             building_index_generation=settings_record.building_index_generation,
-            index_rebuild_status=settings_record.index_rebuild_status,
+            index_rebuild_status=IndexRebuildStatus(settings_record.index_rebuild_status),
         )
 
     def _build_initial_settings_record(self) -> AppSettings:
         provider_profiles = deepcopy(DEFAULT_PROVIDER_PROFILES)
-        provider_profiles["openai"]["api_key"] = _secret_value(self.settings.initial_openai_api_key)
+        provider_profiles["openai"]["api_key"] = unwrap_secret(self.settings.initial_openai_api_key)
         provider_profiles["openai"]["base_url"] = self.settings.initial_openai_base_url
         provider_profiles["openai"]["chat_model"] = self.settings.initial_openai_chat_model
         provider_profiles["openai"]["embedding_model"] = (
             self.settings.initial_openai_embedding_model
         )
         provider_profiles["openai"]["vision_model"] = self.settings.initial_openai_vision_model
-        provider_profiles["anthropic"]["api_key"] = _secret_value(
+        provider_profiles["anthropic"]["api_key"] = unwrap_secret(
             self.settings.initial_anthropic_api_key
         )
         provider_profiles["anthropic"]["base_url"] = self.settings.initial_anthropic_base_url
@@ -263,7 +255,7 @@ class SettingsService:
         provider_profiles["anthropic"]["vision_model"] = (
             self.settings.initial_anthropic_vision_model
         )
-        provider_profiles["voyage"]["api_key"] = _secret_value(self.settings.initial_voyage_api_key)
+        provider_profiles["voyage"]["api_key"] = unwrap_secret(self.settings.initial_voyage_api_key)
         provider_profiles["voyage"]["base_url"] = self.settings.initial_voyage_base_url
         provider_profiles["voyage"]["embedding_model"] = (
             self.settings.initial_voyage_embedding_model
@@ -282,8 +274,8 @@ class SettingsService:
         vision_provider = self.settings.initial_vision_provider
 
         return AppSettings(
-            scope_type="global",
-            scope_id="global",
+            scope_type=SettingsScopeType.GLOBAL,
+            scope_id=SettingsScopeType.GLOBAL,
             provider_profiles_json=provider_profiles,
             response_route_json=dump_response_route(
                 self._normalize_response_route(
@@ -329,7 +321,7 @@ class SettingsService:
             provider_timeout_seconds=self.settings.initial_provider_timeout_seconds,
             active_index_generation=1,
             building_index_generation=None,
-            index_rebuild_status=INDEX_REBUILD_STATUS_IDLE,
+            index_rebuild_status=IndexRebuildStatus.IDLE,
         )
 
     def _normalize_update_request(
@@ -451,9 +443,7 @@ class SettingsService:
         fallback: str,
     ) -> str:
         value = profiles.get(provider, {}).get(field)
-        if isinstance(value, str) and value.strip():
-            return value.strip()
-        return fallback
+        return strip_or_none(value) or fallback
 
     def _masked_provider_profiles(
         self,
@@ -467,40 +457,43 @@ class SettingsService:
                     provider_profile[field] = MASKED_SECRET_VALUE
         return masked
 
+    def _normalize_route(
+        self,
+        route,
+        parse_fn,
+        route_cls,
+        error_msg: str,
+    ):
+        normalized = parse_fn(route)
+        if not normalized.model.strip():
+            raise ValidationError(error_msg)
+        return route_cls(
+            provider=normalized.provider,
+            model=normalized.model.strip(),
+        )
+
     def _normalize_response_route(
         self,
         route: ResponseRouteConfig | Mapping[str, Any],
     ) -> ResponseRouteConfig:
-        normalized = parse_response_route(route)
-        if not normalized.model.strip():
-            raise ValidationError("Invalid response route model.")
-        return ResponseRouteConfig(
-            provider=normalized.provider,
-            model=normalized.model.strip(),
+        return self._normalize_route(
+            route, parse_response_route, ResponseRouteConfig, "Invalid response route model."
         )
 
     def _normalize_embedding_route(
         self,
         route: EmbeddingRouteConfig | Mapping[str, Any],
     ) -> EmbeddingRouteConfig:
-        normalized = parse_embedding_route(route)
-        if not normalized.model.strip():
-            raise ValidationError("Invalid embedding route model.")
-        return EmbeddingRouteConfig(
-            provider=normalized.provider,
-            model=normalized.model.strip(),
+        return self._normalize_route(
+            route, parse_embedding_route, EmbeddingRouteConfig, "Invalid embedding route model."
         )
 
     def _normalize_vision_route(
         self,
         route: VisionRouteConfig | Mapping[str, Any],
     ) -> VisionRouteConfig:
-        normalized = parse_vision_route(route)
-        if not normalized.model.strip():
-            raise ValidationError("Invalid vision route model.")
-        return VisionRouteConfig(
-            provider=normalized.provider,
-            model=normalized.model.strip(),
+        return self._normalize_route(
+            route, parse_vision_route, VisionRouteConfig, "Invalid vision route model."
         )
 
     def _effective_embedding_route(
@@ -537,7 +530,7 @@ class SettingsService:
             updated_at=settings_record.updated_at,
             active_index_generation=settings_record.active_index_generation,
             building_index_generation=settings_record.building_index_generation,
-            index_rebuild_status=settings_record.index_rebuild_status,
+            index_rebuild_status=IndexRebuildStatus(settings_record.index_rebuild_status),
             rebuild_started=rebuild_started,
             reindex_required=reindex_required,
         )

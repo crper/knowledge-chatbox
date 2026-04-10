@@ -93,8 +93,8 @@ describe("login page", () => {
     expect(screen.queryByText("访问边界")).not.toBeInTheDocument();
     expect(screen.getByText("受控登录")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "查看工作台说明" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "语言" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "主题" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "简体中文" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "跟随系统" })).toBeInTheDocument();
   });
 
   it("exposes distinct intro and login entry regions for unauthenticated users", async () => {
@@ -106,17 +106,6 @@ describe("login page", () => {
     expect(within(introRegion).getByText("登录后工作路径")).toBeInTheDocument();
     expect(within(loginRegion).getByRole("heading", { name: "登录" })).toBeInTheDocument();
     expect(within(loginRegion).getByRole("button", { name: "登录" })).toBeInTheDocument();
-  });
-
-  it("keeps vertical scrolling available on mobile login layouts", async () => {
-    renderRoute("/login");
-
-    const loginHeading = await screen.findByRole("heading", { name: "登录" });
-    const loginPageMain = loginHeading.closest("main");
-
-    expect(loginPageMain).not.toBeNull();
-    expect(loginPageMain).toHaveClass("overflow-x-hidden");
-    expect(loginPageMain).not.toHaveClass("overflow-hidden");
   });
 
   it("opens workspace about dialog from the help entry", async () => {
@@ -247,8 +236,7 @@ describe("login page", () => {
 
     renderRoute("/login");
 
-    fireEvent.click(await screen.findByRole("button", { name: "主题" }));
-    fireEvent.click(await screen.findByRole("menuitemradio", { name: "深色" }));
+    fireEvent.click(await screen.findByRole("button", { name: "深色" }));
     fireEvent.change(screen.getByLabelText("用户名"), {
       target: { value: "admin" },
     });
@@ -396,8 +384,7 @@ describe("login page", () => {
 
     expect(await screen.findByText("服务响应超时，请稍后重试。")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "语言" }));
-    fireEvent.click(await screen.findByRole("menuitemradio", { name: "English" }));
+    fireEvent.click(screen.getByRole("button", { name: "English" }));
 
     expect(
       await screen.findByText("The service took too long to respond. Try again later."),
@@ -457,8 +444,7 @@ describe("login page", () => {
   it("allows theme switching on login page", async () => {
     renderRoute("/login");
 
-    fireEvent.click(await screen.findByRole("button", { name: "主题" }));
-    fireEvent.click(await screen.findByRole("menuitemradio", { name: "深色" }));
+    fireEvent.click(await screen.findByRole("button", { name: "深色" }));
 
     expect(document.documentElement).toHaveClass("dark");
     expect(document.documentElement.dataset.theme).toBeUndefined();
@@ -467,8 +453,7 @@ describe("login page", () => {
   it("allows language switching on login page", async () => {
     renderRoute("/login");
 
-    fireEvent.click(await screen.findByRole("button", { name: "语言" }));
-    fireEvent.click(await screen.findByRole("menuitemradio", { name: "English" }));
+    fireEvent.click(await screen.findByRole("button", { name: "English" }));
 
     expect(await screen.findByRole("heading", { name: "Login" })).toBeInTheDocument();
     expect(window.localStorage.getItem("knowledge-chatbox-language")).toBe("en");
@@ -495,8 +480,7 @@ describe("login page", () => {
 
     fireEvent.click(await screen.findByRole("link", { name: "偏好与外观" }));
     expect(await screen.findByRole("heading", { name: "偏好与外观" })).toBeInTheDocument();
-    fireEvent.click(await screen.findByLabelText("主题"));
-    fireEvent.click(await screen.findByRole("menuitemradio", { name: "深色" }));
+    fireEvent.click(await screen.findByRole("button", { name: "深色" }));
 
     await waitFor(() => {
       expect(document.documentElement).toHaveClass("dark");

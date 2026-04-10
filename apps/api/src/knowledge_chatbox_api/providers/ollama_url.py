@@ -1,10 +1,8 @@
 """Helpers for normalizing Ollama base URLs."""
 
-from __future__ import annotations
-
 from urllib.parse import urlsplit, urlunsplit
 
-from knowledge_chatbox_api.utils.compat import strip_or_none
+from knowledge_chatbox_api.utils.helpers import strip_or_none
 
 
 def _trim_v1_suffix(path: str) -> str:

@@ -1,18 +1,73 @@
 """Provider capability interfaces."""
 
-from __future__ import annotations
-
 from abc import ABC, abstractmethod
+from collections import OrderedDict
+from collections.abc import Callable
 from typing import Any, Protocol
 
 from pydantic import BaseModel, ConfigDict
+from tenacity import retry, stop_after_attempt, wait_exponential
 
+from knowledge_chatbox_api.models.enums import ProviderName, ReasoningMode
+from knowledge_chatbox_api.schemas._validators import ReasoningModeLiteral
 from knowledge_chatbox_api.schemas.settings import (
     EmbeddingRouteConfig,
     ProviderProfiles,
     ResponseRouteConfig,
     VisionRouteConfig,
 )
+
+DEFAULT_VISION_PROMPT = "Describe the image content in markdown."
+
+provider_retry = retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=1, max=10),
+    reraise=True,
+)
+
+
+class SimpleLRUCache:
+    """基于 OrderedDict 的 LRU 缓存，供 ClientCacheMixin 和 factory 复用。"""
+
+    def __init__(self, *, max_size: int = 8) -> None:
+        self._cache: OrderedDict[tuple, Any] = OrderedDict()
+        self._max_size = max_size
+
+    def get_or_create(self, key: tuple, factory: Callable[[], Any]) -> Any:
+        if key in self._cache:
+            self._cache.move_to_end(key)
+            return self._cache[key]
+        if len(self._cache) >= self._max_size:
+            self._cache.popitem(last=False)
+        value = factory()
+        self._cache[key] = value
+        return value
+
+
+class ClientCacheMixin:
+    """通用 LRU 客户端缓存，供各 Provider Mixin 复用。"""
+
+    def __init__(self, *, max_cache_size: int = 8) -> None:
+        self._client_cache = SimpleLRUCache(max_size=max_cache_size)
+
+    def _get_or_create_client(self, key: tuple, factory: Callable[[], Any]) -> Any:
+        return self._client_cache.get_or_create(key, factory)
+
+
+def build_reasoning_config(provider: str, reasoning_mode: ReasoningModeLiteral) -> dict[str, Any]:
+    if provider == ProviderName.ANTHROPIC:
+        if reasoning_mode == ReasoningMode.ON:
+            return {"anthropic_thinking": {"type": "enabled", "budget_tokens": 10000}}
+        if reasoning_mode == ReasoningMode.OFF:
+            return {"anthropic_thinking": {"type": "disabled"}}
+        return {}
+    if provider == ProviderName.OLLAMA:
+        return {"extra_body": {"think": reasoning_mode == ReasoningMode.ON}}
+    if reasoning_mode == ReasoningMode.ON:
+        return {"openai_reasoning_effort": "medium"}
+    if reasoning_mode == ReasoningMode.OFF:
+        return {"openai_reasoning_effort": "none"}
+    return {}
 
 
 class ProviderHealthResult(BaseModel):
@@ -53,7 +108,7 @@ class ResponseSettings(ProviderSettings, Protocol):
 class ResponseRuntimeSettings(ResponseSettings, Protocol):
     """生成响应时需要的完整设置。"""
 
-    reasoning_mode: str
+    reasoning_mode: ReasoningModeLiteral
 
 
 class EmbeddingSettings(ProviderSettings, Protocol):
@@ -72,8 +127,9 @@ class BaseResponseAdapter(ABC):
     """统一 response capability 接口。"""
 
     @abstractmethod
-    def response(self, messages: list[dict[str, Any]], settings: ResponseRuntimeSettings) -> str:
-        raise NotImplementedError
+    def response(
+        self, messages: list[dict[str, Any]], settings: ResponseRuntimeSettings
+    ) -> str: ...
 
     @abstractmethod
     def stream_response(
@@ -84,29 +140,24 @@ class BaseResponseAdapter(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def health_check(self, settings: ResponseSettings) -> ProviderHealthResult:
-        raise NotImplementedError
+    def health_check(self, settings: ResponseSettings) -> ProviderHealthResult: ...
 
 
 class BaseEmbeddingAdapter(ABC):
     """统一 embedding capability 接口。"""
 
     @abstractmethod
-    def embed(self, texts: list[str], settings: EmbeddingSettings) -> list[list[float]]:
-        raise NotImplementedError
+    def embed(self, texts: list[str], settings: EmbeddingSettings) -> list[list[float]]: ...
 
     @abstractmethod
-    def health_check(self, settings: EmbeddingSettings) -> ProviderHealthResult:
-        raise NotImplementedError
+    def health_check(self, settings: EmbeddingSettings) -> ProviderHealthResult: ...
 
 
 class BaseVisionAdapter(ABC):
     """统一 vision capability 接口。"""
 
     @abstractmethod
-    def analyze_image(self, inputs: list[dict[str, Any]], settings: VisionSettings) -> str:
-        raise NotImplementedError
+    def analyze_image(self, inputs: list[dict[str, Any]], settings: VisionSettings) -> str: ...
 
     @abstractmethod
-    def health_check(self, settings: VisionSettings) -> ProviderHealthResult:
-        raise NotImplementedError
+    def health_check(self, settings: VisionSettings) -> ProviderHealthResult: ...

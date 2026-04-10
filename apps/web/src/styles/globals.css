@@ -250,6 +250,15 @@
 }
 
 @layer utilities {
+  .no-visible-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .no-visible-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
   @keyframes chat-streaming-dot-bounce {
     0%,
     80%,

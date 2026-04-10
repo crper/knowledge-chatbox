@@ -1,7 +1,5 @@
 """设置仓储数据访问实现。"""
 
-from __future__ import annotations
-
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 

@@ -1,7 +1,5 @@
 """文档 Pydantic 模型定义。"""
 
-from __future__ import annotations
-
 from datetime import datetime
 
 from pydantic import BaseModel

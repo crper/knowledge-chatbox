@@ -21,6 +21,8 @@ import { Input } from "@/components/ui/input";
 import { FormErrorAlert, getFieldErrorItems, getFormErrorMessage } from "@/lib/form/form-feedback";
 import { useAppForm } from "@/lib/form/use-app-form";
 import { handleFormSubmitEvent } from "@/lib/forms";
+import { getErrorMessage } from "@/lib/utils";
+import { zodToTanStackFormErrors } from "@/lib/validation/form-adapter";
 import { resetPasswordSchema } from "@/lib/validation/schemas";
 
 type ResetPasswordDialogProps = {
@@ -52,13 +54,22 @@ export function ResetPasswordDialog({
         formApi.setErrorMap({
           onSubmit: {
             fields: {},
-            form: error instanceof Error ? error.message : t("resetPasswordFailed"),
+            form: getErrorMessage(error, t("resetPasswordFailed")),
           },
         });
         throw error;
       }
     },
-    schema: resetPasswordSchema,
+    validator: (value) => {
+      const result = resetPasswordSchema.safeParse(value);
+      if (result.success) {
+        return undefined;
+      }
+
+      return zodToTanStackFormErrors(result.error, {
+        formI18nKey: "users:resetPasswordValidationError",
+      });
+    },
   });
 
   useEffect(() => {
@@ -112,7 +123,10 @@ export function ResetPasswordDialog({
           </FieldGroup>
           <form.Subscribe selector={(state) => state.errorMap}>
             {(errorMap) => {
-              const errorMessage = getFormErrorMessage([errorMap.onDynamic, errorMap.onSubmit], t);
+              const errorMessage = getFormErrorMessage(
+                [errorMap.onDynamic?.fields?.newPassword, errorMap.onDynamic, errorMap.onSubmit],
+                t,
+              );
 
               return <FormErrorAlert message={errorMessage} />;
             }}

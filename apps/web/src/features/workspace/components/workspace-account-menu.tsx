@@ -49,8 +49,14 @@ function getThemeLabel(theme: ThemeMode, t: (key: string) => string) {
   }[theme];
 }
 
+const THEME_ICONS: Record<ThemeMode, typeof MoonStarIcon> = {
+  dark: MoonStarIcon,
+  light: SunMediumIcon,
+  system: MonitorCogIcon,
+};
+
 function getThemeIcon(theme: ThemeMode) {
-  return theme === "dark" ? MoonStarIcon : theme === "light" ? SunMediumIcon : MonitorCogIcon;
+  return THEME_ICONS[theme];
 }
 
 function getLanguageLabel(language: AppLanguage, t: (key: string) => string) {
@@ -59,6 +65,9 @@ function getLanguageLabel(language: AppLanguage, t: (key: string) => string) {
 
 type WorkspaceAccountMenuProps = {
   className?: string;
+  compact?: boolean;
+  contentPortalContainer?: React.ComponentProps<typeof DropdownMenuContent>["portalContainer"];
+  contentPortalled?: boolean;
   onLogout: () => Promise<void>;
   onNavigate?: () => void;
   user: AppUser;
@@ -69,6 +78,9 @@ type WorkspaceAccountMenuProps = {
  */
 export function WorkspaceAccountMenu({
   className,
+  compact = false,
+  contentPortalContainer,
+  contentPortalled = true,
   onLogout,
   onNavigate,
   user,
@@ -103,34 +115,54 @@ export function WorkspaceAccountMenu({
           <Button
             aria-label={t("accountMenuTrigger")}
             className={cn(
-              "surface-inline h-auto min-w-0 w-full justify-start gap-2.5 rounded-xl px-3 py-2 text-left shadow-none hover:bg-sidebar-accent/36",
+              compact
+                ? "group relative mx-auto size-11 rounded-2xl border border-transparent px-0 py-0 text-sidebar-foreground/66 shadow-none transition-[transform,background-color,color,border-color,box-shadow] duration-220 ease-out active:scale-[0.97] hover:-translate-y-[1px] hover:border-sidebar-border/72 hover:bg-sidebar-accent/66 hover:text-sidebar-foreground hover:shadow-[0_12px_26px_-20px_hsl(var(--shadow-color)/0.65)]"
+                : "surface-inline h-auto w-full min-w-0 justify-start gap-2.5 rounded-xl px-3 py-2 text-left shadow-none hover:bg-sidebar-accent/36",
               className,
             )}
-            size="lg"
+            size={compact ? "icon" : "lg"}
             type="button"
             variant="ghost"
           />
         }
       >
-        <Avatar className="size-9 rounded-lg">
-          <AvatarImage alt={t("workspaceLogoAlt")} src={logoUrl} />
-          <AvatarFallback>AI</AvatarFallback>
-        </Avatar>
+        {compact ? (
+          <Settings2Icon
+            aria-hidden="true"
+            className="size-[1.15rem] shrink-0 stroke-[2.05] transition-transform duration-220 ease-out group-hover:scale-105"
+          />
+        ) : (
+          <Avatar className="size-9 rounded-lg">
+            <AvatarImage alt={t("workspaceLogoAlt")} src={logoUrl} />
+            <AvatarFallback>AI</AvatarFallback>
+          </Avatar>
+        )}
 
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-[13px] font-medium text-foreground">{user.username}</p>
-          <p className="truncate text-[11px] leading-relaxed text-muted-foreground/68">
-            {t("workspaceRoleLabel", { role: user.role })}
-          </p>
-        </div>
+        {compact ? null : (
+          <>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[13px] font-medium text-foreground">{user.username}</p>
+              <p className="truncate text-[11px] leading-relaxed text-muted-foreground/68">
+                {t("workspaceRoleLabel", { role: user.role })}
+              </p>
+            </div>
 
-        <ChevronDownIcon
-          aria-hidden="true"
-          className="size-3.5 shrink-0 text-muted-foreground/64"
-        />
+            <ChevronDownIcon
+              aria-hidden="true"
+              className="size-3.5 shrink-0 text-muted-foreground/64"
+            />
+          </>
+        )}
       </DropdownMenuTrigger>
 
-      <DropdownMenuContent align="end" className="w-72 min-w-72">
+      <DropdownMenuContent
+        align={compact ? "center" : "end"}
+        className="w-72 min-w-72"
+        portalContainer={contentPortalContainer}
+        portalled={contentPortalled}
+        side="top"
+        sideOffset={10}
+      >
         <div className="flex items-center gap-3 rounded-lg px-2 py-2">
           <Avatar className="size-10 rounded-xl">
             <AvatarImage alt={t("workspaceLogoAlt")} src={logoUrl} />

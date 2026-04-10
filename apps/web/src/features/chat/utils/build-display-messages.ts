@@ -5,7 +5,12 @@
 import { sortBy } from "es-toolkit";
 
 import type { ChatMessageItem } from "../api/chat";
-import type { StreamingRun } from "../store/chat-stream-store";
+import {
+  joinStreamingRunContent,
+  normalizeStreamingRun,
+  type StreamingRun,
+  type StreamingRunLike,
+} from "./streaming-run";
 import { MessageRole, MessageStatus, isStreamingStatus } from "../constants";
 
 function normalizePersistedMessages(
@@ -183,10 +188,12 @@ export function buildDisplayMessages({
 }: {
   activeSessionId: number | null;
   messages: ChatMessageItem[];
-  runsById: Record<number, StreamingRun>;
+  runsById: Record<number, StreamingRunLike>;
 }) {
   const streamingRuns = sortBy(
-    Object.values(runsById).filter((run) => run.sessionId === activeSessionId),
+    Object.values(runsById)
+      .map((run) => normalizeStreamingRun(run))
+      .filter((run) => run.sessionId === activeSessionId),
     [(run) => run.assistantMessageId],
   );
 
@@ -206,10 +213,8 @@ export function buildDisplayMessages({
     activeStreamingAssistantMessageIds,
     maxPersistedMessageId,
   );
-  const collapsedPersistedMessages = collapseRetryMessageAttempts(normalizedMessages);
-
   if (activeSessionId === null || streamingRuns.length === 0) {
-    return collapsedPersistedMessages;
+    return collapseRetryMessageAttempts(normalizedMessages);
   }
 
   const mergedMessages = mergeStreamingRuns(
@@ -264,9 +269,10 @@ function shouldKeepPersistedState(message: ChatMessageItem, run: StreamingRun) {
 }
 
 function mergeRunIntoMessage(message: ChatMessageItem, run: StreamingRun) {
+  const runContent = joinStreamingRunContent(run.content);
   return {
     ...message,
-    content: run.content || message.content,
+    content: runContent || message.content,
     reply_to_message_id: run.retryOfMessageId ?? run.userMessageId ?? message.reply_to_message_id,
     ...(run.errorMessage ? { error_message: run.errorMessage } : {}),
     sources_json:
@@ -278,10 +284,11 @@ function mergeRunIntoMessage(message: ChatMessageItem, run: StreamingRun) {
 }
 
 function createMessageFromRun(run: StreamingRun) {
+  const runContent = joinStreamingRunContent(run.content);
   return {
     id: run.assistantMessageId,
     role: MessageRole.ASSISTANT,
-    content: run.content,
+    content: runContent,
     reply_to_message_id: run.retryOfMessageId ?? run.userMessageId,
     ...(run.errorMessage ? { error_message: run.errorMessage } : {}),
     status: run.status,

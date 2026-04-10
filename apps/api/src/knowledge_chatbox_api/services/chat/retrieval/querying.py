@@ -1,20 +1,21 @@
-from __future__ import annotations
-
 from typing import Any
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import select
 
 from knowledge_chatbox_api.core.logging import get_logger
-from knowledge_chatbox_api.models.document import Document, DocumentRevision
+from knowledge_chatbox_api.models.document import (
+    Document,
+    DocumentRevision,
+    latest_revision_join_condition,
+)
+from knowledge_chatbox_api.models.enums import DocumentStatus, IngestStatus
 from knowledge_chatbox_api.services.chat.retrieval.models import MIN_RETRIEVAL_SOURCE_SCORE
 from knowledge_chatbox_api.services.chat.retrieval.policy import (
     attachment_scoped_top_k,
     select_attachment_scoped_records,
 )
-from knowledge_chatbox_api.utils.chroma import (
-    _normalize_match_text,
-    _quoted_phrases,
-    _tokenize_text,
+from knowledge_chatbox_api.utils.text_matching import (
+    has_text_overlap,
 )
 
 logger = get_logger(__name__)
@@ -46,15 +47,9 @@ class RetrievalQueryEngine:
             .join(Document, Document.id == DocumentRevision.document_id)
             .where(
                 Document.space_id == space_id,
-                Document.status == "active",
-                or_(
-                    Document.latest_revision_id == DocumentRevision.id,
-                    and_(
-                        Document.latest_revision_id.is_(None),
-                        DocumentRevision.revision_no == Document.current_version_number,
-                    ),
-                ),
-                DocumentRevision.ingest_status == "indexed",
+                Document.status == DocumentStatus.ACTIVE,
+                latest_revision_join_condition(),
+                DocumentRevision.ingest_status == IngestStatus.INDEXED,
             )
             .limit(1)
         )
@@ -127,28 +122,42 @@ class RetrievalQueryEngine:
         )
         return select_attachment_scoped_records(records, attachment_revision_ids)
 
-    def is_relevant_retrieval_hit(self, record: dict[str, Any], query_text: str) -> bool:
+    def is_relevant_retrieval_hit(
+        self,
+        record: dict[str, Any],
+        query_text: str,
+        *,
+        query_normalized: str | None = None,
+        query_tokens: set[str] | None = None,
+        query_quoted_phrases: list[str] | None = None,
+    ) -> bool:
         score = float(record.get("score", 0.0))
         if score >= MIN_RETRIEVAL_SOURCE_SCORE:
             return True
-        return self._has_query_overlap(record, query_text)
+        return self._has_query_overlap(
+            record,
+            query_text,
+            query_normalized=query_normalized,
+            query_tokens=query_tokens,
+            query_quoted_phrases=query_quoted_phrases,
+        )
 
-    def _has_query_overlap(self, record: dict[str, Any], query_text: str) -> bool:
-        query_terms = _tokenize_text(query_text)
-        if not query_terms:
-            return False
-
+    def _has_query_overlap(
+        self,
+        record: dict[str, Any],
+        query_text: str,
+        *,
+        query_normalized: str | None = None,
+        query_tokens: set[str] | None = None,
+        query_quoted_phrases: list[str] | None = None,
+    ) -> bool:
+        resolved_phrases = set(query_quoted_phrases) if query_quoted_phrases is not None else None
         section_title = record.get("metadata", {}).get("section_title") or ""
         haystack = f"{record.get('text', '')} {section_title}"
-        normalized_haystack = _normalize_match_text(haystack)
-        normalized_query = _normalize_match_text(query_text)
-
-        query_phrases = _quoted_phrases(query_text)
-        if any(phrase in normalized_haystack for phrase in query_phrases):
-            return True
-
-        if len(normalized_query) >= 2 and normalized_query in normalized_haystack:
-            return True
-
-        haystack_tokens = _tokenize_text(haystack)
-        return len(query_terms & haystack_tokens) > 0
+        return has_text_overlap(
+            query_text,
+            haystack,
+            query_normalized=query_normalized,
+            query_tokens=query_tokens,
+            query_quoted_phrases=resolved_phrases,
+        )
