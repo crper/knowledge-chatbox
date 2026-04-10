@@ -2,8 +2,6 @@
  * @file Avatar 基础 UI 组件模块。
  */
 
-"use client";
-
 import * as React from "react";
 import { Avatar as AvatarPrimitive } from "@base-ui/react/avatar";
 

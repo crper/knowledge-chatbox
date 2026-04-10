@@ -7,14 +7,27 @@ import { ScrollArea as ScrollAreaPrimitive } from "@base-ui/react/scroll-area";
 
 import { cn } from "@/lib/utils";
 
+type ScrollAreaProps = React.ComponentProps<typeof ScrollAreaPrimitive.Root> & {
+  contentClassName?: string;
+  contentStyle?: React.CSSProperties;
+  hideScrollbar?: boolean;
+  viewportClassName?: string;
+  viewportStyle?: React.CSSProperties;
+};
+
 /**
  * 定义ScrollArea。
  */
 function ScrollArea({
   className,
+  contentClassName,
+  contentStyle,
   children,
+  hideScrollbar = false,
+  viewportClassName,
+  viewportStyle,
   ...props
-}: React.ComponentProps<typeof ScrollAreaPrimitive.Root>) {
+}: ScrollAreaProps) {
   return (
     <ScrollAreaPrimitive.Root
       data-slot="scroll-area"
@@ -23,11 +36,17 @@ function ScrollArea({
     >
       <ScrollAreaPrimitive.Viewport
         data-slot="scroll-area-viewport"
-        className="size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1"
+        className={cn(
+          "size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1",
+          viewportClassName,
+        )}
+        style={viewportStyle}
       >
-        <ScrollAreaPrimitive.Content>{children}</ScrollAreaPrimitive.Content>
+        <ScrollAreaPrimitive.Content className={contentClassName} style={contentStyle}>
+          {children}
+        </ScrollAreaPrimitive.Content>
       </ScrollAreaPrimitive.Viewport>
-      <ScrollBar />
+      {hideScrollbar ? null : <ScrollBar />}
       <ScrollAreaPrimitive.Corner />
     </ScrollAreaPrimitive.Root>
   );

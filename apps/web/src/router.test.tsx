@@ -10,7 +10,7 @@ import { buildAppUser } from "@/test/fixtures/app";
 import { createTestServer, overrideHandler, apiResponse } from "@/test/msw";
 import { renderRoute } from "@/test/render-route";
 import { http, HttpResponse } from "msw";
-import { mockDesktopViewport } from "@/test/viewport";
+import { mockDesktopViewport, mockMobileViewport } from "@/test/viewport";
 
 vi.mock("@tanstack/react-virtual", () => ({
   useVirtualizer: vi.fn((options: { count?: number }) => {
@@ -110,7 +110,7 @@ describe("AppRouter", () => {
 
     const style = document.createElement("style");
     style.textContent = `
-      [data-testid="chat-sidebar-virtuoso"],
+      [data-testid="chat-sidebar-session-list"],
       .h-full { height: 512px !important; }
     `;
     document.head.appendChild(style);
@@ -154,7 +154,10 @@ describe("AppRouter", () => {
 
     expect(await screen.findByRole("link", { name: "资源" })).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "Knowledge Chatbox 标志" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "对话" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "对话" })).toHaveAttribute(
+      "data-slot",
+      "tooltip-trigger",
+    );
     expect(screen.getByRole("button", { name: "打开账户菜单" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "用户" })).not.toBeInTheDocument();
 
@@ -203,13 +206,65 @@ describe("AppRouter", () => {
     renderRoute("/knowledge");
 
     const layout = await screen.findByTestId("standard-desktop-layout");
+    const contentRail = await screen.findByTestId("standard-desktop-content-rail");
     const sidebar = await screen.findByRole("complementary", { name: "工作台侧栏" });
     const knowledgeLink = screen.getByRole("link", { name: "资源" });
 
     expect(layout).toBeInTheDocument();
+    expect(contentRail).toHaveClass("overflow-y-auto");
     expect(sidebar).toBeInTheDocument();
     expect(knowledgeLink).toHaveAttribute("href", "/knowledge");
     expect(screen.getByRole("main")).toBeInTheDocument();
+  });
+
+  it("opens the account menu inside the mobile navigation sheet and keeps the settings entry", async () => {
+    mockMobileViewport();
+    setupAuthResponse({
+      id: 1,
+      username: "admin",
+      role: "admin",
+      status: "active",
+      theme_preference: "system",
+    });
+
+    renderRoute("/chat");
+
+    fireEvent.click(await screen.findByRole("button", { name: "打开会话面板" }));
+
+    const accountMenuTrigger = await screen.findByRole("button", { name: "打开账户菜单" });
+    expect(accountMenuTrigger).toBeInTheDocument();
+
+    fireEvent.click(accountMenuTrigger);
+
+    expect(await screen.findByRole("menuitem", { name: "系统设置" })).toHaveAttribute(
+      "href",
+      "/settings/providers",
+    );
+  });
+
+  it("opens the account menu inside the mobile settings navigation sheet", async () => {
+    mockMobileViewport();
+    setupAuthResponse({
+      id: 1,
+      username: "admin",
+      role: "admin",
+      status: "active",
+      theme_preference: "system",
+    });
+
+    renderRoute("/settings/providers");
+
+    fireEvent.click(await screen.findByRole("button", { name: "打开导航面板" }));
+
+    const accountMenuTrigger = await screen.findByRole("button", { name: "打开账户菜单" });
+    expect(accountMenuTrigger).toBeInTheDocument();
+
+    fireEvent.click(accountMenuTrigger);
+
+    expect(await screen.findByRole("menuitem", { name: "系统设置" })).toHaveAttribute(
+      "href",
+      "/settings/providers",
+    );
   });
 
   it("renders english navigation when stored language is en", async () => {

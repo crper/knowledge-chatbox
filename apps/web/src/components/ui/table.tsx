@@ -2,8 +2,6 @@
  * @file 表格基础 UI 组件模块。
  */
 
-"use client";
-
 import * as React from "react";
 
 import { cn } from "@/lib/utils";

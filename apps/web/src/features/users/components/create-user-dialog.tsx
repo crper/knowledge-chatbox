@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/input";
 import { FormErrorAlert, getFieldErrorItems, getFormErrorMessage } from "@/lib/form/form-feedback";
 import { useAppForm } from "@/lib/form/use-app-form";
 import { handleFormSubmitEvent } from "@/lib/forms";
+import { getErrorMessage } from "@/lib/utils";
 import { createUserSchema } from "@/lib/validation/schemas";
 
 type CreateUserDialogProps = {
@@ -53,7 +54,7 @@ export function CreateUserDialog({ open, onClose, onSubmit }: CreateUserDialogPr
         formApi.setErrorMap({
           onSubmit: {
             fields: {},
-            form: error instanceof Error ? error.message : t("createUserFailed"),
+            form: getErrorMessage(error, t("createUserFailed")),
           },
         });
         throw error;

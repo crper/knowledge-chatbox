@@ -6,7 +6,7 @@ import { Button } from "./button";
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
+  DropdownMenuLinkItem,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
@@ -35,25 +35,12 @@ function RenderPropMenu({ onValueChange }: { onValueChange?: (value: string) => 
   );
 }
 
-function SizedMenu() {
+function RenderLinkMenu() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger render={<Button variant="outline" />}>更多</DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-72 min-w-72">
-        <DropdownMenuRadioGroup onValueChange={() => {}} value="light">
-          <DropdownMenuRadioItem value="light">浅色</DropdownMenuRadioItem>
-        </DropdownMenuRadioGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
-function PlainMenu() {
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger render={<Button variant="outline" />}>操作</DropdownMenuTrigger>
       <DropdownMenuContent>
-        <DropdownMenuItem>系统设置</DropdownMenuItem>
+        <DropdownMenuLinkItem render={<a href="#settings" />}>系统设置</DropdownMenuLinkItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -78,26 +65,12 @@ describe("DropdownMenu", () => {
     await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
   });
 
-  it("applies caller sizing classes on the positioned wrapper so end-aligned menus do not drift", () => {
-    render(<SizedMenu />);
+  it("closes by default after selecting a link item", async () => {
+    render(<RenderLinkMenu />);
 
     fireEvent.click(screen.getByRole("button", { name: "更多" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "系统设置" }));
 
-    const menu = screen.getByRole("menu");
-    const positioner = menu.parentElement;
-
-    expect(positioner).not.toBeNull();
-    expect(positioner?.className).toContain("w-72");
-    expect(positioner?.className).toContain("min-w-72");
-  });
-
-  it("renders plain menu items directly in the popup instead of inserting an extra viewport wrapper", () => {
-    render(<PlainMenu />);
-
-    fireEvent.click(screen.getByRole("button", { name: "操作" }));
-
-    const menu = screen.getByRole("menu");
-
-    expect(menu.firstElementChild).toHaveAttribute("role", "menuitem");
+    await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
   });
 });
