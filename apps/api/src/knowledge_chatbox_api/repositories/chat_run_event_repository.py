@@ -1,7 +1,5 @@
 """聊天运行事件仓储。"""
 
-from __future__ import annotations
-
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 

@@ -1,11 +1,10 @@
 """用户仓储数据访问实现。"""
 
-from __future__ import annotations
-
 from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
 
 from knowledge_chatbox_api.models.auth import User
+from knowledge_chatbox_api.models.enums import UserRole
 
 
 class UserRepository:
@@ -17,7 +16,7 @@ class UserRepository:
     def count_admins(self) -> int:
         """处理CountAdmins相关逻辑。"""
         statement: Select[tuple[int]] = (
-            select(func.count()).select_from(User).where(User.role == "admin")
+            select(func.count()).select_from(User).where(User.role == UserRole.ADMIN)
         )
         return self.session.scalar(statement) or 0
 

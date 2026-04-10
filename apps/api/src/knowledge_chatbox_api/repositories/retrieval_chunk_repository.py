@@ -1,7 +1,5 @@
 """SQLite FTS5-backed lexical retrieval side index."""
 
-from __future__ import annotations
-
 from typing import Any
 
 from sqlalchemy import text
@@ -26,7 +24,7 @@ def _build_match_query(query_text: str) -> str | None:
 def _score_from_bm25(rank: float | int | None) -> float:
     if rank is None:
         return 0.0
-    return 1.0 / (1.0 + abs(float(rank)))
+    return max(-float(rank), 0.0)
 
 
 class RetrievalChunkRepository:

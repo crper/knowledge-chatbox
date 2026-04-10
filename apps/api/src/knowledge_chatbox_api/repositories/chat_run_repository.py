@@ -1,11 +1,10 @@
 """聊天运行仓储数据访问实现。"""
 
-from __future__ import annotations
-
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from knowledge_chatbox_api.models.chat import ChatRun, ChatSession
+from knowledge_chatbox_api.models.enums import ChatRunStatus
 
 
 class ChatRunRepository:
@@ -67,7 +66,7 @@ class ChatRunRepository:
             .join(ChatSession, ChatSession.id == ChatRun.session_id)
             .where(
                 ChatSession.user_id == user_id,
-                ChatRun.status.in_(("pending", "running")),
+                ChatRun.status.in_((ChatRunStatus.PENDING, ChatRunStatus.RUNNING)),
             )
             .order_by(ChatRun.created_at.asc(), ChatRun.id.asc())
         )
@@ -76,7 +75,7 @@ class ChatRunRepository:
     def list_stale_active_runs(self) -> list[ChatRun]:
         statement = (
             select(ChatRun)
-            .where(ChatRun.status.in_(("pending", "running")))
+            .where(ChatRun.status.in_((ChatRunStatus.PENDING, ChatRunStatus.RUNNING)))
             .order_by(ChatRun.created_at.asc(), ChatRun.id.asc())
         )
         return list(self.session.scalars(statement).all())
