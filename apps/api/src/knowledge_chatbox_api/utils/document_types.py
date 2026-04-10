@@ -1,7 +1,5 @@
 """文档类型与 MIME 映射工具。"""
 
-from __future__ import annotations
-
 FILE_TYPE_TO_MIME_TYPE = {
     "txt": "text/plain",
     "md": "text/markdown",

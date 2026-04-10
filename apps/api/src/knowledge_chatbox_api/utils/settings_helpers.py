@@ -1,7 +1,5 @@
 """设置与 provider 相关的共享映射函数。"""
 
-from __future__ import annotations
-
 from knowledge_chatbox_api.providers.base import ProviderHealthResult
 from knowledge_chatbox_api.schemas.settings import (
     CapabilityHealthRead,
