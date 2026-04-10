@@ -83,12 +83,13 @@ describe("ImageViewerDialog", () => {
       "_blank",
       "noopener,noreferrer",
     );
-    expect(fetch).toHaveBeenCalledWith(
-      "http://localhost:8000/api/documents/12/file",
-      expect.objectContaining({
-        credentials: "include",
-      }),
-    );
+    const lastFetchCall = vi.mocked(fetch).mock.calls.at(-1);
+    expect(lastFetchCall).toBeDefined();
+    const [request, init] = lastFetchCall!;
+    expect(request).toBe("http://localhost:8000/api/documents/12/file");
+    expect(init).toMatchObject({
+      credentials: "include",
+    });
   });
 
   it("closes the viewer on Escape", async () => {

@@ -6,7 +6,10 @@ import type {
   ChatAttachmentItem as PersistedChatAttachmentItem,
   ChatMessageItem,
   ChatSessionContextItem,
+  ChatSourceItem,
 } from "../api/chat";
+import { MessageRole, MessageStatus } from "../constants";
+import { patchPagedChatMessagesCache } from "../utils/patch-paged-chat-messages";
 
 function buildContextAttachmentKey(attachment: PersistedChatAttachmentItem) {
   if (attachment.resource_document_id != null) {
@@ -136,9 +139,8 @@ export function useChatSessionCacheActions() {
             return current;
           }
 
-          const knownIds = new Set(
-            current.pages.flatMap((page: ChatMessageItem[]) => page.map((message) => message.id)),
-          );
+          const lastPage = current.pages.at(-1) ?? [];
+          const knownIds = new Set(lastPage.map((message: ChatMessageItem) => message.id));
           if (knownIds.has(userMessageId)) {
             return current;
           }
@@ -164,6 +166,66 @@ export function useChatSessionCacheActions() {
     [queryClient],
   );
 
+  const patchAssistantMessage = useCallback(
+    ({
+      appendIfMissing = [],
+      assistantMessageId,
+      patch,
+      sessionId,
+    }: {
+      appendIfMissing?: ChatMessageItem[];
+      assistantMessageId: number;
+      patch: {
+        content?: string;
+        error_message?: string | null;
+        sources_json?: ChatSourceItem[] | null;
+        status?: string;
+      };
+      sessionId: number;
+    }) => {
+      return patchPagedChatMessagesCache({
+        appendIfMissing,
+        assistantMessageId,
+        patch,
+        queryClient,
+        sessionId,
+      });
+    },
+    [queryClient],
+  );
+
+  const patchRetriedUserMessage = useCallback(
+    ({ sessionId, userMessageId }: { sessionId: number; userMessageId: number }) => {
+      queryClient.setQueryData<InfiniteData<ChatMessageItem[], number | null>>(
+        queryKeys.chat.messagesWindow(sessionId),
+        (current) => {
+          if (!current || typeof current !== "object" || !("pages" in current)) {
+            return current;
+          }
+
+          let patched = false;
+          const nextPages = current.pages.map((page) =>
+            page.map((message) => {
+              if (message.id !== userMessageId || message.role !== MessageRole.USER) {
+                return message;
+              }
+
+              patched = true;
+              return {
+                ...message,
+                error_message: null,
+                status: MessageStatus.SUCCEEDED,
+              } satisfies ChatMessageItem;
+            }),
+          );
+
+          return patched ? { ...current, pages: nextPages } : current;
+        },
+      );
+    },
+    [queryClient],
+  );
+
   const invalidateSessionArtifacts = useCallback(
     async (sessionId: number) => {
       await queryClient.invalidateQueries({
@@ -179,6 +241,8 @@ export function useChatSessionCacheActions() {
   return {
     appendStartedUserMessage,
     invalidateSessionArtifacts,
+    patchAssistantMessage,
+    patchRetriedUserMessage,
     patchSessionContext,
     patchUserMessageAttachments,
   };

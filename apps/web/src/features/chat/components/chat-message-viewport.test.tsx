@@ -72,28 +72,6 @@ describe("ChatMessageViewport", () => {
     scrollToIndexSpy.mockClear();
   });
 
-  it("keeps extra gutter and rail padding so the scrollbar does not sit on top of messages", async () => {
-    renderViewport(buildMessages(12));
-
-    expect(await screen.findByTestId("chat-message-viewport-root")).toHaveClass("flex-1");
-    const scroller = await screen.findByTestId("chat-message-viewport-scroll");
-    expect(scroller).toHaveAttribute("data-scroll-padding", "comfortable");
-    expect(scroller).toHaveClass("overflow-x-hidden");
-    expect(scroller).not.toHaveClass("overflow-hidden");
-    expect(screen.getAllByTestId("chat-message-virtual-item")[0]).toHaveAttribute(
-      "data-message-rail",
-      "comfortable",
-    );
-  });
-
-  it("renders the internal virtual item list with bounded attribute", async () => {
-    renderViewport(buildMessages(12));
-
-    const list = await screen.findByTestId("virtuoso-item-list");
-
-    expect(list).toHaveAttribute("data-chat-viewport-list", "bounded");
-  });
-
   it("renders a short message list without producing empty probe rows", async () => {
     renderViewport(buildMessages(1));
 
@@ -282,5 +260,139 @@ describe("ChatMessageViewport", () => {
     fireEvent.scroll(scroller);
 
     expect(onLoadOlderMessages).toHaveBeenCalled();
+  });
+
+  it("shows new message banner when user is scrolled up and a new message arrives", async () => {
+    const view = renderViewport(buildMessages(80), 0);
+    const scroller = await screen.findByTestId("chat-message-viewport-scroll");
+
+    await waitFor(() => {
+      expect(scrollToIndexSpy).toHaveBeenCalledWith(79, {
+        align: "end",
+        behavior: "auto",
+      });
+    });
+    scrollToIndexSpy.mockClear();
+
+    Object.defineProperty(scroller, "clientHeight", {
+      configurable: true,
+      value: 640,
+    });
+    Object.defineProperty(scroller, "scrollHeight", {
+      configurable: true,
+      value: 4000,
+    });
+    Object.defineProperty(scroller, "scrollTop", {
+      configurable: true,
+      writable: true,
+      value: 0,
+    });
+
+    fireEvent.scroll(scroller);
+
+    view.rerender(
+      <AppProviders>
+        <div style={{ height: "640px" }}>
+          <ChatMessageViewport messages={buildMessages(81)} onRetry={vi.fn()} />
+        </div>
+      </AppProviders>,
+    );
+
+    expect(await screen.findByTestId("new-message-banner")).toBeInTheDocument();
+  });
+
+  it("hides the banner and smooth-scrolls when the new message banner is clicked", async () => {
+    const view = renderViewport(buildMessages(80), 0);
+    const scroller = await screen.findByTestId("chat-message-viewport-scroll");
+
+    await waitFor(() => {
+      expect(scrollToIndexSpy).toHaveBeenCalledWith(79, {
+        align: "end",
+        behavior: "auto",
+      });
+    });
+    scrollToIndexSpy.mockClear();
+
+    Object.defineProperty(scroller, "clientHeight", {
+      configurable: true,
+      value: 640,
+    });
+    Object.defineProperty(scroller, "scrollHeight", {
+      configurable: true,
+      value: 4000,
+    });
+    Object.defineProperty(scroller, "scrollTop", {
+      configurable: true,
+      writable: true,
+      value: 0,
+    });
+
+    fireEvent.scroll(scroller);
+
+    view.rerender(
+      <AppProviders>
+        <div style={{ height: "640px" }}>
+          <ChatMessageViewport messages={buildMessages(81)} onRetry={vi.fn()} />
+        </div>
+      </AppProviders>,
+    );
+
+    const banner = await screen.findByTestId("new-message-banner");
+    fireEvent.click(banner);
+
+    await waitFor(() => {
+      expect(scrollToIndexSpy).toHaveBeenCalledWith(80, {
+        align: "end",
+        behavior: "smooth",
+      });
+    });
+
+    expect(screen.queryByTestId("new-message-banner")).not.toBeInTheDocument();
+  });
+
+  it("does not show banner when user is near bottom and a new message arrives", async () => {
+    const view = renderViewport(buildMessages(80), 0);
+
+    await waitFor(() => {
+      expect(scrollToIndexSpy).toHaveBeenCalledWith(79, {
+        align: "end",
+        behavior: "auto",
+      });
+    });
+    scrollToIndexSpy.mockClear();
+
+    const scroller = await screen.findByTestId("chat-message-viewport-scroll");
+    Object.defineProperty(scroller, "clientHeight", {
+      configurable: true,
+      value: 640,
+    });
+    Object.defineProperty(scroller, "scrollHeight", {
+      configurable: true,
+      value: 4000,
+    });
+    Object.defineProperty(scroller, "scrollTop", {
+      configurable: true,
+      writable: true,
+      value: 3900,
+    });
+
+    fireEvent.scroll(scroller);
+
+    view.rerender(
+      <AppProviders>
+        <div style={{ height: "640px" }}>
+          <ChatMessageViewport messages={buildMessages(81)} onRetry={vi.fn()} />
+        </div>
+      </AppProviders>,
+    );
+
+    await waitFor(() => {
+      expect(scrollToIndexSpy).toHaveBeenCalledWith(80, {
+        align: "end",
+        behavior: "auto",
+      });
+    });
+
+    expect(screen.queryByTestId("new-message-banner")).not.toBeInTheDocument();
   });
 });

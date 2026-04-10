@@ -1,17 +1,14 @@
 import { http } from "msw";
 import { apiResponse, overrideHandler } from "@/test/msw";
 import {
-  archiveChatMessageAttachment,
   createChatSession,
   deleteChatMessage,
   deleteChatSession,
-  getChatMessages,
   getChatMessagesWindow,
   getChatProfile,
   getChatSessions,
   getChatSessionContext,
   renameChatSession,
-  sendChatMessage,
   updateChatSession,
 } from "./chat";
 
@@ -27,86 +24,6 @@ describe("chat api", () => {
 
     expect(result.id).toBe(1);
     expect(result.reasoning_mode).toBe("default");
-  });
-
-  it("gets chat messages in order", async () => {
-    overrideHandler(
-      http.get("*/api/chat/sessions/7/messages", () => {
-        return apiResponse([
-          {
-            id: 1,
-            session_id: 7,
-            role: "user",
-            content: "hi",
-            status: "succeeded",
-            client_request_id: "req-1",
-            error_message: null,
-            retry_of_message_id: null,
-            reply_to_message_id: null,
-            sources_json: null,
-            created_at: "2026-03-19T08:00:00Z",
-          },
-          {
-            id: 2,
-            session_id: 7,
-            role: "assistant",
-            content: "hello",
-            status: "succeeded",
-            client_request_id: null,
-            error_message: null,
-            retry_of_message_id: null,
-            reply_to_message_id: 1,
-            sources_json: null,
-            created_at: "2026-03-19T08:00:01Z",
-          },
-        ]);
-      }),
-    );
-
-    const result = await getChatMessages(7);
-
-    expect(result[0]?.id).toBe(1);
-    expect(result[1]?.id).toBe(2);
-  });
-
-  it("sends a chat message", async () => {
-    overrideHandler(
-      http.post("*/api/chat/sessions/7/messages", () => {
-        return apiResponse({
-          user_message: {
-            id: 10,
-            session_id: 7,
-            role: "user",
-            content: "hello",
-            status: "succeeded",
-            client_request_id: "req-1",
-            error_message: null,
-            retry_of_message_id: null,
-            reply_to_message_id: null,
-            sources_json: null,
-            created_at: "2026-03-19T08:00:00Z",
-          },
-          assistant_message: {
-            id: 11,
-            session_id: 7,
-            role: "assistant",
-            content: "world",
-            status: "succeeded",
-            client_request_id: null,
-            error_message: null,
-            retry_of_message_id: null,
-            reply_to_message_id: 10,
-            sources_json: null,
-            created_at: "2026-03-19T08:00:01Z",
-          },
-        });
-      }),
-    );
-
-    await sendChatMessage(7, {
-      content: "hello",
-      client_request_id: "req-1",
-    });
   });
 
   it("lists chat sessions", async () => {
@@ -153,29 +70,6 @@ describe("chat api", () => {
     );
 
     await deleteChatMessage(10);
-  });
-
-  it("archives a chat attachment", async () => {
-    overrideHandler(
-      http.post("*/api/chat/messages/10/attachments/att-1/archive", () => {
-        return apiResponse({
-          id: 10,
-          session_id: 7,
-          role: "assistant",
-          content: "hello",
-          status: "succeeded",
-          client_request_id: null,
-          error_message: null,
-          retry_of_message_id: null,
-          reply_to_message_id: 1,
-          sources_json: null,
-          created_at: "2026-03-19T08:00:01Z",
-          attachments_json: [],
-        });
-      }),
-    );
-
-    await archiveChatMessageAttachment(10, "att-1", { document_revision_id: 99 });
   });
 
   it("deletes a chat session", async () => {

@@ -1,17 +1,30 @@
 import { create } from "zustand";
 
-import type { ChatAttachmentItem } from "./chat-ui-store";
+export type ComposerAttachmentItem = {
+  id: string;
+  archivedAt?: string;
+  errorMessage?: string;
+  file?: File;
+  kind: "image" | "document";
+  mimeType?: string;
+  name: string;
+  progress?: number;
+  resourceDocumentId?: number;
+  resourceDocumentVersionId?: number;
+  sizeBytes?: number;
+  status: "queued" | "uploading" | "uploaded" | "failed";
+};
 
 type ChatAttachmentState = {
-  attachmentsBySession: Record<string, ChatAttachmentItem[]>;
-  addAttachment: (sessionId: number | null, attachment: ChatAttachmentItem) => void;
+  attachmentsBySession: Record<string, ComposerAttachmentItem[]>;
+  addAttachment: (sessionId: number | null, attachment: ComposerAttachmentItem) => void;
   clearAttachments: (sessionId: number | null) => void;
   removeAttachment: (sessionId: number | null, attachmentId: string) => void;
-  setAttachments: (sessionId: number | null, attachments: ChatAttachmentItem[]) => void;
+  setAttachments: (sessionId: number | null, attachments: ComposerAttachmentItem[]) => void;
   updateAttachment: (
     sessionId: number | null,
     attachmentId: string,
-    patch: Partial<ChatAttachmentItem>,
+    patch: Partial<ComposerAttachmentItem>,
   ) => void;
 };
 
@@ -22,10 +35,11 @@ export const useChatAttachmentStore = create<ChatAttachmentState>((set) => ({
       return;
     }
 
+    const key = String(sessionId);
     set((state) => ({
       attachmentsBySession: {
         ...state.attachmentsBySession,
-        [String(sessionId)]: [...(state.attachmentsBySession[String(sessionId)] ?? []), attachment],
+        [key]: [...(state.attachmentsBySession[key] ?? []), attachment],
       },
     }));
   },
@@ -34,10 +48,11 @@ export const useChatAttachmentStore = create<ChatAttachmentState>((set) => ({
       return;
     }
 
+    const key = String(sessionId);
     set((state) => ({
       attachmentsBySession: {
         ...state.attachmentsBySession,
-        [String(sessionId)]: [],
+        [key]: [],
       },
     }));
   },
@@ -46,10 +61,11 @@ export const useChatAttachmentStore = create<ChatAttachmentState>((set) => ({
       return;
     }
 
+    const key = String(sessionId);
     set((state) => ({
       attachmentsBySession: {
         ...state.attachmentsBySession,
-        [String(sessionId)]: (state.attachmentsBySession[String(sessionId)] ?? []).filter(
+        [key]: (state.attachmentsBySession[key] ?? []).filter(
           (attachment) => attachment.id !== attachmentId,
         ),
       },
@@ -60,10 +76,11 @@ export const useChatAttachmentStore = create<ChatAttachmentState>((set) => ({
       return;
     }
 
+    const key = String(sessionId);
     set((state) => ({
       attachmentsBySession: {
         ...state.attachmentsBySession,
-        [String(sessionId)]: attachments,
+        [key]: attachments,
       },
     }));
   },
@@ -72,12 +89,12 @@ export const useChatAttachmentStore = create<ChatAttachmentState>((set) => ({
       return;
     }
 
+    const key = String(sessionId);
     set((state) => ({
       attachmentsBySession: {
         ...state.attachmentsBySession,
-        [String(sessionId)]: (state.attachmentsBySession[String(sessionId)] ?? []).map(
-          (attachment) =>
-            attachment.id === attachmentId ? { ...attachment, ...patch } : attachment,
+        [key]: (state.attachmentsBySession[key] ?? []).map((attachment) =>
+          attachment.id === attachmentId ? { ...attachment, ...patch } : attachment,
         ),
       },
     }));

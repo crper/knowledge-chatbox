@@ -18,23 +18,8 @@ const CHAT_SEND_SHORTCUT_OPTIONS = ["shift-enter", "enter"] as const;
  * 描述聊天发送Shortcut的数据结构。
  */
 export type ChatSendShortcut = (typeof CHAT_SEND_SHORTCUT_OPTIONS)[number];
-/**
- * 描述聊天附件项的数据结构。
- */
-export type ChatAttachmentItem = {
-  id: string;
-  archivedAt?: string;
-  errorMessage?: string;
-  file?: File;
-  kind: "image" | "document";
-  mimeType?: string;
-  name: string;
-  progress?: number;
-  resourceDocumentId?: number;
-  resourceDocumentVersionId?: number;
-  sizeBytes?: number;
-  status: "queued" | "uploading" | "uploaded" | "failed";
-};
+
+export type { ComposerAttachmentItem } from "./chat-attachment-store";
 
 function loadDrafts(): Record<string, string> {
   if (typeof window === "undefined") {
@@ -75,6 +60,7 @@ type ChatUiState = {
 
 type PersistedChatUiState = Pick<ChatUiState, "draftsBySession" | "sendShortcut">;
 
+// 模块级可变状态用于 localStorage 写入节流；纯 CSR 场景安全，SSR 场景需重构为 store 内部管理
 let pendingPersistedChatUiState: StorageValue<PersistedChatUiState> | null = null;
 let persistTimer: number | null = null;
 let lastPersistedSnapshot = "";

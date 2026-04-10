@@ -1,32 +1,37 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 
 export function useChatSessionSubmitController() {
-  const submitPendingSessionIdsRef = useRef<Set<number>>(new Set());
-  const [submitPendingSessionIds, setSubmitPendingSessionIds] = useState<number[]>([]);
+  const [submitPendingSessionIds, setSubmitPendingSessionIds] = useState<Set<number>>(
+    () => new Set(),
+  );
 
   const beginSessionSubmit = useCallback((sessionId: number) => {
-    if (submitPendingSessionIdsRef.current.has(sessionId)) {
-      return false;
-    }
-
-    submitPendingSessionIdsRef.current.add(sessionId);
-    setSubmitPendingSessionIds((current) =>
-      current.includes(sessionId) ? current : [...current, sessionId],
-    );
-    return true;
+    let accepted = false;
+    setSubmitPendingSessionIds((current) => {
+      if (current.has(sessionId)) {
+        return current;
+      }
+      accepted = true;
+      const next = new Set(current);
+      next.add(sessionId);
+      return next;
+    });
+    return accepted;
   }, []);
 
   const finishSessionSubmit = useCallback((sessionId: number) => {
-    if (!submitPendingSessionIdsRef.current.has(sessionId)) {
-      return;
-    }
-
-    submitPendingSessionIdsRef.current.delete(sessionId);
-    setSubmitPendingSessionIds((current) => current.filter((item) => item !== sessionId));
+    setSubmitPendingSessionIds((current) => {
+      if (!current.has(sessionId)) {
+        return current;
+      }
+      const next = new Set(current);
+      next.delete(sessionId);
+      return next;
+    });
   }, []);
 
   const isSessionSubmitPending = useCallback(
-    (sessionId: number | null) => sessionId !== null && submitPendingSessionIds.includes(sessionId),
+    (sessionId: number | null) => sessionId !== null && submitPendingSessionIds.has(sessionId),
     [submitPendingSessionIds],
   );
 
@@ -34,6 +39,5 @@ export function useChatSessionSubmitController() {
     beginSessionSubmit,
     finishSessionSubmit,
     isSessionSubmitPending,
-    submitPendingSessionIds,
   };
 }

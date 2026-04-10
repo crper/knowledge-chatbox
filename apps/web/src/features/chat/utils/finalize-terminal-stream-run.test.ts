@@ -1,9 +1,10 @@
 import type { InfiniteData } from "@tanstack/react-query";
 
-import type { ChatMessageItem } from "@/features/chat/api/chat";
+import type { ChatMessageItem, ChatSourceItem } from "@/features/chat/api/chat";
 import { queryKeys } from "@/lib/api/query-keys";
 import { createTestQueryClient } from "@/test/query-client";
-import type { StreamingRun } from "../store/chat-stream-store";
+import { patchPagedChatMessagesCache } from "./patch-paged-chat-messages";
+import type { StreamingRun } from "./streaming-run";
 import { finalizeTerminalStreamRun } from "./finalize-terminal-stream-run";
 
 function buildMessage(overrides: Partial<ChatMessageItem>): ChatMessageItem {
@@ -25,6 +26,56 @@ function seedMessages(queryClient: ReturnType<typeof createTestQueryClient>, ses
       pages: [[]],
     },
   );
+}
+
+function createPatchAssistantMessage(queryClient: ReturnType<typeof createTestQueryClient>) {
+  return (input: {
+    appendIfMissing?: ChatMessageItem[];
+    assistantMessageId: number;
+    patch: {
+      content?: string;
+      error_message?: string | null;
+      sources_json?: ChatSourceItem[] | null;
+      status?: string;
+    };
+    sessionId: number;
+  }) => patchPagedChatMessagesCache({ ...input, queryClient });
+}
+
+function createPatchRetriedUserMessage(queryClient: ReturnType<typeof createTestQueryClient>) {
+  return ({ sessionId, userMessageId }: { sessionId: number; userMessageId: number }) => {
+    queryClient.setQueryData<InfiniteData<ChatMessageItem[], number | null>>(
+      queryKeys.chat.messagesWindow(sessionId),
+      (current) => {
+        if (!current || typeof current !== "object" || !("pages" in current)) {
+          return current;
+        }
+
+        let patched = false;
+        const nextPages = current.pages.map((page) =>
+          page.map((message) => {
+            if (message.id !== userMessageId || message.role !== "user") {
+              return message;
+            }
+
+            patched = true;
+            return {
+              ...message,
+              error_message: null,
+              status: "succeeded",
+            } satisfies ChatMessageItem;
+          }),
+        );
+
+        return patched ? { ...current, pages: nextPages } : current;
+      },
+    );
+  };
+}
+
+function createInvalidateMessagesWindow(queryClient: ReturnType<typeof createTestQueryClient>) {
+  return (sessionId: number) =>
+    queryClient.invalidateQueries({ queryKey: queryKeys.chat.messagesWindow(sessionId) });
 }
 
 describe("finalizeTerminalStreamRun", () => {
@@ -57,7 +108,7 @@ describe("finalizeTerminalStreamRun", () => {
       retryOfMessageId: 7,
       userMessageId: 8,
       userContent: "retry me",
-      content: "fixed answer",
+      content: ["fixed answer"],
       sources: [],
       errorMessage: null,
       status: "succeeded",
@@ -68,8 +119,10 @@ describe("finalizeTerminalStreamRun", () => {
       currentRun,
       currentSessionId: 1,
       errorMessage: null,
+      invalidateMessagesWindow: createInvalidateMessagesWindow(queryClient),
+      patchAssistantMessage: createPatchAssistantMessage(queryClient),
+      patchRetriedUserMessage: createPatchRetriedUserMessage(queryClient),
       patchSessionContext,
-      queryClient,
       sessionId: 1,
       status: "succeeded",
     });
@@ -106,7 +159,7 @@ describe("finalizeTerminalStreamRun", () => {
   it("invalidates the message window when the assistant patch misses", async () => {
     const queryClient = createTestQueryClient();
     const patchSessionContext = vi.fn();
-    const invalidateQueriesSpy = vi.spyOn(queryClient, "invalidateQueries");
+    const invalidateMessagesWindow = vi.fn().mockImplementation(async () => {});
 
     seedMessages(queryClient, 2);
 
@@ -114,8 +167,10 @@ describe("finalizeTerminalStreamRun", () => {
       currentRun: null,
       currentSessionId: 1,
       errorMessage: "broken",
+      invalidateMessagesWindow,
+      patchAssistantMessage: createPatchAssistantMessage(queryClient),
+      patchRetriedUserMessage: createPatchRetriedUserMessage(queryClient),
       patchSessionContext,
-      queryClient,
       sessionId: 2,
       status: "failed",
     });
@@ -124,9 +179,7 @@ describe("finalizeTerminalStreamRun", () => {
       patched: false,
       shouldPruneRun: false,
     });
-    expect(invalidateQueriesSpy).toHaveBeenCalledWith({
-      queryKey: queryKeys.chat.messagesWindow(2),
-    });
+    expect(invalidateMessagesWindow).toHaveBeenCalledWith(2);
   });
 
   it("keeps successful background runs available after refresh", async () => {
@@ -157,7 +210,7 @@ describe("finalizeTerminalStreamRun", () => {
       retryOfMessageId: null,
       userMessageId: 30,
       userContent: "hello",
-      content: "background answer",
+      content: ["background answer"],
       sources: [],
       errorMessage: null,
       status: "succeeded",
@@ -168,8 +221,10 @@ describe("finalizeTerminalStreamRun", () => {
       currentRun,
       currentSessionId: 1,
       errorMessage: null,
+      invalidateMessagesWindow: createInvalidateMessagesWindow(queryClient),
+      patchAssistantMessage: createPatchAssistantMessage(queryClient),
+      patchRetriedUserMessage: createPatchRetriedUserMessage(queryClient),
       patchSessionContext,
-      queryClient,
       sessionId: 3,
       status: "succeeded",
     });

@@ -10,10 +10,15 @@ import {
   chatSessionsQueryOptions,
 } from "@/features/chat/api/chat-query";
 import type { ChatSessionItem } from "../api/chat";
-import { useChatRuntimeState } from "./use-chat-runtime-state";
+import type { StreamingRun } from "../utils/streaming-run";
 import { buildDisplayMessages } from "../utils/build-display-messages";
 
-export function useChatSessionData(activeSessionId: number | null) {
+type UseChatSessionDataParams = {
+  activeSessionId: number | null;
+  sessionRunsById: Record<number, StreamingRun>;
+};
+
+export function useChatSessionData({ activeSessionId, sessionRunsById }: UseChatSessionDataParams) {
   const sessionsQuery = useQuery(chatSessionsQueryOptions());
   const sessions = Array.isArray(sessionsQuery.data) ? sessionsQuery.data : [];
   const resolvedActiveSessionId = useMemo(() => {
@@ -21,7 +26,8 @@ export function useChatSessionData(activeSessionId: number | null) {
       return null;
     }
 
-    return sessions.some((session) => session.id === activeSessionId) ? activeSessionId : null;
+    const sessionIds = new Set(sessions.map((s) => s.id));
+    return sessionIds.has(activeSessionId) ? activeSessionId : null;
   }, [activeSessionId, sessions, sessionsQuery.isPending]);
 
   const messagesWindowQuery = useInfiniteQuery(
@@ -38,15 +44,13 @@ export function useChatSessionData(activeSessionId: number | null) {
       sessions.find((session: ChatSessionItem) => session.id === resolvedActiveSessionId) ?? null,
     [resolvedActiveSessionId, sessions],
   );
-  const { sessionRunsById: runsById } = useChatRuntimeState(resolvedActiveSessionId);
-
   const displayMessages = useMemo(() => {
     return buildDisplayMessages({
       activeSessionId: resolvedActiveSessionId,
       messages,
-      runsById,
+      runsById: sessionRunsById,
     });
-  }, [resolvedActiveSessionId, messages, runsById]);
+  }, [resolvedActiveSessionId, messages, sessionRunsById]);
 
   const hasOlderMessages = messagesWindowQuery.hasNextPage ?? false;
   const isLoadingOlderMessages = messagesWindowQuery.isFetchingNextPage;

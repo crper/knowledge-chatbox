@@ -11,7 +11,6 @@ function RuntimeControllerHost() {
     <div>
       <div data-testid="pending-session-1">{String(runtime.isSessionSubmitPending(1))}</div>
       <div data-testid="pending-session-2">{String(runtime.isSessionSubmitPending(2))}</div>
-      <div data-testid="pending-ids">{runtime.submitPendingSessionIds.join(",")}</div>
       <button
         onClick={() => {
           runtime.beginSessionSubmit(1);
@@ -57,18 +56,15 @@ describe("useChatRuntimeController", () => {
 
     expect(screen.getByTestId("pending-session-1")).toHaveTextContent("true");
     expect(screen.getByTestId("pending-session-2")).toHaveTextContent("false");
-    expect(screen.getByTestId("pending-ids")).toHaveTextContent("1");
 
     fireEvent.click(screen.getByRole("button", { name: "begin-2" }));
 
     expect(screen.getByTestId("pending-session-1")).toHaveTextContent("true");
     expect(screen.getByTestId("pending-session-2")).toHaveTextContent("true");
-    expect(screen.getByTestId("pending-ids")).toHaveTextContent("1,2");
 
     fireEvent.click(screen.getByRole("button", { name: "finish-1" }));
 
     expect(screen.getByTestId("pending-session-1")).toHaveTextContent("false");
     expect(screen.getByTestId("pending-session-2")).toHaveTextContent("true");
-    expect(screen.getByTestId("pending-ids")).toHaveTextContent("2");
   });
 });

@@ -1,14 +1,35 @@
 /**
- * @file 聊天相关 Hook 模块。
+ * @file 聊天工作区装配层。
+ *
+ * Hooks 依赖图：
+ *
+ *   useChatWorkspace(activeSessionId)
+ *   ├── useChatRuntimeController()
+ *   │   ├── useChatSessionSubmitController()  ← 提交锁 (React local state)
+ *   │   └── useChatStreamRun()               ← 流式运行 (QueryClient cache)
+ *   ├── useChatRuntimeState()                ← 单实例订阅 StreamingRun 变更
+ *   ├── useChatWorkspaceViewModel()
+ *   │   ├── useChatAttachmentStore            ← 附件 (Zustand, 不持久化)
+ *   │   ├── useChatUiStore                    ← 草稿/快捷键 (Zustand, localStorage)
+ *   │   └── useChatSessionData()
+ *   │       ├── useQuery(sessions)            ← 会话列表
+ *   │       └── useInfiniteQuery(messages)    ← 消息窗口
+ *   ├── useChatSessionCacheActions()          ← patch/invalidate QueryCache
+ *   ├── useChatStreamLifecycle()              ← SSE 流式发送 (useMutation)
+ *   ├── useChatBackgroundRunToasts()          ← 后台完成通知
+ *   ├── useChatWorkspaceActions()
+ *   │   └── useChatComposerSubmit()           ← 提交/重试核心逻辑
+ *   └── useChatAttachmentIntake()             ← 文件添加到附件 store
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useChatAttachmentIntake } from "../hooks/use-chat-attachment-intake";
 import { useChatBackgroundRunToasts } from "../hooks/use-chat-background-run-toasts";
 import { useChatSessionCacheActions } from "../hooks/use-chat-session-cache-actions";
 import { useChatWorkspaceActions } from "../hooks/use-chat-workspace-actions";
 import { useChatRuntimeController } from "../hooks/use-chat-runtime-controller";
+import { useChatRuntimeState } from "../hooks/use-chat-runtime-state";
 import { useChatStreamLifecycle } from "../hooks/use-chat-stream-lifecycle";
 import { findStreamRunByAssistantMessageId } from "../utils/stream-run-query";
 import { useChatWorkspaceViewModel } from "./use-chat-workspace-view-model";
@@ -24,11 +45,14 @@ export function useChatWorkspace(activeSessionId: number | null) {
   const runtime = useChatRuntimeController();
   const { beginSessionSubmit, finishSessionSubmit, isSessionSubmitPending, streamRun } = runtime;
 
+  const { allRuns, sessionRunsById } = useChatRuntimeState(activeSessionId);
+
   const {
     activeSession,
     attachments,
     displayMessages,
     draft,
+    hasMessages,
     hasOlderMessages,
     isLoadingOlderMessages,
     loadOlderMessages,
@@ -45,24 +69,29 @@ export function useChatWorkspace(activeSessionId: number | null) {
   } = useChatWorkspaceViewModel({
     activeSessionId,
     isSessionSubmitPending,
+    sessionRunsById,
   });
+  currentSessionIdRef.current = resolvedActiveSessionId;
 
-  useEffect(() => {
-    currentSessionIdRef.current = resolvedActiveSessionId;
-  }, [resolvedActiveSessionId]);
   const {
     appendStartedUserMessage,
     invalidateSessionArtifacts,
+    patchAssistantMessage,
+    patchRetriedUserMessage,
     patchSessionContext,
     patchUserMessageAttachments,
   } = useChatSessionCacheActions();
   const { sendMutation } = useChatStreamLifecycle({
     appendStartedUserMessage,
     currentSessionIdRef,
+    invalidateMessagesWindow: invalidateSessionArtifacts,
+    patchAssistantMessage,
+    patchRetriedUserMessage,
     patchSessionContext,
     streamRun,
   });
   useChatBackgroundRunToasts({
+    allRuns,
     resolvedActiveSessionId,
     sessions,
     sessionsPending: sessionsQuery.isPending,
@@ -96,7 +125,7 @@ export function useChatWorkspace(activeSessionId: number | null) {
     displayMessages,
     draft,
     editFailedMessage,
-    hasMessages: displayMessages.length > 0,
+    hasMessages,
     hasOlderMessages,
     removeAttachment,
     retryMessage,

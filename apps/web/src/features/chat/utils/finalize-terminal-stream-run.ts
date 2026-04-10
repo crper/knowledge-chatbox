@@ -1,10 +1,6 @@
-import type { QueryClient } from "@tanstack/react-query";
-
-import type { ChatMessageItem, ChatSessionContextItem } from "../api/chat";
-import { queryKeys } from "@/lib/api/query-keys";
-import type { StreamingRun } from "../store/chat-stream-store";
+import type { ChatMessageItem, ChatSessionContextItem, ChatSourceItem } from "../api/chat";
+import { joinStreamingRunContent, type StreamingRun } from "./streaming-run";
 import { MessageRole, MessageStatus } from "../constants";
-import { patchPagedChatMessagesCache } from "./patch-paged-chat-messages";
 
 type StreamRunTerminalStatus = "failed" | "succeeded";
 
@@ -12,13 +8,25 @@ type FinalizeTerminalStreamRunInput = {
   currentRun: StreamingRun | null;
   currentSessionId: number | null;
   errorMessage: string | null;
+  invalidateMessagesWindow: (sessionId: number) => Promise<void>;
+  patchAssistantMessage: (input: {
+    appendIfMissing?: ChatMessageItem[];
+    assistantMessageId: number;
+    patch: {
+      content?: string;
+      error_message?: string | null;
+      sources_json?: ChatSourceItem[] | null;
+      status?: string;
+    };
+    sessionId: number;
+  }) => boolean;
+  patchRetriedUserMessage: (input: { sessionId: number; userMessageId: number }) => void;
   patchSessionContext: (input: {
     attachments?: ChatSessionContextItem["attachments"];
     latestAssistantMessageId?: number;
     latestAssistantSources?: ChatSessionContextItem["latest_assistant_sources"];
     sessionId: number;
   }) => void;
-  queryClient: QueryClient;
   sessionId: number;
   status: StreamRunTerminalStatus;
 };
@@ -32,8 +40,9 @@ function buildTerminalMessages({
   run: StreamingRun;
   status: StreamRunTerminalStatus;
 }): ChatMessageItem[] {
+  const runContent = joinStreamingRunContent(run.content);
   const assistantMessage: ChatMessageItem = {
-    content: run.content,
+    content: runContent,
     error_message: errorMessage,
     id: run.assistantMessageId,
     reply_to_message_id: run.retryOfMessageId ?? run.userMessageId ?? null,
@@ -59,53 +68,21 @@ function buildTerminalMessages({
   ];
 }
 
-function patchRetriedUserMessage({
-  queryClient,
-  sessionId,
-  userMessageId,
-}: {
-  queryClient: QueryClient;
-  sessionId: number;
-  userMessageId: number;
-}) {
-  queryClient.setQueryData(queryKeys.chat.messagesWindow(sessionId), (current: any) => {
-    if (!current || typeof current !== "object" || !("pages" in current)) {
-      return current;
-    }
-
-    let patched = false;
-    const nextPages = current.pages.map((page: ChatMessageItem[]) =>
-      page.map((message) => {
-        if (message.id !== userMessageId || message.role !== MessageRole.USER) {
-          return message;
-        }
-
-        patched = true;
-        return {
-          ...message,
-          error_message: null,
-          status: MessageStatus.SUCCEEDED,
-        } satisfies ChatMessageItem;
-      }),
-    );
-
-    return patched ? { ...current, pages: nextPages } : current;
-  });
-}
-
 export async function finalizeTerminalStreamRun({
   currentRun,
   currentSessionId,
   errorMessage,
+  invalidateMessagesWindow,
+  patchAssistantMessage,
+  patchRetriedUserMessage,
   patchSessionContext,
-  queryClient,
   sessionId,
   status,
 }: FinalizeTerminalStreamRunInput) {
   const patched =
     currentRun == null
       ? false
-      : patchPagedChatMessagesCache({
+      : patchAssistantMessage({
           appendIfMissing: buildTerminalMessages({
             errorMessage,
             run: currentRun,
@@ -113,19 +90,17 @@ export async function finalizeTerminalStreamRun({
           }),
           assistantMessageId: currentRun.assistantMessageId,
           patch: {
-            content: currentRun.content,
+            content: joinStreamingRunContent(currentRun.content),
             error_message: errorMessage,
-            sources_json: currentRun.sources as ChatMessageItem["sources_json"],
+            sources_json: currentRun.sources as ChatSourceItem[] | null,
             status,
           },
-          queryClient,
           sessionId,
         });
 
   if (currentRun != null) {
     if (status === MessageStatus.SUCCEEDED && currentRun.retryOfMessageId != null) {
       patchRetriedUserMessage({
-        queryClient,
         sessionId,
         userMessageId: currentRun.retryOfMessageId,
       });
@@ -140,9 +115,7 @@ export async function finalizeTerminalStreamRun({
   }
 
   if (!patched) {
-    await queryClient.invalidateQueries({
-      queryKey: queryKeys.chat.messagesWindow(sessionId),
-    });
+    await invalidateMessagesWindow(sessionId);
   }
 
   return {

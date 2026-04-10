@@ -39,25 +39,27 @@ export function buildMessageRowModel(message: ChatMessageItem, t: (key: string) 
         ? t("assistantFailedFallback")
         : t("assistantStreamingFallback");
   const displayErrorMessage = getUserFacingMessageError(message, t);
-  const statusMeta =
-    message.status === MessageStatus.FAILED
-      ? {
-          label: isUserMessage ? t("messageStatusUserFailed") : t("messageStatusAssistantFailed"),
-          tone: "error" as const,
-        }
-      : isAssistantMessage && isStreamingStatus(message.status)
-        ? {
-            label: t("assistantStreamingStatus"),
-            tone: "pending" as const,
-          }
-        : {
-            label: isUserMessage
-              ? t("messageStatusUserReady")
-              : isAssistantMessage
-                ? t("messageStatusAssistantReady")
-                : t("messageStatusSystemReady"),
-            tone: "default" as const,
-          };
+  let statusMeta: { label: string; tone: "error" | "pending" | "default" };
+  if (message.status === MessageStatus.FAILED) {
+    statusMeta = {
+      label: isUserMessage ? t("messageStatusUserFailed") : t("messageStatusAssistantFailed"),
+      tone: "error",
+    };
+  } else if (isAssistantMessage && isStreamingStatus(message.status)) {
+    statusMeta = {
+      label: t("assistantStreamingStatus"),
+      tone: "pending",
+    };
+  } else {
+    statusMeta = {
+      label: isUserMessage
+        ? t("messageStatusUserReady")
+        : isAssistantMessage
+          ? t("messageStatusAssistantReady")
+          : t("messageStatusSystemReady"),
+      tone: "default",
+    };
+  }
 
   return {
     assistantContent,

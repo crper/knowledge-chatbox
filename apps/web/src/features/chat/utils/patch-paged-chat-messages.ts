@@ -32,19 +32,23 @@ export function patchPagedChatMessagesCache({
         return current;
       }
 
-      const nextPages = current.pages.map((page) =>
-        page.map((message) => {
-          if (message.id !== assistantMessageId || message.role !== "assistant") {
-            return message;
+      const nextPages: ChatMessageItem[][] = [];
+      for (const page of current.pages) {
+        if (patched) {
+          nextPages.push(page);
+          continue;
+        }
+        const nextPage: ChatMessageItem[] = [];
+        for (const message of page) {
+          if (!patched && message.id === assistantMessageId && message.role === "assistant") {
+            patched = true;
+            nextPage.push({ ...message, ...patch });
+          } else {
+            nextPage.push(message);
           }
-
-          patched = true;
-          return {
-            ...message,
-            ...patch,
-          };
-        }),
-      );
+        }
+        nextPages.push(nextPage);
+      }
 
       if (patched) {
         return { ...current, pages: nextPages };
