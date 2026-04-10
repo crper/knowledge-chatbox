@@ -1,27 +1,31 @@
 """Ollama capability adapters."""
 
-from __future__ import annotations
-
 import base64
 import os
-import time
 from functools import lru_cache
+from time import perf_counter
 from typing import Any
 
 from knowledge_chatbox_api.providers.base import (
+    DEFAULT_VISION_PROMPT,
     BaseEmbeddingAdapter,
     BaseResponseAdapter,
     BaseVisionAdapter,
+    ClientCacheMixin,
     EmbeddingSettings,
     ProviderHealthResult,
+    ProviderName,
     ProviderSettings,
     ResponseRuntimeSettings,
     ResponseSettings,
     ResponseStreamChunk,
     VisionSettings,
+    build_reasoning_config,
+    provider_retry,
 )
 from knowledge_chatbox_api.providers.ollama_url import normalize_ollama_base_url
-from knowledge_chatbox_api.utils.compat import safe_getattr
+from knowledge_chatbox_api.utils.helpers import safe_getattr
+from knowledge_chatbox_api.utils.timing import elapsed_ms
 
 OLLAMA_BASE_URL_UNREACHABLE_CODE = "ollama_base_url_unreachable"
 OLLAMA_PROXY_ENV_KEYS = (
@@ -36,7 +40,11 @@ OLLAMA_PROXY_ENV_KEYS = (
 
 @lru_cache(maxsize=1)
 def _load_ollama_sdk_without_proxy_env():
-    """Lazily import the Ollama SDK without inheriting proxy env vars during import."""
+    """Lazily import the Ollama SDK without inheriting proxy env vars during import.
+
+    lru_cache 保证只执行一次，因此全局 environ 的短暂修改窗口极小。
+    若需彻底消除风险，可在应用启动阶段预先调用此函数。
+    """
     preserved_env = {key: os.environ.pop(key) for key in OLLAMA_PROXY_ENV_KEYS if key in os.environ}
     try:
         from ollama import Client as OllamaClient
@@ -143,31 +151,32 @@ def _missing_ollama_capabilities(
     ]
 
 
-class _OllamaClientMixin:
+class _OllamaClientMixin(ClientCacheMixin):
     def __init__(self, client_factory=None) -> None:
+        super().__init__()
         self.client_factory = client_factory
-        self._client_cache: dict[tuple[str, float], Any] = {}
 
     def _request_timeout(self, settings: ProviderSettings) -> float:
         return float(settings.provider_timeout_seconds)
 
     def _host(self, settings: ProviderSettings) -> str:
-        return normalize_ollama_base_url(settings.provider_profiles.ollama.base_url) or (
-            "http://host.docker.internal:11434"
+        return (
+            normalize_ollama_base_url(settings.provider_profiles.ollama.base_url)
+            or "http://host.docker.internal:11434"
         )
 
     def _client(self, settings: ProviderSettings):
         host = self._host(settings)
         timeout = self._request_timeout(settings)
         cache_key = (host, timeout)
-        client = self._client_cache.get(cache_key)
-        if client is None:
-            client_factory = self.client_factory
-            if client_factory is None:
-                client_factory, _ = _load_ollama_sdk_without_proxy_env()
-            client = client_factory(host=host, timeout=timeout, trust_env=False)
-            self._client_cache[cache_key] = client
-        return client
+
+        def create_client():
+            resolved_factory = self.client_factory
+            if resolved_factory is None:
+                resolved_factory, _ = _load_ollama_sdk_without_proxy_env()
+            return resolved_factory(host=host, timeout=timeout, trust_env=False)
+
+        return self._get_or_create_client(cache_key, create_client)
 
     def _quick_model_check(self, settings: ProviderSettings, model: str) -> Any:
         return self._client(settings).show(model)
@@ -179,7 +188,7 @@ class _OllamaClientMixin:
         *,
         required_capabilities: dict[str, tuple[str, ...]] | None = None,
     ) -> ProviderHealthResult:
-        start = time.perf_counter()
+        start = perf_counter()
         try:
             show_result = self._quick_model_check(settings, model)
         except Exception as exc:  # noqa: BLE001
@@ -201,11 +210,12 @@ class _OllamaClientMixin:
         return ProviderHealthResult(
             healthy=True,
             message="ok",
-            latency_ms=int((time.perf_counter() - start) * 1000),
+            latency_ms=elapsed_ms(start),
         )
 
     def _think_config(self, settings: ResponseRuntimeSettings) -> bool:
-        return settings.reasoning_mode == "on"
+        config = build_reasoning_config(ProviderName.OLLAMA, settings.reasoning_mode)
+        return config.get("extra_body", {}).get("think", False)
 
     def _serialize_messages(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
         serialized_messages: list[dict[str, Any]] = []
@@ -288,6 +298,7 @@ class OllamaResponseAdapter(_OllamaClientMixin, BaseResponseAdapter):
 class OllamaEmbeddingAdapter(_OllamaClientMixin, BaseEmbeddingAdapter):
     """Ollama embedding 适配器。"""
 
+    @provider_retry
     def embed(self, texts: list[str], settings: EmbeddingSettings) -> list[list[float]]:
         response = self._client(settings).embed(model=settings.embedding_route.model, input=texts)
         embeddings = safe_getattr(response, "embeddings")
@@ -310,6 +321,7 @@ class OllamaVisionAdapter(_OllamaClientMixin, BaseVisionAdapter):
 
     supports_vision = True
 
+    @provider_retry
     def analyze_image(self, inputs: list[dict[str, Any]], settings: VisionSettings) -> str:
         encoded_images = [
             base64.b64encode(item.get("bytes", b"")).decode("utf-8") for item in inputs
@@ -319,7 +331,7 @@ class OllamaVisionAdapter(_OllamaClientMixin, BaseVisionAdapter):
             messages=[
                 {
                     "role": "user",
-                    "content": "Describe the image content in markdown.",
+                    "content": DEFAULT_VISION_PROMPT,
                     "images": encoded_images,
                 }
             ],

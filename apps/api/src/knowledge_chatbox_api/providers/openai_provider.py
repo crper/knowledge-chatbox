@@ -1,26 +1,30 @@
 """OpenAI capability adapters."""
 
-from __future__ import annotations
-
 import base64
-import time
+from time import perf_counter
 from typing import Any, cast
 from urllib.parse import urlsplit, urlunsplit
 
 from openai import NOT_GIVEN
 
 from knowledge_chatbox_api.providers.base import (
+    DEFAULT_VISION_PROMPT,
     BaseEmbeddingAdapter,
     BaseResponseAdapter,
     BaseVisionAdapter,
+    ClientCacheMixin,
     EmbeddingSettings,
     ProviderHealthResult,
+    ProviderName,
     ProviderSettings,
     ResponseRuntimeSettings,
     ResponseSettings,
     ResponseStreamChunk,
     VisionSettings,
+    build_reasoning_config,
+    provider_retry,
 )
+from knowledge_chatbox_api.utils.timing import elapsed_ms
 
 DEFAULT_MAX_OUTPUT_TOKENS = 4096
 OPENAI_MODEL_NOT_AVAILABLE_CODE = "openai_model_not_available"
@@ -42,10 +46,10 @@ class OpenAIInvalidApiKeyError(Exception):
         super().__init__("OpenAI API key is invalid or rejected by the gateway.")
 
 
-class _OpenAIClientMixin:
+class _OpenAIClientMixin(ClientCacheMixin):
     def __init__(self, client_factory=None) -> None:
+        super().__init__()
         self.client_factory = client_factory
-        self._client_cache: dict[tuple[str | None, str | None, float | object], Any] = {}
 
     def _normalize_base_url(self, base_url: str | None) -> str | None:
         if not base_url:
@@ -69,17 +73,14 @@ class _OpenAIClientMixin:
         client_timeout = float(timeout) if timeout else NOT_GIVEN
         normalized_base_url = self._normalize_base_url(profile.base_url)
         cache_key = (profile.api_key, normalized_base_url, client_timeout)
-        cached = self._client_cache.get(cache_key)
-        if cached is not None:
-            return cached
 
-        kwargs = {"api_key": profile.api_key, "timeout": client_timeout}
-        if normalized_base_url:
-            kwargs["base_url"] = normalized_base_url
+        def create_client():
+            kwargs = {"api_key": profile.api_key, "timeout": client_timeout}
+            if normalized_base_url:
+                kwargs["base_url"] = normalized_base_url
+            return factory(**kwargs)
 
-        client = factory(**kwargs)
-        self._client_cache[cache_key] = client
-        return client
+        return self._get_or_create_client(cache_key, create_client)
 
     def _api_key(self, settings: ProviderSettings) -> str | None:
         return settings.provider_profiles.openai.api_key
@@ -162,12 +163,37 @@ class _OpenAIClientMixin:
 
         raise OpenAIModelNotAvailableError(model)
 
+    def _run_health_check(self, settings, model: str) -> ProviderHealthResult:
+        start = perf_counter()
+        try:
+            if not self._api_key(settings):
+                return ProviderHealthResult(healthy=False, message="OpenAI API key is missing.")
+            self._quick_model_check(settings, model)
+        except OpenAIInvalidApiKeyError as exc:
+            return ProviderHealthResult(
+                healthy=False,
+                code=OPENAI_INVALID_API_KEY_CODE,
+                message=str(exc),
+            )
+        except OpenAIModelNotAvailableError as exc:
+            return ProviderHealthResult(
+                healthy=False,
+                code=OPENAI_MODEL_NOT_AVAILABLE_CODE,
+                message=str(exc),
+            )
+        except Exception as exc:  # noqa: BLE001
+            return ProviderHealthResult(healthy=False, message=str(exc))
+        return ProviderHealthResult(
+            healthy=True,
+            message="ok",
+            latency_ms=elapsed_ms(start),
+        )
+
     def _reasoning_config(self, settings: ResponseRuntimeSettings) -> Any:
-        mode = settings.reasoning_mode
-        if mode == "on":
-            return {"effort": "medium"}
-        if mode == "off":
-            return {"effort": "none"}
+        config = build_reasoning_config(ProviderName.OPENAI, settings.reasoning_mode)
+        effort = config.get("openai_reasoning_effort")
+        if effort is not None:
+            return {"effort": effort}
         return NOT_GIVEN
 
     def _serialize_response_input(self, messages: list[dict[str, Any]]) -> Any:
@@ -256,66 +282,20 @@ class OpenAIResponseAdapter(_OpenAIClientMixin, BaseResponseAdapter):
             yield ResponseStreamChunk(type="error", error_message=str(exc))
 
     def health_check(self, settings: ResponseSettings) -> ProviderHealthResult:
-        start = time.perf_counter()
-        try:
-            if not self._api_key(settings):
-                return ProviderHealthResult(healthy=False, message="OpenAI API key is missing.")
-            self._quick_model_check(settings, settings.response_route.model)
-        except OpenAIInvalidApiKeyError as exc:
-            return ProviderHealthResult(
-                healthy=False,
-                code=OPENAI_INVALID_API_KEY_CODE,
-                message=str(exc),
-            )
-        except OpenAIModelNotAvailableError as exc:
-            return ProviderHealthResult(
-                healthy=False,
-                code=OPENAI_MODEL_NOT_AVAILABLE_CODE,
-                message=str(exc),
-            )
-        except Exception as exc:  # noqa: BLE001
-            return ProviderHealthResult(healthy=False, message=str(exc))
-
-        return ProviderHealthResult(
-            healthy=True,
-            message="ok",
-            latency_ms=int((time.perf_counter() - start) * 1000),
-        )
+        return self._run_health_check(settings, settings.response_route.model)
 
 
 class OpenAIEmbeddingAdapter(_OpenAIClientMixin, BaseEmbeddingAdapter):
     """OpenAI embedding 适配器。"""
 
+    @provider_retry
     def embed(self, texts: list[str], settings: EmbeddingSettings) -> list[list[float]]:
         client = self._client(settings)
         response = client.embeddings.create(model=settings.embedding_route.model, input=texts)
         return [item.embedding for item in response.data]
 
     def health_check(self, settings: EmbeddingSettings) -> ProviderHealthResult:
-        start = time.perf_counter()
-        try:
-            if not self._api_key(settings):
-                return ProviderHealthResult(healthy=False, message="OpenAI API key is missing.")
-            self._quick_model_check(settings, settings.embedding_route.model)
-        except OpenAIInvalidApiKeyError as exc:
-            return ProviderHealthResult(
-                healthy=False,
-                code=OPENAI_INVALID_API_KEY_CODE,
-                message=str(exc),
-            )
-        except OpenAIModelNotAvailableError as exc:
-            return ProviderHealthResult(
-                healthy=False,
-                code=OPENAI_MODEL_NOT_AVAILABLE_CODE,
-                message=str(exc),
-            )
-        except Exception as exc:  # noqa: BLE001
-            return ProviderHealthResult(healthy=False, message=str(exc))
-        return ProviderHealthResult(
-            healthy=True,
-            message="ok",
-            latency_ms=int((time.perf_counter() - start) * 1000),
-        )
+        return self._run_health_check(settings, settings.embedding_route.model)
 
 
 class OpenAIVisionAdapter(_OpenAIClientMixin, BaseVisionAdapter):
@@ -323,6 +303,7 @@ class OpenAIVisionAdapter(_OpenAIClientMixin, BaseVisionAdapter):
 
     supports_vision = True
 
+    @provider_retry
     def analyze_image(self, inputs: list[dict[str, Any]], settings: VisionSettings) -> str:
         client = self._client(settings)
         response = client.responses.create(
@@ -331,7 +312,7 @@ class OpenAIVisionAdapter(_OpenAIClientMixin, BaseVisionAdapter):
                 {
                     "role": "user",
                     "content": [
-                        {"type": "input_text", "text": "Describe the image content in markdown."},
+                        {"type": "input_text", "text": DEFAULT_VISION_PROMPT},
                         *[
                             {
                                 "type": "input_image",
@@ -351,27 +332,4 @@ class OpenAIVisionAdapter(_OpenAIClientMixin, BaseVisionAdapter):
         return getattr(response, "output_text", "") or ""
 
     def health_check(self, settings: VisionSettings) -> ProviderHealthResult:
-        start = time.perf_counter()
-        try:
-            if not self._api_key(settings):
-                return ProviderHealthResult(healthy=False, message="OpenAI API key is missing.")
-            self._quick_model_check(settings, settings.vision_route.model)
-        except OpenAIInvalidApiKeyError as exc:
-            return ProviderHealthResult(
-                healthy=False,
-                code=OPENAI_INVALID_API_KEY_CODE,
-                message=str(exc),
-            )
-        except OpenAIModelNotAvailableError as exc:
-            return ProviderHealthResult(
-                healthy=False,
-                code=OPENAI_MODEL_NOT_AVAILABLE_CODE,
-                message=str(exc),
-            )
-        except Exception as exc:  # noqa: BLE001
-            return ProviderHealthResult(healthy=False, message=str(exc))
-        return ProviderHealthResult(
-            healthy=True,
-            message="ok",
-            latency_ms=int((time.perf_counter() - start) * 1000),
-        )
+        return self._run_health_check(settings, settings.vision_route.model)
