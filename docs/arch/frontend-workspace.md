@@ -20,10 +20,11 @@
 - 中间承接主任务区
 - 右侧承接上下文、来源引用、会话附件列表和状态辅助信息；当前通过独立会话摘要 query 读取“已去重附件 + 最近一次 assistant 引用”，在没有附件 / 引用时先收敛成单张概览卡
 
-一级工作模式只有两个：
+一级工作模式当前有三个：
 
 - `对话`
 - `资源`
+- `图谱（占位）`
 
 低频但必要的能力不再塞进左下角按钮阵列，而是集中到账户中枢和设置中心。
 
@@ -35,12 +36,13 @@
 
 - `对话`
 - `资源`
+- `图谱（占位）`
 - 设置页内的二级导航
 - 底部账户中枢
 
 当前没有把 `用户管理` 放成一级工作模式。管理员仍然能管理用户，但入口在设置中心里。
 
-## 2.4 UI 基座约束
+### 2.2 UI 基座约束
 
 当前 `apps/web/src/components/ui/*` 已统一收敛到 `Base UI` 语义层：
 
@@ -54,7 +56,7 @@
 - 减少工作台里一半 `render` 一半 `asChild` 的双轨心智
 - 让链接语义、按钮语义和菜单项语义分开，避免后续再混回去
 
-### 2.2 账户中枢
+### 2.3 账户中枢
 
 左侧底部固定为账户中枢，而不是“系统管理 / 个人操作”工具箱：
 
@@ -72,7 +74,7 @@
 - 改密和用户管理仍然留在更稳定的设置层级
 - 普通用户和管理员看到的工作台骨架更一致
 
-### 2.3 设置中心
+### 2.4 设置中心
 
 设置页不是单一 provider 配置页，而是设置中心。当前分组规则如下：
 
@@ -102,20 +104,24 @@
 
 ### 3.1 桌面端
 
-桌面端分两种壳层：
+桌面端分三种壳层：
 
 - 聊天工作区：左侧会话入口，中间主任务区，右侧上下文面板
-- 标准工作区：左侧标准导航，右侧主内容区；两栏在同一层桌面壳层里贴边相邻，不额外插入独立卡片 gap
+- Workbench 工作区：统一一级 `WorkspaceRail` + 页面工作台；`/knowledge` 用 `section / main / inspector` 三栏，`/graph` 用占位主区
+- 内容工作区：`/settings` 与 `/users` 复用内容页壳层
 - `/chat` 在桌面端使用固定三栏 grid，不开放拖拽改列宽；`Cmd/Ctrl+B` 折叠左栏；右栏通过显式“收起上下文侧栏”按钮折叠，折叠后通过主区边缘按钮恢复
 - 打开 `/chat` 入口时，前端会优先恢复最近一次访问的会话，恢复期间保持加载态，不先短暂落到空会话态；如果本地记录失效，则回退到当前列表里的首个会话；没有会话时保持空入口态
-- `/knowledge`、`/settings`、`/users` 在桌面端复用标准工作区壳层；左侧标准导航改为嵌入式 surface，右侧内容不再额外包独立大卡片
+- `/knowledge` 在桌面端迁移为三栏 workbench：左侧资源 section、中间主预览、右侧 inspector
+- `/graph` 在桌面端挂到同一一级 rail 下，当前为“图谱工作区已预留”的占位页
+- `/settings`、`/users` 在桌面端继续复用内容工作区壳层
 
 不同页面下职责如下：
 
 | 页面         | 主区                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | 辅助区 / 壳层说明                                                                                                                     |
 | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | `/chat`      | 虚拟化消息流、交错消息卡片、输入区、发送与重试、统一折叠附件面板；主区默认先读取最近一段消息窗口，继续向上滚动时再请求更早消息；新会话空态默认只保留一句短引导并鼓励直接提问；系统默认标题只在渲染层按当前语言显示，不把本地化默认值写进持久化数据                                                                                                                                                                                                                                                                                      | 会话概览、会话附件折叠面板、最近一次回答的来源分组、运行状态；右栏通过独立 `context` 摘要 query 读取；无附件 / 引用时只显示单张概览卡 |
-| `/knowledge` | 上传、满宽资源列表、批量状态浏览；主区使用 `flat + wide` 连续轨道，不再包独立外卡片，内容起始轨道贴近工作区分隔线；长资源表格在行数超过阈值后切到固定表头 + 虚拟行；搜索框与类型 / 状态筛选当前由 `/knowledge` 的 route search 统一承接，再驱动服务端列表 query，不再只在页面本地过滤；如果筛选结果里已经看不到 pending 文档，前端会改读轻量 `summary` 摘要判断是否还要继续刷新当前筛选列表；移动端不再把三张指标卡长期顶在列表前，而是把资源总数 / 处理中 / 已索引压成列表区里的紧凑摘要 badge，让搜索、上传和资源列表本体优先进入首屏 | 复用标准工作区壳层；资源详情改为按需打开的右侧预览抽屉，抽屉内承接版本入口、重建索引和打开原文件等操作                                |
+| `/knowledge` | 上传、满宽资源列表、批量状态浏览；桌面端采用 `section / main / inspector` 三栏 workbench，主区使用 `flat + wide` 连续轨道，不再包独立外卡片；长资源表格在行数超过阈值后切到固定表头 + 虚拟行；搜索框与类型 / 状态筛选当前由 `/knowledge` 的 route search 统一承接，再驱动服务端列表 query，不再只在页面本地过滤；如果筛选结果里已经看不到 pending 文档，前端会改读轻量 `summary` 摘要判断是否还要继续刷新当前筛选列表；移动端不再把三张指标卡长期顶在列表前，而是把资源总数 / 处理中 / 已索引压成列表区里的紧凑摘要 badge，让搜索、上传和资源列表本体优先进入首屏 | 桌面端 inspector 常驻；移动端通过抽屉承接 section / inspector；资源详情与动作统一由预览面板承接 |
+| `/graph`     | 当前只提供占位主区与说明文案，明确图谱入口已预留                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | 复用同一一级 `WorkspaceRail`；不承诺图谱数据和图形交互已实现                                                                          |
 | `/settings`  | 当前设置分组内容                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | 复用标准工作区壳层；页面内部可自行排布辅助卡片，但不额外占用工作区第三栏                                                              |
 | `/users`     | 管理员用户表和操作                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | 复用标准工作区壳层；当前以主区为主，不依赖常驻右侧面板                                                                                |
 
@@ -139,6 +145,7 @@
 - `/login`
 - `/chat`
 - `/knowledge`
+- `/graph`
 - `/settings`
 - `/users`
 - `/403`
@@ -164,6 +171,7 @@
 | `src/pages/auth/login-page.tsx`          | 登录、语言切换、主题切换、入口说明；若登录前改了主题，登录成功后会同步账号偏好                                                                                                                                                                                                                        |
 | `src/pages/chat/chat-page.tsx`           | 会话、虚拟化消息视口、交错消息排版、同步/流式发送、统一折叠附件面板、图片 viewer、会话级思考模式；`/chat` 入口会优先恢复最近一次访问的会话并先保持加载态；当前 response provider 缺少必填配置时，composer 底部会切成“先配置 Ollama”入口，并在发送前给出国际化提示；当前轮有附件时会显式提示附件作用域 |
 | `src/pages/knowledge/knowledge-page.tsx` | 资源上传、upload readiness 门禁、宽轨道列表、预览抽屉、版本入口、重建索引；页面只消费 canonical route search，不再自行维护第二套 filter 真相                                                                                                                                                          |
+| `src/pages/graph/graph-page.tsx`         | 图谱占位页；明确“入口已预留，图谱能力后续交付”                                                                                                                                                                                                                                                         |
 | `src/pages/settings/settings-page.tsx`   | 设置中心四个分组的主区内容                                                                                                                                                                                                                                                                            |
 | `src/pages/users/users-page.tsx`         | 管理员用户管理页                                                                                                                                                                                                                                                                                      |
 
@@ -178,7 +186,7 @@
 - 设置中心里的提供商配置与系统提示词
 - 用户管理列表
 - 会话、消息、运行态查询
-- **流式问答运行时状态**：每个 SSE 流式运行（`streamRun`）的临时状态（content delta、sources、status）直接存储在 TanStack Query Cache 中，而非 Zustand store。运行完成后 5 分钟自动清理。
+- **流式问答运行时状态**：每个 SSE 流式运行（`streamRun`）的临时状态（content delta、sources、status）直接存储在 TanStack Query Cache 中，而非 Zustand store。运行完成后 5 分钟自动清理。`streamRunQueryOptions` 为每个流式运行注册空 `queryFn`（返回 `null`）并设置 `staleTime: Infinity` + `gcTime: 5min`，确保 QueryClient 生命周期可预测；流式运行类型定义和工具函数集中在 `features/chat/utils/streaming-run.ts`。
 
 不要把这些最终结果再复制一份进本地 store。
 
@@ -214,19 +222,33 @@
 ```text
 [ChatPage]
   -> [useChatWorkspace]
-     -> [useChatSessionData]         # 只读模型
-     -> [useChatRuntimeState]        # 只读 streamRun
-     -> [useChatRuntimeController]   # 会话级提交锁 + streamRun action
-     -> [useChatSessionCacheActions] # patch/invalidate messagesWindow + context
+     -> [useChatRuntimeController]       # 运行时控制器组合层
+        -> [useChatSessionSubmitController]  ← 会话级提交锁 (React local state)
+        -> [useChatStreamRun]                ← 流式运行 action (QueryClient cache)
+     -> [useChatRuntimeState]            # 订阅 StreamingRun 变更
+     -> [useChatWorkspaceViewModel]      # 视图模型中间层
+        -> [useChatAttachmentStore]         ← 附件 (Zustand, 不持久化)
+        -> [useChatUiStore]                 ← 草稿/快捷键 (Zustand, localStorage)
+        -> [useChatSessionData]             ← 只读模型
+           -> [useQuery(sessions)]          ← 会话列表
+           -> [useInfiniteQuery(messages)]  ← 消息窗口
+     -> [useChatSessionCacheActions]     # patch/invalidate QueryCache
+     -> [useChatStreamLifecycle]         # SSE 流式发送 (useMutation)
+     -> [useChatBackgroundRunToasts]     # 后台完成通知
+     -> [useChatWorkspaceActions]
+        -> [useChatComposerSubmit]       ← 提交/重试核心逻辑
+     -> [useChatAttachmentIntake]        # 文件添加到附件 store
 ```
 
 约束：
 
 - `useChatSessionData` 当前只负责 `sessions / messagesWindow / displayMessages` 这条只读模型，不再对外暴露 cache patch
 - `useChatRuntimeState` 是 query-backed `streamRun` 的统一读取面，不再允许多个 hook 各自订阅 QueryCache 后再做平行筛选
-- `useChatRuntimeController` 当前组合会话级提交锁和 `streamRun` action；提交锁不是 Zustand 真相，也不落持久化
-- `useChatSessionCacheActions` 当前统一承接 `appendStartedUserMessage`、`patchUserMessageAttachments`、`patchSessionContext` 与 `invalidateSessionArtifacts`
-- `useChatWorkspace` 当前退回聊天页面装配层，只负责把 read model、runtime controller、cache actions、submit/stream 生命周期组合成页面可消费接口
+- `useChatSessionSubmitController` 管理会话级提交锁；提交锁不是 Zustand 真相，也不落持久化
+- `useChatStreamRun` 管理流式运行的 action
+- `useChatSessionCacheActions` 统一承接 `appendStartedUserMessage`、`patchUserMessageAttachments`、`patchAssistantMessage`、`patchRetriedUserMessage`、`patchSessionContext` 与 `invalidateSessionArtifacts`
+- `useChatWorkspaceViewModel` 是视图模型中间层，组合 `useChatAttachmentStore`、`useChatUiStore` 和 `useChatSessionData`，向外暴露统一的视图模型（activeSession、attachments、draft、displayMessages、submitPending 等），避免装配层直接拼接多个 store 和 query
+- `useChatWorkspace` 当前退回聊天页面装配层，只负责把 view model、runtime controller、cache actions、submit/stream 生命周期组合成页面可消费接口
 - `useChatUiStore` 当前只保留 `draftsBySession + sendShortcut`
 - `useChatAttachmentStore` 当前单独承接 `attachmentsBySession`，避免把 `File` 和 persist store 混在一起
 
@@ -273,11 +295,15 @@
 ### 6.1 壳层与导航
 
 - `src/layouts/app-shell-layout.tsx`
-  负责整体工作台编排
+  负责一级 `WorkspaceRail`、聊天壳层与内容壳层的路由级编排
+- `src/layouts/workbench-layout.tsx`
+  负责 `/knowledge` 等 workbench 页面的 `section / main / inspector` 三栏骨架与移动端抽屉退化
+- `src/features/workspace/components/workspace-rail.tsx`
+  负责一级模式导航（`对话 / 资源 / 图谱占位`）与账户中枢承接
 - `src/features/workspace/components/standard-sidebar.tsx`
-  负责左侧标准侧栏、设置分组导航和账户中枢
+  负责设置页二级导航壳层（settings section nav）
 - `src/components/ui/sidebar.tsx`
-  负责工作台侧栏的基础原语；标准侧栏和会话侧栏当前都优先在这层组合，而不是各自维护一套平行容器
+  负责标准侧栏的基础原语；设置二级导航优先在这层组合，而不是维护平行容器
 
 ### 6.2 业务 feature
 
@@ -299,7 +325,7 @@
 - `lib/forms.ts`：轻量表单辅助
 - `lib/config`：环境变量和常量
 - `providers`：Query、Theme、i18n、store 同步等 provider
-- `i18n`：多语言文案，文件结构为 `src/i18n/locales/{zh-CN,en}.json`，key 命名采用点分路径（如 `chat.emptyState.title`）
+- `i18n`：多语言文案，文件结构为 `src/i18n/locales/{zh-CN,en}/*.json`（按语言分子目录、按功能域分 JSON 文件），key 命名采用点分路径（如 `chat.emptyState.title`）
 
 当前两个实现约束也放在这里：
 
@@ -367,7 +393,8 @@
 
 1. `apps/web/src/routes/*`
 2. `apps/web/src/layouts/app-shell-layout.tsx`
-3. `apps/web/src/features/workspace/components/standard-sidebar.tsx`
+3. `apps/web/src/layouts/workbench-layout.tsx`
+4. `apps/web/src/features/workspace/components/workspace-rail.tsx`
 
 ### 想看设置中心
 

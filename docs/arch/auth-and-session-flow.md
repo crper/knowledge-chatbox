@@ -134,7 +134,7 @@ Protected fetch
 
 - 只对业务请求做这套续期
 - `/api/auth/login`、`/api/auth/logout`、`/api/auth/refresh` 自己不会再触发 refresh
-- 上传、普通 JSON 请求、SSE 流式聊天共享这套规则
+- 上传、普通 JSON 请求、SSE 流式问答共享这套规则
 
 ## 5. 改密后的重新登录
 

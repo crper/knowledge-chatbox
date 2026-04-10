@@ -2,12 +2,12 @@
 
 > 本地优先的知识工作台
 
-把“上传资料、标准化、索引、问答、来源回看、系统配置、用户管理”收进同一套单机工作流。前端使用 React + Vite+ + Base UI，后端使用 FastAPI；SQLite 保存业务真相与 `FTS5` 词法兜底索引，Chroma 保存向量检索派生索引，原始文件和标准化结果直接落在本地目录。
+把"上传资料、标准化、索引、问答、来源回看、系统配置、用户管理"收进同一套单机工作流。前端使用 React + Vite+ + Base UI，后端使用 FastAPI；SQLite 保存业务真相与 `FTS5` 词法候选兜底索引，Chroma 保存向量检索派生索引，原始文件和标准化结果直接落在本地目录。
 
 [快速开始](#快速开始) • [文档入口](#文档入口) • [开发入口](#开发入口) • [Docker 单机部署](#docker-单机部署) • [参与贡献](#参与贡献)
 
 > [!WARNING]
-> 当前项目仍处于 WIP 阶段，主要在本地 `Ollama qwen3.5:4b` 环境下联调和验证功能有效性。
+> 当前项目仍处于 WIP 阶段，主要在本地 `Ollama` 环境下联调和验证功能有效性。
 > Docker Compose 可以跑通，但本地机器资源占用较高；日常开发更建议直接使用 `just dev`。
 > 欢迎提 Issue、开 PR，或直接参与一起完善它。
 
@@ -17,8 +17,8 @@
 
 | 特性                 | 状态   | 说明                                                                                  |
 | -------------------- | ------ | ------------------------------------------------------------------------------------- |
-| 📱 响应式工作台      | 已支持 | `/chat` 桌面端三栏，移动端退化为抽屉和单栏                                            |
-| 📚 多格式资料入库    | 已支持 | `txt / md / pdf / docx / png / jpg / jpeg / webp`                                     |
+| 📱 响应式工作台      | 已支持 | 桌面端统一一级 `WorkspaceRail`；`/chat` 固定三栏，`/knowledge` 三栏工作台，移动端退化为抽屉和单栏 |
+| 📚 多格式资料入库    | 已支持 | `txt / md / pdf / docx / png / jpg / jpeg / webp`；切块使用 chonkie Markdown 感知策略 |
 | 🌊 流式问答          | 已支持 | 同步问答、SSE 流式输出、失败重试、活动 run 查询；长会话主区默认只加载最近一段消息窗口 |
 | 🧾 来源引用回看      | 已支持 | 回答内容带来源片段；右侧上下文栏走独立会话摘要接口，不再依赖整段消息重拉              |
 | 🔎 检索兜底          | 已支持 | `Chroma` 向量召回优先，`SQLite FTS5` 负责词法候选兜底                                 |
@@ -28,8 +28,9 @@
 | 🌐 中英双语          | 已支持 | 前端内置 `zh-CN / en` 文案与切换能力                                                  |
 | 🌓 主题切换          | 已支持 | `light / dark / system` 三种主题偏好                                                  |
 | 🔐 角色与设置中心    | 已支持 | `admin / user` 两类角色，带设置中心和用户管理                                         |
+| 🧭 Graph 占位工作区  | 已支持 | 一级导航预留 `/graph` 入口，当前为明确的占位页，不承诺图谱功能已落地                  |
 | 🐳 单机部署          | 已支持 | 开发态可直跑，稳定运行走 Docker Compose                                               |
-| 🗂️ 本地优先存储      | 已支持 | SQLite（含 `FTS5` 词法兜底索引）、Chroma、上传文件和标准化结果都落本地目录            |
+| 🗂️ 本地优先存储      | 已支持 | SQLite（含 `FTS5` 词法候选兜底索引）、Chroma、上传文件和标准化结果都落本地目录            |
 | 🪶 依赖克制          | 已支持 | V1 不引入 Redis、Celery、对象存储等非必需基础设施                                     |
 
 ## 演示 Demo
@@ -54,7 +55,7 @@ just dev
 - `apps/web/README.md` 和 `apps/api/README.md` 只补充各自包内命令，不再重复定义仓库级启动流程
 - `just dev` 会先拉起 API，等 `/api/health` ready 后再启动 Web，并在终端统一打印 Web / API 的访问地址；若覆盖了 `API_PORT` / `WEB_PORT`，这里显示的链接也会同步变化
 - 默认会给 API 约 60 秒完成启动补偿；如果你的机器更慢，可临时调大 `DEV_API_READY_MAX_ATTEMPTS` 后再执行 `just dev`
-- 前端开发态默认建议把 `VITE_API_BASE_URL` 留空，统一走同源 `/api`；`vp dev` 会通过 Vite proxy 转发到本机 API
+- 前端开发态默认建议把 `VITE_API_BASE_URL` 留空，统一走同源 `/api`；`vp dev` 会通过 Vite proxy 转发到当前 `API_PORT` 对应的本机 API（默认 `8000`）
 - 如果你只想先理解接手顺序和提交前要求，再看 [CONTRIBUTING.md](./CONTRIBUTING.md)
 
 ### 1. 准备本地工具
@@ -114,7 +115,7 @@ just setup
 | 检查仓库表面约束   | `just repo-check`  | 校验 README / 包级 README 和 `justfile` 的关键入口是否保持一致                                     |
 | 只跑后端           | `just api-dev`     | FastAPI 开发态                                                                                     |
 | 只跑前端           | `just web-dev`     | Web 开发态                                                                                         |
-| 检查与测试         | `just test`        | 先跑 `repo-check`，再执行后端 `tests/integration + unit + runtime + migrations` 与前端测试         |
+| 检查与测试         | `just test`        | 先跑 `repo-check`，再执行后端静态检查（ruff + basedpyright）与测试、前端静态检查与测试 |
 | 重置本地数据       | `just reset-dev`   | 清空全部本地数据（上传文件/标准化结果/向量索引/SQLite含WAL）、重装依赖、重启前后端，并打印访问地址 |
 | 单机部署           | `just docker-up`   | Docker Compose 运行                                                                                |
 
@@ -214,9 +215,12 @@ knowledge-chatbox/
     uploads/           # 原始上传文件
     normalized/        # 标准化后的文本 / Markdown
     chroma/            # Chroma 向量索引数据
-    sqlite/            # SQLite 业务数据与 FTS5 词法兜底索引
+    sqlite/            # SQLite 业务数据与 FTS5 词法候选兜底索引
   scripts/
+    check_repo_surface.py
+    dev-run.sh
     docker-deploy.sh
+    export_openapi.py
   reset-local-data.sh
   justfile
   .env.example
