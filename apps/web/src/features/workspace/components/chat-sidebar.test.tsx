@@ -27,11 +27,11 @@ vi.mock("@tanstack/react-virtual", () => ({
         getVirtualItems: () =>
           Array.from({ length: visibleCount }, (_, index) => ({
             index,
-            start: index * 72,
-            size: 72,
+            start: index * 56,
+            size: 56,
             key: index,
           })),
-        getTotalSize: () => count * 72,
+        getTotalSize: () => count * 56,
         scrollToIndex: vi.fn(),
       };
     },
@@ -151,7 +151,7 @@ describe("ChatSidebar", () => {
     expect(screen.getAllByTestId(/chat-session-actions-/).length).toBeLessThan(160);
   });
 
-  it("renders session actions in a dedicated horizontal action rail", async () => {
+  it("renders session actions as a dropdown menu trigger", async () => {
     resetStore();
 
     mockSessions([{ id: 1, title: "新的会话" }]);
@@ -161,11 +161,29 @@ describe("ChatSidebar", () => {
     expect(await screen.findByRole("link", { name: "新的会话" })).toBeInTheDocument();
 
     const row = screen.getByTestId("chat-session-row-1");
-    const rail = screen.getByTestId("chat-session-action-rail-1");
+    const menu = screen.getByTestId("chat-session-action-menu-1");
+    const trigger = within(menu).getByTestId("chat-session-menu-trigger-1");
 
-    expect(row).toContainElement(rail);
-    expect(within(rail).getByRole("button", { name: "重命名 新的会话" })).toBeInTheDocument();
-    expect(within(rail).getByRole("button", { name: "删除 新的会话" })).toBeInTheDocument();
+    expect(row).toContainElement(menu);
+    fireEvent.click(trigger);
+    expect(await screen.findByRole("menuitem", { name: "重命名" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "删除" })).toBeInTheDocument();
+  });
+
+  it("renders a dedicated compact new-session entry beneath the search field", async () => {
+    resetStore();
+
+    mockSessions([{ id: 1, title: "新的会话" }]);
+
+    renderSidebar();
+
+    await screen.findByRole("link", { name: "新的会话" });
+
+    const searchBox = screen.getByRole("textbox", { name: "搜索会话" });
+    const newSessionButton = screen.getByRole("button", { name: "新建会话" });
+
+    expect(searchBox).toBeInTheDocument();
+    expect(newSessionButton).toHaveTextContent("新建会话");
   });
 
   it("stores a cleared session title as null so the localized fallback keeps working", async () => {
@@ -173,7 +191,8 @@ describe("ChatSidebar", () => {
 
     renderSidebar("/chat/1");
 
-    fireEvent.click(await screen.findByRole("button", { name: "重命名 Session A" }));
+    fireEvent.click(await screen.findByRole("button", { name: "打开 Session A 的会话菜单" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "重命名" }));
     fireEvent.change(screen.getByRole("textbox", { name: "会话名称" }), {
       target: { value: "   " },
     });
@@ -187,7 +206,8 @@ describe("ChatSidebar", () => {
 
     renderSidebar("/chat/1");
 
-    fireEvent.click(await screen.findByRole("button", { name: "重命名 Session A" }));
+    fireEvent.click(await screen.findByRole("button", { name: "打开 Session A 的会话菜单" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "重命名" }));
     const input = screen.getByRole("textbox", { name: "会话名称" });
     fireEvent.change(input, {
       target: { value: "Session A Renamed" },
@@ -206,7 +226,8 @@ describe("ChatSidebar", () => {
 
     renderSidebar("/chat/1");
 
-    fireEvent.click(await screen.findByRole("button", { name: "重命名 Session A" }));
+    fireEvent.click(await screen.findByRole("button", { name: "打开 Session A 的会话菜单" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "重命名" }));
     const input = screen.getByRole("textbox", { name: "会话名称" });
     fireEvent.change(input, {
       target: { value: "会话 A" },

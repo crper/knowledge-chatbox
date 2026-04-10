@@ -4,12 +4,7 @@
 
 import { create } from "zustand";
 
-export type SessionStatus =
-  | "bootstrapping"
-  | "authenticated"
-  | "anonymous"
-  | "expired"
-  | "degraded";
+type SessionStatus = "bootstrapping" | "authenticated" | "anonymous" | "expired" | "degraded";
 
 type SessionState = {
   status: SessionStatus;

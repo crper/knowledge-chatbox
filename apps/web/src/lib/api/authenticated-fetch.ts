@@ -2,25 +2,68 @@
  * @file 带鉴权恢复的 fetch 封装模块。
  */
 
-import { ApiRequestError } from "@/lib/api/client";
-import { markSessionExpired } from "@/lib/auth/session-manager";
+import { ApiRequestError, setResponseAuthTokenSnapshot } from "@/lib/api/client";
+import {
+  applyAuthenticatedAccessToken,
+  expireSessionIfStaleAccessToken,
+} from "@/lib/auth/session-manager";
 import { useSessionStore } from "@/lib/auth/session-store";
-import { getAccessToken, setAccessToken } from "@/lib/auth/token-store";
+import { getAccessToken } from "@/lib/auth/token-store";
 import { env } from "@/lib/config/env";
 import { extractErrorDetail, getUserFacingErrorMessage } from "./error-response";
 
+const AUTH_ROUTE_PREFIX = "/api/auth/";
+const AUTH_LOGIN_PATH = "/api/auth/login";
+const AUTH_LOGOUT_PATH = "/api/auth/logout";
+const AUTH_REFRESH_PATH = "/api/auth/refresh";
+
+type RequestExecutor = (request: Request) => Promise<Response>;
+
 let refreshInFlight: Promise<string> | null = null;
 
-function shouldRetryWithRefresh(url: string) {
-  return (
-    !url.endsWith("/api/auth/login") &&
-    !url.endsWith("/api/auth/logout") &&
-    !url.endsWith("/api/auth/refresh")
-  );
+async function executeRequest(request: Request) {
+  const contentType = request.headers.get("content-type") ?? "";
+  const body =
+    request.method === "GET" || request.method === "HEAD"
+      ? undefined
+      : contentType.includes("application/json")
+        ? await request.clone().text()
+        : request.body;
+
+  return globalThis.fetch(request.url, {
+    body,
+    credentials: request.credentials,
+    headers: request.headers,
+    method: request.method,
+    signal: request.signal,
+  });
 }
 
-function shouldShortCircuitProtectedRequest(url: string) {
-  return !url.includes("/api/auth/");
+function resolveRequestPathname(url: string) {
+  try {
+    return new URL(url).pathname;
+  } catch {
+    try {
+      const fallbackBase =
+        env.apiBaseUrl ||
+        (typeof globalThis.location?.origin === "string" ? globalThis.location.origin : undefined);
+
+      return fallbackBase ? new URL(url, fallbackBase).pathname : url;
+    } catch {
+      return url;
+    }
+  }
+}
+
+function isProtectedRequest(url: string) {
+  return !resolveRequestPathname(url).startsWith(AUTH_ROUTE_PREFIX);
+}
+
+function shouldRetryWithRefresh(url: string) {
+  const pathname = resolveRequestPathname(url);
+  return (
+    pathname !== AUTH_LOGIN_PATH && pathname !== AUTH_LOGOUT_PATH && pathname !== AUTH_REFRESH_PATH
+  );
 }
 
 function buildUnauthorizedResponse() {
@@ -40,10 +83,57 @@ function buildUnauthorizedResponse() {
   );
 }
 
+function extractRequestAccessToken(request: Request) {
+  const authorization = request.headers.get("Authorization")?.trim();
+  if (!authorization) {
+    return null;
+  }
+
+  const [scheme, token] = authorization.split(/\s+/, 2);
+  if (scheme !== "Bearer" || !token) {
+    return null;
+  }
+
+  return token;
+}
+
+function cloneRequestWithAccessToken(request: Request, accessToken: string) {
+  const headers = new Headers(request.headers);
+  headers.set("Authorization", `Bearer ${accessToken}`);
+  return new Request(request, { headers });
+}
+
+function withAccessToken(request: Request) {
+  const accessToken = getAccessToken();
+  if (!accessToken) {
+    return request;
+  }
+
+  return cloneRequestWithAccessToken(request, accessToken);
+}
+
+async function retryWithAccessTokenRefresh(
+  requestSnapshot: Request,
+  executeRequest: RequestExecutor,
+) {
+  const requestAccessToken = extractRequestAccessToken(requestSnapshot);
+
+  try {
+    const nextAccessToken = await requestAccessTokenRefresh();
+    const retryRequest = cloneRequestWithAccessToken(requestSnapshot, nextAccessToken);
+    const response = await executeRequest(retryRequest);
+    setResponseAuthTokenSnapshot(response, nextAccessToken);
+    return response;
+  } catch {
+    expireSessionIfStaleAccessToken(requestAccessToken);
+    return null;
+  }
+}
+
 export async function requestAccessTokenRefresh() {
   if (!refreshInFlight) {
     refreshInFlight = globalThis
-      .fetch(`${env.apiBaseUrl}/api/auth/refresh`, {
+      .fetch(`${env.apiBaseUrl}${AUTH_REFRESH_PATH}`, {
         credentials: "include",
         method: "POST",
       })
@@ -77,8 +167,8 @@ export async function requestAccessTokenRefresh() {
             status: 500,
           });
         }
-        setAccessToken(accessToken);
-        useSessionStore.getState().setStatus("authenticated");
+
+        applyAuthenticatedAccessToken(accessToken);
         return accessToken;
       })
       .finally(() => {
@@ -93,35 +183,30 @@ export async function requestAccessTokenRefresh() {
  * 发送带 access token 的请求，并在 401 时自动刷新后重放一次。
  */
 export async function authenticatedFetch(input: string, init: RequestInit = {}) {
+  const request = new Request(input, {
+    ...init,
+    credentials: init.credentials ?? "include",
+  });
   const sessionStatus = useSessionStore.getState().status;
+
   if (
-    shouldShortCircuitProtectedRequest(input) &&
+    isProtectedRequest(request.url) &&
     (sessionStatus === "anonymous" || sessionStatus === "expired")
   ) {
     return buildUnauthorizedResponse();
   }
 
-  const headers = new Headers(init.headers);
-  const accessToken = getAccessToken();
-  if (accessToken) {
-    headers.set("Authorization", `Bearer ${accessToken}`);
-  }
+  const authenticatedRequest = withAccessToken(request);
+  const retryRequestSnapshot = shouldRetryWithRefresh(authenticatedRequest.url)
+    ? authenticatedRequest.clone()
+    : null;
 
-  const send = () =>
-    globalThis.fetch(input, {
-      ...init,
-      credentials: init.credentials ?? "include",
-      headers,
-    });
-
-  let response = await send();
-  if (response.status === 401 && shouldRetryWithRefresh(input)) {
-    try {
-      const nextAccessToken = await requestAccessTokenRefresh();
-      headers.set("Authorization", `Bearer ${nextAccessToken}`);
-      response = await send();
-    } catch {
-      markSessionExpired();
+  let response = await executeRequest(authenticatedRequest);
+  setResponseAuthTokenSnapshot(response, extractRequestAccessToken(authenticatedRequest));
+  if (response.status === 401 && retryRequestSnapshot) {
+    const retryResponse = await retryWithAccessTokenRefresh(retryRequestSnapshot, executeRequest);
+    if (retryResponse) {
+      response = retryResponse;
     }
   }
 

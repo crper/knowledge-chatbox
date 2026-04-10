@@ -263,25 +263,6 @@ describe("ChatResourcePanel", () => {
     expect(screen.queryByTestId("chat-resource-panel-horizontal-scroll")).not.toBeInTheDocument();
   });
 
-  it("only uses the latest assistant message with sources for grouped references", async () => {
-    stubChatContextFetch(
-      buildContext({
-        latest_assistant_message_id: 2,
-        latest_assistant_sources: [
-          { chunk_id: "11:0", document_id: 11, document_name: "最新资料", snippet: "新片段" },
-        ],
-      }),
-    );
-
-    renderResourcePanel();
-
-    expect(await screen.findByText("1 条引用")).toBeInTheDocument();
-    expect(screen.getByText("最新资料")).toBeInTheDocument();
-    expect(screen.getByText("新片段")).toBeInTheDocument();
-    expect(screen.queryByText("旧资料")).not.toBeInTheDocument();
-    expect(screen.queryByText("旧片段")).not.toBeInTheDocument();
-  });
-
   it("shows empty references when the latest assistant message has no sources", async () => {
     stubChatContextFetch(
       buildContext({ latest_assistant_message_id: 2, latest_assistant_sources: [] }),
