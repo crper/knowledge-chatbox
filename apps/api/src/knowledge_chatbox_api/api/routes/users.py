@@ -1,7 +1,5 @@
 """用户路由定义。"""
 
-from __future__ import annotations
-
 from fastapi import APIRouter, status
 
 from knowledge_chatbox_api.api.deps import CurrentUserDep, UserServiceDep
@@ -9,6 +7,7 @@ from knowledge_chatbox_api.api.error_responses import (
     ADMIN_ROUTE_ERROR_RESPONSES,
     USER_CREATE_ERROR_RESPONSES,
 )
+from knowledge_chatbox_api.models.auth import User
 from knowledge_chatbox_api.schemas.common import Envelope
 from knowledge_chatbox_api.schemas.user import (
     CreateUserRequest,
@@ -20,7 +19,7 @@ from knowledge_chatbox_api.schemas.user import (
 router = APIRouter(prefix="/api/users", tags=["users"])
 
 
-def to_user_read(user) -> UserRead:
+def to_user_read(user: User) -> UserRead:
     """把用户模型转换为用户响应结构。"""
     return UserRead.model_validate(user, from_attributes=True)
 

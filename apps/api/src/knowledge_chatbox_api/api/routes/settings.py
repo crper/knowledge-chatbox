@@ -1,7 +1,5 @@
 """设置路由定义。"""
 
-from __future__ import annotations
-
 from fastapi import APIRouter, BackgroundTasks, Body
 
 from knowledge_chatbox_api.api.deps import AdminUserDep, DbSessionDep, SettingsDep
@@ -34,9 +32,8 @@ DEFAULT_TEST_ROUTES_PAYLOAD = Body(default_factory=UpdateSettingsRequest)
 def get_settings_route(
     session: DbSessionDep,
     settings: SettingsDep,
-    current_user: AdminUserDep,
+    _current_user: AdminUserDep,
 ) -> Envelope[SettingsRead]:
-    del current_user
     result = SettingsService(session, settings).get_or_create_settings()
     return Envelope(success=True, data=result, error=None)
 

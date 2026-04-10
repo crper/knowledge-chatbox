@@ -1,7 +1,5 @@
 """FastAPI dependency providers shared by route modules."""
 
-from __future__ import annotations
-
 from functools import lru_cache
 from typing import Annotated
 
@@ -12,6 +10,7 @@ from knowledge_chatbox_api.core.config import Settings, get_settings
 from knowledge_chatbox_api.core.security import PasswordManager
 from knowledge_chatbox_api.db.session import get_db_session
 from knowledge_chatbox_api.models.auth import User
+from knowledge_chatbox_api.models.enums import UserRole
 from knowledge_chatbox_api.services.auth.auth_service import AuthService
 from knowledge_chatbox_api.services.auth.rate_limit_service import RateLimitService
 from knowledge_chatbox_api.services.auth.user_service import AuthorizationError, UserService
@@ -101,7 +100,7 @@ UserServiceDep = Annotated[UserService, Depends(get_user_service)]
 
 def require_admin(current_user: CurrentUserDep) -> User:
     """Reject non-admin users before admin-only handlers run."""
-    if current_user.role != "admin":
+    if current_user.role != UserRole.ADMIN:
         raise AuthorizationError("Admin permission required.")
     return current_user
 

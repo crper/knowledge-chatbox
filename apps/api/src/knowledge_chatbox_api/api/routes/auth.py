@@ -1,7 +1,5 @@
 """认证路由定义。"""
 
-from __future__ import annotations
-
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request, Response
@@ -11,6 +9,7 @@ from knowledge_chatbox_api.api.deps import (
     CurrentUserDep,
     get_session_token,
 )
+from knowledge_chatbox_api.models.auth import User
 from knowledge_chatbox_api.schemas.auth import (
     AccessTokenRead,
     AuthUserRead,
@@ -27,7 +26,7 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 SessionTokenDep = Annotated[str | None, Depends(get_session_token)]
 
 
-def to_auth_user_read(user) -> AuthUserRead:
+def to_auth_user_read(user: User) -> AuthUserRead:
     """把用户模型转换为认证响应结构。"""
     return AuthUserRead.model_validate(user, from_attributes=True)
 

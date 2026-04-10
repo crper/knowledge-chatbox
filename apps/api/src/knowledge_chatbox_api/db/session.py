@@ -1,7 +1,5 @@
 """SQLAlchemy engine and session factory lifecycle."""
 
-from __future__ import annotations
-
 from collections.abc import Generator
 from functools import cache
 
@@ -9,6 +7,7 @@ from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 
 from knowledge_chatbox_api.core.config import get_settings
+from knowledge_chatbox_api.utils.files import ensure_directory
 
 SQLITE_BUSY_TIMEOUT_MS = 30_000
 
@@ -39,7 +38,7 @@ def _create_engine(sqlite_path: str) -> Engine:
 def create_db_engine() -> Engine:
     """Return the cached engine for the configured SQLite database."""
     settings = get_settings()
-    settings.sqlite_path.parent.mkdir(parents=True, exist_ok=True)
+    ensure_directory(settings.sqlite_path.parent)
     return _create_engine(str(settings.sqlite_path))
 
 
@@ -53,15 +52,23 @@ def _create_session_factory(sqlite_path: str) -> sessionmaker[Session]:
 def create_session_factory() -> sessionmaker[Session]:
     """Return the cached session factory for the configured SQLite database."""
     settings = get_settings()
-    settings.sqlite_path.parent.mkdir(parents=True, exist_ok=True)
+    ensure_directory(settings.sqlite_path.parent)
     return _create_session_factory(str(settings.sqlite_path))
 
 
 def get_db_session() -> Generator[Session, None, None]:
-    """Yield one request-scoped SQLAlchemy session."""
+    """Yield one request-scoped SQLAlchemy session.
+
+    On normal return the session is committed; on exception it is rolled back.
+    Either way the session is closed in the ``finally`` block.
+    """
     session_factory = create_session_factory()
     session = session_factory()
     try:
         yield session
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
     finally:
         session.close()

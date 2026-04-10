@@ -1,7 +1,5 @@
 """OpenAPI metadata shared by the FastAPI application."""
 
-from __future__ import annotations
-
 API_SUMMARY = "本地优先的知识工作台 API"
 API_DESCRIPTION = (
     "Knowledge Chatbox API 提供本地优先的认证、文档入库、检索问答、系统设置和用户管理能力。"

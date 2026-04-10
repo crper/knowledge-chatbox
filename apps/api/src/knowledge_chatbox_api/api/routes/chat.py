@@ -1,7 +1,5 @@
 """聊天路由定义。"""
 
-from __future__ import annotations
-
 from collections.abc import Iterable
 from typing import cast
 
@@ -10,7 +8,14 @@ from fastapi.responses import StreamingResponse
 
 from knowledge_chatbox_api.api.deps import CurrentUserDep, DbSessionDep, SettingsDep
 from knowledge_chatbox_api.api.error_responses import CHAT_STREAM_RESPONSES
-from knowledge_chatbox_api.models.chat import ChatMessageAttachment
+from knowledge_chatbox_api.models.chat import (
+    ChatMessage,
+    ChatMessageAttachment,
+    ChatRun,
+    ChatSession,
+)
+from knowledge_chatbox_api.models.enums import ChatMessageRole, ChatMessageStatus, ProviderName
+from knowledge_chatbox_api.models.settings import AppSettings
 from knowledge_chatbox_api.schemas.chat import (
     ActiveChatRunRead,
     ArchiveChatAttachmentRequest,
@@ -35,6 +40,7 @@ from knowledge_chatbox_api.services.chat.chat_application_service import (
 )
 from knowledge_chatbox_api.services.chat.stream_events import StreamEventEnvelope
 from knowledge_chatbox_api.services.settings.settings_service import SettingsService
+from knowledge_chatbox_api.utils.helpers import strip_or_none
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
@@ -53,7 +59,7 @@ def stream_presented_events(
             close()
 
 
-def to_chat_session_read(chat_session) -> ChatSessionRead:
+def to_chat_session_read(chat_session: ChatSession) -> ChatSessionRead:
     """把会话模型转换为会话响应结构。"""
     return ChatSessionRead.model_validate(chat_session, from_attributes=True)
 
@@ -80,7 +86,7 @@ def _build_chat_attachment_payloads(
 
 
 def to_chat_message_read(
-    message,
+    message: ChatMessage,
     attachments: Iterable[ChatMessageAttachment] | None = None,
 ) -> ChatMessageRead:
     """把消息模型转换为消息响应结构。"""
@@ -88,9 +94,9 @@ def to_chat_message_read(
         attachments_json=_build_chat_attachment_payloads(attachments),
         id=message.id,
         session_id=message.session_id,
-        role=message.role,
+        role=ChatMessageRole(message.role),
         content=message.content,
-        status=message.status,
+        status=ChatMessageStatus(message.status),
         client_request_id=message.client_request_id,
         error_message=message.error_message,
         retry_of_message_id=message.retry_of_message_id,
@@ -111,47 +117,45 @@ def to_chat_session_context_read(input: dict) -> ChatSessionContextRead:
     )
 
 
-def to_chat_run_read(chat_run) -> ChatRunRead:
+def to_chat_run_read(chat_run: ChatRun) -> ChatRunRead:
     """把运行记录模型转换为运行响应结构。"""
     return ChatRunRead.model_validate(chat_run, from_attributes=True)
 
 
-def to_active_chat_run_read(chat_run) -> ActiveChatRunRead:
+def to_active_chat_run_read(chat_run: ChatRun) -> ActiveChatRunRead:
     """把运行记录模型转换为活动运行响应结构。"""
     return ActiveChatRunRead.model_validate(chat_run, from_attributes=True)
 
 
-def to_chat_profile_read(settings_record) -> ChatProfileRead:
+def to_chat_profile_read(settings_record: AppSettings) -> ChatProfileRead:
     """把设置记录转换为当前聊天配置结构。"""
     return ChatProfileRead(
-        provider=settings_record.response_provider,
+        provider=settings_record.response_provider,  # type: ignore[arg-type]
         model=settings_record.response_model,
         configured=_is_response_provider_configured(settings_record),
     )
 
 
-def _is_response_provider_configured(settings_record) -> bool:
+def _is_response_provider_configured(settings_record: AppSettings) -> bool:
     provider = settings_record.response_provider
-    model = (settings_record.response_model or "").strip()
-    if not model:
+    if not strip_or_none(settings_record.response_model):
         return False
 
     profiles = settings_record.provider_profiles
-    if provider == "anthropic":
-        return bool((profiles.anthropic.api_key or "").strip())
-    if provider == "ollama":
-        return bool((profiles.ollama.base_url or "").strip())
-    return bool((profiles.openai.api_key or "").strip())
+    if provider == ProviderName.ANTHROPIC:
+        return bool(strip_or_none(profiles.anthropic.api_key))
+    if provider == ProviderName.OLLAMA:
+        return bool(strip_or_none(profiles.ollama.base_url))
+    return bool(strip_or_none(profiles.openai.api_key))
 
 
 @router.get("/profile", response_model=Envelope[ChatProfileRead])
 def get_chat_profile(
     session: DbSessionDep,
     settings: SettingsDep,
-    current_user: CurrentUserDep,
+    _current_user: CurrentUserDep,
 ) -> Envelope[ChatProfileRead]:
     """返回当前聊天 provider 与模型。"""
-    del current_user
     settings_record = SettingsService(session, settings).get_or_create_settings_record()
     return Envelope(success=True, data=to_chat_profile_read(settings_record), error=None)
 

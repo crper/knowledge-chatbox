@@ -1,7 +1,5 @@
 """应用入口与启动初始化。"""
 
-from __future__ import annotations
-
 import sqlite3
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -43,6 +41,7 @@ from knowledge_chatbox_api.tasks.document_jobs import (
     compensate_index_rebuild_status,
     compensate_processing_documents,
 )
+from knowledge_chatbox_api.utils.timing import elapsed_ms
 
 
 def _error_response(status_code: int, error: ErrorInfo) -> JSONResponse:
@@ -131,7 +130,7 @@ def create_app() -> FastAPI:
                 def run_startup_step(name: str, operation):
                     started_at = perf_counter()
                     result = operation()
-                    startup_durations_ms[name] = round((perf_counter() - started_at) * 1000, 2)
+                    startup_durations_ms[name] = elapsed_ms(started_at)
                     return result
 
                 admin = run_startup_step("ensure_default_admin", auth_service.ensure_default_admin)
