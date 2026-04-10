@@ -1,18 +1,25 @@
 """聊天 Pydantic 模型定义。"""
 
-from __future__ import annotations
-
+from collections.abc import Sequence
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, TypeAdapter
 
+from knowledge_chatbox_api.models.enums import (
+    ChatAttachmentType as ChatAttachmentTypeEnum,
+)
+from knowledge_chatbox_api.models.enums import (
+    ChatMessageRole,
+    ChatMessageStatus,
+    ReasoningMode,
+)
 from knowledge_chatbox_api.schemas._validators import (
     ReasoningModeLiteral,
     ResponseProviderLiteral,
 )
 
-ChatAttachmentType = Literal["image", "document"]
+ChatAttachmentType = ChatAttachmentTypeEnum
 
 
 class ChatAttachmentInput(BaseModel):
@@ -58,14 +65,14 @@ class ChatAttachmentMetadata(BaseModel):
             "resource_document_version_id",
         ),
     )
-    archived_at: str | None = None
+    archived_at: datetime | None = None
 
 
 _CHAT_ATTACHMENT_INPUTS_ADAPTER = TypeAdapter(list[ChatAttachmentInput])
 
 
 def parse_chat_attachment_inputs(
-    attachments: list[ChatAttachmentInput | dict[str, Any]] | None,
+    attachments: Sequence[ChatAttachmentInput | dict[str, Any]] | None,
 ) -> list[ChatAttachmentInput]:
     """把聊天附件输入统一收紧为已验证模型。"""
     if not attachments:
@@ -74,7 +81,7 @@ def parse_chat_attachment_inputs(
 
 
 def serialize_chat_attachments(
-    attachments: list[ChatAttachmentInput | dict[str, Any]] | None,
+    attachments: Sequence[ChatAttachmentInput | dict[str, Any]] | None,
 ) -> list[ChatAttachmentMetadata] | None:
     """把输入附件规范化为统一输出结构。"""
     input_attachments = parse_chat_attachment_inputs(attachments)
@@ -95,7 +102,7 @@ def serialize_chat_attachments(
 
 
 def dump_chat_attachments(
-    attachments: list[ChatAttachmentInput | dict[str, Any]] | None,
+    attachments: Sequence[ChatAttachmentInput | dict[str, Any]] | None,
 ) -> list[dict[str, Any]] | None:
     metadata = serialize_chat_attachments(attachments)
     if metadata is None:
@@ -109,7 +116,7 @@ class ArchiveChatAttachmentRequest(BaseModel):
 
 class CreateChatSessionRequest(BaseModel):
     title: str | None = None
-    reasoning_mode: ReasoningModeLiteral = "default"
+    reasoning_mode: ReasoningModeLiteral = ReasoningMode.DEFAULT
 
 
 class UpdateChatSessionRequest(BaseModel):
@@ -145,9 +152,9 @@ class ChatMessageRead(BaseModel):
     attachments_json: list[ChatAttachmentMetadata] | None = None
     id: int
     session_id: int
-    role: str
+    role: ChatMessageRole
     content: str
-    status: str
+    status: ChatMessageStatus
     client_request_id: str | None
     error_message: str | None
     retry_of_message_id: int | None

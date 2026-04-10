@@ -1,12 +1,11 @@
 """设置 Pydantic 模型定义。"""
 
-from __future__ import annotations
-
 from datetime import datetime
-from typing import Any, Protocol
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
+from knowledge_chatbox_api.models.enums import IndexRebuildStatus, ReasoningMode
 from knowledge_chatbox_api.schemas._validators import (
     EmbeddingProviderLiteral,
     PositiveInt,
@@ -107,7 +106,7 @@ class SettingsRead(BaseModel):
     updated_at: datetime
     active_index_generation: int
     building_index_generation: int | None
-    index_rebuild_status: str
+    index_rebuild_status: IndexRebuildStatus
     rebuild_started: bool = False
     reindex_required: bool = False
 
@@ -135,32 +134,7 @@ class ProviderRuntimeSettings(BaseModel):
     system_prompt: str | None = None
     provider_timeout_seconds: PositiveInt
     active_index_generation: PositiveInt | None = None
-    reasoning_mode: ReasoningModeLiteral = "default"
-
-
-class ProviderRuntimeSettingsSource(Protocol):
-    """构造 ProviderRuntimeSettings 所需的最小 settings 协议。"""
-
-    @property
-    def provider_profiles(self) -> ProviderProfiles | dict[str, Any]: ...
-
-    @property
-    def response_route(self) -> ResponseRouteConfig | dict[str, Any]: ...
-
-    @property
-    def embedding_route(self) -> EmbeddingRouteConfig | dict[str, Any]: ...
-
-    @property
-    def vision_route(self) -> VisionRouteConfig | dict[str, Any]: ...
-
-    @property
-    def system_prompt(self) -> str | None: ...
-
-    @property
-    def provider_timeout_seconds(self) -> PositiveInt: ...
-
-    @property
-    def active_index_generation(self) -> PositiveInt | None: ...
+    reasoning_mode: ReasoningModeLiteral = ReasoningMode.DEFAULT
 
 
 _PROVIDER_PROFILES_ADAPTER = TypeAdapter(ProviderProfiles)

@@ -1,13 +1,23 @@
 """文档数据模型定义。"""
 
-from __future__ import annotations
-
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, func
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    and_,
+    func,
+    or_,
+)
 from sqlalchemy.orm import Mapped, mapped_column, synonym
 
 from knowledge_chatbox_api.db.base import Base
+from knowledge_chatbox_api.models.enums import DocumentStatus
 from knowledge_chatbox_api.utils.document_types import guess_mime_type
 
 
@@ -37,7 +47,7 @@ class Document(Base):
     )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     logical_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    status: Mapped[str] = mapped_column(String(16), nullable=False, default="active")
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default=DocumentStatus.ACTIVE)
     current_version_number: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     latest_revision_id: Mapped[int | None] = mapped_column(Integer)
     created_by_user_id: Mapped[int | None] = mapped_column(
@@ -53,8 +63,16 @@ class Document(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
 
-    knowledge_base_id = synonym("space_id")
-    name = synonym("title")
+
+def latest_revision_join_condition():
+    return or_(
+        Document.latest_revision_id == DocumentRevision.id,
+        and_(
+            Document.latest_revision_id.is_(None),
+            DocumentRevision.document_id == Document.id,
+            DocumentRevision.revision_no == Document.current_version_number,
+        ),
+    )
 
 
 class DocumentRevision(Base):
@@ -111,11 +129,9 @@ class DocumentRevision(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
 
-    version_number = synonym("revision_no")
     file_name = synonym("source_filename")
     lifecycle_status = synonym("ingest_status")
     origin_path = synonym("source_path")
-    supersedes_version_id = synonym("supersedes_revision_id")
 
     def __init__(self, **kwargs) -> None:
         if kwargs.get("mime_type") is None:

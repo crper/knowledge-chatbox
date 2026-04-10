@@ -1,13 +1,12 @@
 """空间数据模型定义。"""
 
-from __future__ import annotations
-
 from datetime import datetime
 
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from knowledge_chatbox_api.db.base import Base
+from knowledge_chatbox_api.models.enums import SpaceKind
 
 
 class Space(Base):
@@ -23,7 +22,7 @@ class Space(Base):
     )
     slug: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     name: Mapped[str] = mapped_column(String(128), nullable=False)
-    kind: Mapped[str] = mapped_column(String(16), nullable=False, default="personal")
+    kind: Mapped[str] = mapped_column(String(16), nullable=False, default=SpaceKind.PERSONAL)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

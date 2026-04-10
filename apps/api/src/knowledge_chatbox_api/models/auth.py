@@ -1,13 +1,12 @@
 """认证数据模型定义。"""
 
-from __future__ import annotations
-
 from datetime import datetime
 
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from knowledge_chatbox_api.db.base import Base
+from knowledge_chatbox_api.models.enums import ThemePreference, UserStatus
 
 
 class User(Base):
@@ -27,11 +26,13 @@ class User(Base):
     username: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[str] = mapped_column(String(16), nullable=False)
-    status: Mapped[str] = mapped_column(String(16), nullable=False, default="active")
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default=UserStatus.ACTIVE)
     created_by_user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL")
     )
-    theme_preference: Mapped[str] = mapped_column(String(16), nullable=False, default="system")
+    theme_preference: Mapped[str] = mapped_column(
+        String(16), nullable=False, default=ThemePreference.SYSTEM
+    )
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     password_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
