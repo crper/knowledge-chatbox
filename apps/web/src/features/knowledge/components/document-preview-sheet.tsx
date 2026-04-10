@@ -6,6 +6,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Link } from "@/lib/app-router";
+import { queryKeys } from "@/lib/api/query-keys";
 
 import { getDocumentFileUrl } from "@/features/chat/utils/document-file-url";
 import { Badge } from "@/components/ui/badge";
@@ -19,16 +20,16 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import type { KnowledgeDocument } from "../api/documents";
-import {
-  getDocumentPreviewKind,
-  loadDocumentTextPreview,
-  type DocumentPreviewKind,
-} from "../api/document-preview";
-import { fetchProtectedFileBlob } from "@/lib/api/protected-file";
+import { getDocumentPreviewKind, loadDocumentTextPreview } from "../api/document-preview";
 import { cn } from "@/lib/utils";
 import { DocumentImagePreview } from "./document-image-preview";
 import { DocumentTextPreview } from "./document-text-preview";
-import { formatKnowledgeDocumentDateTime } from "./resource-document-helpers";
+import {
+  formatKnowledgeDocumentDateTime,
+  formatFileSize,
+  getDocumentTypeLabel,
+} from "./resource-document-helpers";
+import { openProtectedFile, downloadProtectedFile } from "./protected-file-actions";
 
 type DocumentPreviewSheetProps = {
   document: KnowledgeDocument | null;
@@ -38,49 +39,6 @@ type DocumentPreviewSheetProps = {
   onShowVersions: (documentId: number) => void;
   open: boolean;
 };
-
-function formatFileSize(bytes: number | null | undefined) {
-  if (typeof bytes !== "number" || Number.isNaN(bytes) || bytes <= 0) {
-    return null;
-  }
-
-  if (bytes < 1024) {
-    return `${bytes} B`;
-  }
-
-  return `${(bytes / 1024).toFixed(1)} KB`;
-}
-
-function triggerDownload(url: string, filename: string) {
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  link.rel = "noreferrer";
-  link.target = "_blank";
-  link.click();
-}
-
-async function resolveProtectedObjectUrl(fileUrl: string) {
-  const blob = await fetchProtectedFileBlob(fileUrl);
-  return URL.createObjectURL(blob);
-}
-
-function getTypeLabel(previewKind: DocumentPreviewKind, t: (key: string) => string) {
-  switch (previewKind) {
-    case "image":
-      return t("previewTypeImage");
-    case "markdown":
-      return t("previewTypeMarkdown");
-    case "text":
-      return t("previewTypeTxt");
-    case "pdf":
-      return t("previewTypePdf");
-    case "docx":
-      return t("previewTypeDocx");
-    default:
-      return t("previewTypeDocument");
-  }
-}
 
 /**
  * 渲染资源预览抽屉。
@@ -109,7 +67,7 @@ export function DocumentPreviewSheet({
     (previewKind === "markdown" || previewKind === "text");
 
   const previewQuery = useQuery({
-    queryKey: ["knowledge", "document-preview", document?.id, document?.updated_at],
+    queryKey: queryKeys.documents.preview(document?.id, document?.updated_at),
     queryFn: () => loadDocumentTextPreview(document!),
     enabled: shouldLoadTextPreview,
   });
@@ -143,7 +101,7 @@ export function DocumentPreviewSheet({
             <div className="surface-light space-y-2 rounded-xl p-4">
               <p className="break-words text-base font-semibold text-foreground">{document.name}</p>
               <div className="flex flex-wrap gap-2">
-                <Badge variant="outline">{getTypeLabel(previewKind, t)}</Badge>
+                <Badge variant="outline">{getDocumentTypeLabel(previewKind, t)}</Badge>
                 <Badge variant="secondary">
                   {t("versionValue", { version: document.version })}
                 </Badge>
@@ -198,15 +156,7 @@ export function DocumentPreviewSheet({
               <div className="surface-light mt-4 space-y-3 rounded-xl p-4">
                 <p className="text-sm font-medium text-foreground">{t("previewTypePdf")}</p>
                 <p className="text-sm text-muted-foreground">{t("previewPdfDescription")}</p>
-                <Button
-                  onClick={async () => {
-                    const objectUrl = await resolveProtectedObjectUrl(fileUrl);
-                    window.open(objectUrl, "_blank", "noopener,noreferrer");
-                    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
-                  }}
-                  type="button"
-                  variant="outline"
-                >
+                <Button onClick={() => openProtectedFile(fileUrl)} type="button" variant="outline">
                   {t("previewOpenPdfAction")}
                 </Button>
               </div>
@@ -228,26 +178,18 @@ export function DocumentPreviewSheet({
                 <Link className={cn(buttonVariants({ variant: "outline" }))} to="/chat">
                   {t("openChatAction")}
                 </Link>
-                <Button onClick={() => onShowVersions(document.id)} type="button" variant="outline">
-                  {t("viewVersionsAction")}
-                </Button>
                 <Button
-                  onClick={async () => {
-                    const objectUrl = await resolveProtectedObjectUrl(fileUrl);
-                    window.open(objectUrl, "_blank", "noopener,noreferrer");
-                    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
-                  }}
+                  onClick={() => onShowVersions(document.document_id)}
                   type="button"
                   variant="outline"
                 >
+                  {t("viewVersionsAction")}
+                </Button>
+                <Button onClick={() => openProtectedFile(fileUrl)} type="button" variant="outline">
                   {t("openOriginalAction")}
                 </Button>
                 <Button
-                  onClick={async () => {
-                    const objectUrl = await resolveProtectedObjectUrl(fileUrl);
-                    triggerDownload(objectUrl, document.name);
-                    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
-                  }}
+                  onClick={() => downloadProtectedFile(fileUrl, document.name)}
                   type="button"
                   variant="outline"
                 >

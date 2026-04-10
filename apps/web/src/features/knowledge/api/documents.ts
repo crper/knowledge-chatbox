@@ -2,12 +2,11 @@
  * @file 资源相关接口请求模块。
  */
 
-import { env } from "@/lib/config/env";
-import { ApiRequestError, openapiRequestRequired } from "@/lib/api/client";
+import { ApiRequestError, buildApiUrl, openapiRequestRequired } from "@/lib/api/client";
 import { apiFetchClient } from "@/lib/api/generated/client";
 import type { components } from "@/lib/api/generated/schema";
 import { refreshSession } from "@/features/auth/api/auth";
-import { markSessionExpired } from "@/lib/auth/session-manager";
+import { expireSessionIfStaleAccessToken } from "@/lib/auth/session-manager";
 import { getAccessToken } from "@/lib/auth/token-store";
 import {
   extractErrorDetail,
@@ -186,14 +185,6 @@ export async function getDocumentListSummary() {
   } satisfies DocumentListSummary;
 }
 
-export function buildApiUrl(path: string, apiBaseUrl: string = env.apiBaseUrl) {
-  const normalizedBaseUrl = apiBaseUrl.endsWith("/") ? apiBaseUrl.slice(0, -1) : apiBaseUrl;
-  if (!normalizedBaseUrl) {
-    return path;
-  }
-  return `${normalizedBaseUrl}${path}`;
-}
-
 export function uploadDocument(
   file: File,
   options?: {
@@ -240,6 +231,7 @@ export function uploadDocument(
           status: xhr.status,
           statusText: xhr.statusText,
         });
+        const requestAccessToken = accessToken;
         const rawBody = xhr.responseText ?? "";
         let parsedBody: unknown = null;
 
@@ -281,7 +273,7 @@ export function uploadDocument(
             resolve(retriedDocument);
             return;
           } catch (error) {
-            markSessionExpired();
+            expireSessionIfStaleAccessToken(requestAccessToken);
             reject(error);
             return;
           }

@@ -22,11 +22,12 @@ import {
 export type { DocumentListSummary, DocumentUploadReadiness, KnowledgeDocument };
 
 const DOCUMENTS_POLL_INTERVAL_MS = 3000;
-const DOCUMENTS_SUMMARY_POLL_INTERVAL_MS = 3000;
 
 export async function invalidateDocuments(queryClient: QueryClient) {
-  await queryClient.invalidateQueries({ queryKey: queryKeys.documents.list });
-  await queryClient.invalidateQueries({ queryKey: queryKeys.documents.summary });
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: queryKeys.documents.list }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.documents.summary }),
+  ]);
 }
 
 export function hasPendingDocuments(documents: KnowledgeDocument[] | undefined) {
@@ -35,16 +36,6 @@ export function hasPendingDocuments(documents: KnowledgeDocument[] | undefined) 
       (document) => document.status === "processing" || document.status === "uploaded",
     ) ?? false
   );
-}
-
-function buildDocumentsListQueryKey(filters?: KnowledgeDocumentListFilters) {
-  const normalizedFilters = normalizeKnowledgeDocumentListFilters(filters);
-  return [
-    ...queryKeys.documents.list,
-    normalizedFilters.query ?? null,
-    normalizedFilters.type ?? null,
-    normalizedFilters.status ?? null,
-  ] as const;
 }
 
 type DocumentsListQueryOptionsInput = {
@@ -60,7 +51,12 @@ export function documentsListQueryOptions(
 ) {
   const normalizedFilters = normalizeKnowledgeDocumentListFilters(filters);
   return queryOptions({
-    queryKey: buildDocumentsListQueryKey(normalizedFilters),
+    queryKey: [
+      ...queryKeys.documents.list,
+      normalizedFilters.query ?? null,
+      normalizedFilters.type ?? null,
+      normalizedFilters.status ?? null,
+    ] as const,
     queryFn: () => getDocuments(normalizedFilters),
     placeholderData: (previousData) => previousData,
     refetchInterval: (query) =>
@@ -100,7 +96,7 @@ export function documentListSummaryQueryOptions() {
     queryFn: getDocumentListSummary,
     refetchInterval: (query) =>
       (query.state.data as DocumentListSummary | undefined)?.pending_count
-        ? DOCUMENTS_SUMMARY_POLL_INTERVAL_MS
+        ? DOCUMENTS_POLL_INTERVAL_MS
         : false,
   });
 }

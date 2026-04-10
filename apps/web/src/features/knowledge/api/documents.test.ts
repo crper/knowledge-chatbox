@@ -1,8 +1,8 @@
-import { setAccessToken } from "@/lib/auth/token-store";
+import { useSessionStore } from "@/lib/auth/session-store";
+import { getAccessToken, setAccessToken } from "@/lib/auth/token-store";
 import { http } from "msw";
-import { apiResponse, overrideHandler } from "@/test/msw";
+import { apiError, apiResponse, overrideHandler } from "@/test/msw";
 import {
-  buildApiUrl,
   deleteDocument,
   getDocumentListSummary,
   getDocumentUploadReadiness,
@@ -10,6 +10,7 @@ import {
   getDocuments,
   uploadDocument,
 } from "./documents";
+import { buildApiUrl } from "@/lib/api/client";
 
 type MockUploadTarget = {
   onprogress: ((event: ProgressEvent<EventTarget>) => void) | null;
@@ -79,6 +80,7 @@ class MockXMLHttpRequest {
 describe("documents api", () => {
   beforeEach(() => {
     setAccessToken(null);
+    useSessionStore.getState().reset();
     MockXMLHttpRequest.reset();
   });
 
@@ -245,6 +247,66 @@ describe("documents api", () => {
     xhr.simulateError();
 
     await expect(uploadPromise).rejects.toThrow();
+
+    globalThis.XMLHttpRequest = originalXMLHttpRequest;
+  });
+
+  it("does not clear a newer session when an older upload refresh fails later", async () => {
+    setAccessToken("stale-token");
+    useSessionStore.getState().setStatus("authenticated");
+
+    const originalXMLHttpRequest = globalThis.XMLHttpRequest;
+    globalThis.XMLHttpRequest = MockXMLHttpRequest as unknown as typeof XMLHttpRequest;
+
+    let resolveRefresh: ((value: Response | PromiseLike<Response>) => void) | undefined;
+
+    overrideHandler(
+      http.post("*/api/auth/refresh", () => {
+        return new Promise((resolve) => {
+          resolveRefresh = resolve;
+        });
+      }),
+    );
+
+    const uploadPromise = uploadDocument(
+      new File(["content"], "test.pdf", { type: "application/pdf" }),
+    );
+
+    await vi.waitFor(() => {
+      expect(MockXMLHttpRequest.instances).toHaveLength(1);
+    });
+
+    const xhr = MockXMLHttpRequest.instances[0]!;
+    xhr.simulateResponse(
+      401,
+      JSON.stringify({
+        success: false,
+        data: null,
+        error: {
+          code: "unauthorized",
+          message: "Authentication required.",
+        },
+      }),
+      "Unauthorized",
+    );
+
+    await vi.waitFor(() => {
+      expect(resolveRefresh).toBeDefined();
+    });
+
+    setAccessToken("fresh-token");
+    useSessionStore.getState().setStatus("authenticated");
+
+    resolveRefresh?.(
+      apiError(
+        { code: "unauthorized", message: "Authentication required." },
+        { status: 401, statusText: "Unauthorized" },
+      ),
+    );
+
+    await expect(uploadPromise).rejects.toThrow();
+    expect(getAccessToken()).toBe("fresh-token");
+    expect(useSessionStore.getState().status).toBe("authenticated");
 
     globalThis.XMLHttpRequest = originalXMLHttpRequest;
   });

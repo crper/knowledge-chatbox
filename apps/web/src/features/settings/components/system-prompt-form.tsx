@@ -7,11 +7,13 @@ import type { FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { AppSettings } from "../api/settings";
+import type { FormNotice } from "./provider-form";
 import { SettingsActionBar, SystemPromptSection } from "./provider-form-sections";
 import { Form } from "@/components/ui/form";
 import { getFormErrorMessage } from "@/lib/form/form-feedback";
 import { useAppForm } from "@/lib/form/use-app-form";
 import { handleFormSubmitEvent } from "@/lib/forms";
+import { getErrorMessage } from "@/lib/utils";
 import { systemPromptSchema } from "@/lib/validation/schemas";
 
 type SystemPromptFormProps = {
@@ -20,19 +22,6 @@ type SystemPromptFormProps = {
   onSave: (values: Partial<AppSettings>) => Promise<AppSettings>;
 };
 
-type FormNotice = {
-  message: string;
-  title: string;
-  variant?: "default" | "destructive";
-};
-
-function toErrorMessage(error: unknown, fallbackMessage: string) {
-  return error instanceof Error ? error.message : fallbackMessage;
-}
-
-/**
- * 渲染系统提示词表单。
- */
 export function SystemPromptForm({
   initialValues,
   onSave,
@@ -55,11 +44,10 @@ export function SystemPromptForm({
         });
       } catch (error) {
         setNotice({
-          message: toErrorMessage(error, t("saveFailedNotice")),
+          message: getErrorMessage(error, t("saveFailedNotice")),
           title: t("saveNoticeTitle"),
           variant: "destructive",
         });
-        throw error;
       }
     },
     schema: systemPromptSchema,

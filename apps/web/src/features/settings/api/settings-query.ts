@@ -37,15 +37,17 @@ export function updateSettingsMutationOptions(queryClient: QueryClient) {
     mutationFn: updateSettings,
     onSuccess: async (settings) => {
       queryClient.setQueryData(queryKeys.settings.detail, settings);
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.settings.all,
-        refetchType: "none",
-      });
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.documents.uploadReadiness,
-        refetchType: "none",
-      });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.chat.profile });
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.settings.all,
+          refetchType: "none",
+        }),
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.documents.uploadReadiness,
+          refetchType: "none",
+        }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.chat.profile }),
+      ]);
     },
   });
 }

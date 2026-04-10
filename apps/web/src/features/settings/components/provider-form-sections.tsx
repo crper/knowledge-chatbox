@@ -2,9 +2,11 @@
  * @file 设置表单通用分区模块。
  */
 
+import type { FormNotice } from "@/features/settings/components/provider-form";
+
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
+import { Field, FieldDescription, FieldError } from "@/components/ui/field";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { getFieldErrorItems } from "@/lib/form/form-feedback";
@@ -28,9 +30,8 @@ export function SystemPromptSection({
       <form.Field name="system_prompt">
         {(field: any) => (
           <Field>
-            <FieldLabel htmlFor="settings-system-prompt">{t("systemPromptLabel")}</FieldLabel>
             <Textarea
-              aria-label={t("systemPromptLabel")}
+              aria-label={t("systemPromptSectionTitle")}
               className="min-h-32 rounded-2xl border-border/80 bg-background/68"
               id="settings-system-prompt"
               onChange={(event) => {
@@ -65,12 +66,7 @@ export function SettingsActionBar({
   testPending,
 }: {
   errorMessage?: string | null;
-  notice?: {
-    items?: Array<{ healthy: boolean; label: string; message: string }>;
-    message: string;
-    title: string;
-    variant?: "default" | "destructive";
-  } | null;
+  notice?: FormNotice | null;
   onTest: () => void;
   savePending?: boolean;
   showTestAction?: boolean;

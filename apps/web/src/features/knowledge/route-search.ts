@@ -42,28 +42,3 @@ export function normalizeKnowledgeRouteSearch(
     type,
   });
 }
-
-export function readKnowledgeRouteSearch(searchParams: URLSearchParams): KnowledgeRouteSearch {
-  return normalizeKnowledgeRouteSearch({
-    query: searchParams.get("query"),
-    status: searchParams.get("status"),
-    type: searchParams.get("type"),
-  });
-}
-
-export function buildKnowledgeRoutePath(search: KnowledgeRouteSearch) {
-  const searchParams = new URLSearchParams();
-
-  if (search.query) {
-    searchParams.set("query", search.query);
-  }
-  if (search.type) {
-    searchParams.set("type", search.type);
-  }
-  if (search.status) {
-    searchParams.set("status", search.status);
-  }
-
-  const serialized = searchParams.toString();
-  return serialized.length > 0 ? `/knowledge?${serialized}` : "/knowledge";
-}

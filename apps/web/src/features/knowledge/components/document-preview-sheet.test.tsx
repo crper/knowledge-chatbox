@@ -208,7 +208,7 @@ describe("DocumentPreviewSheet", () => {
     fireEvent.click(screen.getByRole("button", { name: "查看版本" }));
     fireEvent.click(screen.getByRole("button", { name: "重建索引" }));
 
-    expect(onShowVersions).toHaveBeenCalledWith(2);
+    expect(onShowVersions).toHaveBeenCalledWith(20);
     expect(onReindex).toHaveBeenCalledWith(expect.objectContaining({ id: 2, name: "spec.md" }));
   });
 });

@@ -39,7 +39,7 @@ type ProviderFormProps = {
   onTestProvider: (values: Partial<AppSettings>) => Promise<ProviderConnectionResult>;
 };
 
-type FormNotice = {
+export type FormNotice = {
   items?: Array<{ label: string; message: string; healthy: boolean }>;
   message: string;
   title: string;
@@ -252,7 +252,17 @@ export function ProviderForm({
             ),
             visionModel: getFormErrorMessage([validationResult?.fields?.visionModel], t),
           };
-          const errorMessage = getFormErrorMessage([validationResult?.form, errorMap.onSubmit], t);
+          const firstFieldErrorMessage =
+            fieldErrorMessages.chatModel ??
+            fieldErrorMessages.embeddingModel ??
+            fieldErrorMessages.visionModel ??
+            fieldErrorMessages.primaryBaseUrl ??
+            fieldErrorMessages.retrievalEmbeddingModel ??
+            fieldErrorMessages.providerTimeoutSeconds;
+          const errorMessage = getFormErrorMessage(
+            [validationResult?.form, errorMap.onSubmit, firstFieldErrorMessage],
+            t,
+          );
 
           return (
             <>

@@ -1,19 +1,8 @@
-/**
- * @file 设置相关界面组件模块。
- */
-
-import { ChevronDownIcon, MonitorCogIcon, MoonStarIcon, SunMediumIcon } from "lucide-react";
+import { MonitorCogIcon, MoonStarIcon, SunMediumIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useTheme } from "@/providers/theme-provider";
 import { type ThemeMode } from "@/lib/config/constants";
 
@@ -25,66 +14,51 @@ type ThemeToggleProps = {
 
 const THEME_ITEMS: ThemeMode[] = ["light", "dark", "system"];
 
-/**
- * 渲染主题切换控件。
- */
+const THEME_ICONS: Record<ThemeMode, typeof MoonStarIcon> = {
+  dark: MoonStarIcon,
+  light: SunMediumIcon,
+  system: MonitorCogIcon,
+};
+
+function getThemeLabel(theme: ThemeMode, t: (key: string) => string) {
+  return {
+    dark: t("themeDark"),
+    light: t("themeLight"),
+    system: t("themeSystem"),
+  }[theme];
+}
+
 export function ThemeToggle({ className, compact = false, onChange }: ThemeToggleProps) {
   const { t } = useTranslation("common");
   const { setTheme, theme } = useTheme();
-  const currentTheme = theme;
 
-  const handleChange = (nextThemeValue: string) => {
-    const nextTheme = nextThemeValue as ThemeMode;
+  const handleValueChange = (groupValue: string[]) => {
+    const nextTheme = groupValue[0] as ThemeMode | undefined;
+    if (nextTheme == null) return;
     setTheme(nextTheme);
     onChange?.(nextTheme);
   };
 
-  const currentLabel = {
-    dark: t("themeDark"),
-    light: t("themeLight"),
-    system: t("themeSystem"),
-  }[currentTheme];
-  const triggerLabel = compact ? currentLabel : `${t("themeLabel")} · ${currentLabel}`;
-  const TriggerIcon =
-    currentTheme === "dark"
-      ? MoonStarIcon
-      : currentTheme === "light"
-        ? SunMediumIcon
-        : MonitorCogIcon;
-
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <Button
-            aria-label={t("themeLabel")}
-            className={cn(compact ? "min-w-24" : "w-full justify-between", className)}
-            size={compact ? "sm" : "default"}
-            variant="outline"
-          />
-        }
-      >
-        <span className="flex min-w-0 items-center gap-2">
-          <TriggerIcon className="size-4" />
-          <span className="truncate">{triggerLabel}</span>
-        </span>
-        <ChevronDownIcon className="size-4 text-muted-foreground" />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuRadioGroup onValueChange={handleChange} value={currentTheme}>
-          {THEME_ITEMS.map((item) => (
-            <DropdownMenuRadioItem key={item} value={item}>
-              {
-                {
-                  dark: t("themeDark"),
-                  light: t("themeLight"),
-                  system: t("themeSystem"),
-                }[item]
-              }
-            </DropdownMenuRadioItem>
-          ))}
-        </DropdownMenuRadioGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <ToggleGroup
+      className={cn(compact ? "" : "grid w-full grid-cols-3 gap-1 p-1", className)}
+      onValueChange={handleValueChange}
+      value={[theme]}
+    >
+      {THEME_ITEMS.map((item) => {
+        const Icon = THEME_ICONS[item];
+        return (
+          <ToggleGroupItem
+            aria-label={getThemeLabel(item, t)}
+            className={cn(compact ? "" : "h-10 justify-center rounded-lg px-3 text-sm md:h-9")}
+            key={item}
+            value={item}
+          >
+            <Icon className="size-3.5" />
+            {compact ? null : <span>{getThemeLabel(item, t)}</span>}
+          </ToggleGroupItem>
+        );
+      })}
+    </ToggleGroup>
   );
 }

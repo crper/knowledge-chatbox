@@ -1,4 +1,5 @@
 import { normalizeText } from "@/lib/forms";
+import { defaultEmbeddingProviderByPrimary } from "@/lib/validation/schemas";
 import type {
   AppSettings,
   EmbeddingProviderName,
@@ -33,12 +34,6 @@ export const TEMPLATE_PROVIDER_OPTIONS: TemplateProviderName[] = [
   "anthropic",
   "voyage",
 ];
-
-const DEFAULT_EMBEDDING_PROVIDER_BY_PRIMARY: Record<PrimaryProviderName, EmbeddingProviderName> = {
-  openai: "openai",
-  anthropic: "voyage",
-  ollama: "ollama",
-};
 
 type OpenAIProfile = ProviderProfiles["openai"] & {
   chat_model?: string | null;
@@ -90,9 +85,10 @@ function preferredTemplateProvider(primaryProvider: PrimaryProviderName): Templa
 export function getDefaultEmbeddingProvider(
   primaryProvider: PrimaryProviderName,
 ): EmbeddingProviderName {
-  return DEFAULT_EMBEDDING_PROVIDER_BY_PRIMARY[primaryProvider];
+  return defaultEmbeddingProviderByPrimary[primaryProvider];
 }
 
+// TODO: 为 ProviderProfileModels 的每个 provider 定义明确的 model 字段映射关系，通过类型安全方式赋值替代 Record<string, string | undefined> 绕行
 function syncRouteModelsIntoProfiles(settings: AppSettings): ProviderProfileModels {
   const profiles = cloneProfiles(settings.provider_profiles);
   const effectiveEmbeddingRoute = settings.pending_embedding_route ?? settings.embedding_route;
@@ -228,23 +224,23 @@ export function toSettingsPayload(view: ProviderSettingsView) {
   const embeddingRoute = view.retrievalOverrideEnabled
     ? {
         provider: view.retrievalProvider,
-        model: retrievalEmbeddingModel.trim(),
+        model: retrievalEmbeddingModel,
       }
     : {
         provider: defaultEmbeddingProvider,
-        model: defaultEmbeddingModel.trim(),
+        model: defaultEmbeddingModel,
       };
 
   return {
     provider_profiles: view.providerProfiles,
     response_route: {
       provider: view.primaryProvider,
-      model: chatModel.trim(),
+      model: chatModel,
     },
     embedding_route: embeddingRoute,
     vision_route: {
       provider: view.primaryProvider,
-      model: visionModel.trim(),
+      model: visionModel,
     },
     provider_timeout_seconds: view.providerTimeoutSeconds,
   } satisfies Partial<AppSettings>;
