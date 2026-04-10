@@ -348,13 +348,63 @@ describe("KnowledgePage", () => {
 
     renderKnowledgePage();
 
-    expect(await screen.findByText("资源列表")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "资源" })).toBeInTheDocument();
+    // 移动端不渲染桌面端指标卡片
     expect(screen.queryByText("资源总数")).not.toBeInTheDocument();
     expect(screen.queryByText("处理中资源")).not.toBeInTheDocument();
     expect(screen.queryByText("已索引资源")).not.toBeInTheDocument();
-    expect(screen.getByText("2 项资源")).toBeInTheDocument();
-    expect(screen.getAllByText("1 项处理中").length).toBeGreaterThan(0);
-    expect(screen.getByText("1 项已索引")).toBeInTheDocument();
+    // 移动端通过资源行显示状态，验证资源列表已渲染即可
+    expect(await screen.findByRole("button", { name: "spec.md" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "guide.pdf" })).toBeInTheDocument();
+  });
+
+  it("shows selection guidance instead of filter-empty feedback on mobile when resources exist", async () => {
+    mockMobileViewport();
+    createTestServer({
+      user: {
+        id: 1,
+        username: "admin",
+        role: "admin",
+        status: "active",
+        theme_preference: "system",
+      },
+      authenticated: true,
+    });
+    overrideHandler(
+      http.get("*/api/documents", () =>
+        apiResponse([
+          buildDocumentSummary({
+            id: 20,
+            revision_id: 2,
+            title: "spec.md",
+            version: 2,
+            status: "indexed",
+          }),
+          buildDocumentSummary({
+            id: 40,
+            revision_id: 4,
+            title: "guide.pdf",
+            version: 1,
+            status: "processing",
+            file_type: "pdf",
+          }),
+        ]),
+      ),
+    );
+    overrideHandler(http.get("*/api/documents/:documentId/revisions", () => apiResponse([])));
+
+    renderKnowledgePage();
+
+    expect(await screen.findByText("资源工作区")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "资源列表" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "资源预览" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "spec.md" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "guide.pdf" })).toBeInTheDocument();
+    expect(screen.queryByText("请选择资源")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("当前有可用资源，请先从资源列表选择一项查看预览。"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("暂无匹配资源")).not.toBeInTheDocument();
   });
 
   it("blocks uploads when indexing prerequisites are not ready", async () => {
@@ -607,6 +657,92 @@ describe("KnowledgePage", () => {
       expect(MockXMLHttpRequest.instances).toHaveLength(1);
       expect(MockXMLHttpRequest.instances[0]!.url.endsWith("/api/documents/upload")).toBe(true);
     });
+  });
+
+  it("does not mark a successful upload as failed when the follow-up list refresh errors", async () => {
+    createTestServer({
+      user: {
+        id: 1,
+        username: "admin",
+        role: "admin",
+        status: "active",
+        theme_preference: "system",
+      },
+      authenticated: true,
+    });
+
+    let documentsCallCount = 0;
+    overrideHandler(
+      http.get("*/api/documents", () => {
+        documentsCallCount += 1;
+        if (documentsCallCount === 1) {
+          return apiResponse([
+            buildDocumentSummary({
+              id: 20,
+              revision_id: 2,
+              title: "spec.md",
+              version: 2,
+              status: "indexed",
+            }),
+          ]);
+        }
+
+        return HttpResponse.json(
+          {
+            success: false,
+            data: null,
+            error: {
+              code: "server_error",
+              message: "refresh failed",
+            },
+          },
+          { status: 500, statusText: "Internal Server Error" },
+        );
+      }),
+    );
+    overrideHandler(http.get("*/api/documents/:documentId/revisions", () => apiResponse([])));
+
+    renderKnowledgePage();
+
+    const input = (
+      await screen.findAllByLabelText("上传资源", {
+        selector: 'input[type="file"]',
+      })
+    )[0]!;
+    fireEvent.change(input, {
+      target: {
+        files: [new File(["hello"], "upload.txt", { type: "text/plain" })],
+      },
+    });
+
+    await waitFor(() => {
+      expect(MockXMLHttpRequest.instances).toHaveLength(1);
+    });
+    await act(async () => {
+      MockXMLHttpRequest.instances[0]!.respond(
+        201,
+        JSON.stringify({
+          success: true,
+          data: buildUploadPayload({
+            document_id: 12,
+            id: 3,
+            name: "upload.txt",
+            version: 1,
+            status: "indexed",
+            file_type: "txt",
+          }),
+          error: null,
+        }),
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText("upload.txt")).not.toBeInTheDocument();
+      expect(screen.queryByText("上传队列")).not.toBeInTheDocument();
+    });
+
+    expect(screen.queryByRole("button", { name: "重试上传" })).not.toBeInTheDocument();
+    expect(sonnerMocks.success).toHaveBeenCalledWith("资源 upload.txt 已上传");
   });
 
   it("shows a pending upload state while the request is in flight", async () => {
@@ -892,7 +1028,7 @@ describe("KnowledgePage", () => {
     expect(MockXMLHttpRequest.instances).toHaveLength(2);
   });
 
-  it("opens the preview drawer when the preview action is clicked", async () => {
+  it("routes preview actions to the desktop workbench panes", async () => {
     createTestServer({
       user: {
         id: 1,
@@ -912,6 +1048,14 @@ describe("KnowledgePage", () => {
             title: "spec.md",
             version: 2,
             status: "indexed",
+          }),
+          buildDocumentSummary({
+            id: 40,
+            revision_id: 4,
+            title: "guide.md",
+            version: 1,
+            status: "indexed",
+            file_type: "md",
           }),
         ]),
       ),
@@ -936,15 +1080,82 @@ describe("KnowledgePage", () => {
 
     renderKnowledgePage();
 
-    fireEvent.click(await screen.findByRole("button", { name: "预览 spec.md" }));
+    fireEvent.click(await screen.findByRole("button", { name: "预览 guide.md" }));
 
-    expect(await screen.findByText("资源预览")).toBeInTheDocument();
-    expect(screen.getAllByText("spec.md").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("v2").length).toBeGreaterThan(0);
-    expect(screen.getByRole("button", { name: "打开原文件" })).toBeInTheDocument();
+    expect(await screen.findByText("Inspector")).toBeInTheDocument();
+    expect(screen.getAllByRole("heading", { name: "guide.md" }).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("dialog", { name: "资源预览" })).not.toBeInTheDocument();
   });
 
-  it("selects a resource row and shows the summary band without opening preview", async () => {
+  it("shows version history in the desktop inspector when the row action is clicked", async () => {
+    createTestServer({
+      user: {
+        id: 1,
+        username: "admin",
+        role: "admin",
+        status: "active",
+        theme_preference: "system",
+      },
+      authenticated: true,
+    });
+    overrideHandler(
+      http.get("*/api/documents", () =>
+        apiResponse([
+          buildDocumentSummary({
+            id: 20,
+            revision_id: 2,
+            title: "spec.md",
+            version: 2,
+            status: "indexed",
+          }),
+          buildDocumentSummary({
+            id: 40,
+            revision_id: 4,
+            title: "guide.md",
+            version: 1,
+            status: "indexed",
+            file_type: "md",
+          }),
+        ]),
+      ),
+    );
+    overrideHandler(
+      http.get("*/api/documents/:documentId/revisions", ({ params }) => {
+        if (Number(params.documentId) === 40) {
+          return apiResponse([
+            buildRevision({ document_id: 40, id: 4, revision_no: 1, source_filename: "guide.md" }),
+            buildRevision({ document_id: 40, id: 6, revision_no: 3, source_filename: "guide.md" }),
+          ]);
+        }
+
+        return apiResponse([
+          buildRevision({ document_id: 20, id: 1, revision_no: 1, source_filename: "spec.md" }),
+          buildRevision({ document_id: 20, id: 2, revision_no: 2, source_filename: "spec.md" }),
+        ]);
+      }),
+    );
+    overrideHandler(
+      http.get(
+        "*/api/documents/revisions/:revisionId/file",
+        () =>
+          new HttpResponse("# 标题\n\n正文", {
+            headers: { "Content-Type": "text/markdown; charset=utf-8" },
+          }),
+      ),
+    );
+
+    renderKnowledgePage();
+
+    fireEvent.click((await screen.findAllByRole("button", { name: "查看版本" }))[1]!);
+
+    await waitFor(() => {
+      expect(screen.getAllByRole("heading", { name: "guide.md" }).length).toBeGreaterThan(0);
+    });
+    expect(await screen.findByText("v3")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "版本历史" })).not.toBeInTheDocument();
+  });
+
+  it("selects a resource row and updates the desktop main and inspector panes", async () => {
     createTestServer({
       user: {
         id: 1,
@@ -982,10 +1193,9 @@ describe("KnowledgePage", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "guide.pdf" }));
 
-    expect(await screen.findByText("当前资源")).toBeInTheDocument();
-    expect(screen.getAllByText("guide.pdf").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("v1").length).toBeGreaterThan(0);
-    expect(screen.queryByText("资源预览")).not.toBeInTheDocument();
+    expect(await screen.findByText("Inspector")).toBeInTheDocument();
+    expect(screen.getAllByRole("heading", { name: "guide.pdf" }).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("dialog", { name: "资源预览" })).not.toBeInTheDocument();
   });
 
   it("opens preview directly when a resource row is selected on mobile", async () => {
@@ -1025,14 +1235,15 @@ describe("KnowledgePage", () => {
 
     renderKnowledgePage();
 
+    expect(await screen.findByText("资源工作区")).toBeInTheDocument();
     fireEvent.click(await screen.findByRole("button", { name: "guide.pdf" }));
 
     expect(await screen.findByText("资源预览")).toBeInTheDocument();
     expect(screen.getAllByText("guide.pdf").length).toBeGreaterThan(0);
-    expect(screen.queryByText("当前资源")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "打开原文件" })).toBeInTheDocument();
   });
 
-  it("requests server-filtered resources and clears the selected summary band when the chosen resource disappears", async () => {
+  it("requests server-filtered resources and swaps desktop selection when the previous item disappears", async () => {
     createTestServer({
       user: {
         id: 1,
@@ -1083,18 +1294,16 @@ describe("KnowledgePage", () => {
     renderKnowledgePage();
 
     await screen.findAllByRole("button", { name: "查看版本" });
-    fireEvent.click(screen.getByRole("button", { name: "spec.md" }));
-    expect(await screen.findByText("当前资源")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "spec.md" })).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("搜索资源"), {
       target: { value: "guide" },
     });
 
     await waitFor(() => {
-      expect(screen.queryByText("spec.md")).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "spec.md" })).not.toBeInTheDocument();
     });
-    expect(screen.getAllByText("guide.pdf").length).toBeGreaterThan(0);
-    expect(screen.queryByText("当前资源")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "guide.pdf" })).toBeInTheDocument();
   });
 
   it("syncs the search query into the URL and restores it from the route state", async () => {
@@ -1202,20 +1411,20 @@ describe("KnowledgePage", () => {
     expect(await screen.findByText("资源工作区")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "PDF" })).not.toBeInTheDocument();
 
-    fireEvent.click(await screen.findByRole("button", { name: /^筛选/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "资源筛选" }));
 
     expect(await screen.findByText("资源筛选")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "PDF" }));
 
     await waitFor(() => {
-      expect(screen.queryByText("spec.md")).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "spec.md" })).not.toBeInTheDocument();
     });
     expect(screen.getByRole("button", { name: "清空筛选" })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "清空筛选" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "清空筛选" })[0]!);
 
     await waitFor(() => {
-      expect(screen.queryByRole("button", { name: "清空筛选" })).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "spec.md" })).toBeInTheDocument();
     });
   });
 
@@ -1260,18 +1469,20 @@ describe("KnowledgePage", () => {
     renderKnowledgePage();
 
     expect(await screen.findByText("资源工作区")).toBeInTheDocument();
-    fireEvent.click(await screen.findByRole("button", { name: /^筛选/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "资源筛选" }));
     fireEvent.click(await screen.findByRole("button", { name: "PDF" }));
 
     await waitFor(() => {
-      expect(screen.queryByText("spec.md")).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "spec.md" })).not.toBeInTheDocument();
     });
+    expect(screen.getByText("筛选 (1)")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "清空筛选" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "清空筛选" })[0]!);
 
     await waitFor(() => {
-      expect(screen.queryByRole("button", { name: "清空筛选" })).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "spec.md" })).toBeInTheDocument();
     });
+    expect(screen.getByText("筛选")).toBeInTheDocument();
   });
 
   it("keeps the resource list shell when a status filter yields no matches", async () => {
@@ -1316,18 +1527,18 @@ describe("KnowledgePage", () => {
     renderKnowledgePage();
 
     expect(await screen.findByText("资源工作区")).toBeInTheDocument();
-    fireEvent.click(await screen.findByRole("button", { name: /^筛选/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "资源筛选" }));
     expect(await screen.findByText("资源筛选")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "已上传" }));
     fireEvent.click(screen.getByRole("button", { name: "关闭" }));
 
     await waitFor(() => {
-      expect(screen.getByText("暂无匹配资源")).toBeInTheDocument();
+      expect(screen.getAllByText("暂无匹配资源").length).toBeGreaterThan(0);
     });
-    expect(screen.getByText("资源列表")).toBeInTheDocument();
+    // 移动端 WorkbenchLayout 不直接渲染 "资源列表" 文本，验证空状态反馈存在即可
     expect(
-      screen.getByText("当前筛选条件下没有匹配资源，试试更换关键词、类型或状态。"),
-    ).toBeInTheDocument();
+      screen.getAllByText("当前筛选条件下没有匹配资源，试试更换关键词、类型或状态。").length,
+    ).toBeGreaterThan(0);
     expect(screen.queryByRole("heading", { name: "先上传第一份资源" })).not.toBeInTheDocument();
   });
 

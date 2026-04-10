@@ -8,7 +8,7 @@ import { useTranslation } from "react-i18next";
 
 import { currentUserQueryOptions } from "@/features/auth/api/auth-query";
 import type { AppUser } from "@/lib/api/client";
-import { buildLoginPath } from "@/lib/auth/auth-redirect";
+import { buildCurrentAuthRedirectTarget, buildLoginPath } from "@/lib/auth/auth-redirect";
 import { useLocation, useNavigate, Navigate } from "@/lib/app-router";
 import { markSessionExpired } from "@/lib/auth/session-manager";
 import { useSessionStore } from "@/lib/auth/session-store";
@@ -25,6 +25,9 @@ const ChatPage = lazy(async () => ({
 }));
 const KnowledgePage = lazy(async () => ({
   default: (await import("@/pages/knowledge/knowledge-page")).KnowledgePage,
+}));
+const GraphPage = lazy(async () => ({
+  default: (await import("@/pages/graph/graph-page")).GraphPage,
 }));
 const SettingsPage = lazy(async () => ({
   default: (await import("@/pages/settings/settings-page")).SettingsPage,
@@ -57,9 +60,7 @@ export function CurrentUserBoundary({ children }: { children: (user: AppUser) =>
   const shouldRedirectToLogin = status === "anonymous" || status === "expired";
   const shouldExpireSession =
     status === "authenticated" && currentUserQuery.isSuccess && !currentUserQuery.data;
-  const loginRedirectPath = buildLoginPath(
-    `${location.pathname}${location.search}${location.hash}`,
-  );
+  const loginRedirectPath = buildLoginPath(buildCurrentAuthRedirectTarget(location));
 
   useEffect(() => {
     if (!shouldExpireSession) {
@@ -158,6 +159,14 @@ export function KnowledgePageRoute() {
   return (
     <RouteSuspense>
       <KnowledgePage />
+    </RouteSuspense>
+  );
+}
+
+export function GraphPageRoute() {
+  return (
+    <RouteSuspense>
+      <GraphPage />
     </RouteSuspense>
   );
 }

@@ -15,6 +15,7 @@ export type SettingsRouteSection = (typeof SETTINGS_SECTION_IDS)[number];
 export const CHAT_INDEX_PATH = "/chat";
 export const LOGIN_PATH = "/login";
 export const KNOWLEDGE_INDEX_PATH = "/knowledge";
+export const GRAPH_INDEX_PATH = "/graph";
 export const SETTINGS_INDEX_PATH = "/settings";
 export const ADMIN_USERS_PATH = "/admin/users";
 export const FORBIDDEN_PATH = "/403";
@@ -27,13 +28,6 @@ const SETTINGS_ROUTE_PREFIX = `${SETTINGS_INDEX_PATH}/`;
  */
 export function buildSettingsPath(section: SettingsRouteSection) {
   return `${SETTINGS_ROUTE_PREFIX}${section}`;
-}
-
-/**
- * 构建旧版 settings search 路径，供兼容跳转和回归测试使用。
- */
-export function buildLegacySettingsSearchPath(section: SettingsRouteSection) {
-  return `${SETTINGS_INDEX_PATH}?section=${section}`;
 }
 
 /**

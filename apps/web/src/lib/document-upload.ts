@@ -1,8 +1,9 @@
 import type { FileRejection } from "react-dropzone";
 
 import { UNSUPPORTED_UPLOAD_FILE_ERROR_CODE } from "@/features/knowledge/upload-file-types";
+import { getErrorMessage } from "@/lib/utils";
 
-export type DocumentUploadPatch = {
+type DocumentUploadPatch = {
   errorMessage?: string;
   progress?: number;
   status?: "uploading" | "uploaded" | "failed";
@@ -20,10 +21,6 @@ type UploadDocumentFn<TResult> = (
     signal?: AbortSignal;
   },
 ) => Promise<TResult>;
-
-export function getDocumentUploadErrorMessage(error: unknown, fallbackMessage: string) {
-  return error instanceof Error ? error.message : fallbackMessage;
-}
 
 export function getDocumentUploadRejectionMessage(
   rejection: FileRejection,
@@ -77,7 +74,7 @@ export async function runDocumentUpload<TResult>({
     });
     return result;
   } catch (error) {
-    const errorMessage = getDocumentUploadErrorMessage(error, failedMessage);
+    const errorMessage = getErrorMessage(error, failedMessage);
     onPatch({
       errorMessage,
       progress: 0,

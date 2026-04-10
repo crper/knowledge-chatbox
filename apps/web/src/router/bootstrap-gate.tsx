@@ -2,7 +2,6 @@
  * @file 会话启动门禁模块。
  */
 
-import { useEffect } from "react";
 import type { PropsWithChildren } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -29,28 +28,6 @@ export function AppBootstrapGate({ children }: PropsWithChildren) {
 
   const isLoginPage = location.pathname === "/login";
 
-  useEffect(() => {
-    if (status !== "bootstrapping") {
-      return;
-    }
-
-    let cancelled = false;
-
-    void ensureSessionBootstrap(queryClient, { isLoginPage }).then(() => {
-      if (cancelled || !isLoginPage) {
-        return;
-      }
-
-      if (useSessionStore.getState().status === "degraded") {
-        markSessionAnonymous();
-      }
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isLoginPage, queryClient, status]);
-
   if (status === "bootstrapping" && !isLoginPage) {
     return <LoadingState />;
   }
@@ -60,6 +37,11 @@ export function AppBootstrapGate({ children }: PropsWithChildren) {
       <AuthDegradedPage
         onRetry={() => {
           reset();
+          void ensureSessionBootstrap(queryClient, { isLoginPage }).then(() => {
+            if (isLoginPage && useSessionStore.getState().status === "degraded") {
+              markSessionAnonymous();
+            }
+          });
         }}
       />
     );

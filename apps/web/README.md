@@ -86,7 +86,7 @@ vp build
   - 开发态默认建议留空，让前端直接走同源 `/api`
   - `vp dev` 会通过 Vite proxy 把 `/api` 转发到本机 `8000`
   - 如果要连独立后端，再显式填写 origin，例如 `http://localhost:8000`
-  - 不要在开发态把页面开在 `127.0.0.1:3000`，却把 `VITE_API_BASE_URL` 固定成 `http://localhost:8000`；这样 refresh cookie host 会不一致，看起来像登录恢复失效
+  - 不要在开发态把页面开在 `127.0.0.1:3000`，却把 `VITE_API_BASE_URL` 固定成 `http://localhost:8000`；这样 refresh cookie host 会不一致
 
 通常从仓库根目录 `.env` 读取，不单独维护一份前端私有环境文件。
 
@@ -133,6 +133,7 @@ apps/web/
     components/
       ui/                      # 基础 UI 组件
       shared/                  # 跨 feature 复用组件
+      upload/                  # 跨 feature 复用的上传拖放区组件
     lib/
       auth/                    # 会话状态、token 内存存储、启动编排
       api/generated/           # OpenAPI 生成类型与 typed client
@@ -152,49 +153,53 @@ apps/web/
 - `components/ui` 只放基础 UI
 - `components/shared` 只放跨 feature 复用且无强业务语义的组件
 - `lib/*` 只放跨 feature 的轻量基础能力，不放具体业务流程
-- `lib/forms.ts` 统一承接轻量表单辅助；错误消息抽取和共享 submit event helper 都优先放这里，不要在每个对话框里重复写一遍
-- `lib/document-upload.ts` 统一承接聊天区和资源页共用的 document upload workflow helper；它会带上当前 access token，并在 `401` 时单飞刷新后重试一次
+- `lib/forms.ts` 统一承接轻量表单辅助；错误消息抽取和共享 submit event helper 都优先放这里
+- `lib/document-upload.ts` 统一承接聊天区和资源页共用的 document upload workflow helper
 
 ## 状态边界
 
+### 服务端状态
+
 - `TanStack Query`：服务端真相源，负责获取、缓存、失效和刷新
 - `TanStack Form`：登录、改密、用户管理、系统配置等表单的字段值、校验和提交状态
+- 服务端列表、详情、最终结果不要再复制一份进 Zustand
+- 页面优先组合 `features/*` 的 hook 和组件，不在 page 里直接堆 query + mutation + 副作用
+
+### 本地 UI 状态
+
 - `Zustand`：本地 UI 状态，例如布局状态、聊天草稿、待发送附件、语言、主题、发送快捷键、前端会话状态
-- `lib/api/client.ts`：前端 API envelope 解包与错误归一化；当前只统一处理网络失败和 `AbortError`，后端显式错误和契约错误保持原始语义；认证类错误会在展示层优先翻译成本地化文案
+- `lib/api/client.ts`：前端 API envelope 解包与错误归一化；当前只统一处理网络失败和 `AbortError`，后端显式错误和契约错误保持原始语义
+
+### 聊天运行时
 
 聊天运行时当前进一步收敛成下面这条链：
 
 ```text
 [ChatPage]
   -> [useChatWorkspace]
-     -> [useChatSessionData]         # 只读模型：sessions/messagesWindow/displayMessages
-     -> [useChatRuntimeState]        # streamRun 读取面
-     -> [useChatRuntimeController]   # 会话级提交锁 + streamRun action
-     -> [useChatSessionCacheActions] # messagesWindow/context patch + targeted invalidate
+     -> [useChatSessionSubmitController]  # 会话级提交锁
+     -> [useChatStreamRun]               # streamRun action
+     -> [useChatRuntimeState]            # streamRun 读取面
+     -> [useChatSessionData]             # 只读模型：sessions/messagesWindow/displayMessages
+     -> [useChatSessionCacheActions]     # messagesWindow/context patch + targeted invalidate
 ```
 
 规则：
 
-- 服务端列表、详情、最终结果不要再复制一份进 Zustand
-- 页面优先组合 `features/*` 的 hook 和组件，不在 page 里直接堆 query + mutation + 副作用
-- access token 当前只放在内存，不进 `localStorage`；前端会话状态单独放在 `lib/auth/session-store.ts`，只区分 `bootstrapping / authenticated / anonymous / expired / degraded`
-- 登录回跳目标当前改走 `/login?redirect=...` 这类 URL 契约，不再把 `redirectTo` 塞进 session store
-- 顶层 `AppBootstrapGate` 会在路由渲染前尝试通过 `/api/auth/bootstrap` 恢复 refresh session；匿名态返回 `200 + authenticated=false`，不会把登录页首屏探测表现成控制台错误；若启动恢复失败且当前不是 `/login`，受保护页面会在“回登录页”和“认证降级页”之间做分流
-- 聊天主区当前默认读取分页 `messagesWindow`：先拿最近 80 条消息，继续向上滚动时再带 `before_id + limit` 取更早消息；右侧上下文栏通过独立 `context` 摘要 query 读取已去重附件和最近一次 assistant 引用
-- `streamRun` 的临时状态当前仍在 TanStack Query Cache，但读取面已经收口到 `useChatRuntimeState`，不要再在多个 hook 里各自订阅 QueryCache
-- `messagesWindow / context` 的 patch、started user message 预插入和 targeted invalidate 当前统一走 `useChatSessionCacheActions`，不要再在读 hook 里直接写 cache
-- `useChatWorkspace` 当前只负责装配 read model / runtime controller / cache actions / submit-stream 生命周期，不再自己维护第二套状态真相
-- 聊天草稿和发送快捷键当前仍在 `useChatUiStore` 持久化；待发送附件已经拆到 `useChatAttachmentStore`，只保留页面内会话级生命周期，不走 persist
-- provider 设置页这类复杂表单，纯校验 helper 当前只返回 i18n key；具体文案由组件层按当前语言翻译，不在纯逻辑层硬编码中英文字符串
-- 主题先写本地 store；登录用户在设置中心或账户中枢切换时会同步 `/api/auth/preferences`，登录页匿名态先切的主题会在登录成功后补写到账号偏好
-- 最近访问的聊天会话 ID 会持久化到 `localStorage`；打开 `/chat` 时优先恢复该会话，恢复期间先保持加载态；若记录已失效则回退到当前列表第一项，没有会话时清空记录并保持空入口态
-- 聊天输入区的提交锁当前通过 `useChatRuntimeController` 按会话隔离：只锁当前正在提交的会话；切到别的会话后，若该会话没有自己的提交任务，输入和发送保持可用
-- 聊天区附件上传和资源页上传共用同一套 document upload helper，拒绝原因、进度 patch 和失败文案保持一致；聊天区待发送附件使用最多 2 个并发上传，但只有当本轮全部上传成功后才真正发起流式请求；上传请求会优先携带 bearer token，遇到 `401` 会自动刷新并重试一次
-- 聊天区待发送附件在进入 Zustand 前会按 `name + type + size + lastModified` 做本地去重；同一会话里重复选择、拖拽或粘贴同一文件时，不再重复追加
-- 图片附件真正发给模型前，不在前端长期保存 provider-ready 图片数据；后端会按 `document_revision_id` 重读原图并统一转成稳定 JPEG payload
-- `ChatMessageViewport` 负责长会话虚拟化、贴底、向上加载更早消息与回底部语义
-- `features/chat/components/attachment-list.tsx` 与 `image-viewer-dialog.tsx` 负责聊天附件展示与图片查看
-- `components/shared/workspace-page.tsx` 和 `components/shared/data-table.tsx` 是标准工作区和资源列表的共享壳层
+- `streamRun` 的临时状态当前仍在 TanStack Query Cache，但读取面已经收口到 `useChatRuntimeState`
+- `messagesWindow / context` 的 patch、started user message 预插入和 targeted invalidate 当前统一走 `useChatSessionCacheActions`
+- `useChatWorkspace` 当前只负责装配 read model / runtime controller / cache actions / submit-stream 生命周期
+- 聊天草稿和发送快捷键当前仍在 `useChatUiStore` 持久化；待发送附件已经拆到 `useChatAttachmentStore`，只保留页面内会话级生命周期
+- 详细聊天运行时边界见 [frontend-workspace.md](../../docs/arch/frontend-workspace.md)
+
+### 认证与偏好
+
+- access token 当前只放在内存，不进 `localStorage`；前端会话状态单独放在 `lib/auth/session-store.ts`
+- 登录回跳目标当前改走 `/login?redirect=...` 这类 URL 契约
+- 顶层 `AppBootstrapGate` 会在路由渲染前尝试通过 `/api/auth/bootstrap` 恢复 refresh session；匿名态返回 `200 + authenticated=false`
+- 主题先写本地 store；登录用户切换时会同步 `/api/auth/preferences`，登录页匿名态先切的主题会在登录成功后补写到账号偏好
+- 最近访问的聊天会话 ID 会持久化到 `localStorage`；打开 `/chat` 时优先恢复该会话
+- 详细认证时序见 [auth-and-session-flow.md](../../docs/arch/auth-and-session-flow.md)
 
 ## 关键共享组件
 
@@ -288,16 +293,6 @@ it("handles error", () => {
 - `overrideHandler(handler)` - 覆盖特定的 handler
 - `apiResponse(data, init?)` - 创建成功响应
 - `apiError(error, init?)` - 创建错误响应
-
-### 旧测试工具
-
-以下测试工具函数已标记为 deprecated，请使用 MSW 的对应函数：
-
-- `jsonResponse` → 使用 `apiResponse`
-- `apiSuccessResponse` → 使用 `apiResponse`
-- `apiErrorResponse` → 使用 `apiError`
-- `stubFetch` → 使用 `overrideHandler`
-- `createAuthFetchMock` → 使用 `createTestServer({ user, authenticated: true })`
 
 ## 验证要求
 

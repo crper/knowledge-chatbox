@@ -217,28 +217,28 @@ export function SettingsPage({ user }: { user: AppUser }) {
           {t("preferencesCardDescription")}
         </CardDescription>
       </CardHeader>
-      <CardContent className="grid gap-3.5 pt-4 md:grid-cols-2">
-        <div className="surface-inline space-y-2.5 rounded-xl p-3.5">
-          <div className="space-y-1">
+      <CardContent className="space-y-3.5 pt-4">
+        <section className="surface-inline rounded-xl p-3.5">
+          <div className="mb-2.5 space-y-1">
             <p className="text-[13px] font-medium">{t("languageSettingTitle")}</p>
             <p className="text-xs leading-relaxed text-muted-foreground/68">
               {t("languageSettingDescription")}
             </p>
           </div>
-          <LanguageToggle className="h-10 justify-between md:h-9" />
-        </div>
-        <div className="surface-inline space-y-2.5 rounded-xl p-3.5">
-          <div className="space-y-1">
+          <LanguageToggle />
+        </section>
+
+        <section className="surface-inline rounded-xl p-3.5">
+          <div className="mb-2.5 space-y-1">
             <p className="text-[13px] font-medium">{t("themeSettingTitle")}</p>
             <p className="text-xs leading-relaxed text-muted-foreground/68">
               {t("themeSettingDescription")}
             </p>
           </div>
           <ThemeToggle
-            className="h-10 justify-between md:h-9"
             onChange={(nextTheme) => preferenceMutation.mutate({ themePreference: nextTheme })}
           />
-        </div>
+        </section>
       </CardContent>
     </Card>
   );

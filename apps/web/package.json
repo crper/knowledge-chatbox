@@ -20,7 +20,7 @@
     "@streamdown/math": "^1.0.2",
     "@streamdown/mermaid": "^1.0.2",
     "@tanstack/react-form": "^1.28.6",
-    "@tanstack/react-query": "^5.96.2",
+    "@tanstack/react-query": "^5.97.0",
     "@tanstack/react-router": "^1.168.10",
     "@tanstack/react-table": "^8.21.3",
     "@tanstack/react-virtual": "^3.13.23",
@@ -30,12 +30,12 @@
     "es-toolkit": "^1.45.1",
     "i18next": "^26.0.4",
     "katex": "^0.16.45",
-    "lucide-react": "^1.7.0",
+    "lucide-react": "^1.8.0",
     "msw": "^2.13.2",
     "openapi-fetch": "^0.17.0",
     "parse-sse": "^0.1.0",
-    "react": "^19.2.4",
-    "react-dom": "^19.2.4",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
     "react-dropzone": "^15.0.0",
     "react-i18next": "^17.0.2",
     "shadcn": "^4.2.0",
@@ -50,7 +50,7 @@
     "@tailwindcss/vite": "^4.2.2",
     "@tanstack/react-devtools": "^0.10.2",
     "@tanstack/react-form-devtools": "^0.2.20",
-    "@tanstack/react-query-devtools": "^5.96.2",
+    "@tanstack/react-query-devtools": "^5.97.0",
     "@tanstack/react-router-devtools": "^1.166.11",
     "@tanstack/router-plugin": "^1.167.12",
     "@testing-library/jest-dom": "^6.9.1",
@@ -63,15 +63,15 @@
     "openapi-typescript": "^7.13.0",
     "tailwindcss": "^4.2.2",
     "typescript": "~6.0.2",
-    "vite": "npm:@voidzero-dev/vite-plus-core@0.1.12",
+    "vite": "npm:@voidzero-dev/vite-plus-core@0.1.16",
     "vite-plus": "0.1.16",
-    "vitest": "npm:@voidzero-dev/vite-plus-test@0.1.12"
+    "vitest": "npm:@voidzero-dev/vite-plus-test@0.1.16"
   },
-  "packageManager": "pnpm@10.32.1",
+  "packageManager": "pnpm@10.33.0",
   "pnpm": {
     "overrides": {
-      "vite": "npm:@voidzero-dev/vite-plus-core@0.1.12",
-      "vitest": "npm:@voidzero-dev/vite-plus-test@0.1.12"
+      "vite": "npm:@voidzero-dev/vite-plus-core@0.1.16",
+      "vitest": "npm:@voidzero-dev/vite-plus-test@0.1.16"
     }
   }
 }

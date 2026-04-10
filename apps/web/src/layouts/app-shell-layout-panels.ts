@@ -6,8 +6,9 @@
  * 定义桌面端聊天工作区左右侧栏列宽。
  */
 export const CHAT_DESKTOP_PANEL_COLUMNS = {
-  left: "minmax(16rem, 19rem)",
-  right: "minmax(20rem, 24rem)",
+  rail: "4.75rem",
+  left: "minmax(14.5rem, 17rem)",
+  right: "minmax(17rem, 19rem)",
 } as const;
 
 /**
@@ -15,18 +16,15 @@ export const CHAT_DESKTOP_PANEL_COLUMNS = {
  */
 export type ChatWorkspacePanelsState = {
   leftCollapsed: boolean;
-  rightCollapsed: boolean;
 };
 
 /**
  * 构建桌面端聊天工作区的三列模板。
  */
-export function buildChatDesktopGridTemplate({
-  leftCollapsed,
-  rightCollapsed,
-}: ChatWorkspacePanelsState) {
+export function buildChatDesktopGridTemplate({ leftCollapsed }: ChatWorkspacePanelsState) {
+  const railColumn = CHAT_DESKTOP_PANEL_COLUMNS.rail;
   const leftColumn = leftCollapsed ? "0rem" : CHAT_DESKTOP_PANEL_COLUMNS.left;
-  const rightColumn = rightCollapsed ? "0rem" : CHAT_DESKTOP_PANEL_COLUMNS.right;
+  const rightColumn = CHAT_DESKTOP_PANEL_COLUMNS.right;
 
-  return `${leftColumn} minmax(0, 1fr) ${rightColumn}`;
+  return `${railColumn} ${leftColumn} minmax(0, 1fr) ${rightColumn}`;
 }
