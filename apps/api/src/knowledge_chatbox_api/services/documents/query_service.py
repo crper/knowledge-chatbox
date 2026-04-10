@@ -1,7 +1,5 @@
 """Lightweight document read service for list/detail/file access paths."""
 
-from __future__ import annotations
-
 from knowledge_chatbox_api.models.document import Document, DocumentRevision
 from knowledge_chatbox_api.repositories.document_repository import DocumentRepository
 from knowledge_chatbox_api.repositories.space_repository import SpaceRepository
@@ -15,6 +13,7 @@ class DocumentQueryService:
         self.session = session
         self.document_repository = DocumentRepository(session)
         self.space_repository = SpaceRepository(session)
+        self._visible_space_ids_cache: dict[int, set[int]] = {}
 
     def list_documents(
         self,
@@ -67,7 +66,11 @@ class DocumentQueryService:
         return document
 
     def _visible_space_ids(self, user_id: int) -> set[int]:
-        return set(self.space_repository.get_visible_space_ids_for_user(user_id))
+        if user_id not in self._visible_space_ids_cache:
+            self._visible_space_ids_cache[user_id] = set(
+                self.space_repository.get_visible_space_ids_for_user(user_id)
+            )
+        return self._visible_space_ids_cache[user_id]
 
     def _can_access_document(self, user_id: int, document: Document) -> bool:
         return document.space_id in self._visible_space_ids(user_id)

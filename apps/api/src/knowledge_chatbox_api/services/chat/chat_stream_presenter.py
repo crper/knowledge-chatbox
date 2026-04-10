@@ -1,7 +1,5 @@
 """聊天相关服务模块。"""
 
-from __future__ import annotations
-
 import orjson
 
 from knowledge_chatbox_api.services.chat.stream_events import (

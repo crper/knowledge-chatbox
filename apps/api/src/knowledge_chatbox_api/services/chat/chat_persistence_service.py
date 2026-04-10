@@ -1,8 +1,8 @@
 """聊天投影持久化服务。"""
 
-from __future__ import annotations
-
 from datetime import UTC, datetime
+
+from knowledge_chatbox_api.models.enums import ChatMessageStatus, ChatRunStatus
 
 TEXT_DELTA_FLUSH_INTERVAL = 8
 
@@ -34,9 +34,9 @@ class ChatPersistenceService:
     def mark_run_running(self, run, assistant_message) -> None:
         self.flush_text_buffer()
         now = datetime.now(UTC)
-        run.status = "running"
+        run.status = ChatRunStatus.RUNNING
         run.started_at = now
-        assistant_message.status = "streaming"
+        assistant_message.status = ChatMessageStatus.STREAMING
         assistant_message.updated_at = now
         self.session.commit()
         self._pending_text_deltas = 0
@@ -53,10 +53,10 @@ class ChatPersistenceService:
     def complete_run(self, run, assistant_message, sources: list[dict], usage: dict | None) -> None:
         self.flush_text_buffer()
         now = datetime.now(UTC)
-        run.status = "succeeded"
+        run.status = ChatRunStatus.SUCCEEDED
         run.finished_at = now
         run.usage_json = usage
-        assistant_message.status = "succeeded"
+        assistant_message.status = ChatMessageStatus.SUCCEEDED
         assistant_message.error_message = None
         assistant_message.sources_json = sources
         assistant_message.updated_at = now
@@ -73,10 +73,10 @@ class ChatPersistenceService:
     ) -> None:
         self.flush_text_buffer()
         now = datetime.now(UTC)
-        run.status = "failed"
+        run.status = ChatRunStatus.FAILED
         run.error_message = error_message
         run.finished_at = now
-        assistant_message.status = "failed"
+        assistant_message.status = ChatMessageStatus.FAILED
         assistant_message.error_message = error_message
         assistant_message.sources_json = [] if sources is None else list(sources)
         assistant_message.updated_at = now

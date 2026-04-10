@@ -1,7 +1,5 @@
 """认证相关服务模块。"""
 
-from __future__ import annotations
-
 from collections import defaultdict
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta

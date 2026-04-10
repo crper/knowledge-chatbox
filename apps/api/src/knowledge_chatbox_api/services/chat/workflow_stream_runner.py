@@ -1,14 +1,14 @@
 """Workflow-backed chat stream execution."""
 
-from __future__ import annotations
-
 import asyncio
 from collections.abc import AsyncIterator, Coroutine
+from dataclasses import asdict
 from typing import Any, cast
 
 from pydantic_ai import AgentRunResultEvent
 
 from knowledge_chatbox_api.core.logging import get_logger
+from knowledge_chatbox_api.models.enums import ChatMessageStatus
 from knowledge_chatbox_api.services.chat.chat_persistence_service import ChatPersistenceService
 from knowledge_chatbox_api.services.chat.stream_events import (
     MESSAGE_COMPLETED_EVENT,
@@ -22,6 +22,7 @@ from knowledge_chatbox_api.services.chat.stream_events import (
     StreamEventEnvelope,
     StreamEventName,
     StreamEventPayload,
+    append_event_batch,
 )
 from knowledge_chatbox_api.services.chat.workflow.event_bridge import ChatWorkflowEventBridge
 from knowledge_chatbox_api.services.chat.workflow.output import merge_sources_by_key
@@ -96,7 +97,7 @@ class WorkflowStreamRunner:
                             session_id=session_id,
                             sources=sources,
                             started_text=started_text,
-                            usage=vars(usage) if usage is not None else {},
+                            usage=asdict(usage) if usage is not None else {},
                         )
                         for event in completion_events:
                             yield event
@@ -212,7 +213,7 @@ class WorkflowStreamRunner:
                     {
                         "run_id": self.run.id,
                         "assistant_message_id": self.assistant_message.id,
-                        "status": "succeeded",
+                        "status": ChatMessageStatus.SUCCEEDED,
                     },
                 ),
                 (
@@ -235,7 +236,7 @@ class WorkflowStreamRunner:
         session_id: int,
         sources: list[dict[str, Any]] | None = None,
     ) -> tuple[int, StreamEventEnvelope]:
-        self.user_message.status = "failed"
+        self.user_message.status = ChatMessageStatus.FAILED
         self.user_message.error_message = error_message
         self.persistence.fail_run(
             self.run,
@@ -287,21 +288,11 @@ class WorkflowStreamRunner:
         current_seq: int,
         events: list[StreamEventBatchItem],
     ) -> tuple[int, list[StreamEventEnvelope]]:
-        if not events:
-            return current_seq, []
-
-        next_seq = current_seq
-        presented_events: list[StreamEventEnvelope] = []
-        for event_name, data in events:
-            next_seq += 1
-            self.chat_run_event_repository.append_event(
-                run_id=self.run.id,
-                seq=next_seq,
-                event_type=event_name,
-                payload_json=data,
-                flush=False,
-            )
-            presented_events.append(self.presenter.event(event_name, data))
-
-        self.session.commit()
-        return next_seq, presented_events
+        return append_event_batch(
+            run_id=self.run.id,
+            current_seq=current_seq,
+            events=events,
+            event_repository=self.chat_run_event_repository,
+            presenter=self.presenter,
+            session=self.session,
+        )

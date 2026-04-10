@@ -1,9 +1,8 @@
 """认证相关服务模块。"""
 
-from __future__ import annotations
-
 from datetime import UTC, datetime, timedelta
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from knowledge_chatbox_api.core.config import Settings
@@ -16,6 +15,7 @@ from knowledge_chatbox_api.core.security import (
     hash_session_token,
 )
 from knowledge_chatbox_api.models.auth import AuthSession, User
+from knowledge_chatbox_api.models.enums import ThemePreference, UserRole, UserStatus
 from knowledge_chatbox_api.repositories.auth_session_repository import AuthSessionRepository
 from knowledge_chatbox_api.repositories.user_repository import UserRepository
 from knowledge_chatbox_api.services.auth.rate_limit_service import RateLimitService
@@ -83,26 +83,25 @@ class AuthService:
 
     def ensure_default_admin(self) -> User:
         """确保默认管理员。"""
-        if self.user_repository.count_admins() > 0:
-            admin = self.user_repository.get_by_username(self.settings.initial_admin_username)
-            if admin is not None:
-                return admin
-            existing_admin = (
-                self.session.query(User).filter(User.role == "admin").order_by(User.id).first()
-            )
-            if existing_admin is None:
-                raise ConflictError("No admin user exists in the system.")
-            return existing_admin
+        admin = self.user_repository.get_by_username(self.settings.initial_admin_username)
+        if admin is not None:
+            return admin
 
         admin = User(
             username=self.settings.initial_admin_username,
             password_hash=self.password_manager.hash_password(self.settings.initial_admin_password),
-            role="admin",
-            status="active",
-            theme_preference="system",
+            role=UserRole.ADMIN,
+            status=UserStatus.ACTIVE,
+            theme_preference=ThemePreference.SYSTEM,
         )
-        self.user_repository.add(admin)
-        self.session.commit()
+        try:
+            self.user_repository.add(admin)
+            self.session.commit()
+        except IntegrityError:
+            self.session.rollback()
+            admin = self.user_repository.get_by_username(self.settings.initial_admin_username)
+            if admin is None:
+                raise
         self.session.refresh(admin)
         return admin
 
@@ -134,7 +133,7 @@ class AuthService:
             raise RateLimitExceededError("Too many failed login attempts.")
 
         user = self.user_repository.get_by_username(username)
-        if user is None or user.status != "active":
+        if user is None or user.status != UserStatus.ACTIVE:
             self.rate_limit_service.record_failure(username)
             raise InvalidCredentialsError("Invalid username or password.")
 
@@ -171,7 +170,7 @@ class AuthService:
         if auth_session is None:
             raise UnauthorizedError("Authentication required.")
         user = self.user_repository.get_by_id(auth_session.user_id)
-        if user is None or user.status != "active":
+        if user is None or user.status != UserStatus.ACTIVE:
             raise UnauthorizedError("Authentication required.")
         return user
 
@@ -194,7 +193,7 @@ class AuthService:
             raise UnauthorizedError("Authentication required.")
 
         user = self.user_repository.get_by_id(int(user_id_raw))
-        if user is None or user.status != "active":
+        if user is None or user.status != UserStatus.ACTIVE:
             raise UnauthorizedError("Authentication required.")
 
         issued_at = payload.get("iat")
@@ -240,9 +239,11 @@ class AuthService:
 
     def update_preferences(self, user: User, theme_preference: str) -> User:
         """更新偏好。"""
-        if theme_preference not in {"light", "dark", "system"}:
-            raise ValidationError("Invalid theme preference.")
-        user.theme_preference = theme_preference
+        try:
+            validated_theme = ThemePreference(theme_preference)
+        except ValueError as exc:
+            raise ValidationError("Invalid theme preference.") from exc
+        user.theme_preference = validated_theme
         self.session.commit()
         self.session.refresh(user)
         return user

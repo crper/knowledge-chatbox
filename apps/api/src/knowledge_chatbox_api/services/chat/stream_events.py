@@ -1,7 +1,5 @@
 """聊天流式事件名称常量。"""
 
-from __future__ import annotations
-
 from typing import Any, Literal, TypedDict
 
 RUN_STARTED_EVENT = "run.started"
@@ -39,3 +37,32 @@ type StreamEventBatchItem = tuple[StreamEventName, StreamEventPayload]
 class StreamEventEnvelope(TypedDict):
     event: StreamEventName
     data: StreamEventPayload
+
+
+def append_event_batch(
+    *,
+    run_id: int,
+    current_seq: int,
+    events: list[StreamEventBatchItem],
+    event_repository,
+    presenter,
+    session,
+) -> tuple[int, list[StreamEventEnvelope]]:
+    if not events:
+        return current_seq, []
+
+    next_seq = current_seq
+    presented_events: list[StreamEventEnvelope] = []
+    for event_name, data in events:
+        next_seq += 1
+        event_repository.append_event(
+            run_id=run_id,
+            seq=next_seq,
+            event_type=event_name,
+            payload_json=data,
+            flush=False,
+        )
+        presented_events.append(presenter.event(event_name, data))
+
+    session.commit()
+    return next_seq, presented_events

@@ -1,6 +1,3 @@
-from __future__ import annotations
-
-from time import perf_counter
 from typing import Any
 
 from sqlalchemy import select
@@ -10,6 +7,7 @@ from knowledge_chatbox_api.services.chat.retrieval.models import (
     RetrievalDiagnostics,
     RetrievedContext,
 )
+from knowledge_chatbox_api.utils.timing import elapsed_ms
 
 
 class RetrievedContextBuilder:
@@ -46,7 +44,7 @@ class RetrievedContextBuilder:
         sources: list[dict[str, Any]] = []
 
         for record in retrieved_chunks:
-            if not self._is_record_valid(record):
+            if not self._has_relevant_score(record):
                 continue
 
             document_name = self._resolve_document_name(
@@ -65,7 +63,7 @@ class RetrievedContextBuilder:
             diagnostics=diagnostics,
         )
 
-    def _is_record_valid(self, record: dict[str, Any]) -> bool:
+    def _has_relevant_score(self, record: dict[str, Any]) -> bool:
         score = record.get("score")
         if isinstance(score, (int, float)) and score < 0.1:
             return False
@@ -133,7 +131,7 @@ class RetrievedContextBuilder:
         candidate_count: int,
         attachment_revision_scope_count: int,
     ) -> RetrievalDiagnostics:
-        latency_ms = max(int(round((perf_counter() - started_at) * 1000)), 0)
+        latency_ms = elapsed_ms(started_at)
         return RetrievalDiagnostics(
             strategy=strategy,
             latency_ms=latency_ms,

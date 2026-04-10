@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from knowledge_chatbox_api.services.chat.prompt_attachment_service import PromptAttachmentService
 from knowledge_chatbox_api.services.chat.retrieval_service import RetrievalService
 from knowledge_chatbox_api.services.chat.workflow.deps import ChatWorkflowDeps
@@ -7,6 +5,7 @@ from knowledge_chatbox_api.services.chat.workflow.deps import ChatWorkflowDeps
 
 def build_chat_workflow_deps(
     *,
+    session_id: int,
     session,
     actor,
     chat_repository,
@@ -18,6 +17,7 @@ def build_chat_workflow_deps(
     request_metadata: dict[str, object],
 ) -> ChatWorkflowDeps:
     return ChatWorkflowDeps(
+        session_id=session_id,
         session=session,
         actor=actor,
         chat_repository=chat_repository,

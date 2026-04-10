@@ -1,20 +1,22 @@
 """Application-layer orchestration for chat routes."""
 
-from __future__ import annotations
-
 from datetime import UTC, datetime
 from typing import Any
 
 from knowledge_chatbox_api.core.errors import AppError
 from knowledge_chatbox_api.core.logging import get_logger
 from knowledge_chatbox_api.models.auth import User
+from knowledge_chatbox_api.models.enums import (
+    ChatMessageRole,
+    ChatMessageStatus,
+    ReasoningMode,
+)
 from knowledge_chatbox_api.providers.factory import build_embedding_adapter_from_settings
-from knowledge_chatbox_api.repositories.chat_repository import ChatRepository
+from knowledge_chatbox_api.repositories.chat_repository import _UNSET, ChatRepository
 from knowledge_chatbox_api.repositories.chat_run_event_repository import ChatRunEventRepository
 from knowledge_chatbox_api.repositories.chat_run_repository import ChatRunRepository
 from knowledge_chatbox_api.repositories.document_repository import DocumentRepository
-from knowledge_chatbox_api.schemas.chat import CreateChatMessageRequest
-from knowledge_chatbox_api.services.chat.attachment_metadata import build_attachment_metadata
+from knowledge_chatbox_api.schemas.chat import CreateChatMessageRequest, dump_chat_attachments
 from knowledge_chatbox_api.services.chat.chat_run_service import ChatRunService
 from knowledge_chatbox_api.services.chat.chat_stream_presenter import ChatStreamPresenter
 from knowledge_chatbox_api.services.chat.retry_service import (
@@ -22,9 +24,9 @@ from knowledge_chatbox_api.services.chat.retry_service import (
     RetryService,
     RetryTargetNotFoundError,
 )
-from knowledge_chatbox_api.services.chat.runtime_settings import build_chat_runtime_settings
 from knowledge_chatbox_api.services.chat.workflow import ChatWorkflow, build_chat_workflow_deps
 from knowledge_chatbox_api.services.documents.query_service import DocumentQueryService
+from knowledge_chatbox_api.services.settings.runtime_settings import build_runtime_settings
 from knowledge_chatbox_api.services.settings.settings_service import SettingsService
 from knowledge_chatbox_api.utils.chroma import get_chroma_store
 
@@ -34,8 +36,6 @@ logger = get_logger(__name__)
 class ChatRouteError(AppError):
     """Structured non-HTTP error used by chat route handlers."""
 
-    status_code = 400
-    code = "chat_error"
     default_message = "Chat operation failed."
 
     def __init__(
@@ -64,13 +64,14 @@ class ChatApplicationService:
         self.chat_run_event_repository = ChatRunEventRepository(session)
         self.document_repository = DocumentRepository(session)
         self.document_query_service = DocumentQueryService(session)
+        self._settings_service = SettingsService(session, settings)
 
     def create_session(
         self,
         actor: User,
         title: str | None,
         *,
-        reasoning_mode: str = "default",
+        reasoning_mode: str = ReasoningMode.DEFAULT,
     ) -> Any:
         """Create one session for the current user."""
         chat_session = self.chat_repository.create_session(
@@ -98,8 +99,8 @@ class ChatApplicationService:
         chat_session = self._require_owned_session(actor, session_id)
         self.chat_repository.update_session(
             session_id,
-            title=patch["title"] if "title" in patch else ...,
-            reasoning_mode=patch["reasoning_mode"] if "reasoning_mode" in patch else ...,
+            title=patch.get("title", _UNSET),
+            reasoning_mode=patch.get("reasoning_mode", _UNSET),
         )
         self.session.commit()
         self.session.refresh(chat_session)
@@ -161,7 +162,7 @@ class ChatApplicationService:
     def delete_failed_message(self, actor: User, message_id: int) -> None:
         """Delete one failed user message and any assistant replies tied to it."""
         message = self._require_owned_message(actor, message_id)
-        if message.role != "user" or message.status != "failed":
+        if message.role != ChatMessageRole.USER or message.status != ChatMessageStatus.FAILED:
             raise ChatRouteError(
                 409,
                 "chat_message_delete_not_allowed",
@@ -200,7 +201,7 @@ class ChatApplicationService:
                 continue
             attachment.document_revision_id = document_version.id
             attachment.document_id = document.id
-            attachment.archived_at = datetime.now(UTC).isoformat()
+            attachment.archived_at = datetime.now(UTC)
             self.session.commit()
             self.session.refresh(message)
             return message
@@ -226,7 +227,7 @@ class ChatApplicationService:
                 )
             else:
                 user_message = retry_service.create_or_reuse_user_message(
-                    attachments=build_attachment_metadata(payload.attachments),
+                    attachments=dump_chat_attachments(payload.attachments),
                     session_id=session_id,
                     content=payload.content,
                     client_request_id=payload.client_request_id,
@@ -240,9 +241,8 @@ class ChatApplicationService:
         if payload.retry_of_message_id is None and existing_assistant is not None:
             return user_message, existing_assistant
 
-        settings_service = SettingsService(self.session, self.settings)
-        settings_record = settings_service.get_or_create_settings_record()
-        runtime_settings = build_chat_runtime_settings(
+        settings_record = self._settings_service.get_or_create_settings_record()
+        runtime_settings = build_runtime_settings(
             settings_record,
             reasoning_mode=chat_session.reasoning_mode,
         )
@@ -260,6 +260,7 @@ class ChatApplicationService:
         try:
             result = ChatWorkflow().run_sync(
                 deps=build_chat_workflow_deps(
+                    session_id=session_id,
                     session=self.session,
                     actor=actor,
                     chat_repository=self.chat_repository,
@@ -276,17 +277,17 @@ class ChatApplicationService:
             )
             answer = result.answer
             sources = [source.model_dump() for source in result.sources]
-            user_message.status = "succeeded"
+            user_message.status = ChatMessageStatus.SUCCEEDED
             user_message.error_message = None
             assistant_message.content = answer
-            assistant_message.status = "succeeded"
+            assistant_message.status = ChatMessageStatus.SUCCEEDED
             assistant_message.error_message = None
             assistant_message.sources_json = sources
         except Exception as exc:  # noqa: BLE001
-            user_message.status = "failed"
+            user_message.status = ChatMessageStatus.FAILED
             user_message.error_message = str(exc)
             assistant_message.content = ""
-            assistant_message.status = "failed"
+            assistant_message.status = ChatMessageStatus.FAILED
             assistant_message.error_message = str(exc)
             assistant_message.sources_json = []
             logger.warning(
@@ -310,9 +311,8 @@ class ChatApplicationService:
     ) -> tuple[ChatStreamPresenter, ChatRunService]:
         """Return the presenter and stream runner for one owned session."""
         chat_session = self._require_owned_session(actor, session_id)
-        settings_service = SettingsService(self.session, self.settings)
-        settings_record = settings_service.get_or_create_settings_record()
-        runtime_settings = build_chat_runtime_settings(
+        settings_record = self._settings_service.get_or_create_settings_record()
+        runtime_settings = build_runtime_settings(
             settings_record,
             reasoning_mode=chat_session.reasoning_mode,
         )

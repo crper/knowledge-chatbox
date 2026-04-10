@@ -1,21 +1,25 @@
 """后台索引重建服务。"""
 
-from __future__ import annotations
-
 from pathlib import Path
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import select
 
 from knowledge_chatbox_api.core.logging import get_logger
-from knowledge_chatbox_api.models.document import Document, DocumentRevision
+from knowledge_chatbox_api.models.document import (
+    Document,
+    DocumentRevision,
+    latest_revision_join_condition,
+)
+from knowledge_chatbox_api.models.enums import DocumentStatus, IngestStatus
 from knowledge_chatbox_api.providers.factory import build_embedding_adapter
 from knowledge_chatbox_api.repositories.retrieval_chunk_repository import RetrievalChunkRepository
-from knowledge_chatbox_api.services.documents.chunking_service import ChunkingService
+from knowledge_chatbox_api.services.documents.chunking_service import get_default_chunking_service
 from knowledge_chatbox_api.services.documents.indexing_service import IndexingService
 from knowledge_chatbox_api.services.settings.runtime_settings import (
     build_embedding_settings,
 )
 from knowledge_chatbox_api.services.settings.settings_service import (
+    INDEX_REBUILD_STATUS_FAILED,
     INDEX_REBUILD_STATUS_IDLE,
     INDEX_REBUILD_STATUS_RUNNING,
     SettingsService,
@@ -33,7 +37,7 @@ class RebuildService:
         self.session = session
         self.settings = settings
         self.settings_service = SettingsService(session, settings)
-        self.chunking_service = ChunkingService()
+        self.chunking_service = get_default_chunking_service()
         self.chroma_store = get_chroma_store()
         self.retrieval_chunk_repository = RetrievalChunkRepository(session)
 
@@ -94,18 +98,18 @@ class RebuildService:
             return processed
 
         if errors:
-            latest_settings.index_rebuild_status = "failed"
+            latest_settings.index_rebuild_status = INDEX_REBUILD_STATUS_FAILED
             self.session.commit()
             return processed
 
         if latest_settings.pending_embedding_route is None:
-            latest_settings.index_rebuild_status = "failed"
+            latest_settings.index_rebuild_status = INDEX_REBUILD_STATUS_FAILED
             self.session.commit()
             return processed
 
         pending_embedding_route_json = latest_settings.pending_embedding_route_json
         if pending_embedding_route_json is None:
-            latest_settings.index_rebuild_status = "failed"
+            latest_settings.index_rebuild_status = INDEX_REBUILD_STATUS_FAILED
             self.session.commit()
             return processed
 
@@ -122,15 +126,9 @@ class RebuildService:
             select(DocumentRevision)
             .join(Document, Document.id == DocumentRevision.document_id)
             .where(
-                Document.status == "active",
-                or_(
-                    Document.latest_revision_id == DocumentRevision.id,
-                    and_(
-                        Document.latest_revision_id.is_(None),
-                        DocumentRevision.revision_no == Document.current_version_number,
-                    ),
-                ),
-                DocumentRevision.lifecycle_status == "indexed",
+                Document.status == DocumentStatus.ACTIVE,
+                latest_revision_join_condition(),
+                DocumentRevision.lifecycle_status == IngestStatus.INDEXED,
             )
             .order_by(Document.updated_at.desc(), Document.id.desc())
         )
@@ -143,5 +141,5 @@ class RebuildService:
             latest_settings.building_index_generation == target_generation
             and latest_settings.index_rebuild_status == INDEX_REBUILD_STATUS_RUNNING
         ):
-            latest_settings.index_rebuild_status = "failed"
+            latest_settings.index_rebuild_status = INDEX_REBUILD_STATUS_FAILED
             self.session.commit()

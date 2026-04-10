@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pydantic_ai import Agent
 from pydantic_ai.usage import UsageLimits
 
@@ -26,6 +24,7 @@ def _build_base_agent(model, *, output_type):
         output_type=output_type,
         instructions=base_instructions(),
         defer_model_check=True,
+        retries=2,
     )
     agent.instructions(build_runtime_instructions)
     agent.tool(knowledge_search_tool)

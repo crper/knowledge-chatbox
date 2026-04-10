@@ -1,7 +1,5 @@
 """文档相关服务模块。"""
 
-from __future__ import annotations
-
 from knowledge_chatbox_api.core.errors import AppError
 
 
@@ -79,3 +77,22 @@ class PendingEmbeddingNotConfiguredError(DocumentError):
     status_code = 409
     code = "pending_embedding_not_configured"
     default_message = "Document upload requires the pending embedding provider to be configured."
+
+
+class DocumentReindexFailedError(DocumentError):
+    """重建索引执行后资源仍处于失败状态。"""
+
+    status_code = 500
+    code = "document_reindex_failed"
+    default_message = "Document reindex failed."
+
+
+class FileTooLargeError(DocumentError):
+    """上传文件超过大小限制。"""
+
+    status_code = 413
+    code = "file_too_large"
+    default_message = "Uploaded file exceeds the maximum allowed size."
+
+    def __init__(self, max_size_mb: int = 100) -> None:
+        super().__init__(f"Uploaded file exceeds the maximum allowed size of {max_size_mb} MB.")

@@ -1,11 +1,13 @@
-from __future__ import annotations
-
 import base64
 import binascii
+from typing import cast
 
 from pydantic_ai.messages import BinaryContent, ModelRequest, ModelResponse, TextPart
 from pydantic_ai.settings import ModelSettings
 
+from knowledge_chatbox_api.models.enums import ChatAttachmentType, ChatMessageRole
+from knowledge_chatbox_api.providers.base import build_reasoning_config
+from knowledge_chatbox_api.services.chat import PROMPT_HISTORY_MESSAGE_LIMIT
 from knowledge_chatbox_api.services.chat.workflow.agent import (
     build_chat_agent,
     build_chat_stream_agent,
@@ -15,13 +17,21 @@ from knowledge_chatbox_api.services.chat.workflow.model_factory import build_cha
 from knowledge_chatbox_api.services.chat.workflow.output import (
     ChatWorkflowResult,
     WorkflowSource,
-    merge_sources_by_key,
+    merge_workflow_sources,
 )
-
-PROMPT_HISTORY_MESSAGE_LIMIT = 4
 
 
 class ChatWorkflow:
+    """聊天执行 owner，负责构建 agent、组装 user prompt 与消息历史、执行同步和流式问答。
+
+    同步问答走 ``run_sync``，流式问答走 ``run_stream_events``；两者共享同一套
+    PydanticAI agent 构建逻辑和消息历史组装逻辑。
+
+    构造参数 ``agent_model`` / ``stream_agent_model`` 用于测试注入自定义 model；
+    生产环境下默认通过 ``build_chat_agent_model`` 从当前 ``ProviderRuntimeSettings``
+    构建真实 model 实例。
+    """
+
     def __init__(self, *, agent_model=None, stream_agent_model=None) -> None:
         self._agent_model = agent_model
         self._stream_agent_model = stream_agent_model
@@ -51,9 +61,7 @@ class ChatWorkflow:
         prompt_text = deps.prompt_attachment_service.resolve_prompt_text(question, attachments)
         prompt_body = (
             f"{prompt_text}\n\n"
-            f"session_id={session_id}\n"
             f"question={question}\n"
-            f"attachments={attachments or []}\n"
             "当前回合附件已随用户消息直接提供。需要知识库上下文时调用 knowledge_search 工具。"
         ).strip()
 
@@ -83,7 +91,7 @@ class ChatWorkflow:
             text = item.get("text")
             return text if isinstance(text, str) and text else None
 
-        if item_type == "image":
+        if item_type == ChatAttachmentType.IMAGE:
             return self._convert_image_attachment(item)
 
         return None
@@ -117,71 +125,50 @@ class ChatWorkflow:
                 limit=PROMPT_HISTORY_MESSAGE_LIMIT,
             )
         )
-        if history and history[-1].role == "assistant" and not (history[-1].content or "").strip():
+        if (
+            history
+            and history[-1].role == ChatMessageRole.ASSISTANT
+            and not (history[-1].content or "").strip()
+        ):
             history.pop()
-        if history and history[-1].role == "user" and history[-1].content == question:
+        if history and history[-1].role == ChatMessageRole.USER and history[-1].content == question:
             history.pop()
 
         message_history: list[ModelRequest | ModelResponse] = []
         for message in history:
-            if message.role == "user":
+            if message.role == ChatMessageRole.USER:
                 message_history.append(ModelRequest.user_text_prompt(message.content))
                 continue
-            if message.role == "assistant" and message.content:
+            if message.role == ChatMessageRole.ASSISTANT and message.content:
                 message_history.append(ModelResponse(parts=[TextPart(message.content)]))
         return message_history
 
     def _build_model_settings(self, runtime_settings) -> ModelSettings:
         route = runtime_settings.response_route
-        reasoning_mode = getattr(runtime_settings, "reasoning_mode", "default")
         model_settings: dict[str, object] = {}
 
-        timeout = getattr(runtime_settings, "provider_timeout_seconds", None)
+        timeout = runtime_settings.provider_timeout_seconds
         if timeout is not None:
             model_settings["timeout"] = timeout
 
-        if route.provider == "anthropic":
-            if reasoning_mode == "on":
-                model_settings["anthropic_thinking"] = {
-                    "type": "enabled",
-                    "budget_tokens": 1024,
-                    "display": "omitted",
-                }
-            elif reasoning_mode == "off":
-                model_settings["anthropic_thinking"] = {"type": "disabled"}
-        elif route.provider == "ollama":
-            model_settings["extra_body"] = {"think": reasoning_mode == "on"}
-        elif reasoning_mode == "on":
-            model_settings["openai_reasoning_effort"] = "medium"
-        elif reasoning_mode == "off":
-            model_settings["openai_reasoning_effort"] = "none"
+        model_settings.update(
+            build_reasoning_config(route.provider, runtime_settings.reasoning_mode)
+        )
 
-        return model_settings  # type: ignore[return-value]
+        return cast(ModelSettings, model_settings)
 
     def _reset_workflow_state(self, deps) -> None:
-        workflow_state = getattr(deps, "workflow_state", None)
-        if isinstance(workflow_state, dict):
-            workflow_state["retrieved_sources"] = []
+        deps.retrieved_sources.clear()
 
     def _read_retrieved_sources(self, deps) -> list[WorkflowSource]:
-        workflow_state = getattr(deps, "workflow_state", None)
-        if not isinstance(workflow_state, dict):
-            return []
-        raw_sources = workflow_state.get("retrieved_sources", [])
-        if not isinstance(raw_sources, list):
-            return []
-        return [WorkflowSource.model_validate(source) for source in raw_sources]
+        return list(deps.retrieved_sources)
 
     def _merge_sources(
         self,
         retrieved_sources: list[WorkflowSource],
         output_sources: list[WorkflowSource],
     ) -> list[WorkflowSource]:
-        merged_dicts = merge_sources_by_key(
-            [s.model_dump() for s in retrieved_sources],
-            [s.model_dump() for s in output_sources],
-        )
-        return [WorkflowSource.model_validate(d) for d in merged_dicts]
+        return merge_workflow_sources(retrieved_sources, output_sources)
 
     def run_sync(
         self,
