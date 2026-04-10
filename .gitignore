@@ -76,3 +76,6 @@ docs/superpowers/
 # trae
 .trae/
 .omx/
+
+# tanstack
+.tanstack/
