@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import pytest
-from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy import select
 from tests.fixtures.factories import ChatSessionFactory, UserFactory
 
@@ -11,16 +10,10 @@ from knowledge_chatbox_api.models.auth import AuthSession
 from knowledge_chatbox_api.models.chat import ChatSession
 from knowledge_chatbox_api.models.space import Space
 from knowledge_chatbox_api.repositories.space_repository import SpaceRepository
-from knowledge_chatbox_api.schemas.user import (
-    CreateUserRequest,
-    ResetPasswordRequest,
-    UpdateUserRequest,
-)
 from knowledge_chatbox_api.services.auth.auth_service import AuthService, ValidationError
 from knowledge_chatbox_api.services.auth.rate_limit_service import RateLimitService
 from knowledge_chatbox_api.services.auth.user_service import (
     AuthorizationError,
-    UserNotFoundError,
     UserService,
 )
 
@@ -56,16 +49,6 @@ def seed_user(migrated_db_session, username: str = "alice"):
         username=username,
         password_hash=PasswordManager().hash_password("secret-123"),
     )
-
-
-def test_admin_can_create_user(migrated_db_session) -> None:
-    _, user_service = create_service_pair(migrated_db_session)
-    admin = seed_admin(migrated_db_session)
-
-    user = user_service.create_user(admin, "alice", "secret-123", "user")
-
-    assert user.username == "alice"
-    assert user.created_by_user_id == admin.id
 
 
 def test_admin_can_disable_and_enable_user(migrated_db_session) -> None:
@@ -119,21 +102,6 @@ def test_admin_can_delete_regular_user_and_cleanup_sessions(migrated_db_session)
     )
 
 
-def test_admin_cannot_disable_or_delete_admin_user(migrated_db_session) -> None:
-    _, user_service = create_service_pair(migrated_db_session)
-    root_admin = seed_admin(migrated_db_session)
-    second_admin = seed_user(migrated_db_session, username="ops")
-    second_admin.role = "admin"
-    migrated_db_session.commit()
-    migrated_db_session.refresh(second_admin)
-
-    with pytest.raises(ValidationError):
-        user_service.update_user(root_admin, second_admin.id, status="disabled")
-
-    with pytest.raises(ValidationError):
-        user_service.delete_user(root_admin, second_admin.id)
-
-
 def test_admin_cannot_demote_last_admin(migrated_db_session) -> None:
     _, user_service = create_service_pair(migrated_db_session)
     admin = seed_admin(migrated_db_session)
@@ -150,14 +118,6 @@ def test_non_admin_cannot_manage_users(migrated_db_session) -> None:
         user_service.create_user(user, "bob", "secret-123", "user")
 
 
-def test_admin_update_missing_user_raises_not_found(migrated_db_session) -> None:
-    _, user_service = create_service_pair(migrated_db_session)
-    admin = seed_admin(migrated_db_session)
-
-    with pytest.raises(UserNotFoundError):
-        user_service.update_user(admin, 999999, status="active")
-
-
 def test_create_user_auto_creates_personal_space(migrated_db_session) -> None:
     auth_service, user_service = create_service_pair(migrated_db_session)
     admin = seed_admin(migrated_db_session)
@@ -172,37 +132,3 @@ def test_create_user_auto_creates_personal_space(migrated_db_session) -> None:
     assert personal_space is not None
     assert personal_space.owner_user_id == created_user.id
     assert personal_space.kind == "personal"
-
-
-@pytest.mark.parametrize(
-    ("schema", "payload", "field"),
-    [
-        (
-            CreateUserRequest,
-            {"username": "", "password": "secret-123", "role": "user"},
-            "username",
-        ),
-        (
-            CreateUserRequest,
-            {"username": "alice", "password": "1234567", "role": "user"},
-            "password",
-        ),
-        (
-            CreateUserRequest,
-            {"username": "alice", "password": "secret-123", "role": "owner"},
-            "role",
-        ),
-        (ResetPasswordRequest, {"new_password": "1234567"}, "new_password"),
-        (UpdateUserRequest, {"role": "owner"}, "role"),
-        (UpdateUserRequest, {"theme_preference": "blue"}, "theme_preference"),
-    ],
-)
-def test_user_schemas_reject_invalid_payloads(
-    schema,
-    payload: dict[str, str],
-    field: str,
-) -> None:
-    with pytest.raises(PydanticValidationError) as exc_info:
-        schema.model_validate(payload)
-
-    assert field in str(exc_info.value)

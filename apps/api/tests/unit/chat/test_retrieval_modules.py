@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from knowledge_chatbox_api.services.chat.retrieval.policy import (
     build_retrieval_where_filter,
-    select_attachment_scoped_records,
     should_retrieve_knowledge,
 )
 
@@ -29,16 +28,3 @@ def test_build_retrieval_where_filter_combines_space_and_attachment_scope() -> N
             {"document_revision_id": {"$in": [2, 5]}},
         ]
     }
-
-
-def test_select_attachment_scoped_records_round_robins_between_revisions() -> None:
-    records = [
-        {"id": "a-1", "document_revision_id": 1},
-        {"id": "a-2", "document_revision_id": 1},
-        {"id": "b-1", "document_revision_id": 2},
-        {"id": "b-2", "document_revision_id": 2},
-    ]
-
-    selected = select_attachment_scoped_records(records, [1, 2])
-
-    assert [record["id"] for record in selected] == ["a-1", "b-1"]

@@ -19,6 +19,73 @@ from pydantic_ai.messages import (
 from pydantic_ai.usage import RunUsage
 
 from knowledge_chatbox_api.services.chat.workflow.output import ChatWorkflowResult
+from knowledge_chatbox_api.utils.chroma import _matches_where_clause, _score_records
+
+
+class InMemoryChromaStore:
+    """Cheap in-memory store used by unit tests and isolated service checks."""
+
+    def __init__(self) -> None:
+        self._records_by_generation: dict[int, dict[str, dict[str, Any]]] = {}
+
+    def upsert(
+        self,
+        records: list[dict[str, Any]],
+        *,
+        embeddings: list[list[float]] | None = None,
+        generation: int = 1,
+    ) -> None:
+        store = self._records_by_generation.setdefault(generation, {})
+        for index, record in enumerate(records):
+            stored_record = dict(record)
+            if embeddings is not None and index < len(embeddings):
+                stored_record["embedding"] = embeddings[index]
+            store[record["id"]] = stored_record
+
+    def list_by_document_id(
+        self,
+        document_id: int,
+        *,
+        generation: int = 1,
+    ) -> list[dict[str, Any]]:
+        records = self._records_by_generation.get(generation, {})
+        return [
+            record for record in records.values() if record["document_revision_id"] == document_id
+        ]
+
+    def delete_by_document_id(self, document_id: int, *, generation: int = 1) -> None:
+        ids_to_delete = [
+            record_id
+            for record_id, record in self._records_by_generation.get(generation, {}).items()
+            if record["document_revision_id"] == document_id
+        ]
+        for record_id in ids_to_delete:
+            self._records_by_generation.get(generation, {}).pop(record_id, None)
+
+    def clear_generation(self, generation: int) -> None:
+        self._records_by_generation.pop(generation, None)
+
+    def query(
+        self,
+        query_text: str,
+        *,
+        query_embedding: list[float] | None = None,
+        top_k: int = 3,
+        generation: int = 1,
+        where: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        records = list(self._records_by_generation.get(generation, {}).values())
+        filtered = self._apply_where_filter(records, where)
+        return _score_records(filtered, query_text, top_k=top_k)
+
+    def _apply_where_filter(
+        self,
+        records: list[dict[str, Any]],
+        where: dict[str, Any] | None,
+    ) -> list[dict[str, Any]]:
+        if not where:
+            return records
+        return [record for record in records if _matches_where_clause(record, where)]
 
 
 class ResponseAdapterStub:

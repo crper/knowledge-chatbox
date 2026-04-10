@@ -197,7 +197,10 @@ def test_document_upload_logs_completed_sync_ingestion(
     del configure_upload_provider
     ingestion_logger = LoggerSpy()
     stub_document_index_embedding(monkeypatch)
-    monkeypatch.setattr(IngestionService, "logger", ingestion_logger)
+    monkeypatch.setattr(
+        "knowledge_chatbox_api.services.documents.ingestion_service.logger",
+        ingestion_logger,
+    )
 
     login_admin(api_client)
     response = api_client.post(
@@ -232,7 +235,10 @@ def test_document_background_ingestion_logs_structured_failure(
 ) -> None:
     del configure_upload_provider
     ingestion_logger = LoggerSpy()
-    monkeypatch.setattr(IngestionService, "logger", ingestion_logger)
+    monkeypatch.setattr(
+        "knowledge_chatbox_api.services.documents.ingestion_service.logger",
+        ingestion_logger,
+    )
     monkeypatch.setattr(
         "knowledge_chatbox_api.tasks.document_jobs.complete_document_ingestion",
         lambda *_args: True,
@@ -278,7 +284,10 @@ def test_document_background_ingestion_logs_structured_success(
     del configure_upload_provider
     ingestion_logger = LoggerSpy()
     stub_document_index_embedding(monkeypatch)
-    monkeypatch.setattr(IngestionService, "logger", ingestion_logger)
+    monkeypatch.setattr(
+        "knowledge_chatbox_api.services.documents.ingestion_service.logger",
+        ingestion_logger,
+    )
     monkeypatch.setattr(
         "knowledge_chatbox_api.tasks.document_jobs.complete_document_ingestion",
         lambda *_args: True,

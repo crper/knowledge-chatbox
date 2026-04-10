@@ -31,28 +31,18 @@ class DummySettings:
     response_route = DummyRoute("openai", "gpt-5.4")
 
 
-def test_build_chat_agent_model_supports_openai() -> None:
-    settings = DummySettings()
-    settings.response_route = DummyRoute("openai", "gpt-5.4")
-    assert build_chat_agent_model(settings) is not None
+def test_build_chat_agent_model_supports_all_providers() -> None:
+    for provider, model_name in [
+        ("openai", "gpt-5.4"),
+        ("anthropic", "claude-sonnet-4-5"),
+        ("ollama", "qwen3.5:4b"),
+    ]:
+        settings = DummySettings()
+        settings.response_route = DummyRoute(provider, model_name)
+        assert build_chat_agent_model(settings) is not None
 
 
-def test_build_chat_agent_model_supports_anthropic() -> None:
-    settings = DummySettings()
-    settings.response_route = DummyRoute("anthropic", "claude-sonnet-4-5")
-    assert build_chat_agent_model(settings) is not None
-
-
-def test_build_chat_agent_model_supports_ollama_as_openai_compatible() -> None:
-    settings = DummySettings()
-    settings.response_route = DummyRoute("ollama", "qwen3.5:4b")
-    model = build_chat_agent_model(settings)
-
-    assert model is not None
-    assert model.base_url.rstrip("/") == "http://localhost:11434/v1"
-
-
-def test_build_chat_agent_model_normalizes_ollama_v1_input_once() -> None:
+def test_build_chat_agent_model_normalizes_ollama_v1_suffix() -> None:
     settings = DummySettings()
     settings.response_route = DummyRoute("ollama", "qwen3.5:4b")
     settings.provider_profiles.ollama.base_url = "http://localhost:11434/v1/"

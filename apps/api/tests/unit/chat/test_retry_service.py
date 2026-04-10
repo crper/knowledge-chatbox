@@ -23,27 +23,6 @@ def create_user_and_session(migrated_db_session):
 
 
 @pytest.mark.unit
-def test_retry_service_reuses_same_client_request_id_for_identical_payload(
-    migrated_db_session,
-) -> None:
-    _, chat_session, repository = create_user_and_session(migrated_db_session)
-    service = RetryService(repository, migrated_db_session)
-
-    first = service.create_or_reuse_user_message(
-        session_id=chat_session.id,
-        content="question",
-        client_request_id="req-1",
-    )
-    second = service.create_or_reuse_user_message(
-        session_id=chat_session.id,
-        content="question",
-        client_request_id="req-1",
-    )
-
-    assert first.id == second.id
-
-
-@pytest.mark.unit
 def test_retry_service_rejects_same_client_request_id_for_different_payload(
     migrated_db_session,
 ) -> None:

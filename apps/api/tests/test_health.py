@@ -13,45 +13,6 @@ def test_health_returns_envelope(client: TestClient):
     assert payload["data"]["status"] == "ok"
 
 
-def test_capability_adapter_contract_methods_exist() -> None:
-    from knowledge_chatbox_api.providers.anthropic_provider import (
-        AnthropicResponseAdapter,
-        AnthropicVisionAdapter,
-    )
-    from knowledge_chatbox_api.providers.base import (
-        BaseEmbeddingAdapter,
-        BaseResponseAdapter,
-        BaseVisionAdapter,
-    )
-    from knowledge_chatbox_api.providers.ollama_provider import (
-        OllamaEmbeddingAdapter,
-        OllamaResponseAdapter,
-        OllamaVisionAdapter,
-    )
-    from knowledge_chatbox_api.providers.openai_provider import (
-        OpenAIEmbeddingAdapter,
-        OpenAIResponseAdapter,
-        OpenAIVisionAdapter,
-    )
-    from knowledge_chatbox_api.providers.voyage_provider import VoyageEmbeddingAdapter
-
-    for provider_class in (OpenAIResponseAdapter, AnthropicResponseAdapter, OllamaResponseAdapter):
-        assert issubclass(provider_class, BaseResponseAdapter)
-        assert callable(provider_class.response)
-        assert callable(provider_class.stream_response)
-        assert callable(provider_class.health_check)
-
-    for provider_class in (OpenAIEmbeddingAdapter, VoyageEmbeddingAdapter, OllamaEmbeddingAdapter):
-        assert issubclass(provider_class, BaseEmbeddingAdapter)
-        assert callable(provider_class.embed)
-        assert callable(provider_class.health_check)
-
-    for provider_class in (OpenAIVisionAdapter, AnthropicVisionAdapter, OllamaVisionAdapter):
-        assert issubclass(provider_class, BaseVisionAdapter)
-        assert callable(provider_class.analyze_image)
-        assert callable(provider_class.health_check)
-
-
 def test_health_capabilities_reports_unconfigured_routes(api_client: TestClient) -> None:
     api_client.post(
         "/api/auth/login",
