@@ -194,7 +194,6 @@ def test_patch_preferences_updates_current_user_theme(api_client: TestClient) ->
     ("path", "payload", "field"),
     [
         ("/api/auth/login", {"username": "", "password": "Admin123456"}, "username"),
-        ("/api/auth/login", {"username": "admin", "password": "1234567"}, "password"),
         (
             "/api/auth/change-password",
             {"current_password": "Admin123456", "new_password": "1234567"},
@@ -226,6 +225,22 @@ def test_auth_request_schemas_reject_invalid_payloads(
     assert error["code"] == "validation_error"
     assert isinstance(error["details"], list)
     assert any(field in ".".join(str(part) for part in item["loc"]) for item in error["details"])
+
+
+@pytest.mark.parametrize("password", ["1234567", "admin123456"])
+def test_login_returns_invalid_credentials_for_wrong_password_regardless_of_format(
+    api_client: TestClient,
+    password: str,
+) -> None:
+    response = api_client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": password},
+    )
+    payload = response.json()
+
+    assert response.status_code == 401
+    assert payload["success"] is False
+    assert payload["error"]["code"] == "invalid_credentials"
 
 
 def test_admin_can_create_user_and_non_admin_is_forbidden(api_client: TestClient) -> None:

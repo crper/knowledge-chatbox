@@ -24,8 +24,10 @@
 **启动与依赖**
 
 - 首次 clone 或依赖刚更新时，先执行：`just init-env` -> `just setup`
+- `just` / `just help` 默认只展示当前建议优先记住的高频入口；如果要看完整命令面，执行 `just --list`
 - 依赖已安装后的推荐入口：仓库根目录 `just dev`
-- `just dev` / `just reset-dev` 会把当前 `API_PORT / WEB_PORT` 传给共享开发脚本；脚本会先拉起 API、等待 `GET /api/health` ready，再启动 Web，并在终端打印 Web、API health、docs、redoc 和 OpenAPI 地址
+- `just init-env` 会在复制 `.env.example` 后自动补齐空白的 `JWT_SECRET_KEY` 和 `INITIAL_ADMIN_PASSWORD`，并提示登录密码应回看 `.env`
+- `just dev` / `just reset-dev` 会把当前 `API_PORT / WEB_PORT` 传给共享开发脚本；脚本会先拉起 API、等待 `GET /api/health` ready，再启动 Web，并在终端打印 Web、API health、docs、redoc、OpenAPI 地址，以及 bootstrap 管理员账号提示
 - 共享开发脚本默认会给 API 约 60 秒启动补偿时间（默认 300 次尝试，每次间隔 0.2 秒）
 - 如果本机恢复文档 / chat run / 索引状态较慢，可临时调大 `DEV_API_READY_MAX_ATTEMPTS` 再执行 `just dev`
 - 前端 `vp` 版本由 `apps/web/.node-version` 固定，避免每次启动都先走远端 `lts` 解析
@@ -39,6 +41,7 @@
 - refresh cookie 默认按请求 scheme 自动决定是否带 `Secure`；若部署在 HTTPS 反向代理后且应用层拿不到 `https` scheme，需显式配置 `SESSION_COOKIE_SECURE=true`
 - 本地和容器环境都需要提供稳定的 `JWT_SECRET_KEY`（至少 32 字符；`just init-env` 会自动生成）
 - `INITIAL_ADMIN_PASSWORD` 必须满足密码复杂度要求：至少 8 字符，且包含大写字母、小写字母、数字、特殊字符中的至少 3 类
+- 登录失败时先区分两类情况：如果是旧弱密码或格式不满足复杂度要求，接口当前会稳定返回 `422 validation_error`；如果是密码忘了，直接回看 `.env` 中的 `INITIAL_ADMIN_PASSWORD`
 - 详细认证时序见 [auth-and-session-flow.md](./auth-and-session-flow.md)
 
 **API 契约与校验**

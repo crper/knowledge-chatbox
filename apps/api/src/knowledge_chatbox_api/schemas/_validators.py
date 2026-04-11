@@ -63,4 +63,8 @@ PasswordStr = Annotated[
     StringConstraints(strip_whitespace=False, min_length=8, max_length=255),
     BeforeValidator(_validate_password_complexity),
 ]
+CredentialPasswordStr = Annotated[
+    str,
+    StringConstraints(strip_whitespace=False, min_length=1, max_length=255),
+]
 PositiveInt = Annotated[int, Field(gt=0)]

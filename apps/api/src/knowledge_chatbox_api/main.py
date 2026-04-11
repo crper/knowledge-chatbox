@@ -70,6 +70,21 @@ def _detail_to_error_info(
     return ErrorInfo(code=default_code, message=str(detail) or default_message)
 
 
+def _json_safe(value: Any) -> Any:
+    """把错误细节收敛为 JSON 可序列化结构。"""
+    if isinstance(value, BaseException):
+        return str(value)
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, tuple):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, set):
+        return [_json_safe(item) for item in value]
+    return value
+
+
 def _raise_if_database_schema_incompatible(error: OperationalError) -> None:
     """在数据库未迁移或 schema 过旧时抛出更明确的错误。"""
     message = str(error.orig).lower() if error.orig is not None else str(error).lower()
@@ -247,7 +262,7 @@ def create_app() -> FastAPI:
             ErrorInfo(
                 code="validation_error",
                 message="Request validation failed.",
-                details=exc.errors(),
+                details=_json_safe(exc.errors()),
             ),
         )
 
