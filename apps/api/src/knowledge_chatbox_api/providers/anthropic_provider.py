@@ -1,11 +1,13 @@
 """Anthropic capability adapters."""
 
+from __future__ import annotations
+
 import base64
-from time import perf_counter
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from anthropic import Anthropic
 
+from knowledge_chatbox_api.core.logging import get_logger
 from knowledge_chatbox_api.models.enums import ChatMessageRole
 from knowledge_chatbox_api.providers.base import (
     DEFAULT_VISION_PROMPT,
@@ -21,12 +23,17 @@ from knowledge_chatbox_api.providers.base import (
     VisionSettings,
     build_reasoning_config,
     provider_retry,
+    transform_content,
 )
+from knowledge_chatbox_api.providers.ollama_url import normalize_provider_base_url
 from knowledge_chatbox_api.utils.helpers import safe_getattr
-from knowledge_chatbox_api.utils.timing import elapsed_ms
 
 DEFAULT_ANTHROPIC_BASE_URL = "https://api.anthropic.com"
 DEFAULT_MAX_TOKENS = 4096
+logger = get_logger(__name__)
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Generator
 
 
 def _usage_to_dict(usage: Any) -> dict[str, Any] | None:
@@ -34,7 +41,6 @@ def _usage_to_dict(usage: Any) -> dict[str, Any] | None:
         return None
     if hasattr(usage, "model_dump"):
         return usage.model_dump()
-
     result: dict[str, Any] = {}
     for field in (
         "input_tokens",
@@ -49,48 +55,47 @@ def _usage_to_dict(usage: Any) -> dict[str, Any] | None:
 
 
 class _AnthropicClientMixin(ClientCacheMixin):
-    def __init__(self, client_factory=None) -> None:
+    def __init__(self, client_factory: Callable[..., Anthropic] | None = None) -> None:
         super().__init__()
         self.client_factory = client_factory or Anthropic
 
-    def _request_timeout(self, settings: ProviderSettings) -> float:
-        return float(settings.provider_timeout_seconds)
-
     def _normalize_base_url(self, base_url: str | None) -> str:
-        normalized = (base_url or DEFAULT_ANTHROPIC_BASE_URL).strip().rstrip("/")
-        if normalized.endswith("/v1"):
-            return normalized
-        return f"{normalized}/v1"
+        result = normalize_provider_base_url(
+            base_url, default=DEFAULT_ANTHROPIC_BASE_URL, ensure_v1_suffix=True
+        )
+        if result is None:
+            return f"{DEFAULT_ANTHROPIC_BASE_URL}/v1"
+        return result
 
     def _api_key(self, settings: ProviderSettings) -> str | None:
         return settings.provider_profiles.anthropic.api_key
 
-    def _client(self, settings: ProviderSettings):
+    def _client(self, settings: ProviderSettings) -> Anthropic:
         api_key = self._api_key(settings) or ""
         base_url = self._normalize_base_url(settings.provider_profiles.anthropic.base_url)
         timeout = self._request_timeout(settings)
         cache_key = (api_key, base_url, timeout)
+
+        def _build_client() -> Anthropic:
+            return self.client_factory(api_key=api_key, base_url=base_url, timeout=timeout)
+
         return self._get_or_create_client(
             cache_key,
-            lambda: self.client_factory(api_key=api_key, base_url=base_url, timeout=timeout),
+            _build_client,
         )
 
     def _quick_model_check(self, settings: ProviderSettings, model: str) -> None:
         self._client(settings).models.retrieve(model)
 
     def _run_health_check(self, settings: ProviderSettings, model: str) -> ProviderHealthResult:
-        start = perf_counter()
         if not self._api_key(settings):
             return ProviderHealthResult(healthy=False, message="Anthropic API key is missing.")
 
-        try:
+        def _check_model() -> None:
             self._quick_model_check(settings, model)
-        except Exception as exc:  # noqa: BLE001
-            return ProviderHealthResult(healthy=False, message=str(exc))
-        return ProviderHealthResult(
-            healthy=True,
-            message="ok",
-            latency_ms=elapsed_ms(start),
+
+        return self._run_provider_health_check(
+            _check_model,
         )
 
     def _thinking_config(self, settings: ResponseRuntimeSettings) -> dict[str, Any] | None:
@@ -128,34 +133,25 @@ class _AnthropicClientMixin(ClientCacheMixin):
         return system_prompt, serialized_messages
 
     def _serialize_content_blocks(self, content: Any) -> list[dict[str, Any]]:
-        if isinstance(content, str):
-            return [{"type": "text", "text": content}]
-        if not isinstance(content, list):
-            return [{"type": "text", "text": ""}]
-
-        blocks: list[dict[str, Any]] = []
-        for item in content:
-            if item.get("type") == "text":
-                blocks.append({"type": "text", "text": item.get("text", "")})
-            elif item.get("type") == "image":
-                blocks.append(
-                    {
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": item.get("mime_type", "image/jpeg"),
-                            "data": item.get("data_base64", ""),
-                        },
-                    }
-                )
-        return blocks or [{"type": "text", "text": ""}]
+        return transform_content(
+            content,
+            text_fn=lambda t: {"type": "text", "text": t},
+            image_fn=lambda img: {
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": img["mime_type"],
+                    "data": img["data_base64"],
+                },
+            },
+        )
 
     def _extract_response_text(self, response: Any) -> str:
-        parts: list[str] = []
-        for block in safe_getattr(response, "content", []) or []:
-            if safe_getattr(block, "type") == "text":
-                parts.append(safe_getattr(block, "text", "") or "")
-        return "".join(parts).strip()
+        return "".join(
+            safe_getattr(block, "text", "") or ""
+            for block in safe_getattr(response, "content", []) or []
+            if safe_getattr(block, "type") == "text"
+        ).strip()
 
     def _build_message_kwargs(
         self,
@@ -193,7 +189,11 @@ class AnthropicResponseAdapter(_AnthropicClientMixin, BaseResponseAdapter):
         )
         return self._extract_response_text(response)
 
-    def stream_response(self, messages: list[dict[str, Any]], settings: ResponseRuntimeSettings):
+    def stream_response(
+        self,
+        messages: list[dict[str, Any]],
+        settings: ResponseRuntimeSettings,
+    ) -> Generator[ResponseStreamChunk, None, None]:
         system_prompt, serialized_messages = self._serialize_messages(messages)
         try:
             with self._client(settings).messages.stream(
@@ -214,8 +214,9 @@ class AnthropicResponseAdapter(_AnthropicClientMixin, BaseResponseAdapter):
                     provider_response_id=safe_getattr(final_message, "id"),
                     usage=_usage_to_dict(safe_getattr(final_message, "usage")),
                 )
-        except Exception as exc:  # noqa: BLE001
-            yield ResponseStreamChunk(type="error", error_message=str(exc))
+        except Exception as exc:
+            logger.warning("anthropic_stream_error", error_message=str(exc))
+            yield ResponseStreamChunk(type="error", error_message="Provider stream error.")
 
     def health_check(self, settings: ResponseSettings) -> ProviderHealthResult:
         return self._run_health_check(settings, settings.response_route.model)

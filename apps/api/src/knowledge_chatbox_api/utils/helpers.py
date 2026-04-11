@@ -14,7 +14,7 @@ def safe_getattr(value: Any, name: str, default: Any = None) -> Any:
 def strip_or_none(value: str | None) -> str | None:
     if value is None:
         return None
-    stripped = value.strip()
+    stripped: str = value.strip()
     return stripped or None
 
 

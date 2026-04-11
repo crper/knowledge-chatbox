@@ -40,6 +40,7 @@ def test_alembic_can_upgrade_and_downgrade_empty_database(
         "documents",
         "document_revisions",
         "app_settings",
+        "settings_versions",
     } <= tables
     assert {
         "scope_type",
@@ -51,6 +52,16 @@ def test_alembic_can_upgrade_and_downgrade_empty_database(
         "vision_route_json",
         "provider_timeout_seconds",
     } <= app_settings_columns
+    settings_version_columns = {
+        row[1] for row in connection.execute("PRAGMA table_info('settings_versions')").fetchall()
+    }
+    assert {
+        "settings_id",
+        "version_no",
+        "snapshot_json",
+        "changed_fields_json",
+        "trigger",
+    } <= settings_version_columns
     assert "provider_profiles" not in tables
     assert "capability_routes" not in tables
     assert version_rows_after_upgrade == [(script.get_current_head(),)]

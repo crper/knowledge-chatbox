@@ -41,6 +41,7 @@ const mockWorkspaceState: {
     sessionsReady: boolean;
     sessions: Array<{ id: number; title: string }>;
     setDraft: (sessionId: number | null, draft: string) => void;
+    stopMessage: () => void;
     submitMessage: () => Promise<void>;
     submitPending: boolean;
   };
@@ -82,6 +83,7 @@ const mockWorkspaceState: {
     sessionsReady: true,
     sessions: [{ id: 1, title: "Session A" }],
     setDraft: vi.fn(),
+    stopMessage: vi.fn(),
     submitMessage: vi.fn(async () => {}),
     submitPending: false,
   },

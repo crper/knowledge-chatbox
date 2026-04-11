@@ -1,8 +1,6 @@
-"""文档仓储数据访问实现。"""
+from typing import TYPE_CHECKING
 
 from sqlalchemy import func, or_, select
-from sqlalchemy.engine import Row
-from sqlalchemy.orm import Session
 
 from knowledge_chatbox_api.models.document import (
     Document,
@@ -10,6 +8,7 @@ from knowledge_chatbox_api.models.document import (
     latest_revision_join_condition,
 )
 from knowledge_chatbox_api.models.enums import DocumentStatus, IngestStatus
+from knowledge_chatbox_api.repositories.base import BaseRepository
 from knowledge_chatbox_api.services.documents.constants import (
     DOCX_DOCUMENT_FILE_TYPES,
     IMAGE_DOCUMENT_FILE_TYPES,
@@ -17,6 +16,9 @@ from knowledge_chatbox_api.services.documents.constants import (
     MARKDOWN_DOCUMENT_FILE_TYPES,
     TEXT_DOCUMENT_FILE_TYPES,
 )
+
+if TYPE_CHECKING:
+    from sqlalchemy.engine import Row
 
 DOCUMENT_TYPE_FILTERS = {
     "document": tuple(DOCX_DOCUMENT_FILE_TYPES),
@@ -28,30 +30,26 @@ DOCUMENT_TYPE_FILTERS = {
 PENDING_LATEST_DOCUMENT_STATUSES = (IngestStatus.UPLOADED, IngestStatus.PROCESSING)
 
 
-class DocumentRepository:
-    """封装文档与版本数据访问。"""
+class DocumentRepository(BaseRepository[Document]):
+    model_type = Document
 
-    def __init__(self, session: Session) -> None:
-        self.session = session
+    @staticmethod
+    def _escape_like(value: str) -> str:
+        return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
-    def add(self, document: Document) -> Document:
-        """处理Add相关逻辑。"""
-        self.session.add(document)
-        self.session.flush()
-        return document
+    def add_document(self, document: Document) -> Document:
+        return super().add(document)
 
     def add_version(self, document_version: DocumentRevision) -> DocumentRevision:
-        """处理Add版本相关逻辑。"""
         self.session.add(document_version)
         self.session.flush()
         return document_version
 
     def get_by_id(self, document_id: int) -> DocumentRevision | None:
-        """获取ById。"""
         return self.session.get(DocumentRevision, document_id)
 
     def list_revisions_by_ids(self, revision_ids: list[int]) -> dict[int, DocumentRevision]:
-        """批量获取指定修订。"""
+        """根据版本 ID 列表批量获取版本，返回 ID 到版本的映射。"""
         normalized_ids = sorted(set(revision_ids))
         if not normalized_ids:
             return {}
@@ -61,28 +59,19 @@ class DocumentRepository:
         return {revision.id: revision for revision in revisions}
 
     def get_document_entity(self, document_id: int) -> Document | None:
-        """获取文档Entity。"""
-        return self.session.get(Document, document_id)
+        return self.get_one_or_none(id=document_id)
 
     def list_documents_by_ids(self, document_ids: list[int]) -> dict[int, Document]:
-        """批量获取指定文档实体。"""
-        normalized_ids = sorted(set(document_ids))
-        if not normalized_ids:
-            return {}
-
-        statement = select(Document).where(Document.id.in_(normalized_ids))
-        documents = list(self.session.scalars(statement).all())
-        return {document.id: document for document in documents}
+        """根据文档 ID 列表批量获取文档，返回 ID 到文档的映射。"""
+        return self.get_by_ids(document_ids)
 
     def get_document_for_version(self, version_id: int) -> Document | None:
-        """获取文档For版本。"""
         version = self.get_by_id(version_id)
         if version is None:
             return None
         return self.get_document_entity(version.document_id)
 
     def get_latest_revision(self, document: Document) -> DocumentRevision | None:
-        """获取当前最新修订。"""
         if document.latest_revision_id is None:
             return self.session.scalar(
                 select(DocumentRevision).where(
@@ -100,7 +89,6 @@ class DocumentRepository:
         ingest_status: str | None = None,
         type_filter: str | None = None,
     ) -> list[tuple[Document, DocumentRevision]]:
-        """列出逻辑文档和最新修订。"""
         if space_ids is not None and not space_ids:
             return []
 
@@ -123,7 +111,7 @@ class DocumentRepository:
         if type_filter is not None:
             statement = statement.where(self._build_type_filter_clause(type_filter))
         if search_query is not None:
-            like_pattern = f"%{search_query.lower()}%"
+            like_pattern = f"%{self._escape_like(search_query.lower())}%"
             statement = statement.where(
                 or_(
                     Document.title.ilike(like_pattern),
@@ -150,7 +138,6 @@ class DocumentRepository:
         *,
         space_id: int,
     ) -> tuple[Document, DocumentRevision] | None:
-        """获取LatestByLogicalName。"""
         statement = select(Document).where(
             Document.space_id == space_id,
             Document.logical_name == logical_name,
@@ -164,7 +151,6 @@ class DocumentRepository:
         return document, version
 
     def list_versions(self, document_id: int) -> list[DocumentRevision]:
-        """列出Versions。"""
         statement = (
             select(DocumentRevision)
             .where(DocumentRevision.document_id == document_id)
@@ -177,7 +163,6 @@ class DocumentRepository:
         *,
         space_ids: set[int] | None = None,
     ) -> int:
-        """统计当前可见逻辑文档里最新修订仍在 pending 的数量。"""
         if space_ids is not None and not space_ids:
             return 0
 
@@ -198,12 +183,10 @@ class DocumentRepository:
         return int(self.session.scalar(statement) or 0)
 
     def list_processing_documents(self) -> list[DocumentRevision]:
-        """列出Processing文档。"""
         statement = select(DocumentRevision).where(
             DocumentRevision.ingest_status == IngestStatus.PROCESSING
         )
         return list(self.session.scalars(statement).all())
 
-    def delete(self, document: Document) -> None:
-        """删除Delete。"""
+    def delete_entity(self, document: Document) -> None:
         self.session.delete(document)

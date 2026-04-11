@@ -3,6 +3,7 @@
  */
 
 import * as React from "react";
+import { cva, type VariantProps } from "class-variance-authority";
 import { ScrollArea as ScrollAreaPrimitive } from "@base-ui/react/scroll-area";
 
 import { cn } from "@/lib/utils";
@@ -15,9 +16,8 @@ type ScrollAreaProps = React.ComponentProps<typeof ScrollAreaPrimitive.Root> & {
   viewportStyle?: React.CSSProperties;
 };
 
-/**
- * 定义ScrollArea。
- */
+const scrollAreaVariants = cva("relative");
+
 function ScrollArea({
   className,
   contentClassName,
@@ -31,7 +31,7 @@ function ScrollArea({
   return (
     <ScrollAreaPrimitive.Root
       data-slot="scroll-area"
-      className={cn("relative", className)}
+      className={cn(scrollAreaVariants(), className)}
       {...props}
     >
       <ScrollAreaPrimitive.Viewport
@@ -52,23 +52,30 @@ function ScrollArea({
   );
 }
 
-/**
- * 定义ScrollBar。
- */
+const scrollBarVariants = cva("flex touch-none p-px transition-colors select-none", {
+  variants: {
+    orientation: {
+      horizontal: "h-2.5 flex-col border-t border-t-transparent",
+      vertical: "h-full w-2.5 border-l border-l-transparent",
+    },
+  },
+  defaultVariants: {
+    orientation: "vertical",
+  },
+});
+
 function ScrollBar({
   className,
   orientation = "vertical",
   ...props
-}: React.ComponentProps<typeof ScrollAreaPrimitive.Scrollbar>) {
+}: React.ComponentProps<typeof ScrollAreaPrimitive.Scrollbar> &
+  VariantProps<typeof scrollBarVariants>) {
   return (
     <ScrollAreaPrimitive.Scrollbar
       data-slot="scroll-area-scrollbar"
       data-orientation={orientation}
       orientation={orientation}
-      className={cn(
-        "flex touch-none p-px transition-colors select-none data-horizontal:h-2.5 data-horizontal:flex-col data-horizontal:border-t data-horizontal:border-t-transparent data-vertical:h-full data-vertical:w-2.5 data-vertical:border-l data-vertical:border-l-transparent",
-        className,
-      )}
+      className={cn(scrollBarVariants({ orientation }), className)}
       {...props}
     >
       <ScrollAreaPrimitive.Thumb
@@ -79,4 +86,4 @@ function ScrollBar({
   );
 }
 
-export { ScrollArea, ScrollBar };
+export { ScrollArea, ScrollBar, scrollAreaVariants, scrollBarVariants };

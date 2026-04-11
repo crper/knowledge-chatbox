@@ -1,11 +1,14 @@
 from __future__ import annotations
 
-from pathlib import Path
-
-import pytest
+from typing import TYPE_CHECKING
 
 from knowledge_chatbox_api.core.config import get_settings
 from knowledge_chatbox_api.db.session import create_db_engine
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    import pytest
 
 
 def test_sqlite_engine_enables_wal_and_busy_timeout(

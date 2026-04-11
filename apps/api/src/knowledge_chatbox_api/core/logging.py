@@ -2,28 +2,29 @@
 
 import logging
 import sys
+from typing import Any
 
 import structlog
 from asgi_correlation_id import correlation_id
 from structlog.contextvars import merge_contextvars
 
 
-def _add_request_id(_, __, event_dict: dict) -> dict:
+def _add_request_id(_logger: Any, _method_name: str, event_dict: dict[str, Any]) -> dict[str, Any]:
+    del _logger, _method_name
     request_id = correlation_id.get()
     if request_id:
         event_dict["request_id"] = request_id
     return event_dict
 
 
-def _build_renderer(environment: str):
+def _build_renderer(environment: str) -> structlog.types.Processor:
     if environment == "local":
         return structlog.dev.ConsoleRenderer(colors=False)
     return structlog.processors.JSONRenderer(sort_keys=True)
 
 
 def setup_logging(level: str = "INFO", environment: str = "local") -> None:
-    """初始化应用日志配置。"""
-    shared_processors = [
+    shared_processors: list[Any] = [
         merge_contextvars,
         structlog.stdlib.add_log_level,
         structlog.stdlib.add_logger_name,
@@ -60,6 +61,6 @@ def setup_logging(level: str = "INFO", environment: str = "local") -> None:
     )
 
 
-def get_logger(name: str | None = None):
+def get_logger(name: str | None = None) -> structlog.stdlib.BoundLogger:
     """返回 structlog logger。"""
     return structlog.get_logger(name)

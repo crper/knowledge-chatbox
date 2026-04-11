@@ -9,7 +9,6 @@ from knowledge_chatbox_api.models.enums import IndexRebuildStatus, ReasoningMode
 from knowledge_chatbox_api.schemas._validators import (
     EmbeddingProviderLiteral,
     PositiveInt,
-    ReasoningModeLiteral,
     ResponseProviderLiteral,
     VisionProviderLiteral,
 )
@@ -134,7 +133,7 @@ class ProviderRuntimeSettings(BaseModel):
     system_prompt: str | None = None
     provider_timeout_seconds: PositiveInt
     active_index_generation: PositiveInt | None = None
-    reasoning_mode: ReasoningModeLiteral = ReasoningMode.DEFAULT
+    reasoning_mode: ReasoningMode = ReasoningMode.DEFAULT
 
 
 _PROVIDER_PROFILES_ADAPTER = TypeAdapter(ProviderProfiles)

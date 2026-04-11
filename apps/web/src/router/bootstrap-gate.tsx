@@ -4,18 +4,12 @@
 
 import type { PropsWithChildren } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useTranslation } from "react-i18next";
 import { useLocation } from "@/lib/app-router";
 
 import { ensureSessionBootstrap, markSessionAnonymous } from "@/lib/auth/session-manager";
 import { useSessionStore } from "@/lib/auth/session-store";
 import { AuthDegradedPage } from "@/pages/system/auth-degraded-page";
-
-function LoadingState() {
-  const { t } = useTranslation("common");
-
-  return <div className="p-6 text-sm text-muted-foreground">{t("loading")}</div>;
-}
+import { LoadingState } from "@/components/shared/loading-state";
 
 /**
  * 在路由渲染前恢复会话状态。

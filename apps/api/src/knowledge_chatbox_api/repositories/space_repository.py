@@ -1,27 +1,18 @@
-"""空间仓储数据访问实现。"""
-
-from sqlalchemy import select
-from sqlalchemy.orm import Session
-
 from knowledge_chatbox_api.models.enums import SpaceKind
 from knowledge_chatbox_api.models.space import Space
+from knowledge_chatbox_api.repositories.base import BaseRepository
 
 PERSONAL_SPACE_SLUG_PREFIX = "personal-space"
 
 
-class SpaceRepository:
-    """封装 personal space 相关数据库访问。"""
-
-    def __init__(self, session: Session) -> None:
-        self.session = session
+class SpaceRepository(BaseRepository[Space]):
+    model_type = Space
 
     def personal_space_slug(self, user_id: int) -> str:
         return f"{PERSONAL_SPACE_SLUG_PREFIX}-{user_id}"
 
     def get_personal_space(self, user_id: int) -> Space | None:
-        return self.session.scalar(
-            select(Space).where(Space.slug == self.personal_space_slug(user_id))
-        )
+        return self.get_one_or_none(slug=self.personal_space_slug(user_id))
 
     def ensure_personal_space(
         self,
@@ -38,9 +29,7 @@ class SpaceRepository:
             name=f"User {user_id} Space",
             kind=SpaceKind.PERSONAL,
         )
-        self.session.add(space)
-        self.session.flush()
-        return space
+        return self.add(space)
 
     def get_visible_space_ids_for_user(self, user_id: int) -> set[int]:
         return {self.ensure_personal_space(user_id=user_id).id}

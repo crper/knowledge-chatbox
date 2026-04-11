@@ -1,17 +1,12 @@
-"""聊天运行仓储数据访问实现。"""
-
 from sqlalchemy import delete, select
-from sqlalchemy.orm import Session
 
 from knowledge_chatbox_api.models.chat import ChatRun, ChatSession
 from knowledge_chatbox_api.models.enums import ChatRunStatus
+from knowledge_chatbox_api.repositories.base import BaseRepository
 
 
-class ChatRunRepository:
-    """封装聊天运行记录的数据库访问。"""
-
-    def __init__(self, session: Session) -> None:
-        self.session = session
+class ChatRunRepository(BaseRepository[ChatRun]):
+    model_type = ChatRun
 
     def create_run(
         self,
@@ -37,12 +32,10 @@ class ChatRunRepository:
             reasoning_mode=reasoning_mode,
             client_request_id=client_request_id,
         )
-        self.session.add(chat_run)
-        self.session.flush()
-        return chat_run
+        return self.add(chat_run)
 
     def get_run(self, run_id: int) -> ChatRun | None:
-        return self.session.get(ChatRun, run_id)
+        return self.get_one_or_none(id=run_id)
 
     def get_run_by_client_request_id(
         self,
@@ -60,25 +53,23 @@ class ChatRunRepository:
         )
         return self.session.scalars(statement).first()
 
-    def list_active_runs(self, user_id: int) -> list[ChatRun]:
-        statement = (
-            select(ChatRun)
-            .join(ChatSession, ChatSession.id == ChatRun.session_id)
-            .where(
-                ChatSession.user_id == user_id,
-                ChatRun.status.in_((ChatRunStatus.PENDING, ChatRunStatus.RUNNING)),
-            )
-            .order_by(ChatRun.created_at.asc(), ChatRun.id.asc())
-        )
-        return list(self.session.scalars(statement).all())
-
-    def list_stale_active_runs(self) -> list[ChatRun]:
-        statement = (
+    def _active_runs_statement(self):
+        return (
             select(ChatRun)
             .where(ChatRun.status.in_((ChatRunStatus.PENDING, ChatRunStatus.RUNNING)))
             .order_by(ChatRun.created_at.asc(), ChatRun.id.asc())
         )
+
+    def list_active_runs(self, user_id: int) -> list[ChatRun]:
+        statement = (
+            self._active_runs_statement()
+            .join(ChatSession, ChatSession.id == ChatRun.session_id)
+            .where(ChatSession.user_id == user_id)
+        )
         return list(self.session.scalars(statement).all())
+
+    def list_stale_active_runs(self) -> list[ChatRun]:
+        return list(self.session.scalars(self._active_runs_statement()).all())
 
     def delete_runs_for_messages(
         self, user_message_id: int, assistant_message_id: int | None = None

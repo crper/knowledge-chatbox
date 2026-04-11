@@ -1,37 +1,26 @@
-"""认证会话仓储数据访问实现。"""
-
-from datetime import UTC, datetime
-
 from sqlalchemy import delete, select, update
-from sqlalchemy.orm import Session
 
 from knowledge_chatbox_api.models.auth import AuthSession
+from knowledge_chatbox_api.repositories.base import BaseRepository
+from knowledge_chatbox_api.utils.timing import utc_now
 
 
-class AuthSessionRepository:
-    """封装认证会话数据访问。"""
-
-    def __init__(self, session: Session) -> None:
-        self.session = session
+class AuthSessionRepository(BaseRepository[AuthSession]):
+    model_type = AuthSession
 
     def create(self, auth_session: AuthSession) -> AuthSession:
-        """创建Create。"""
-        self.session.add(auth_session)
-        self.session.flush()
-        return auth_session
+        return self.add(auth_session)
 
     def get_active_by_token_hash(self, token_hash: str) -> AuthSession | None:
-        """获取活跃By令牌Hash。"""
         statement = select(AuthSession).where(
             AuthSession.session_token_hash == token_hash,
             AuthSession.revoked_at.is_(None),
-            AuthSession.expires_at > datetime.now(UTC),
+            AuthSession.expires_at > utc_now(),
         )
         return self.session.scalar(statement)
 
     def revoke_by_user_id(self, user_id: int) -> None:
-        """处理RevokeBy用户Id相关逻辑。"""
-        now = datetime.now(UTC)
+        now = utc_now()
         self.session.execute(
             update(AuthSession)
             .where(AuthSession.user_id == user_id, AuthSession.revoked_at.is_(None))
@@ -40,20 +29,19 @@ class AuthSessionRepository:
         )
 
     def revoke_by_token_hash(self, token_hash: str) -> None:
-        """处理RevokeBy令牌Hash相关逻辑。"""
-        auth_session = self.session.scalar(
-            select(AuthSession).where(AuthSession.session_token_hash == token_hash)
+        now = utc_now()
+        self.session.execute(
+            update(AuthSession)
+            .where(AuthSession.session_token_hash == token_hash)
+            .values(revoked_at=now)
+            .execution_options(synchronize_session=False)
         )
-        if auth_session is not None:
-            auth_session.revoked_at = datetime.now(UTC)
 
     def delete_by_user_id(self, user_id: int) -> None:
-        """删除By用户Id。"""
         self.session.execute(delete(AuthSession).where(AuthSession.user_id == user_id))
 
     def cleanup_expired(self) -> None:
-        """处理CleanupExpired相关逻辑。"""
-        now = datetime.now(UTC)
+        now = utc_now()
         self.session.execute(
             update(AuthSession)
             .where(

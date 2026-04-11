@@ -14,10 +14,13 @@
 
 ### 认证
 
-| 表              | 作用                   |
-| --------------- | ---------------------- |
-| `users`         | 用户主表               |
-| `auth_sessions` | 服务端 refresh session |
+| 表                      | 作用                   |
+| ----------------------- | ---------------------- |
+| `users`                 | 用户主表               |
+| `auth_sessions`         | 服务端 refresh session |
+| `rate_limit_attempts`   | 登录失败限流记录       |
+
+`rate_limit_attempts` 按登录 key（如 IP 或用户名）记录每次失败尝试的时间戳，配合 `(key, attempted_at)` 复合索引加速窗口查询。`RateLimitService` 在 `record_failure` 时写入，`is_limited` 时查询；过期记录通过启动时 `startup_cleanup` 和运行中概率性 `_maybe_cleanup_stale` 清理，防止低流量场景下表无限增长。
 
 ### 空间与文档
 
@@ -48,6 +51,7 @@
 | 表             | 作用                                                        |
 | -------------- | ----------------------------------------------------------- |
 | `app_settings` | 全局设置、provider profile、capability route 与索引代际状态 |
+| `settings_versions` | 设置变更的脱敏审计快照与 changed fields                |
 
 ## 3. 关系图
 
@@ -68,6 +72,8 @@ erDiagram
   document_revisions o|--o{ chat_message_attachments : archived_as
 
   app_settings }o--|| users : updated_by
+  app_settings ||--o{ settings_versions : versions
+  settings_versions }o--|| users : updated_by
 ```
 
 ## 4. 关键约束
@@ -79,6 +85,7 @@ erDiagram
 - `chat_run_events(run_id, seq)` 唯一
 - `app_settings.index_rebuild_status` 只允许 `idle / running / failed`
 - `app_settings.scope_type + scope_id` 当前唯一，V1 只使用 `global / global`
+- `settings_versions(settings_id, version_no)` 唯一
 - SQLite 默认开启 WAL (Write-Ahead Logging) 模式，支持并发读，降低流式事件写入与标准页面读取并发时触发锁错误的概率
 
 ## 5. 写路径

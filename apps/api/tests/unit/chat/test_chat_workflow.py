@@ -2,73 +2,23 @@ from __future__ import annotations
 
 import asyncio
 from types import SimpleNamespace
+from typing import Any, cast
 
 from pydantic_ai import AgentRunResultEvent
 from pydantic_ai.messages import BinaryContent, ModelRequest, ModelResponse, TextPart
 from pydantic_ai.models.test import TestModel
+from tests.fixtures.dummies import (
+    DummyChatRepository,
+    DummyMessage,
+    DummyPromptAttachmentService,
+    DummyRoute,
+    DummyRuntimeSettings,
+)
 
 from knowledge_chatbox_api.services.chat.workflow.chat_workflow import ChatWorkflow
 from knowledge_chatbox_api.services.chat.workflow.deps import ChatWorkflowDeps
 from knowledge_chatbox_api.services.chat.workflow.instructions import build_runtime_instructions
 from knowledge_chatbox_api.services.chat.workflow.output import ChatWorkflowResult
-
-
-class DummyRoute:
-    def __init__(self, provider: str, model: str) -> None:
-        self.provider = provider
-        self.model = model
-
-
-class DummyProfiles:
-    class OpenAI:
-        api_key = "sk-openai"
-        base_url = "https://api.openai.com/v1"
-
-    openai = OpenAI()
-
-
-class DummyRuntimeSettings:
-    provider_profiles = DummyProfiles()
-    response_route = DummyRoute("openai", "gpt-5.4")
-    reasoning_mode = "default"
-    provider_timeout_seconds = 60
-    system_prompt = None
-
-
-class DummyMessage:
-    def __init__(self, role: str, content: str) -> None:
-        self.role = role
-        self.content = content
-
-
-class DummyChatRepository:
-    def __init__(
-        self,
-        recent_messages: list[DummyMessage] | None = None,
-        *,
-        space_id: int | None = None,
-    ) -> None:
-        self._recent_messages = list(recent_messages or [])
-        self._space_id = space_id
-
-    def list_recent_messages(self, session_id: int, *, limit: int):
-        assert session_id == 1
-        assert limit == 4
-        return list(self._recent_messages)
-
-    def get_session(self, session_id: int):
-        assert session_id == 1
-        return SimpleNamespace(space_id=self._space_id)
-
-
-class DummyPromptAttachmentService:
-    def build_prompt_attachments(self, attachments, active_space_id: int | None):
-        del attachments, active_space_id
-        return []
-
-    def resolve_prompt_text(self, question: str, attachments):
-        del attachments
-        return question
 
 
 def build_deps(
@@ -80,14 +30,15 @@ def build_deps(
 ) -> ChatWorkflowDeps:
     return ChatWorkflowDeps(
         session_id=1,
-        session=object(),
-        actor=object(),
-        chat_repository=DummyChatRepository(recent_messages, space_id=space_id),
-        chat_run_repository=object(),
-        chat_run_event_repository=object(),
-        retrieval_service=object(),
-        prompt_attachment_service=prompt_attachment_service or DummyPromptAttachmentService(),
-        runtime_settings=runtime_settings or DummyRuntimeSettings(),
+        session=cast("Any", object()),
+        chat_repository=cast("Any", DummyChatRepository(recent_messages, space_id=space_id)),
+        chat_run_repository=cast("Any", object()),
+        chat_run_event_repository=cast("Any", object()),
+        retrieval_service=cast("Any", object()),
+        prompt_attachment_service=cast(
+            "Any", prompt_attachment_service or DummyPromptAttachmentService()
+        ),
+        runtime_settings=cast("Any", runtime_settings or DummyRuntimeSettings()),
         request_metadata={"path": "sync"},
     )
 
@@ -120,15 +71,15 @@ def test_chat_workflow_run_stream_events_yields_text_and_result_event() -> None:
     )
 
     async def collect_events():
-        events = []
-        async for event in workflow.run_stream_events(
-            deps=build_deps(),
-            session_id=1,
-            question="帮我总结一下",
-            attachments=None,
-        ):
-            events.append(event)
-        return events
+        return [
+            event
+            async for event in workflow.run_stream_events(
+                deps=build_deps(),
+                session_id=1,
+                question="帮我总结一下",
+                attachments=None,
+            )
+        ]
 
     events = asyncio.run(collect_events())
 
@@ -211,7 +162,7 @@ def test_chat_workflow_passes_multimodal_user_prompt_when_image_attachments_exis
             return "Analyze the attached image."
 
     class CapturingAgent:
-        def run_sync(self, user_prompt, **kwargs):
+        def run_sync(self, user_prompt, **_kwargs):
             captured["user_prompt"] = user_prompt
             return SimpleNamespace(output=ChatWorkflowResult(answer="已捕获", sources=[]))
 
@@ -244,8 +195,11 @@ def test_runtime_instructions_include_configured_system_prompt() -> None:
     )
 
     instructions = build_runtime_instructions(
-        SimpleNamespace(
-            deps=build_deps(runtime_settings=runtime_settings),
+        cast(
+            "Any",
+            SimpleNamespace(
+                deps=build_deps(runtime_settings=cast("Any", runtime_settings)),
+            ),
         )
     )
 

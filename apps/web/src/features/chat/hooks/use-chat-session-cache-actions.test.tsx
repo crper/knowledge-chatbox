@@ -215,4 +215,56 @@ describe("useChatSessionCacheActions", () => {
       }),
     ]);
   });
+
+  it("returns false when patching user message attachments with invalid attachments", () => {
+    const queryClient = createTestQueryClient();
+    let patchResult: boolean | undefined;
+
+    function TestHostWithResult() {
+      const { patchUserMessageAttachments } = useChatSessionCacheActions();
+      return (
+        <button
+          onClick={() => {
+            // 测试传入 null 作为 attachments 的情况
+            patchResult = patchUserMessageAttachments({
+              sessionId: 7,
+              userMessageId: 3,
+              attachments: null as unknown as [],
+            });
+          }}
+          type="button"
+        >
+          patch-invalid
+        </button>
+      );
+    }
+
+    queryClient.setQueryData<InfiniteData<ChatMessageItem[], number | null>>(
+      queryKeys.chat.messagesWindow(7),
+      {
+        pageParams: [null],
+        pages: [
+          [
+            {
+              id: 3,
+              role: "user",
+              content: "hello",
+              status: "succeeded",
+              sources_json: [],
+            },
+          ],
+        ],
+      },
+    );
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <TestHostWithResult />
+      </QueryClientProvider>,
+    );
+
+    // 测试传入无效 attachments 时返回 false
+    fireEvent.click(screen.getByRole("button", { name: "patch-invalid" }));
+    expect(patchResult).toBe(false);
+  });
 });

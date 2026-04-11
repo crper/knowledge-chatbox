@@ -12,6 +12,19 @@ const sonnerMocks = vi.hoisted(() => ({
   success: vi.fn(),
 }));
 
+vi.mock("@embedpdf/react-pdf-viewer", () => ({
+  PDFViewer: ({
+    config,
+  }: {
+    config?: { documentManager?: { initialDocuments?: Array<{ url?: string }> } };
+  }) => (
+    <div
+      data-src={config?.documentManager?.initialDocuments?.[0]?.url ?? ""}
+      data-testid="pdf-viewer"
+    />
+  ),
+}));
+
 vi.mock("sonner", () => ({
   toast: sonnerMocks,
 }));

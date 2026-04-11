@@ -93,7 +93,7 @@ describe("authenticatedFetch", () => {
     const response = await authenticatedFetch("http://localhost:8000/api/auth/login", {
       body: JSON.stringify({
         username: "admin",
-        password: "admin123456",
+        password: "Admin123456",
       }),
       headers: {
         "Content-Type": "application/json",

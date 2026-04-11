@@ -2,7 +2,7 @@
  * @file 聊天会话恢复工具模块。
  */
 
-import { parseChatSessionId } from "./chat-session-route";
+import { parseChatSessionId } from "@/lib/routes";
 
 export const LAST_VISITED_CHAT_SESSION_STORAGE_KEY = "knowledge-chatbox-last-chat-session-id";
 

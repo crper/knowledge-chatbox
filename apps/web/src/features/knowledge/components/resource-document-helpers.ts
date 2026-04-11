@@ -2,30 +2,13 @@
  * @file 资源展示辅助函数模块。
  */
 
-import { formatDateTime } from "@/lib/date-utils";
+import { formatFileSize } from "@/lib/utils";
 import { getDocumentPreviewKind, type DocumentPreviewKind } from "../api/document-preview";
 import type { KnowledgeDocumentStatus } from "../api/documents";
 
 type TranslationFn = (key: string) => string;
 
-const FILE_SIZE_UNITS = ["B", "KB", "MB", "GB"] as const;
-
-export function formatFileSize(bytes: number | null | undefined) {
-  if (typeof bytes !== "number" || Number.isNaN(bytes) || bytes <= 0) {
-    return null;
-  }
-
-  let value = bytes;
-  let unitIndex = 0;
-
-  while (value >= 1024 && unitIndex < FILE_SIZE_UNITS.length - 1) {
-    value /= 1024;
-    unitIndex += 1;
-  }
-
-  const unit = FILE_SIZE_UNITS[unitIndex];
-  return unitIndex === 0 ? `${value} ${unit}` : `${value.toFixed(1)} ${unit}`;
-}
+export { formatFileSize };
 
 export function getDocumentTypeLabel(previewKind: DocumentPreviewKind, t: TranslationFn) {
   switch (previewKind) {
@@ -81,11 +64,4 @@ export function getKnowledgeDocumentStatusMeta(
     label: t(status === "processing" ? "statusProcessing" : "statusUploaded"),
     variant: "outline",
   };
-}
-
-/**
- * 按当前语言格式化资源时间。
- */
-export function formatKnowledgeDocumentDateTime(value: string, locale: string) {
-  return formatDateTime(value, locale) || value;
 }

@@ -1,29 +1,11 @@
 from __future__ import annotations
 
+from typing import cast
+
+from tests.fixtures.dummies import DummyProfiles, DummyRoute
+
 from knowledge_chatbox_api.services.chat.workflow.model_factory import build_chat_agent_model
-
-
-class DummyRoute:
-    def __init__(self, provider: str, model: str) -> None:
-        self.provider = provider
-        self.model = model
-
-
-class DummyProfiles:
-    class OpenAI:
-        api_key = "sk-openai"
-        base_url = "https://api.openai.com/v1"
-
-    class Anthropic:
-        api_key = "sk-ant"
-        base_url = "https://api.anthropic.com"
-
-    class Ollama:
-        base_url = "http://localhost:11434"
-
-    openai = OpenAI()
-    anthropic = Anthropic()
-    ollama = Ollama()
+from knowledge_chatbox_api.services.settings.runtime_settings import ProviderRuntimeSettings
 
 
 class DummySettings:
@@ -39,7 +21,7 @@ def test_build_chat_agent_model_supports_all_providers() -> None:
     ]:
         settings = DummySettings()
         settings.response_route = DummyRoute(provider, model_name)
-        assert build_chat_agent_model(settings) is not None
+        assert build_chat_agent_model(cast("ProviderRuntimeSettings", settings)) is not None
 
 
 def test_build_chat_agent_model_normalizes_ollama_v1_suffix() -> None:
@@ -47,6 +29,6 @@ def test_build_chat_agent_model_normalizes_ollama_v1_suffix() -> None:
     settings.response_route = DummyRoute("ollama", "qwen3.5:4b")
     settings.provider_profiles.ollama.base_url = "http://localhost:11434/v1/"
 
-    model = build_chat_agent_model(settings)
+    model = build_chat_agent_model(cast("ProviderRuntimeSettings", settings))
 
     assert model.base_url.rstrip("/") == "http://localhost:11434/v1"

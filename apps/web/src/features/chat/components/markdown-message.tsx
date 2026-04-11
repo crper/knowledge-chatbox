@@ -264,7 +264,10 @@ export function MarkdownMessage({ content, isStreaming, testId }: MarkdownMessag
   const { t } = useTranslation("chat");
   const translations = useMarkdownTranslations();
 
-  const normalizedContent = useMemo(() => normalizeMarkdownContent(content), [content]);
+  const normalizedContent = useMemo(() => {
+    if (isStreaming) return content;
+    return normalizeMarkdownContent(content);
+  }, [content, isStreaming]);
   const streamingFallback = t("assistantStreamingFallback");
 
   // 保持空预令牌状态，使等待界面保持柔和的消息形状
@@ -273,10 +276,13 @@ export function MarkdownMessage({ content, isStreaming, testId }: MarkdownMessag
   const hasVisibleContent = displayContent.trim().length > 0;
   const isPreTokenLoading = isStreaming && !hasVisibleContent;
 
-  const needsRichRenderer = useMemo(
-    () => shouldUseRichMarkdownRenderer(displayContent),
-    [displayContent],
-  );
+  const needsRichRenderer = useMemo(() => {
+    if (isStreaming && !hasVisibleContent) return false;
+    if (isStreaming) {
+      return content.includes("```") || /^#{1,6}\s/m.test(content);
+    }
+    return shouldUseRichMarkdownRenderer(displayContent);
+  }, [content, displayContent, isStreaming, hasVisibleContent]);
 
   const [RichMarkdownRenderer, setRichMarkdownRenderer] =
     useState<RichMarkdownRendererComponent | null>(null);

@@ -13,6 +13,19 @@ const protectedFileMocks = vi.hoisted(() => ({
   downloadProtectedFile: vi.fn(async () => {}),
 }));
 
+vi.mock("@embedpdf/react-pdf-viewer", () => ({
+  PDFViewer: ({
+    config,
+  }: {
+    config?: { documentManager?: { initialDocuments?: Array<{ url?: string }> } };
+  }) => (
+    <div
+      data-src={config?.documentManager?.initialDocuments?.[0]?.url ?? ""}
+      data-testid="pdf-viewer"
+    />
+  ),
+}));
+
 vi.mock("@/lib/api/protected-file", () => ({
   fetchProtectedFileBlob: protectedFileMocks.fetchProtectedFileBlob,
 }));
@@ -98,6 +111,22 @@ describe("DocumentMainPreview", () => {
 
     expect(screen.getByText("资源预览失败")).toBeInTheDocument();
     expect(screen.getByText("解析失败")).toBeInTheDocument();
+    expect(protectedFileMocks.fetchProtectedFileBlob).not.toHaveBeenCalled();
+  });
+
+  it("renders pdf previews inline with embedpdf", async () => {
+    renderPreview(
+      buildDocument({
+        id: 10,
+        name: "guide.pdf",
+        file_type: "pdf",
+      }),
+    );
+
+    expect(await screen.findByTestId("pdf-viewer")).toHaveAttribute(
+      "data-src",
+      expect.stringContaining("/api/documents/revisions/10/file"),
+    );
     expect(protectedFileMocks.fetchProtectedFileBlob).not.toHaveBeenCalled();
   });
 

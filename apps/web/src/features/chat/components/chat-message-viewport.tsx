@@ -65,6 +65,37 @@ function isNearBottom(element: HTMLElement | null) {
   return element.scrollHeight - (element.scrollTop + element.clientHeight) <= BOTTOM_THRESHOLD;
 }
 
+function useChatPrependCompensation(
+  scrollElement: HTMLElement | null,
+  isLoadingOlderMessages: boolean,
+  messagesLength: number,
+  pendingPrependScrollHeightRef: { current: number | null },
+) {
+  const previousMessagesLengthRef = useRef(messagesLength);
+
+  useEffect(() => {
+    if (!scrollElement) {
+      previousMessagesLengthRef.current = messagesLength;
+      return;
+    }
+
+    const previousMessagesLength = previousMessagesLengthRef.current;
+    previousMessagesLengthRef.current = messagesLength;
+    const compensation = resolvePrependCompensation({
+      isLoadingOlderMessages,
+      nextMessagesLength: messagesLength,
+      nextScrollHeight: scrollElement.scrollHeight,
+      pendingPrependScrollHeight: pendingPrependScrollHeightRef.current,
+      previousMessagesLength,
+    });
+    pendingPrependScrollHeightRef.current = compensation.nextPendingPrependScrollHeight;
+
+    if ((compensation.scrollDelta ?? 0) > 0) {
+      scrollElement.scrollTop += compensation.scrollDelta ?? 0;
+    }
+  }, [isLoadingOlderMessages, messagesLength, scrollElement]);
+}
+
 /**
  * 渲染聊天消息虚拟视口。
  */
@@ -80,10 +111,9 @@ export const ChatMessageViewport = memo(function ChatMessageViewport({
 }: ChatMessageViewportProps) {
   const { t } = useTranslation("chat");
   const isMobile = useIsMobile();
-  const parentRef = useRef<HTMLDivElement>(null);
+  const scrollElementRef = useRef<HTMLDivElement>(null);
   const previousLatestMessageSignatureRef = useRef<string>("empty");
   const previousScrollRequestKeyRef = useRef(scrollToLatestRequestKey);
-  const previousMessagesLengthRef = useRef(messages.length);
   const pendingScrollToLatestRef = useRef(false);
   const pendingPrependScrollHeightRef = useRef<number | null>(null);
   const olderLoadTriggerArmedRef = useRef(true);
@@ -96,9 +126,14 @@ export const ChatMessageViewport = memo(function ChatMessageViewport({
     [latestMessage],
   );
 
+  const scrollRef = useCallback((node: HTMLDivElement | null) => {
+    scrollElementRef.current = node;
+    setScrollElement(node instanceof HTMLElement ? node : null);
+  }, []);
+
   const virtualizer = useVirtualizer({
     count: messages.length,
-    getScrollElement: () => parentRef.current,
+    getScrollElement: () => scrollElementRef.current,
     estimateSize: () => DEFAULT_ITEM_HEIGHT,
     overscan: 5,
   });
@@ -120,15 +155,11 @@ export const ChatMessageViewport = memo(function ChatMessageViewport({
   }, [scrollToLatest]);
 
   useEffect(() => {
-    if (previousScrollRequestKeyRef.current === scrollToLatestRequestKey) {
-      return;
+    if (previousScrollRequestKeyRef.current !== scrollToLatestRequestKey) {
+      previousScrollRequestKeyRef.current = scrollToLatestRequestKey;
+      pendingScrollToLatestRef.current = true;
     }
 
-    previousScrollRequestKeyRef.current = scrollToLatestRequestKey;
-    pendingScrollToLatestRef.current = true;
-  }, [scrollToLatestRequestKey]);
-
-  useEffect(() => {
     const intent = resolveLatestMessageScrollIntent({
       isNearBottom: isNearBottom(scrollElement),
       latestMessageSignature,
@@ -146,7 +177,7 @@ export const ChatMessageViewport = memo(function ChatMessageViewport({
       setHasNewMessage(false);
       scrollToLatest("auto");
     }
-  }, [latestMessageSignature, scrollToLatest, scrollElement]);
+  }, [latestMessageSignature, scrollToLatest, scrollToLatestRequestKey, scrollElement]);
 
   useEffect(() => {
     if (!scrollElement) {
@@ -187,40 +218,12 @@ export const ChatMessageViewport = memo(function ChatMessageViewport({
     };
   }, [hasOlderMessages, isLoadingOlderMessages, onLoadOlderMessages, scrollElement]);
 
-  useEffect(() => {
-    if (!scrollElement) {
-      previousMessagesLengthRef.current = messages.length;
-      return;
-    }
-
-    const previousMessagesLength = previousMessagesLengthRef.current;
-    previousMessagesLengthRef.current = messages.length;
-    const compensation = resolvePrependCompensation({
-      isLoadingOlderMessages,
-      nextMessagesLength: messages.length,
-      nextScrollHeight: scrollElement.scrollHeight,
-      pendingPrependScrollHeight: pendingPrependScrollHeightRef.current,
-      previousMessagesLength,
-    });
-    pendingPrependScrollHeightRef.current = compensation.nextPendingPrependScrollHeight;
-
-    if ((compensation.scrollDelta ?? 0) > 0) {
-      scrollElement.scrollTop += compensation.scrollDelta ?? 0;
-    }
-  }, [isLoadingOlderMessages, messages.length, scrollElement]);
-
-  useEffect(() => {
-    const element = parentRef.current;
-    if (!element) {
-      return;
-    }
-
-    setScrollElement(element instanceof HTMLElement ? element : null);
-
-    return () => {
-      setScrollElement(null);
-    };
-  }, []);
+  useChatPrependCompensation(
+    scrollElement,
+    isLoadingOlderMessages,
+    messages.length,
+    pendingPrependScrollHeightRef,
+  );
 
   useEffect(() => {
     if (messages.length === 0 || initialPositionHandledRef.current) {
@@ -237,7 +240,7 @@ export const ChatMessageViewport = memo(function ChatMessageViewport({
   return (
     <div className="relative flex min-h-0 flex-1 flex-col" data-testid="chat-message-viewport-root">
       <div
-        ref={parentRef}
+        ref={scrollRef}
         className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-2 pr-4 pb-4 sm:px-3 sm:pr-5 sm:pb-5 [scrollbar-gutter:stable_both-edges]"
         data-testid="chat-message-viewport-scroll"
         data-scroll-padding="comfortable"

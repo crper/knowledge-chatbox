@@ -72,29 +72,20 @@ class RetrievalService:
 
         generation = getattr(self.settings, "active_index_generation", 1)
         query_embedding = self.query_engine.embed_query_or_none(normalized_query)
-
         vector_chunks = self.query_engine.query_retrieved_chunks(
             normalized_query,
-            active_space_id=active_space_id,
             attachment_revision_ids=attachment_revision_ids,
             generation=generation,
             query_embedding=query_embedding,
             where_filter=where_filter,
         )
-        relevant_vector_chunks = [
-            record
-            for record in vector_chunks
-            if self.query_engine.is_relevant_retrieval_hit(
-                record,
-                normalized_query,
-                query_normalized=query_normalized,
-                query_tokens=query_tokens,
-                query_quoted_phrases=query_quoted_phrases,
-            )
-        ]
-        if relevant_vector_chunks:
+
+        relevant_chunks = self._filter_relevant_chunks(
+            vector_chunks, normalized_query, query_normalized, query_tokens, query_quoted_phrases
+        )
+        if relevant_chunks:
             return self.context_builder.build_context(
-                relevant_vector_chunks,
+                relevant_chunks,
                 active_space_id,
                 diagnostics=self.context_builder.build_diagnostics(
                     strategy="vector",
@@ -110,20 +101,12 @@ class RetrievalService:
             attachment_revision_ids=attachment_revision_ids,
             generation=generation,
         )
-        relevant_lexical_chunks = [
-            record
-            for record in lexical_chunks
-            if self.query_engine.is_relevant_retrieval_hit(
-                record,
-                normalized_query,
-                query_normalized=query_normalized,
-                query_tokens=query_tokens,
-                query_quoted_phrases=query_quoted_phrases,
-            )
-        ]
-        if relevant_lexical_chunks:
+        relevant_chunks = self._filter_relevant_chunks(
+            lexical_chunks, normalized_query, query_normalized, query_tokens, query_quoted_phrases
+        )
+        if relevant_chunks:
             return self.context_builder.build_context(
-                relevant_lexical_chunks,
+                relevant_chunks,
                 active_space_id,
                 diagnostics=self.context_builder.build_diagnostics(
                     strategy="lexical",
@@ -138,3 +121,23 @@ class RetrievalService:
             attachment_revision_scope_count=attachment_revision_scope_count,
             strategy="none",
         )
+
+    def _filter_relevant_chunks(
+        self,
+        chunks: list[dict[str, Any]],
+        normalized_query: str,
+        query_normalized: str,
+        query_tokens: set[str],
+        query_quoted_phrases: list[str],
+    ) -> list[dict[str, Any]]:
+        return [
+            record
+            for record in chunks
+            if self.query_engine.is_relevant_retrieval_hit(
+                record,
+                normalized_query,
+                query_normalized=query_normalized,
+                query_tokens=query_tokens,
+                query_quoted_phrases=query_quoted_phrases,
+            )
+        ]

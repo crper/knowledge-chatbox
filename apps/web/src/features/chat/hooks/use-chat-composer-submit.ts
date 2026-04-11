@@ -23,7 +23,11 @@ import { uploadQueuedChatAttachments } from "../utils/upload-chat-attachments";
 import { MessageRole, MessageStatus } from "../constants";
 
 type UseChatComposerSubmitParams = {
-  beginSessionSubmit: (sessionId: number) => boolean;
+  beginSessionSubmit: (
+    sessionId: number,
+    controller: AbortController,
+    clientRequestId?: string | null,
+  ) => boolean;
   finishSessionSubmit: (sessionId: number) => void;
   findRunByAssistantMessageId: (assistantMessageId: number) =>
     | {
@@ -53,9 +57,11 @@ type UseChatComposerSubmitParams = {
   resolvedActiveSessionId: number | null;
   sendStreamMessage: (input: {
     attachments?: ChatStreamAttachmentInput[];
+    clientRequestId: string;
     content: string;
     retryOfMessageId?: number;
     sessionId: number;
+    signal?: AbortSignal;
   }) => Promise<{ userMessageId?: number | null }>;
 };
 
@@ -115,7 +121,9 @@ export function useChatComposerSubmit({
     }
 
     const sessionId = resolvedActiveSessionId;
-    if (!beginSessionSubmit(sessionId)) {
+    const submitController = new AbortController();
+    const clientRequestId = crypto.randomUUID();
+    if (!beginSessionSubmit(sessionId, submitController, clientRequestId)) {
       return;
     }
 
@@ -154,6 +162,7 @@ export function useChatComposerSubmit({
             }
             Object.assign(targetAttachment, patch);
           },
+          signal: submitController.signal,
         });
 
       if (uploadedCount > 0) {
@@ -169,8 +178,10 @@ export function useChatComposerSubmit({
       requestScrollToLatest();
       const streamResult = await sendStreamMessage({
         attachments: serializedAttachments,
+        clientRequestId,
         sessionId,
         content: composerSnapshot.draft,
+        signal: submitController.signal,
       });
       if (streamResult.userMessageId && serializedAttachments.length > 0) {
         const patched = patchUserMessageAttachments({
@@ -214,7 +225,9 @@ export function useChatComposerSubmit({
       }
 
       const sessionId = resolvedActiveSessionId;
-      if (!beginSessionSubmit(sessionId)) {
+      const submitController = new AbortController();
+      const clientRequestId = crypto.randomUUID();
+      if (!beginSessionSubmit(sessionId, submitController, clientRequestId)) {
         return;
       }
 
@@ -250,9 +263,11 @@ export function useChatComposerSubmit({
       try {
         requestScrollToLatest();
         await sendStreamMessage({
+          clientRequestId,
           sessionId,
           content: retryContent,
           retryOfMessageId,
+          signal: submitController.signal,
         });
       } catch {
         if (shouldResetComposerSnapshot) {

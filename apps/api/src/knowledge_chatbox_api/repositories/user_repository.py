@@ -1,43 +1,25 @@
-"""用户仓储数据访问实现。"""
-
-from sqlalchemy import Select, func, select
-from sqlalchemy.orm import Session
-
 from knowledge_chatbox_api.models.auth import User
 from knowledge_chatbox_api.models.enums import UserRole
+from knowledge_chatbox_api.repositories.base import BaseRepository
 
 
-class UserRepository:
-    """封装用户数据访问。"""
-
-    def __init__(self, session: Session) -> None:
-        self.session = session
+class UserRepository(BaseRepository[User]):
+    model_type = User
 
     def count_admins(self) -> int:
-        """处理CountAdmins相关逻辑。"""
-        statement: Select[tuple[int]] = (
-            select(func.count()).select_from(User).where(User.role == UserRole.ADMIN)
-        )
-        return self.session.scalar(statement) or 0
+        return self.count(User.role == UserRole.ADMIN)
 
     def get_by_username(self, username: str) -> User | None:
-        """获取ByUsername。"""
-        return self.session.scalar(select(User).where(User.username == username))
+        return self.get_one_or_none(username=username)
 
     def get_by_id(self, user_id: int) -> User | None:
-        """获取ById。"""
-        return self.session.get(User, user_id)
+        return self.get_one_or_none(id=user_id)
 
     def list_users(self) -> list[User]:
-        """列出用户。"""
-        return list(self.session.scalars(select(User).order_by(User.id)).all())
+        return self.list(order_by=(User.id, True))
 
-    def add(self, user: User) -> User:
-        """处理Add相关逻辑。"""
-        self.session.add(user)
-        self.session.flush()
-        return user
+    def add_user(self, user: User) -> User:
+        return self.add(user)
 
-    def delete(self, user: User) -> None:
-        """删除Delete。"""
+    def delete_user(self, user: User) -> None:
         self.session.delete(user)

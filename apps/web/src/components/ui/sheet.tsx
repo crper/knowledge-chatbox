@@ -3,6 +3,7 @@
  */
 
 import * as React from "react";
+import { cva, type VariantProps } from "class-variance-authority";
 import { Drawer as SheetPrimitive } from "@base-ui/react/drawer";
 
 import { cn } from "@/lib/utils";
@@ -53,6 +54,10 @@ function SheetPortal({ ...props }: React.ComponentProps<typeof SheetPrimitive.Po
   return <SheetPrimitive.Portal data-slot="sheet-portal" {...props} />;
 }
 
+const sheetOverlayVariants = cva(
+  "fixed inset-0 z-50 min-h-dvh bg-background/38 transition-opacity duration-100 supports-[-webkit-touch-callout:none]:absolute supports-backdrop-filter:backdrop-blur-md data-[ending-style]:opacity-0 data-[starting-style]:opacity-0",
+);
+
 function SheetOverlay({
   className,
   ...props
@@ -60,14 +65,30 @@ function SheetOverlay({
   return (
     <SheetPrimitive.Backdrop
       data-slot="sheet-overlay"
-      className={cn(
-        "fixed inset-0 z-50 min-h-dvh bg-background/38 transition-opacity duration-100 supports-[-webkit-touch-callout:none]:absolute supports-backdrop-filter:backdrop-blur-md data-[ending-style]:opacity-0 data-[starting-style]:opacity-0",
-        className,
-      )}
+      className={cn(sheetOverlayVariants(), className)}
       {...props}
     />
   );
 }
+
+const sheetContentVariants = cva(
+  "surface-floating fixed z-50 flex flex-col gap-4 bg-clip-padding text-sm transition-[opacity,transform] duration-200 ease-in-out data-[ending-style]:opacity-0 data-[starting-style]:opacity-0",
+  {
+    variants: {
+      side: {
+        top: "inset-x-0 top-0 h-auto border-b data-[ending-style]:-translate-y-10 data-[starting-style]:-translate-y-10",
+        bottom:
+          "inset-x-0 bottom-0 h-auto border-t data-[ending-style]:translate-y-10 data-[starting-style]:translate-y-10",
+        left: "inset-y-0 left-0 h-full w-3/4 border-r sm:max-w-sm data-[ending-style]:-translate-x-10 data-[starting-style]:-translate-x-10",
+        right:
+          "inset-y-0 right-0 h-full w-3/4 border-l sm:max-w-sm data-[ending-style]:translate-x-10 data-[starting-style]:translate-x-10",
+      },
+    },
+    defaultVariants: {
+      side: "right",
+    },
+  },
+);
 
 function SheetContent({
   className,
@@ -77,16 +98,16 @@ function SheetContent({
   side = "right",
   showCloseButton = true,
   ...props
-}: React.ComponentProps<typeof SheetPrimitive.Popup> & {
-  closeLabel?: string;
-  overlayProps?: React.ComponentProps<typeof SheetPrimitive.Backdrop>;
-  side?: SheetSide;
-  showCloseButton?: boolean;
-}) {
+}: React.ComponentProps<typeof SheetPrimitive.Popup> &
+  VariantProps<typeof sheetContentVariants> & {
+    closeLabel?: string;
+    overlayProps?: React.ComponentProps<typeof SheetPrimitive.Backdrop>;
+    showCloseButton?: boolean;
+  }) {
   const setSheetSide = React.useContext(SheetSideContext);
 
   React.useEffect(() => {
-    setSheetSide?.(side);
+    setSheetSide?.(side ?? "right");
   }, [setSheetSide, side]);
 
   return (
@@ -96,10 +117,7 @@ function SheetContent({
         <SheetPrimitive.Popup
           data-side={side}
           data-slot="sheet-content"
-          className={cn(
-            "surface-floating fixed z-50 flex flex-col gap-4 bg-clip-padding text-sm transition-[opacity,transform] duration-200 ease-in-out data-[side=bottom]:inset-x-0 data-[side=bottom]:bottom-0 data-[side=bottom]:h-auto data-[side=bottom]:border-t data-[side=left]:inset-y-0 data-[side=left]:left-0 data-[side=left]:h-full data-[side=left]:w-3/4 data-[side=left]:border-r data-[side=right]:inset-y-0 data-[side=right]:right-0 data-[side=right]:h-full data-[side=right]:w-3/4 data-[side=right]:border-l data-[side=top]:inset-x-0 data-[side=top]:top-0 data-[side=top]:h-auto data-[side=top]:border-b data-[side=left]:sm:max-w-sm data-[side=right]:sm:max-w-sm data-[ending-style]:opacity-0 data-[starting-style]:opacity-0 data-[side=bottom]:data-[ending-style]:translate-y-10 data-[side=bottom]:data-[starting-style]:translate-y-10 data-[side=left]:data-[ending-style]:-translate-x-10 data-[side=left]:data-[starting-style]:-translate-x-10 data-[side=right]:data-[ending-style]:translate-x-10 data-[side=right]:data-[starting-style]:translate-x-10 data-[side=top]:data-[ending-style]:-translate-y-10 data-[side=top]:data-[starting-style]:-translate-y-10",
-            className,
-          )}
+          className={cn(sheetContentVariants({ side }), className)}
           {...props}
         >
           <SheetPrimitive.Content className="flex min-h-0 flex-1 flex-col gap-4">
@@ -151,7 +169,7 @@ function SheetTitle({ className, ...props }: React.ComponentProps<typeof SheetPr
   return (
     <SheetPrimitive.Title
       data-slot="sheet-title"
-      className={cn("text-base font-medium text-foreground", className)}
+      className={cn("text-ui-title font-medium text-foreground", className)}
       {...props}
     />
   );
@@ -164,7 +182,7 @@ function SheetDescription({
   return (
     <SheetPrimitive.Description
       data-slot="sheet-description"
-      className={cn("text-sm text-muted-foreground", className)}
+      className={cn("text-ui-subtle text-muted-foreground", className)}
       {...props}
     />
   );
@@ -180,4 +198,6 @@ export {
   SheetFooter,
   SheetTitle,
   SheetDescription,
+  sheetOverlayVariants,
+  sheetContentVariants,
 };

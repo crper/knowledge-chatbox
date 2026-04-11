@@ -1,8 +1,42 @@
-"""Helpers for normalizing Ollama base URLs."""
+"""Helpers for normalizing provider base URLs."""
 
-from urllib.parse import urlsplit, urlunsplit
+from yarl import URL
 
 from knowledge_chatbox_api.utils.helpers import strip_or_none
+
+
+def normalize_provider_base_url(
+    base_url: str | None,
+    *,
+    default: str | None = None,
+    ensure_v1_suffix: bool = True,
+    preserve_existing_path: bool = False,
+) -> str | None:
+    normalized = (base_url or default or "").strip().rstrip("/")
+    if not normalized:
+        return None
+
+    parsed = URL(normalized)
+    if not parsed.scheme or not parsed.host:
+        candidate = f"https://{normalized}"
+        reparsed = URL(candidate)
+        if reparsed.scheme and reparsed.host:
+            normalized = candidate
+            parsed = reparsed
+        else:
+            result = normalized.rstrip("/")
+            if ensure_v1_suffix and not result.endswith("/v1"):
+                result = f"{result}/v1"
+            return result or None
+
+    path = parsed.path.rstrip("/")
+    if ensure_v1_suffix:
+        if not path:
+            path = "/v1"
+        elif not path.endswith("/v1") and not preserve_existing_path:
+            path = f"{path}/v1"
+    result = parsed.with_path(path).with_query(None).with_fragment(None)
+    return str(result) or None
 
 
 def _trim_v1_suffix(path: str) -> str:
@@ -17,15 +51,13 @@ def normalize_ollama_base_url(base_url: str | None) -> str | None:
     if normalized is None:
         return None
 
-    parsed = urlsplit(normalized)
-    if not parsed.scheme or not parsed.netloc:
+    parsed = URL(normalized)
+    if not parsed.scheme or not parsed.host:
         return _trim_v1_suffix(normalized) or None
 
     normalized_path = _trim_v1_suffix(parsed.path)
-    result = urlunsplit(
-        (parsed.scheme, parsed.netloc, normalized_path, parsed.query, parsed.fragment)
-    ).rstrip("/")
-    return result or None
+    result = parsed.with_path(normalized_path).with_query(None).with_fragment(None)
+    return str(result).rstrip("/") or None
 
 
 def build_ollama_openai_base_url(base_url: str | None) -> str | None:
@@ -33,10 +65,10 @@ def build_ollama_openai_base_url(base_url: str | None) -> str | None:
     if root_url is None:
         return None
 
-    parsed = urlsplit(root_url)
-    if not parsed.scheme or not parsed.netloc:
+    parsed = URL(root_url)
+    if not parsed.scheme or not parsed.host:
         return f"{root_url.rstrip('/')}/v1"
 
     path = parsed.path.rstrip("/")
     openai_path = f"{path}/v1" if path else "/v1"
-    return urlunsplit((parsed.scheme, parsed.netloc, openai_path, parsed.query, parsed.fragment))
+    return str(parsed.with_path(openai_path).with_query(None).with_fragment(None))

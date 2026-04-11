@@ -17,10 +17,10 @@ class ChatStreamPresenter:
         name: StreamEventName,
         data: StreamEventPayload,
     ) -> StreamEventEnvelope:
-        """处理事件相关逻辑。"""
         return {"event": name, "data": data}
 
-    def to_sse(self, event: StreamEventEnvelope) -> str:
-        """把Sse转换为响应结构。"""
-        payload = orjson.dumps(event["data"]).decode("utf-8")
-        return f"event: {event['event']}\ndata: {payload}\n\n"
+    def to_sse(self, event: StreamEventEnvelope) -> dict[str, str]:
+        return {
+            "event": event["event"],
+            "data": orjson.dumps(event["data"]).decode("utf-8"),
+        }

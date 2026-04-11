@@ -1,28 +1,21 @@
-"""聊天运行事件仓储。"""
+from typing import Any
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
 
 from knowledge_chatbox_api.models.chat import ChatRunEvent
-from knowledge_chatbox_api.services.chat.stream_events import (
-    StreamEventName,
-    StreamEventPayload,
-)
+from knowledge_chatbox_api.repositories.base import BaseRepository
 
 
-class ChatRunEventRepository:
-    """封装聊天运行事件的数据访问。"""
-
-    def __init__(self, session: Session) -> None:
-        self.session = session
+class ChatRunEventRepository(BaseRepository[ChatRunEvent]):
+    model_type = ChatRunEvent
 
     def append_event(
         self,
         *,
         run_id: int,
         seq: int,
-        event_type: StreamEventName,
-        payload_json: StreamEventPayload,
+        event_type: str,
+        payload_json: dict[str, Any],
         flush: bool = True,
     ) -> ChatRunEvent:
         event = ChatRunEvent(

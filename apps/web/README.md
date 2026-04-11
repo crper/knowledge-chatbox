@@ -41,6 +41,7 @@
 - TanStack Query
 - TanStack Form
 - TanStack Devtools（开发态）
+- EmbedPDF（知识页 PDF 内嵌预览）
 - react-virtuoso
 - Zustand
 - openapi-typescript / openapi-fetch
@@ -98,14 +99,14 @@ vp build
 
 ### 主要页面
 
-| 页面   | 作用                                                                                   | 主要代码入口                             |
-| ------ | -------------------------------------------------------------------------------------- | ---------------------------------------- |
-| 登录页 | 登录、主题/语言切换、登录前后偏好衔接                                                  | `src/pages/auth/login-page.tsx`          |
-| 对话页 | 会话、分页消息窗口、同步/流式问答、附件面板、图片 viewer、右栏上下文摘要               | `src/pages/chat/chat-page.tsx`           |
-| 资源页 | 上传、资源列表、预览抽屉、版本详情、重建索引，筛选状态由 `/knowledge` 路由 search 驱动 | `src/pages/knowledge/knowledge-page.tsx` |
-| 设置页 | 提供商配置、系统提示词、偏好与账号安全                                                 | `src/pages/settings/settings-page.tsx`   |
-| 用户页 | 管理员用户管理                                                                         | `src/pages/users/users-page.tsx`         |
-| 系统页 | 认证降级页与 `403` 页面                                                                | `src/pages/system/*`                     |
+| 页面   | 作用                                                                                                                                | 主要代码入口                             |
+| ------ | ----------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| 登录页 | 登录、主题/语言切换、登录前后偏好衔接                                                                                               | `src/pages/auth/login-page.tsx`          |
+| 对话页 | 会话、分页消息窗口、同步/流式问答、附件面板、图片 viewer、右栏上下文摘要                                                            | `src/pages/chat/chat-page.tsx`           |
+| 资源页 | 上传、资源列表、桌面主预览 / 移动抽屉预览、版本详情、重建索引；PDF 由 `EmbedPDF` 内嵌加载，筛选状态由 `/knowledge` 路由 search 驱动 | `src/pages/knowledge/knowledge-page.tsx` |
+| 设置页 | 提供商配置、系统提示词、偏好与账号安全                                                                                              | `src/pages/settings/settings-page.tsx`   |
+| 用户页 | 管理员用户管理                                                                                                                      | `src/pages/users/users-page.tsx`         |
+| 系统页 | 认证降级页与 `403` 页面                                                                                                             | `src/pages/system/*`                     |
 
 ## 工程结构
 
@@ -189,7 +190,7 @@ apps/web/
 - `streamRun` 的临时状态当前仍在 TanStack Query Cache，但读取面已经收口到 `useChatRuntimeState`
 - `messagesWindow / context` 的 patch、started user message 预插入和 targeted invalidate 当前统一走 `useChatSessionCacheActions`
 - `useChatWorkspace` 当前只负责装配 read model / runtime controller / cache actions / submit-stream 生命周期
-- 聊天草稿和发送快捷键当前仍在 `useChatUiStore` 持久化；待发送附件已经拆到 `useChatAttachmentStore`，只保留页面内会话级生命周期
+- 聊天 composer 当前统一收口到 `useChatComposerStore`：`draftsBySession + sendShortcut` 通过 persist middleware 落到 `localStorage`，`attachmentsBySession` 保持内存态，避免把 `File` 对象写进持久化存储
 - 详细聊天运行时边界见 [frontend-workspace.md](../../docs/arch/frontend-workspace.md)
 
 ### 认证与偏好

@@ -86,7 +86,7 @@ def test_admin_can_delete_regular_user_and_cleanup_sessions(migrated_db_session)
     space = SpaceRepository(migrated_db_session).ensure_personal_space(user_id=user.id)
     migrated_db_session.add(
         ChatSessionFactory.build(space_id=space.id, user_id=user.id, title="demo")
-    )  # noqa: E501
+    )
     migrated_db_session.commit()
 
     user_service.delete_user(admin, user.id)
@@ -106,7 +106,7 @@ def test_admin_cannot_demote_last_admin(migrated_db_session) -> None:
     _, user_service = create_service_pair(migrated_db_session)
     admin = seed_admin(migrated_db_session)
 
-    with pytest.raises(ValidationError, match="At least one admin user is required."):
+    with pytest.raises(ValidationError, match=r"At least one admin user is required\."):
         user_service.update_user(admin, admin.id, role="user")
 
 

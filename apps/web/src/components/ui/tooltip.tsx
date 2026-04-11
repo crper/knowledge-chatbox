@@ -5,6 +5,7 @@
 "use client";
 
 import * as React from "react";
+import { cva } from "class-variance-authority";
 import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip";
 
 import { cn } from "@/lib/utils";
@@ -28,6 +29,10 @@ function TooltipTrigger({ ...props }: React.ComponentProps<typeof TooltipPrimiti
   return <TooltipPrimitive.Trigger data-slot="tooltip-trigger" {...props} />;
 }
 
+const tooltipContentVariants = cva(
+  "relative z-[70] inline-flex w-fit max-w-xs origin-[var(--transform-origin)] items-center gap-1.5 rounded-md bg-foreground px-3 py-1.5 font-sans text-xs leading-none tracking-normal text-background has-data-[slot=kbd]:pr-1.5 transition-[opacity,transform] duration-100 data-[ending-style]:scale-95 data-[ending-style]:opacity-0 data-[starting-style]:scale-95 data-[starting-style]:opacity-0 **:data-[slot=kbd]:relative **:data-[slot=kbd]:isolate **:data-[slot=kbd]:z-[70] **:data-[slot=kbd]:rounded-sm",
+);
+
 type TooltipContentProps = React.ComponentProps<typeof TooltipPrimitive.Positioner> & {
   children?: React.ReactNode;
   className?: string;
@@ -50,10 +55,7 @@ function TooltipContent({
       >
         <TooltipPrimitive.Popup
           data-slot="tooltip-content"
-          className={cn(
-            "relative z-[70] inline-flex w-fit max-w-xs origin-[var(--transform-origin)] items-center gap-1.5 rounded-md bg-foreground px-3 py-1.5 font-sans text-xs leading-none tracking-normal text-background has-data-[slot=kbd]:pr-1.5 transition-[opacity,transform] duration-100 data-[ending-style]:scale-95 data-[ending-style]:opacity-0 data-[starting-style]:scale-95 data-[starting-style]:opacity-0 **:data-[slot=kbd]:relative **:data-[slot=kbd]:isolate **:data-[slot=kbd]:z-[70] **:data-[slot=kbd]:rounded-sm",
-            className,
-          )}
+          className={cn(tooltipContentVariants(), className)}
         >
           {children}
           <TooltipPrimitive.Arrow className="pointer-events-none absolute z-[70] size-2.5 rotate-45 rounded-[2px] bg-foreground data-[side=top]:bottom-0 data-[side=top]:left-1/2 data-[side=top]:-translate-x-1/2 data-[side=top]:translate-y-1/2 data-[side=bottom]:top-0 data-[side=bottom]:left-1/2 data-[side=bottom]:-translate-x-1/2 data-[side=bottom]:-translate-y-1/2 data-[side=left]:top-1/2 data-[side=left]:right-0 data-[side=left]:-translate-y-1/2 data-[side=left]:translate-x-1/2 data-[side=right]:top-1/2 data-[side=right]:left-0 data-[side=right]:-translate-x-1/2 data-[side=right]:-translate-y-1/2" />
@@ -63,4 +65,4 @@ function TooltipContent({
   );
 }
 
-export { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger };
+export { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, tooltipContentVariants };

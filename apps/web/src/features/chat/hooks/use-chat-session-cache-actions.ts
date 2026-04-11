@@ -48,19 +48,18 @@ export function useChatSessionCacheActions() {
           }
 
           patched = true;
-          const nextAttachments =
-            attachments == null
-              ? current.attachments
-              : (() => {
-                  const attachmentMap = new Map<string, PersistedChatAttachmentItem>();
-                  for (const attachment of current.attachments ?? []) {
-                    attachmentMap.set(buildContextAttachmentKey(attachment), attachment);
-                  }
-                  for (const attachment of attachments) {
-                    attachmentMap.set(buildContextAttachmentKey(attachment), attachment);
-                  }
-                  return Array.from(attachmentMap.values());
-                })();
+
+          const nextAttachments = (() => {
+            if (attachments == null) return current.attachments;
+            const attachmentMap = new Map<string, PersistedChatAttachmentItem>();
+            for (const attachment of current.attachments ?? []) {
+              attachmentMap.set(buildContextAttachmentKey(attachment), attachment);
+            }
+            for (const attachment of attachments) {
+              attachmentMap.set(buildContextAttachmentKey(attachment), attachment);
+            }
+            return Array.from(attachmentMap.values());
+          })();
 
           return {
             ...current,
@@ -90,6 +89,10 @@ export function useChatSessionCacheActions() {
       sessionId: number;
       userMessageId: number;
     }) => {
+      if (!attachments?.length) {
+        return false;
+      }
+
       let patched = false;
 
       queryClient.setQueryData<InfiniteData<ChatMessageItem[], number | null>>(
@@ -101,7 +104,7 @@ export function useChatSessionCacheActions() {
 
           const nextPages = current.pages.map((page) =>
             page.map((message) => {
-              if (message.id !== userMessageId || message.role !== "user") {
+              if (message.id !== userMessageId || message.role !== MessageRole.USER) {
                 return message;
               }
 
@@ -150,8 +153,8 @@ export function useChatSessionCacheActions() {
             {
               content,
               id: userMessageId,
-              role: "user",
-              status: "succeeded",
+              role: MessageRole.USER,
+              status: MessageStatus.SUCCEEDED,
               sources_json: [],
             } satisfies ChatMessageItem,
           ];
@@ -179,7 +182,7 @@ export function useChatSessionCacheActions() {
         content?: string;
         error_message?: string | null;
         sources_json?: ChatSourceItem[] | null;
-        status?: string;
+        status?: MessageStatus;
       };
       sessionId: number;
     }) => {
@@ -228,12 +231,14 @@ export function useChatSessionCacheActions() {
 
   const invalidateSessionArtifacts = useCallback(
     async (sessionId: number) => {
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.chat.messagesWindow(sessionId),
-      });
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.chat.context(sessionId),
-      });
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.chat.messagesWindow(sessionId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.chat.context(sessionId),
+        }),
+      ]);
     },
     [queryClient],
   );

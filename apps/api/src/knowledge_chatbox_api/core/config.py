@@ -1,6 +1,8 @@
 """Typed runtime configuration loaded from the repository root `.env`."""
 
 import json
+import os
+import warnings
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Literal
@@ -8,19 +10,48 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
-from knowledge_chatbox_api.models.enums import ProviderName
 from knowledge_chatbox_api.schemas._validators import (
     EmbeddingProviderLiteral,
     PositiveInt,
     ResponseProviderLiteral,
     VisionProviderLiteral,
 )
-from knowledge_chatbox_api.utils.helpers import unwrap_secret
 
-# src/knowledge_chatbox_api/core/ → 5 levels up to repo root
-PROJECT_ROOT = Path(__file__).resolve().parents[5]
-EnvironmentLiteral = Literal["local", "test", "staging", "production"]
-LogLevelLiteral = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+
+def _find_project_root() -> Path:
+    """Locate the project root by searching upward for marker files.
+
+    Resolution order:
+      1. ``PROJECT_ROOT`` environment variable (if set and points to a directory).
+      2. First parent directory that contains ``justfile`` or ``.git`` **and**
+         an ``apps/`` subdirectory.
+      3. Fallback to ``Path(__file__).resolve().parents[5]`` with a warning.
+    """
+    env_root = os.environ.get("PROJECT_ROOT")
+    if env_root:
+        candidate = Path(env_root).resolve()
+        if candidate.is_dir():
+            return candidate
+
+    current = Path(__file__).resolve()
+    for parent in current.parents:
+        if ((parent / "justfile").is_file() or (parent / ".git").is_dir()) and (
+            parent / "apps"
+        ).is_dir():
+            return parent
+    fallback = current.parents[5]
+    warnings.warn(
+        f"Could not locate project root by markers (justfile/.git + apps/); "
+        f"falling back to {fallback}. This may indicate an unexpected install layout. "
+        f"Set the PROJECT_ROOT environment variable to override.",
+        stacklevel=2,
+    )
+    return fallback
+
+
+PROJECT_ROOT = _find_project_root()
+type EnvironmentLiteral = Literal["local", "test", "staging", "production"]
+type LogLevelLiteral = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 
 
 class StorageSettings(BaseModel):
@@ -38,24 +69,24 @@ class AuthSettings(BaseModel):
 
     access_token_ttl_minutes: PositiveInt
     jwt_algorithm: str
-    jwt_secret_key: str
+    jwt_secret_key: SecretStr
     session_cookie_name: str
     session_cookie_secure: bool | None
     session_ttl_hours: PositiveInt
     login_rate_limit_attempts: PositiveInt
     login_rate_limit_window_seconds: PositiveInt
     initial_admin_username: str
-    initial_admin_password: str
+    initial_admin_password: SecretStr
 
 
 class ProviderBootstrapSettings(BaseModel):
     """provider bootstrap 相关运行时设置。"""
 
-    initial_openai_api_key: str | None = None
+    initial_openai_api_key: SecretStr | None = None
     initial_openai_base_url: str
-    initial_anthropic_api_key: str | None = None
+    initial_anthropic_api_key: SecretStr | None = None
     initial_anthropic_base_url: str
-    initial_voyage_api_key: str | None = None
+    initial_voyage_api_key: SecretStr | None = None
     initial_voyage_base_url: str
     initial_ollama_base_url: str
     initial_openai_chat_model: str
@@ -88,7 +119,7 @@ class Settings(BaseSettings):
     app_name: str = "Knowledge Chatbox API"
     environment: EnvironmentLiteral = "local"
     log_level: LogLevelLiteral = "INFO"
-    api_host: str = "0.0.0.0"
+    api_host: str = "0.0.0.0"  # noqa: S104
     api_port: int = 8000
     cors_allow_origins: Annotated[tuple[str, ...], NoDecode] = (
         "http://localhost:3000",
@@ -98,14 +129,14 @@ class Settings(BaseSettings):
     )
     access_token_ttl_minutes: PositiveInt = 15
     jwt_algorithm: str = "HS256"
-    jwt_secret_key: str = "knowledge-chatbox-dev-secret-key-32"
+    jwt_secret_key: SecretStr = SecretStr("")
     session_cookie_name: str = "knowledge_chatbox_session"
     session_cookie_secure: bool | None = None
     session_ttl_hours: PositiveInt = 24
     login_rate_limit_attempts: PositiveInt = 5
     login_rate_limit_window_seconds: PositiveInt = 300
     initial_admin_username: str = "admin"
-    initial_admin_password: str = "admin123456"
+    initial_admin_password: SecretStr = SecretStr("")
     initial_openai_api_key: SecretStr | None = None
     initial_openai_base_url: str = "https://api.openai.com/v1"
     initial_anthropic_api_key: SecretStr | None = None
@@ -122,11 +153,11 @@ class Settings(BaseSettings):
     initial_ollama_chat_model: str = "qwen3.5:4b"
     initial_ollama_embedding_model: str = "nomic-embed-text"
     initial_ollama_vision_model: str = "qwen3.5:4b"
-    initial_response_provider: ResponseProviderLiteral = ProviderName.OLLAMA
+    initial_response_provider: ResponseProviderLiteral = "ollama"
     initial_response_model: str = "qwen3.5:4b"
-    initial_embedding_provider: EmbeddingProviderLiteral = ProviderName.OLLAMA
+    initial_embedding_provider: EmbeddingProviderLiteral = "ollama"
     initial_embedding_model: str = "nomic-embed-text"
-    initial_vision_provider: VisionProviderLiteral = ProviderName.OLLAMA
+    initial_vision_provider: VisionProviderLiteral = "ollama"
     initial_vision_model: str = "qwen3.5:4b"
     initial_provider_timeout_seconds: PositiveInt = 60
     max_upload_size_mb: PositiveInt = 100
@@ -199,6 +230,24 @@ class Settings(BaseSettings):
         self.chroma_path = self._resolve_path_field(
             "chroma_path", self.chroma_path, data_dir / "chroma"
         )
+
+        if not self.jwt_secret_key.get_secret_value().strip():
+            raise ValueError(
+                "JWT_SECRET_KEY must be set and non-empty. "
+                'Generate one with: python -c "import secrets; print(secrets.token_urlsafe(32))"'
+            )
+        if len(self.jwt_secret_key.get_secret_value()) < 32:
+            raise ValueError(
+                "JWT_SECRET_KEY must be at least 32 characters long for adequate security."
+            )
+        if (
+            self.environment not in ("local", "test")
+            and self.jwt_secret_key.get_secret_value() == "knowledge-chatbox-dev-secret-key-32"
+        ):
+            raise ValueError(
+                "JWT_SECRET_KEY must be changed from the default value in non-local environments"
+            )
+
         return self
 
     @property
@@ -235,31 +284,9 @@ class Settings(BaseSettings):
 
     @property
     def provider_bootstrap(self) -> ProviderBootstrapSettings:
-        return ProviderBootstrapSettings(
-            initial_openai_api_key=unwrap_secret(self.initial_openai_api_key),
-            initial_openai_base_url=self.initial_openai_base_url,
-            initial_anthropic_api_key=unwrap_secret(self.initial_anthropic_api_key),
-            initial_anthropic_base_url=self.initial_anthropic_base_url,
-            initial_voyage_api_key=unwrap_secret(self.initial_voyage_api_key),
-            initial_voyage_base_url=self.initial_voyage_base_url,
-            initial_ollama_base_url=self.initial_ollama_base_url,
-            initial_openai_chat_model=self.initial_openai_chat_model,
-            initial_openai_embedding_model=self.initial_openai_embedding_model,
-            initial_openai_vision_model=self.initial_openai_vision_model,
-            initial_anthropic_chat_model=self.initial_anthropic_chat_model,
-            initial_anthropic_vision_model=self.initial_anthropic_vision_model,
-            initial_voyage_embedding_model=self.initial_voyage_embedding_model,
-            initial_ollama_chat_model=self.initial_ollama_chat_model,
-            initial_ollama_embedding_model=self.initial_ollama_embedding_model,
-            initial_ollama_vision_model=self.initial_ollama_vision_model,
-            initial_response_provider=self.initial_response_provider,
-            initial_response_model=self.initial_response_model,
-            initial_embedding_provider=self.initial_embedding_provider,
-            initial_embedding_model=self.initial_embedding_model,
-            initial_vision_provider=self.initial_vision_provider,
-            initial_vision_model=self.initial_vision_model,
-            initial_provider_timeout_seconds=self.initial_provider_timeout_seconds,
-        )
+        bootstrap_fields = ProviderBootstrapSettings.model_fields.keys()
+        kwargs = {f: getattr(self, f) for f in bootstrap_fields}
+        return ProviderBootstrapSettings.model_validate(kwargs)
 
 
 @lru_cache

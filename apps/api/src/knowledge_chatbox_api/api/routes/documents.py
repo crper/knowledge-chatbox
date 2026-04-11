@@ -8,7 +8,9 @@ from fastapi.responses import FileResponse
 
 from knowledge_chatbox_api.api.deps import CurrentUserDep, DbSessionDep, SettingsDep
 from knowledge_chatbox_api.api.error_responses import DOCUMENT_REINDEX_ERROR_RESPONSES
+from knowledge_chatbox_api.api.routes._common.transforms import model_to_read_simple
 from knowledge_chatbox_api.core.logging import get_logger
+from knowledge_chatbox_api.models.enums import IngestStatus
 from knowledge_chatbox_api.repositories.document_repository import DocumentRepository
 from knowledge_chatbox_api.schemas.common import Envelope
 from knowledge_chatbox_api.schemas.document import (
@@ -45,29 +47,21 @@ DOCUMENT_TYPE_QUERY = Query(default=None, alias="type")
 DOCUMENT_STATUS_QUERY = Query(default=None, alias="status")
 
 
+def _safe_file_path(file_path: Path, allowed_dirs: list[Path]) -> Path:
+    """确保文件路径在允许的存储目录内，防止路径遍历攻击。"""
+    resolved = file_path.resolve()
+    for allowed_dir in allowed_dirs:
+        try:
+            resolved.relative_to(allowed_dir.resolve())
+            return resolved
+        except ValueError:
+            continue
+    raise DocumentFileNotFoundError()
+
+
 def to_document_revision_read(document_revision) -> DocumentRevisionRead:
     """把文档修订模型转换为修订响应结构。"""
-    return DocumentRevisionRead(
-        id=document_revision.id,
-        document_id=document_revision.document_id,
-        revision_no=document_revision.revision_no,
-        source_filename=document_revision.source_filename,
-        mime_type=document_revision.mime_type,
-        file_type=document_revision.file_type,
-        ingest_status=document_revision.ingest_status,
-        content_hash=document_revision.content_hash,
-        normalized_path=document_revision.normalized_path,
-        source_path=document_revision.source_path,
-        file_size=document_revision.file_size,
-        chunk_count=document_revision.chunk_count,
-        error_message=document_revision.error_message,
-        supersedes_revision_id=document_revision.supersedes_revision_id,
-        created_by_user_id=document_revision.created_by_user_id,
-        updated_by_user_id=document_revision.updated_by_user_id,
-        created_at=document_revision.created_at,
-        updated_at=document_revision.updated_at,
-        indexed_at=document_revision.indexed_at,
-    )
+    return model_to_read_simple(document_revision, DocumentRevisionRead)
 
 
 def to_document_upload_read(
@@ -263,7 +257,7 @@ async def upload_document(
         raise FileTooLargeError(settings.max_upload_size_mb) from None
     except (UnsupportedFileTypeError, InvalidDocumentError):
         raise
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.exception(
             "Document upload failed unexpectedly",
             filename=filename,
@@ -312,7 +306,7 @@ def reindex_document(
     """重新索引文档。"""
     service = IngestionService(session, settings)
     document = service.reindex_document(current_user, document_id)
-    if document.ingest_status == "failed":
+    if document.ingest_status == IngestStatus.FAILED:
         raise DocumentReindexFailedError(document.error_message)
     return Envelope(success=True, data=to_document_revision_read(document), error=None)
 
@@ -334,7 +328,7 @@ def delete_document(
 def get_document_file(
     document_id: int,
     session: DbSessionDep,
-    _settings: SettingsDep,
+    settings: SettingsDep,
     current_user: CurrentUserDep,
 ):
     """获取文档原文件。"""
@@ -347,9 +341,12 @@ def get_document_file(
     if document_revision is None:
         raise DocumentNotFoundError()
 
-    file_path = Path(document_revision.origin_path)
+    file_path = _safe_file_path(
+        Path(document_revision.origin_path),
+        [settings.upload_dir, settings.normalized_dir],
+    )
     try:
-        return FileResponse(path=file_path, filename=document_revision.file_name)
+        return FileResponse(path=file_path, filename=document_revision.source_filename)
     except FileNotFoundError:
         raise DocumentFileNotFoundError() from None
 
@@ -358,7 +355,7 @@ def get_document_file(
 def get_document_revision_file(
     revision_id: int,
     session: DbSessionDep,
-    _settings: SettingsDep,
+    settings: SettingsDep,
     current_user: CurrentUserDep,
 ):
     """获取指定修订原文件。"""
@@ -369,8 +366,11 @@ def get_document_revision_file(
     if document_revision is None:
         raise DocumentNotFoundError()
 
-    file_path = Path(document_revision.origin_path)
+    file_path = _safe_file_path(
+        Path(document_revision.origin_path),
+        [settings.upload_dir, settings.normalized_dir],
+    )
     try:
-        return FileResponse(path=file_path, filename=document_revision.file_name)
+        return FileResponse(path=file_path, filename=document_revision.source_filename)
     except FileNotFoundError:
         raise DocumentFileNotFoundError() from None

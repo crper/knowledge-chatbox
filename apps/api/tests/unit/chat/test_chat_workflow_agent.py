@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from typing import Any, cast
 
 from pydantic_ai import RunContext
 from pydantic_ai.models.test import TestModel
@@ -51,29 +52,28 @@ class FakeRetrievalService:
         assert attachments == [{"type": "document", "document_revision_id": 2}]
         return FakeRetrievedContext()
 
+    class FakePromptAttachmentService:
+        def build_prompt_attachments(self, attachments, active_space_id: int | None):
+            del attachments
+            assert active_space_id == 42
+            return [{"type": "text", "text": "Attached document: test"}]
 
-class FakePromptAttachmentService:
-    def build_prompt_attachments(self, attachments, active_space_id: int | None):
-        assert active_space_id == 42
-        return [{"type": "text", "text": "Attached document: test"}]
-
-    def resolve_prompt_text(self, question: str, attachments):
-        assert question == ""
-        assert attachments == [{"type": "document", "document_revision_id": 2}]
-        return "Summarize the attached documents."
+        def resolve_prompt_text(self, question: str, attachments):
+            assert question == ""
+            assert attachments == [{"type": "document", "document_revision_id": 2}]
+            return "Summarize the attached documents."
 
 
 def build_test_context() -> RunContext[ChatWorkflowDeps]:
     deps = ChatWorkflowDeps(
         session_id=1,
-        session=object(),
-        actor=object(),
-        chat_repository=FakeChatRepository(space_id=42),
-        chat_run_repository=object(),
-        chat_run_event_repository=object(),
-        retrieval_service=FakeRetrievalService(),
-        prompt_attachment_service=FakePromptAttachmentService(),
-        runtime_settings=object(),
+        session=cast("Any", object()),
+        chat_repository=cast("Any", FakeChatRepository(space_id=42)),
+        chat_run_repository=cast("Any", object()),
+        chat_run_event_repository=cast("Any", object()),
+        retrieval_service=cast("Any", FakeRetrievalService()),
+        prompt_attachment_service=cast("Any", FakeRetrievalService.FakePromptAttachmentService()),
+        runtime_settings=cast("Any", object()),
         request_metadata={"path": "unit"},
     )
     return RunContext(

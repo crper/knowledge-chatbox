@@ -24,8 +24,8 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { cn } from "@/lib/utils";
+import { formatDateTime } from "@/lib/date-utils";
 import {
-  formatKnowledgeDocumentDateTime,
   getKnowledgeDocumentCategoryLabel,
   getKnowledgeDocumentStatusMeta,
 } from "./resource-document-helpers";
@@ -111,10 +111,8 @@ export function ResourceDocumentRow({
                 {statusMeta.label}
               </Badge>
               <span className="text-[11px] text-muted-foreground/60 tabular-nums ml-auto">
-                {formatKnowledgeDocumentDateTime(
-                  document.updated_at,
-                  i18n.resolvedLanguage ?? "zh-CN",
-                )}
+                {formatDateTime(document.updated_at, i18n.resolvedLanguage ?? "zh-CN") ||
+                  document.updated_at}
               </span>
             </div>
           </button>

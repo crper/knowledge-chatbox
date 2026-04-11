@@ -7,12 +7,16 @@ import type {
 } from "../api/chat";
 import type { ChatStreamAttachmentInput } from "../api/chat-stream";
 import { deleteChatMessage } from "../api/chat";
-import { useChatComposerSubmit } from "./use-chat-composer-submit";
-import { useChatUiStore } from "../store/chat-ui-store";
 import { MessageStatus } from "../constants";
+import { useChatComposerStore } from "../store/chat-composer-store";
+import { useChatComposerSubmit } from "./use-chat-composer-submit";
 
 type UseChatWorkspaceActionsParams = {
-  beginSessionSubmit: (sessionId: number) => boolean;
+  beginSessionSubmit: (
+    sessionId: number,
+    controller: AbortController,
+    clientRequestId?: string | null,
+  ) => boolean;
   findRunByAssistantMessageId: (assistantMessageId: number) =>
     | {
         assistantMessageId: number;
@@ -43,9 +47,11 @@ type UseChatWorkspaceActionsParams = {
   resolvedActiveSessionId: number | null;
   sendStreamMessage: (input: {
     attachments?: ChatStreamAttachmentInput[];
+    clientRequestId: string;
     content: string;
     retryOfMessageId?: number;
     sessionId: number;
+    signal?: AbortSignal;
   }) => Promise<{ userMessageId?: number | null }>;
 };
 
@@ -61,7 +67,7 @@ export function useChatWorkspaceActions({
   resolvedActiveSessionId,
   sendStreamMessage,
 }: UseChatWorkspaceActionsParams) {
-  const setDraft = useChatUiStore((state) => state.setDraft);
+  const setDraft = useChatComposerStore((state) => state.setDraft);
 
   const { retryMessage, submitMessage } = useChatComposerSubmit({
     beginSessionSubmit,

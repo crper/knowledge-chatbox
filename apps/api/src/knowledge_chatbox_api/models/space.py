@@ -1,6 +1,7 @@
 """空间数据模型定义。"""
 
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, String, func
 from sqlalchemy.orm import Mapped, mapped_column
@@ -35,9 +36,9 @@ class Space(Base):
         nullable=False,
     )
 
-    def __init__(self, **kwargs) -> None:
-        created_by_user_id = kwargs.pop("created_by_user_id", None)
-        updated_by_user_id = kwargs.pop("updated_by_user_id", None)
+    def __init__(self, **kwargs: Any) -> None:
+        created_by_user_id: int | None = kwargs.pop("created_by_user_id", None)
+        updated_by_user_id: int | None = kwargs.pop("updated_by_user_id", None)
         kwargs.pop("description", None)
         kwargs.pop("status", None)
         if kwargs.get("owner_user_id") is None:

@@ -1,4 +1,4 @@
-"""聊天仓储数据访问实现。"""
+from typing import Any
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
@@ -6,16 +6,17 @@ from sqlalchemy.orm import Session
 from knowledge_chatbox_api.models.chat import ChatMessage, ChatMessageAttachment, ChatSession
 from knowledge_chatbox_api.models.document import DocumentRevision
 from knowledge_chatbox_api.models.enums import ChatMessageRole, ReasoningMode
+from knowledge_chatbox_api.repositories.base import BaseRepository
 from knowledge_chatbox_api.repositories.space_repository import SpaceRepository
 
-_UNSET = object()
+UNSET = object()
 
 
-class ChatRepository:
-    """封装聊天会话、消息与附件的数据库访问。"""
+class ChatRepository(BaseRepository[ChatSession]):
+    model_type = ChatSession
 
     def __init__(self, session: Session) -> None:
-        self.session = session
+        super().__init__(session=session)
         self.space_repository = SpaceRepository(session)
 
     def create_session(
@@ -25,7 +26,6 @@ class ChatRepository:
         *,
         reasoning_mode: str = ReasoningMode.DEFAULT,
     ) -> ChatSession:
-        """创建会话。"""
         space = self.space_repository.ensure_personal_space(
             user_id=user_id,
         )
@@ -35,12 +35,9 @@ class ChatRepository:
             title=title,
             reasoning_mode=reasoning_mode,
         )
-        self.session.add(chat_session)
-        self.session.flush()
-        return chat_session
+        return self.add(chat_session)
 
     def list_sessions(self, user_id: int) -> list[ChatSession]:
-        """列出Sessions。"""
         statement = (
             select(ChatSession)
             .where(ChatSession.user_id == user_id)
@@ -49,34 +46,30 @@ class ChatRepository:
         return list(self.session.scalars(statement).all())
 
     def get_session(self, session_id: int) -> ChatSession | None:
-        """获取会话。"""
-        return self.session.get(ChatSession, session_id)
+        return self.get_one_or_none(id=session_id)
 
     def update_session(
         self,
         session_id: int,
         *,
-        title: str | None | object = _UNSET,
-        reasoning_mode: str | object = _UNSET,
+        title: str | None | object = UNSET,
+        reasoning_mode: str | object = UNSET,
     ) -> ChatSession | None:
-        """更新会话元信息。"""
         chat_session = self.get_session(session_id)
         if chat_session is None:
             return None
-        if title is None or isinstance(title, str):
-            chat_session.title = title
-        if reasoning_mode is not _UNSET and isinstance(reasoning_mode, str):
-            chat_session.reasoning_mode = reasoning_mode
+        if title is not UNSET:
+            chat_session.title = title  # type: ignore[assignment]  # UNSET sentinel 允许传入 None 清空字段
+        if reasoning_mode is not UNSET:
+            chat_session.reasoning_mode = reasoning_mode  # type: ignore[assignment]
         self.session.flush()
         return chat_session
 
     def delete_session(self, session_id: int) -> None:
-        """删除会话。"""
         self.session.execute(delete(ChatMessage).where(ChatMessage.session_id == session_id))
         self.session.execute(delete(ChatSession).where(ChatSession.id == session_id))
 
     def get_message(self, message_id: int) -> ChatMessage | None:
-        """获取消息。"""
         return self.session.get(ChatMessage, message_id)
 
     def get_user_message_by_client_request_id(
@@ -85,7 +78,6 @@ class ChatRepository:
         session_id: int,
         client_request_id: str,
     ) -> ChatMessage | None:
-        """按会话和请求幂等键获取用户消息。"""
         statement = select(ChatMessage).where(
             ChatMessage.session_id == session_id,
             ChatMessage.role == ChatMessageRole.USER,
@@ -96,7 +88,7 @@ class ChatRepository:
     def create_message(
         self,
         *,
-        attachments: list[dict] | None = None,
+        attachments: list[dict[str, Any]] | None = None,
         session_id: int,
         role: str,
         content: str,
@@ -105,9 +97,8 @@ class ChatRepository:
         error_message: str | None = None,
         retry_of_message_id: int | None = None,
         reply_to_message_id: int | None = None,
-        sources_json: list[dict] | None = None,
+        sources_json: list[dict[str, Any]] | None = None,
     ) -> ChatMessage:
-        """创建消息。"""
         message = ChatMessage(
             session_id=session_id,
             role=role,
@@ -138,7 +129,6 @@ class ChatRepository:
         return message
 
     def list_attachments(self, message_id: int) -> list[ChatMessageAttachment]:
-        """列出附件。"""
         statement = (
             select(ChatMessageAttachment)
             .where(ChatMessageAttachment.message_id == message_id)
@@ -152,7 +142,6 @@ class ChatRepository:
         self,
         message_ids: list[int],
     ) -> dict[int, list[ChatMessageAttachment]]:
-        """按消息批量列出附件。"""
         if not message_ids:
             return {}
 
@@ -171,7 +160,6 @@ class ChatRepository:
         return attachments_by_message_id
 
     def list_session_attachments(self, session_id: int) -> list[ChatMessageAttachment]:
-        """按会话顺序列出所有附件。"""
         statement = (
             select(ChatMessageAttachment)
             .join(ChatMessage, ChatMessage.id == ChatMessageAttachment.message_id)
@@ -201,7 +189,6 @@ class ChatRepository:
             attachment.document_id = revision.document_id if revision is not None else None
 
     def list_messages(self, session_id: int, *, limit: int = 500) -> list[ChatMessage]:
-        """列出消息。"""
         statement = (
             select(ChatMessage)
             .where(ChatMessage.session_id == session_id)
@@ -217,7 +204,6 @@ class ChatRepository:
         before_id: int | None,
         limit: int,
     ) -> list[ChatMessage]:
-        """按尾部窗口列出消息，并保持升序返回。"""
         statement = select(ChatMessage).where(ChatMessage.session_id == session_id)
         if before_id is not None:
             statement = statement.where(ChatMessage.id < before_id)
@@ -227,7 +213,6 @@ class ChatRepository:
         return messages
 
     def get_latest_assistant_message(self, session_id: int) -> ChatMessage | None:
-        """获取会话里最后一条 assistant 消息。"""
         statement = (
             select(ChatMessage)
             .where(
@@ -239,7 +224,6 @@ class ChatRepository:
         return self.session.scalars(statement).first()
 
     def list_recent_messages(self, session_id: int, *, limit: int) -> list[ChatMessage]:
-        """按时间顺序返回最近 N 条消息。"""
         if limit <= 0:
             return []
         statement = (
@@ -253,7 +237,6 @@ class ChatRepository:
         return messages
 
     def get_assistant_reply(self, reply_to_message_id: int) -> ChatMessage | None:
-        """获取AssistantReply。"""
         statement = (
             select(ChatMessage)
             .where(
@@ -265,7 +248,6 @@ class ChatRepository:
         return self.session.scalars(statement).first()
 
     def list_assistant_replies(self, reply_to_message_id: int) -> list[ChatMessage]:
-        """列出AssistantReplies。"""
         statement = (
             select(ChatMessage)
             .where(
@@ -277,9 +259,7 @@ class ChatRepository:
         return list(self.session.scalars(statement).all())
 
     def delete_message(self, message_id: int) -> None:
-        """删除消息。"""
         self.session.execute(delete(ChatMessage).where(ChatMessage.id == message_id))
 
     def delete_sessions_by_user_id(self, user_id: int) -> None:
-        """删除指定用户的所有会话。"""
         self.session.execute(delete(ChatSession).where(ChatSession.user_id == user_id))

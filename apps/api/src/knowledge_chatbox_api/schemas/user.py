@@ -4,11 +4,9 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
+from knowledge_chatbox_api.models.enums import ThemePreference, UserRole, UserStatus
 from knowledge_chatbox_api.schemas._validators import (
     PasswordStr,
-    RoleLiteral,
-    StatusLiteral,
-    ThemeLiteral,
     UsernameStr,
 )
 
@@ -18,9 +16,9 @@ class UserRead(BaseModel):
 
     id: int
     username: str
-    role: RoleLiteral
-    status: StatusLiteral
-    theme_preference: ThemeLiteral
+    role: UserRole
+    status: UserStatus
+    theme_preference: ThemePreference
     created_by_user_id: int | None
     last_login_at: datetime | None
     password_changed_at: datetime | None
@@ -33,15 +31,15 @@ class CreateUserRequest(BaseModel):
 
     username: UsernameStr
     password: PasswordStr
-    role: RoleLiteral
+    role: UserRole
 
 
 class UpdateUserRequest(BaseModel):
     """描述Update用户请求体。"""
 
-    status: StatusLiteral | None = None
-    role: RoleLiteral | None = None
-    theme_preference: ThemeLiteral | None = None
+    status: UserStatus | None = None
+    role: UserRole | None = None
+    theme_preference: ThemePreference | None = None
 
 
 class ResetPasswordRequest(BaseModel):

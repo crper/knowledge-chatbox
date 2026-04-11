@@ -13,14 +13,12 @@ from tests.fixtures.factories import (
 from tests.fixtures.stubs import InMemoryChromaStore
 
 from knowledge_chatbox_api.core.config import get_settings
+from knowledge_chatbox_api.models.enums import IndexRebuildStatus
 from knowledge_chatbox_api.services.documents.chunking_service import ChunkingService
 from knowledge_chatbox_api.services.documents.errors import DocumentNotNormalizedError
 from knowledge_chatbox_api.services.documents.indexing_service import IndexingService
 from knowledge_chatbox_api.services.documents.rebuild_service import RebuildService
-from knowledge_chatbox_api.services.settings.settings_service import (
-    INDEX_REBUILD_STATUS_RUNNING,
-    SettingsService,
-)
+from knowledge_chatbox_api.services.settings.settings_service import SettingsService
 
 
 def create_document(migrated_db_session):
@@ -41,7 +39,7 @@ def create_document(migrated_db_session):
         updated_by_user_id=admin.id,
     )
 
-    document_version = DocumentRevisionFactory.persisted_create(
+    return DocumentRevisionFactory.persisted_create(
         migrated_db_session,
         document_id=document.id,
         source_filename="spec.md",
@@ -52,7 +50,6 @@ def create_document(migrated_db_session):
         created_by_user_id=admin.id,
         updated_by_user_id=admin.id,
     )
-    return document_version
 
 
 def test_rebuild_service_promotes_pending_embedding_route(
@@ -67,13 +64,15 @@ def test_rebuild_service_promotes_pending_embedding_route(
     service = SettingsService(migrated_db_session, settings)
     settings_record = service.get_or_create_settings_record()
     active_generation = settings_record.active_index_generation
+    assert active_generation is not None
     settings_record.pending_embedding_route_json = {
         "provider": "openai",
         "model": "text-embedding-3-large",
     }
-    settings_record.index_rebuild_status = INDEX_REBUILD_STATUS_RUNNING
+    settings_record.index_rebuild_status = IndexRebuildStatus.RUNNING
     settings_record.building_index_generation = active_generation + 1
     target_generation = settings_record.building_index_generation
+    assert target_generation is not None
     migrated_db_session.commit()
 
     document_version = create_document(migrated_db_session)
@@ -84,7 +83,7 @@ def test_rebuild_service_promotes_pending_embedding_route(
 
     monkeypatch.setattr(
         "knowledge_chatbox_api.services.documents.rebuild_service.build_embedding_adapter",
-        lambda route: EmbeddingAdapterStub(),
+        lambda route: (route, EmbeddingAdapterStub())[1],
     )
     rebuild = RebuildService(migrated_db_session, settings)
     processed = rebuild.rebuild_building_generation(target_generation)
@@ -121,10 +120,12 @@ def test_rebuild_service_marks_failed_when_pending_embedding_route_missing(
     service = SettingsService(migrated_db_session, settings)
     settings_record = service.get_or_create_settings_record()
     active_generation = settings_record.active_index_generation
+    assert active_generation is not None
     settings_record.pending_embedding_route_json = None
-    settings_record.index_rebuild_status = INDEX_REBUILD_STATUS_RUNNING
+    settings_record.index_rebuild_status = IndexRebuildStatus.RUNNING
     settings_record.building_index_generation = active_generation + 1
     target_generation = settings_record.building_index_generation
+    assert target_generation is not None
     migrated_db_session.commit()
 
     rebuild = RebuildService(migrated_db_session, settings)

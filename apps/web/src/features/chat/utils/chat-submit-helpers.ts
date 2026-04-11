@@ -1,7 +1,9 @@
 import { trim } from "es-toolkit";
 
+import { ApiRequestError } from "@/lib/api/api-request-error";
+import { getErrorMessage } from "@/lib/utils";
 import type { ChatMessageItem } from "../api/chat";
-import type { ComposerAttachmentItem } from "../store/chat-attachment-store";
+import type { ComposerAttachmentItem } from "../store/chat-composer-store";
 
 export type ReadyChatAttachment = ComposerAttachmentItem & {
   file: File;
@@ -48,16 +50,27 @@ export function collectLocalAttachmentFingerprints(attachments: ComposerAttachme
   );
 }
 
+function normalizeErrorMessage(message: string): string {
+  return message
+    .toLowerCase()
+    .replace(/[.!]+$/g, "")
+    .trim();
+}
+
+function isGenericErrorMessage(normalizedMessage: string): boolean {
+  return !normalizedMessage || normalizedMessage.includes("chat stream request failed");
+}
+
 export function resolveSubmitErrorMessage(error: unknown, fallback: string) {
-  if (!(error instanceof Error)) {
+  const message = trim(getErrorMessage(error, ""));
+  const normalizedMessage = normalizeErrorMessage(message);
+
+  if (error instanceof ApiRequestError && error.status >= 500) {
     return fallback;
   }
-
-  const message = trim(error.message);
-  if (!message || message === "chat stream request failed") {
+  if (isGenericErrorMessage(normalizedMessage)) {
     return fallback;
   }
-
   return message;
 }
 
@@ -117,9 +130,11 @@ export function shouldResetComposerSnapshotForRetry({
   }
 
   const normalizedComposerAttachments = composerAttachments
+    .filter((a): a is NonNullable<typeof a> => a != null)
     .map(toComposerAttachmentSignature)
     .sort();
   const normalizedRetryAttachments = (retryAttachments ?? [])
+    .filter((a): a is NonNullable<typeof a> => a != null)
     .map(toMessageAttachmentSignature)
     .sort();
 

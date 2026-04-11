@@ -10,19 +10,20 @@ import { Button as ButtonPrimitive } from "@base-ui/react/button";
  * 定义按钮样式变体。
  */
 const buttonVariants = cva(
-  "inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border text-sm font-medium whitespace-nowrap transition-[background-color,border-color,color] duration-150 outline-none select-none focus-visible:ring-2 focus-visible:ring-ring/45 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-2 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border text-sm font-medium whitespace-nowrap transition-all duration-150 ease-out outline-none select-none focus-visible:ring-2 focus-visible:ring-ring/45 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-2 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 active:scale-[0.98]",
   {
     variants: {
       variant: {
         default:
-          "border-transparent bg-foreground text-background hover:bg-foreground/90 hover:text-background",
+          "border-transparent bg-foreground text-background hover:bg-foreground/90 hover:text-background hover:shadow-[0_2px_8px_-2px_hsl(var(--foreground)/0.24)] hover:-translate-y-px",
         outline:
-          "border-border bg-background text-foreground hover:bg-accent hover:text-foreground",
+          "border-border bg-background text-foreground hover:bg-accent hover:text-foreground hover:border-border/80 hover:shadow-[0_2px_8px_-2px_hsl(var(--foreground)/0.08)] hover:-translate-y-px",
         secondary:
-          "border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80",
+          "border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80 hover:shadow-[0_2px_8px_-2px_hsl(var(--foreground)/0.12)] hover:-translate-y-px",
         ghost:
-          "border-transparent bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground",
-        destructive: "border-transparent bg-destructive text-white hover:bg-destructive/90",
+          "border-transparent bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground hover:-translate-y-px",
+        destructive:
+          "border-transparent bg-destructive text-white hover:bg-destructive/90 hover:shadow-[0_2px_8px_-2px_hsl(var(--destructive)/0.32)] hover:-translate-y-px",
         link: "rounded-none border-transparent bg-transparent text-primary underline-offset-4 hover:underline",
       },
       size: {

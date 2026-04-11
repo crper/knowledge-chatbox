@@ -160,18 +160,28 @@ describe("MessageInput", () => {
   });
 
   it("shows a spinner status while submitting", () => {
+    const onStopSubmit = vi.fn();
+
     render(
       <MessageInput
         draft="hello"
         onChange={() => {}}
+        onStopSubmit={onStopSubmit}
         onSubmit={() => {}}
         sendShortcut="shift-enter"
         submitPending={true}
       />,
     );
 
-    expect(screen.getByRole("button", { name: "发送中" })).toBeDisabled();
+    const stopButton = screen.getByRole("button", { name: "停止生成" });
+
+    expect(stopButton).toBeEnabled();
+    expect(screen.getByText("正在生成，可随时停止")).toBeInTheDocument();
     expect(screen.getByRole("status", { name: "发送中" })).toBeInTheDocument();
+
+    fireEvent.click(stopButton);
+
+    expect(onStopSubmit).toHaveBeenCalledTimes(1);
   });
 
   it("submits with Enter by default", () => {

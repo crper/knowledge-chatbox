@@ -391,4 +391,42 @@ describe("chat stream api", () => {
       }),
     ).rejects.toThrow("client_request_id already exists for a different message payload.");
   });
+
+  it("aborts the active stream when the caller cancels the request", async () => {
+    overrideHandler(
+      http.post("*/api/chat/sessions/7/messages/stream", ({ request }) => {
+        const stream = new ReadableStream({
+          start(controller) {
+            request.signal.addEventListener(
+              "abort",
+              () => {
+                controller.error(new DOMException("The operation was aborted.", "AbortError"));
+              },
+              { once: true },
+            );
+          },
+        });
+
+        return new Response(stream, {
+          status: 200,
+          headers: { "Content-Type": "text/event-stream" },
+        });
+      }),
+    );
+
+    const controller = new AbortController();
+    const streamPromise = startChatStream({
+      sessionId: 7,
+      body: {
+        content: "hello",
+        client_request_id: "req-stream-abort",
+      },
+      onEvent: () => {},
+      signal: controller.signal,
+    });
+
+    controller.abort();
+
+    await expect(streamPromise).rejects.toMatchObject({ name: "AbortError" });
+  });
 });

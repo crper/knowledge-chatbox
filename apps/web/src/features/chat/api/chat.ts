@@ -5,6 +5,7 @@
 import { openapiRequestRequired } from "@/lib/api/client";
 import { apiFetchClient } from "@/lib/api/generated/client";
 import type { components } from "@/lib/api/generated/schema";
+import type { ResponseProviderName } from "@/features/settings/api/settings";
 
 export type ChatReasoningMode = "default" | "off" | "on";
 
@@ -28,20 +29,12 @@ export type ChatAttachmentItem = {
   archived_at?: string | null;
 };
 
-export type ChatSourceItem = {
-  chunk_id: string;
-  section_title?: string;
-  page_number?: number;
-  snippet?: string;
-  document_id?: number;
-  document_name?: string;
-  score?: number;
-};
+export type ChatSourceItem = components["schemas"]["ChatSourceRead"];
 
 export type ChatProfileItem = {
   configured: boolean;
   model: string | null;
-  provider: "openai" | "anthropic" | "ollama";
+  provider: ResponseProviderName;
 };
 
 export type ChatSessionContextItem = {
@@ -105,7 +98,7 @@ function toChatMessageItem(message: ChatMessageRead): ChatMessageItem {
     error_message: message.error_message ?? null,
     retry_of_message_id: message.retry_of_message_id ?? null,
     reply_to_message_id: message.reply_to_message_id ?? null,
-    sources_json: (message.sources_json as ChatSourceItem[] | null | undefined) ?? null,
+    sources_json: message.sources_json ?? null,
     created_at: message.created_at,
   };
 }
@@ -146,8 +139,10 @@ export async function getChatMessagesWindow(
   return messages.map(toChatMessageItem);
 }
 
+type ChatSessionContextRead = components["schemas"]["ChatSessionContextRead"];
+
 export async function getChatSessionContext(sessionId: number) {
-  return openapiRequestRequired<ChatSessionContextItem>(
+  return openapiRequestRequired<ChatSessionContextRead>(
     apiFetchClient.GET("/api/chat/sessions/{session_id}/context", {
       params: { path: { session_id: sessionId } },
     }),
@@ -189,6 +184,25 @@ export function deleteChatMessage(messageId: number) {
   return openapiRequestRequired<{ deleted: boolean }>(
     apiFetchClient.DELETE("/api/chat/messages/{message_id}", {
       params: { path: { message_id: messageId } },
+    }),
+  );
+}
+
+export function cancelChatRun(runId: number) {
+  return openapiRequestRequired<{ cancelled: boolean }>(
+    apiFetchClient.POST("/api/chat/runs/{run_id}/cancel", {
+      params: { path: { run_id: runId } },
+    }),
+  );
+}
+
+export function cancelPendingChatStream(sessionId: number, clientRequestId: string) {
+  return openapiRequestRequired<{ cancelled: boolean }>(
+    apiFetchClient.POST("/api/chat/sessions/{session_id}/messages/stream/cancel", {
+      body: {
+        client_request_id: clientRequestId,
+      },
+      params: { path: { session_id: sessionId } },
     }),
   );
 }

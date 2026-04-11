@@ -3,7 +3,6 @@
 from typing import Any
 
 from knowledge_chatbox_api.models.enums import ProviderName, ReasoningMode
-from knowledge_chatbox_api.schemas._validators import ReasoningModeLiteral
 from knowledge_chatbox_api.schemas.settings import (
     EmbeddingRouteConfig,
     ProviderRuntimeSettings,
@@ -15,9 +14,9 @@ from knowledge_chatbox_api.schemas.settings import (
 )
 from knowledge_chatbox_api.utils.helpers import safe_getattr
 
-DEFAULT_RESPONSE_ROUTE = {"provider": ProviderName.OLLAMA, "model": "unknown"}
-DEFAULT_EMBEDDING_ROUTE = {"provider": ProviderName.OLLAMA, "model": "unknown"}
-DEFAULT_VISION_ROUTE = {"provider": ProviderName.OLLAMA, "model": "unknown"}
+DEFAULT_RESPONSE_ROUTE = {"provider": ProviderName.OLLAMA, "model": "qwen3.5:4b"}
+DEFAULT_EMBEDDING_ROUTE = {"provider": ProviderName.OLLAMA, "model": "nomic-embed-text"}
+DEFAULT_VISION_ROUTE = {"provider": ProviderName.OLLAMA, "model": "qwen3.5:4b"}
 DEFAULT_PROVIDER_TIMEOUT_SECONDS = 60
 
 
@@ -25,7 +24,7 @@ def _runtime_settings_payload(
     value: Any,
     *,
     embedding_route: EmbeddingRouteConfig | dict[str, Any] | None = None,
-    reasoning_mode: ReasoningModeLiteral | None = None,
+    reasoning_mode: ReasoningMode | None = None,
 ) -> dict[str, Any]:
     payload = {
         "provider_profiles": parse_provider_profiles(safe_getattr(value, "provider_profiles", {})),
@@ -70,7 +69,7 @@ def build_runtime_settings(
     settings_source: Any,
     *,
     embedding_route: EmbeddingRouteConfig | dict[str, Any] | None = None,
-    reasoning_mode: ReasoningModeLiteral = ReasoningMode.DEFAULT,
+    reasoning_mode: ReasoningMode = ReasoningMode.DEFAULT,
 ) -> ProviderRuntimeSettings:
     """从 settings-like 对象构造 provider 运行时所需的统一配置。"""
     return ProviderRuntimeSettings(

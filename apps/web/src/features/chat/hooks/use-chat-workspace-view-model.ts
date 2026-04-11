@@ -1,7 +1,6 @@
 import { useMemo } from "react";
 
-import { useChatAttachmentStore } from "../store/chat-attachment-store";
-import { useChatUiStore } from "../store/chat-ui-store";
+import { useChatComposerStore } from "../store/chat-composer-store";
 import type { StreamingRun } from "../utils/streaming-run";
 import { useChatSessionData } from "./use-chat-session-data";
 
@@ -16,12 +15,12 @@ export function useChatWorkspaceViewModel({
   isSessionSubmitPending,
   sessionRunsById,
 }: UseChatWorkspaceViewModelParams) {
-  const attachmentsBySession = useChatAttachmentStore((state) => state.attachmentsBySession);
-  const removeAttachment = useChatAttachmentStore((state) => state.removeAttachment);
-  const draftsBySession = useChatUiStore((state) => state.draftsBySession);
-  const sendShortcut = useChatUiStore((state) => state.sendShortcut);
-  const setSendShortcut = useChatUiStore((state) => state.setSendShortcut);
-  const setDraft = useChatUiStore((state) => state.setDraft);
+  const attachmentsBySession = useChatComposerStore((state) => state.attachmentsBySession);
+  const removeAttachment = useChatComposerStore((state) => state.removeAttachment);
+  const draftsBySession = useChatComposerStore((state) => state.draftsBySession);
+  const sendShortcut = useChatComposerStore((state) => state.sendShortcut);
+  const setSendShortcut = useChatComposerStore((state) => state.setSendShortcut);
+  const setDraft = useChatComposerStore((state) => state.setDraft);
 
   const sessionData = useChatSessionData({ activeSessionId, sessionRunsById });
 

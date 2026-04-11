@@ -76,7 +76,7 @@ class VersioningService:
                 created_by_user_id=actor.id,
                 updated_by_user_id=actor.id,
             )
-            self.repository.add(document)
+            self.repository.add_document(document)
         else:
             document = latest_document
             document.title = filename

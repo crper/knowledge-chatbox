@@ -1,8 +1,7 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 from unittest.mock import ANY
-
-from fastapi.testclient import TestClient
 
 from knowledge_chatbox_api.core.config import get_settings
 from knowledge_chatbox_api.db.session import create_session_factory
@@ -11,6 +10,9 @@ from knowledge_chatbox_api.services.documents.ingestion_service import (
     IngestionService,
 )
 from tests.fixtures.stubs import make_adapter_backed_chat_workflow_class
+
+if TYPE_CHECKING:
+    from fastapi.testclient import TestClient
 
 
 class LoggerSpy:
@@ -68,7 +70,7 @@ class FailingResponseAdapterStub:
 def login_admin(api_client: TestClient) -> None:
     response = api_client.post(
         "/api/auth/login",
-        json={"username": "admin", "password": "admin123456"},
+        json={"username": "admin", "password": "Admin123456"},
     )
     assert response.status_code == 200
 
@@ -126,6 +128,7 @@ def test_stream_chat_logs_run_lifecycle(
             "response_provider": "ollama",
             "run_id": 1,
             "session_id": session_id,
+            "operation_kind": "chat_stream",
         },
         {
             "event": "chat_stream_run_completed",
@@ -136,6 +139,7 @@ def test_stream_chat_logs_run_lifecycle(
             "run_id": 1,
             "session_id": session_id,
             "source_count": 0,
+            "operation_kind": "chat_stream",
         },
     ]
 
@@ -179,12 +183,12 @@ def test_sync_chat_logs_failure_summary(
     assert sync_logger.records == [
         {
             "event": "chat_sync_message_failed",
-            "level": "warning",
-            "error_message": "provider backend unavailable",
+            "level": "exception",
             "failure_type": "chat_answer_error",
             "response_model": "qwen3.5:4b",
             "response_provider": "ollama",
             "session_id": session_id,
+            "operation_kind": "chat_sync",
         }
     ]
 
@@ -224,6 +228,7 @@ def test_document_upload_logs_completed_sync_ingestion(
             "filename": "note.txt",
             "index_latency_ms": ANY,
             "normalize_latency_ms": ANY,
+            "operation_kind": "document_upload",
         }
     ]
 
@@ -272,6 +277,7 @@ def test_document_background_ingestion_logs_structured_failure(
         "exception_type": "RuntimeError",
         "failure_stage": "background_ingestion",
         "file_type": "png",
+        "operation_kind": "document_background_ingestion",
     }
 
 
@@ -337,4 +343,5 @@ def test_document_background_ingestion_logs_structured_success(
         "filename": "image.png",
         "index_latency_ms": 34,
         "normalize_latency_ms": 12,
+        "operation_kind": "document_background_ingestion",
     }

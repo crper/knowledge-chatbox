@@ -37,8 +37,6 @@ export type KnowledgeDocument = {
   status: KnowledgeDocumentStatus;
   is_latest: boolean;
   supersedes_version_id?: number | null;
-  origin_path?: string;
-  normalized_path?: string | null;
   file_size?: number | null;
   chunk_count?: number | null;
   error_message?: string | null;
@@ -83,8 +81,6 @@ function toKnowledgeDocument(
     status: (revision?.ingest_status ?? "uploaded") as KnowledgeDocumentStatus,
     is_latest: true,
     supersedes_version_id: revision?.supersedes_revision_id ?? null,
-    origin_path: revision?.source_path,
-    normalized_path: revision?.normalized_path ?? null,
     file_size: revision?.file_size ?? null,
     chunk_count: revision?.chunk_count ?? null,
     error_message: revision?.error_message ?? null,
@@ -119,8 +115,6 @@ function toRevisionBaseFields(revision: DocumentRevisionRead) {
     mime_type: revision.mime_type,
     status: revision.ingest_status as KnowledgeDocumentStatus,
     supersedes_version_id: revision.supersedes_revision_id ?? null,
-    origin_path: revision.source_path,
-    normalized_path: revision.normalized_path ?? null,
     file_size: revision.file_size ?? null,
     chunk_count: revision.chunk_count ?? null,
     error_message: revision.error_message ?? null,
@@ -140,8 +134,7 @@ function toKnowledgeDocumentVersion(revision: DocumentRevisionRead): KnowledgeDo
   };
 }
 
-export async function getDocuments(filters?: KnowledgeDocumentListFilters) {
-  const normalizedFilters = normalizeKnowledgeDocumentListFilters(filters);
+export async function getDocuments(normalizedFilters: KnowledgeDocumentListFilters) {
   const documents = await openapiRequestRequired<DocumentSummaryRead[]>(
     apiFetchClient.GET("/api/documents", {
       params: {
@@ -208,7 +201,7 @@ export function uploadDocument(
       }
 
       xhr.upload.onprogress = (event) => {
-        if (!event.lengthComputable || !options?.onProgress) {
+        if (!event.lengthComputable || !options?.onProgress || event.total <= 0) {
           return;
         }
         options.onProgress(Math.round((event.loaded / event.total) * 100));

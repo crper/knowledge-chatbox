@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import hashlib
+from typing import TYPE_CHECKING
 
 import pytest
 
-from knowledge_chatbox_api.utils import files as file_utils
+if TYPE_CHECKING:
+    from pathlib import Path
+
+from knowledge_chatbox_api.utils.files import save_upload_stream
 
 
 class FakeAsyncUpload:
@@ -20,12 +24,9 @@ class FakeAsyncUpload:
 
 
 @pytest.mark.anyio
-async def test_save_upload_stream_persists_bytes_and_hashes_incrementally(tmp_path) -> None:
-    helper = getattr(file_utils, "save_upload_stream", None)
-    assert callable(helper), "save_upload_stream helper is missing"
-
+async def test_save_upload_stream_persists_bytes_and_hashes_incrementally(tmp_path: Path) -> None:
     upload = FakeAsyncUpload([b"hello ", b"world"])
-    result = await helper(tmp_path, "note.txt", upload, chunk_size=4)
+    result = await save_upload_stream(tmp_path, "note.txt", upload, chunk_size=4)
 
     expected_bytes = b"hello world"
     assert result.path.exists()

@@ -13,7 +13,6 @@ from knowledge_chatbox_api.providers.health import run_parallel_checks
 from knowledge_chatbox_api.schemas.common import Envelope
 from knowledge_chatbox_api.schemas.settings import CapabilityHealthRead
 from knowledge_chatbox_api.services.settings.settings_service import SettingsService
-from knowledge_chatbox_api.utils.settings_helpers import to_capability_health
 
 router = APIRouter(tags=["health"])
 
@@ -57,9 +56,27 @@ def capability_health(
     return Envelope(
         success=True,
         data=CapabilityHealthData(
-            response=to_capability_health(results["response"], runtime_settings.response_route),
-            embedding=to_capability_health(results["embedding"], runtime_settings.embedding_route),
-            vision=to_capability_health(results["vision"], runtime_settings.vision_route),
+            response=CapabilityHealthRead(
+                provider=runtime_settings.response_route.provider,
+                model=runtime_settings.response_route.model,
+                healthy=results["response"].healthy,
+                message=results["response"].message,
+                latency_ms=results["response"].latency_ms,
+            ),
+            embedding=CapabilityHealthRead(
+                provider=runtime_settings.embedding_route.provider,
+                model=runtime_settings.embedding_route.model,
+                healthy=results["embedding"].healthy,
+                message=results["embedding"].message,
+                latency_ms=results["embedding"].latency_ms,
+            ),
+            vision=CapabilityHealthRead(
+                provider=runtime_settings.vision_route.provider,
+                model=runtime_settings.vision_route.model,
+                healthy=results["vision"].healthy,
+                message=results["vision"].message,
+                latency_ms=results["vision"].latency_ms,
+            ),
         ),
         error=None,
     )

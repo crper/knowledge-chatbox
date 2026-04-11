@@ -2,8 +2,7 @@
 
 from dataclasses import dataclass
 
-from knowledge_chatbox_api.models.enums import ProviderName
-from knowledge_chatbox_api.services.settings.settings_service import INDEX_REBUILD_STATUS_RUNNING
+from knowledge_chatbox_api.models.enums import IndexRebuildStatus, ProviderName
 from knowledge_chatbox_api.utils.helpers import strip_or_none
 
 
@@ -16,39 +15,30 @@ class DocumentUploadReadiness:
     blocking_reason: str | None = None
 
 
-def _has_text(value: str | None) -> bool:
-    return bool(strip_or_none(value))
+_PROVIDER_CREDENTIAL_FIELD: dict[ProviderName, str] = {
+    ProviderName.OPENAI: "api_key",
+    ProviderName.ANTHROPIC: "api_key",
+    ProviderName.VOYAGE: "api_key",
+    ProviderName.OLLAMA: "base_url",
+}
 
 
-def _is_embedding_route_configured(settings_record, route) -> bool:
-    if route is None or not _has_text(route.model):
+def _is_route_configured(settings_record, route) -> bool:
+    if route is None or not bool(strip_or_none(route.model)):
         return False
-
-    profiles = settings_record.provider_profiles
-    if route.provider == ProviderName.VOYAGE:
-        return _has_text(profiles.voyage.api_key)
-    if route.provider == ProviderName.OLLAMA:
-        return _has_text(profiles.ollama.base_url)
-    return _has_text(profiles.openai.api_key)
-
-
-def _is_vision_route_configured(settings_record) -> bool:
-    route = settings_record.vision_route
-    if not _has_text(route.model):
+    credential_field = _PROVIDER_CREDENTIAL_FIELD.get(route.provider)
+    if credential_field is None:
         return False
-
-    profiles = settings_record.provider_profiles
-    if route.provider == ProviderName.ANTHROPIC:
-        return _has_text(profiles.anthropic.api_key)
-    if route.provider == ProviderName.OLLAMA:
-        return _has_text(profiles.ollama.base_url)
-    return _has_text(profiles.openai.api_key)
+    profile = getattr(settings_record.provider_profiles, route.provider, None)
+    if profile is None:
+        return False
+    return bool(strip_or_none(getattr(profile, credential_field, None)))
 
 
 def get_document_upload_readiness(settings_record) -> DocumentUploadReadiness:
     """Evaluate whether uploads should be blocked or image parsing should degrade."""
 
-    if not _is_embedding_route_configured(settings_record, settings_record.embedding_route):
+    if not _is_route_configured(settings_record, settings_record.embedding_route):
         return DocumentUploadReadiness(
             can_upload=False,
             image_fallback=False,
@@ -56,9 +46,9 @@ def get_document_upload_readiness(settings_record) -> DocumentUploadReadiness:
         )
 
     if (
-        settings_record.index_rebuild_status == INDEX_REBUILD_STATUS_RUNNING
+        settings_record.index_rebuild_status == IndexRebuildStatus.RUNNING
         and settings_record.pending_embedding_route is not None
-        and not _is_embedding_route_configured(
+        and not _is_route_configured(
             settings_record,
             settings_record.pending_embedding_route,
         )
@@ -71,6 +61,6 @@ def get_document_upload_readiness(settings_record) -> DocumentUploadReadiness:
 
     return DocumentUploadReadiness(
         can_upload=True,
-        image_fallback=not _is_vision_route_configured(settings_record),
+        image_fallback=not _is_route_configured(settings_record, settings_record.vision_route),
         blocking_reason=None,
     )

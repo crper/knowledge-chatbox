@@ -1,3 +1,5 @@
+from typing import Any
+
 from pydantic import BaseModel, Field
 from pydantic_ai import RunContext
 
@@ -15,13 +17,13 @@ class KnowledgeSearchOutput(BaseModel):
 
 class PromptAttachmentsOutput(BaseModel):
     prompt_text: str
-    attachments: list[dict] = Field(default_factory=list)
+    attachments: list[dict[str, Any]] = Field(default_factory=list)
 
 
 async def knowledge_search_tool(
     ctx: RunContext[ChatWorkflowDeps],
     query: str,
-    attachments: list[dict] | None = None,
+    attachments: list[dict[str, Any]] | None = None,
 ) -> KnowledgeSearchOutput:
     chat_session = ctx.deps.chat_repository.get_session(ctx.deps.session_id)
     active_space_id = chat_session.space_id if chat_session is not None else None
@@ -46,7 +48,7 @@ async def knowledge_search_tool(
 async def load_prompt_attachments_tool(
     ctx: RunContext[ChatWorkflowDeps],
     question: str,
-    attachments: list[dict] | None = None,
+    attachments: list[dict[str, Any]] | None = None,
 ) -> PromptAttachmentsOutput:
     chat_session = ctx.deps.chat_repository.get_session(ctx.deps.session_id)
     active_space_id = chat_session.space_id if chat_session is not None else None

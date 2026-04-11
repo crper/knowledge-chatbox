@@ -1,3 +1,5 @@
+from typing import Any
+
 from pydantic_ai import Agent
 from pydantic_ai.usage import UsageLimits
 
@@ -17,8 +19,12 @@ def build_chat_usage_limits() -> UsageLimits:
     return UsageLimits(request_limit=6, tool_calls_limit=4)
 
 
-def _build_base_agent(model, *, output_type):
-    agent = Agent(
+def _build_base_agent[OutputT](
+    model: Any | None,
+    *,
+    output_type: type[OutputT],
+) -> Agent[ChatWorkflowDeps, OutputT]:
+    agent: Agent[ChatWorkflowDeps, OutputT] = Agent(
         model or "openai:gpt-5.4",
         deps_type=ChatWorkflowDeps,
         output_type=output_type,
@@ -32,9 +38,9 @@ def _build_base_agent(model, *, output_type):
     return agent
 
 
-def build_chat_agent(model=None) -> Agent[ChatWorkflowDeps, ChatWorkflowResult]:
+def build_chat_agent(model: Any | None = None) -> Agent[ChatWorkflowDeps, ChatWorkflowResult]:
     return _build_base_agent(model, output_type=ChatWorkflowResult)
 
 
-def build_chat_stream_agent(model=None) -> Agent[ChatWorkflowDeps, str]:
+def build_chat_stream_agent(model: Any | None = None) -> Agent[ChatWorkflowDeps, str]:
     return _build_base_agent(model, output_type=str)

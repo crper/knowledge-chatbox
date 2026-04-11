@@ -1,4 +1,5 @@
 import * as React from "react";
+import { cva } from "class-variance-authority";
 import { Toast as ToastPrimitive } from "@base-ui/react/toast";
 import { XIcon } from "lucide-react";
 
@@ -8,21 +9,26 @@ function ToastProvider({ ...props }: React.ComponentProps<typeof ToastPrimitive.
   return <ToastPrimitive.Provider data-slot="toast-provider" {...props} />;
 }
 
+const toastViewportVariants = cva(
+  "fixed top-4 right-4 z-[100] flex flex-col gap-2 w-[360px] max-w-[calc(100vw-2rem)]",
+);
+
 function ToastViewport({
   className,
   ...props
 }: React.ComponentProps<typeof ToastPrimitive.Viewport>) {
   return (
     <ToastPrimitive.Viewport
-      className={cn(
-        "fixed top-4 right-4 z-[100] flex flex-col gap-2 w-[360px] max-w-[calc(100vw-2rem)]",
-        className,
-      )}
+      className={cn(toastViewportVariants(), className)}
       data-slot="toast-viewport"
       {...props}
     />
   );
 }
+
+const toastContentVariants = cva(
+  "group relative flex w-full items-start gap-3 rounded-lg border border-border/70 bg-popover px-4 py-3 text-popover-foreground shadow-lg transition-[opacity,transform] duration-200 data-[ending-style]:translate-x-[calc(100%+1rem)] data-[ending-style]:opacity-0 data-[starting-style]:translate-x-[calc(100%+1rem)] data-[starting-style]:opacity-0",
+);
 
 function ToastContent({
   className,
@@ -30,10 +36,7 @@ function ToastContent({
 }: React.ComponentProps<typeof ToastPrimitive.Content>) {
   return (
     <ToastPrimitive.Content
-      className={cn(
-        "group relative flex w-full items-start gap-3 rounded-lg border border-border/70 bg-popover px-4 py-3 text-popover-foreground shadow-lg transition-[opacity,transform] duration-200 data-[ending-style]:translate-x-[calc(100%+1rem)] data-[ending-style]:opacity-0 data-[starting-style]:translate-x-[calc(100%+1rem)] data-[starting-style]:opacity-0",
-        className,
-      )}
+      className={cn(toastContentVariants(), className)}
       data-slot="toast-content"
       {...props}
     />
@@ -47,7 +50,7 @@ function ToastRoot({ ...props }: React.ComponentProps<typeof ToastPrimitive.Root
 function ToastTitle({ className, ...props }: React.ComponentProps<typeof ToastPrimitive.Title>) {
   return (
     <ToastPrimitive.Title
-      className={cn("text-sm font-semibold", className)}
+      className={cn("text-ui-body font-semibold", className)}
       data-slot="toast-title"
       {...props}
     />
@@ -60,20 +63,21 @@ function ToastDescription({
 }: React.ComponentProps<typeof ToastPrimitive.Description>) {
   return (
     <ToastPrimitive.Description
-      className={cn("text-xs leading-relaxed text-muted-foreground", className)}
+      className={cn("text-ui-caption leading-relaxed text-muted-foreground", className)}
       data-slot="toast-description"
       {...props}
     />
   );
 }
 
+const toastCloseVariants = cva(
+  "absolute right-2 top-2 rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100",
+);
+
 function ToastClose({ className, ...props }: React.ComponentProps<typeof ToastPrimitive.Close>) {
   return (
     <ToastPrimitive.Close
-      className={cn(
-        "absolute right-2 top-2 rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100",
-        className,
-      )}
+      className={cn(toastCloseVariants(), className)}
       data-slot="toast-close"
       {...props}
     >
@@ -82,13 +86,14 @@ function ToastClose({ className, ...props }: React.ComponentProps<typeof ToastPr
   );
 }
 
+const toastActionVariants = cva(
+  "inline-flex h-7 items-center rounded-md border border-border/70 bg-background px-2.5 text-xs font-medium transition-colors hover:bg-accent hover:text-accent-foreground",
+);
+
 function ToastAction({ className, ...props }: React.ComponentProps<typeof ToastPrimitive.Action>) {
   return (
     <ToastPrimitive.Action
-      className={cn(
-        "inline-flex h-7 items-center rounded-md border border-border/70 bg-background px-2.5 text-xs font-medium transition-colors hover:bg-accent hover:text-accent-foreground",
-        className,
-      )}
+      className={cn(toastActionVariants(), className)}
       data-slot="toast-action"
       {...props}
     />
@@ -104,6 +109,10 @@ export {
   ToastDescription,
   ToastClose,
   ToastAction,
+  toastViewportVariants,
+  toastContentVariants,
+  toastCloseVariants,
+  toastActionVariants,
 };
 
 export const useToastManager = ToastPrimitive.useToastManager;

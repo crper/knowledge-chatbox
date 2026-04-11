@@ -10,6 +10,7 @@ from knowledge_chatbox_api.core.config import Settings
 from knowledge_chatbox_api.models.auth import User
 from knowledge_chatbox_api.models.enums import (
     IndexRebuildStatus,
+    ProviderName,
     ReasoningMode,
     SettingsScopeType,
     UserRole,
@@ -17,10 +18,13 @@ from knowledge_chatbox_api.models.enums import (
 from knowledge_chatbox_api.models.settings import (
     DEFAULT_PROVIDER_PROFILES,
     AppSettings,
+    SettingsVersion,
 )
 from knowledge_chatbox_api.providers.ollama_url import normalize_ollama_base_url
-from knowledge_chatbox_api.repositories.settings_repository import SettingsRepository
-from knowledge_chatbox_api.schemas._validators import ReasoningModeLiteral
+from knowledge_chatbox_api.repositories.settings_repository import (
+    SettingsRepository,
+    SettingsVersionRepository,
+)
 from knowledge_chatbox_api.schemas.settings import (
     EmbeddingRouteConfig,
     ProviderProfiles,
@@ -53,15 +57,13 @@ DEFAULT_SYSTEM_PROMPT = (
     "不要输出营销话术、寒暄铺垫或重复用户问题。\n"
     "永远回复中文。"
 )
-MASKED_SECRET_VALUE = "********"
-INDEX_REBUILD_STATUS_IDLE = IndexRebuildStatus.IDLE
-INDEX_REBUILD_STATUS_RUNNING = IndexRebuildStatus.RUNNING
-INDEX_REBUILD_STATUS_FAILED = IndexRebuildStatus.FAILED
-PROFILE_SECRET_FIELDS = {
-    "openai": ("api_key",),
-    "anthropic": ("api_key",),
-    "voyage": ("api_key",),
-    "ollama": (),
+
+MASKED_SECRET_VALUE = "********"  # noqa: S105
+PROFILE_SECRET_FIELDS: dict[ProviderName, tuple[str, ...]] = {
+    ProviderName.OPENAI: ("api_key",),
+    ProviderName.ANTHROPIC: ("api_key",),
+    ProviderName.VOYAGE: ("api_key",),
+    ProviderName.OLLAMA: (),
 }
 
 
@@ -72,6 +74,7 @@ class SettingsService:
         self.session = session
         self.settings = settings
         self.repository = SettingsRepository(session)
+        self.version_repository = SettingsVersionRepository(session)
         self._settings_record_cache: AppSettings | None = None  # 实例级缓存，仅在同一请求内复用
 
     def get_or_create_settings(self) -> SettingsRead:
@@ -81,39 +84,25 @@ class SettingsService:
     def get_runtime_settings(
         self,
         *,
-        reasoning_mode: ReasoningModeLiteral = ReasoningMode.DEFAULT,
+        reasoning_mode: ReasoningMode = ReasoningMode.DEFAULT,
     ) -> ProviderRuntimeSettings:
         """返回当前生效设置对应的统一 runtime settings。"""
         settings_record = self.get_or_create_settings_record()
         return build_runtime_settings(settings_record, reasoning_mode=reasoning_mode)
-
-    def build_runtime_settings(
-        self,
-        settings_source,
-        *,
-        embedding_route: EmbeddingRouteConfig | dict[str, Any] | None = None,
-        reasoning_mode: ReasoningModeLiteral = ReasoningMode.DEFAULT,
-    ) -> ProviderRuntimeSettings:
-        """从 settings-like 对象构造统一 runtime settings。"""
-        return build_runtime_settings(
-            settings_source,
-            embedding_route=embedding_route,
-            reasoning_mode=reasoning_mode,
-        )
 
     def build_test_settings_bundle(
         self,
         actor: User,
         payload: UpdateSettingsRequest | Mapping[str, Any],
         *,
-        reasoning_mode: ReasoningModeLiteral = ReasoningMode.DEFAULT,
+        reasoning_mode: ReasoningMode = ReasoningMode.DEFAULT,
     ) -> tuple[SettingsRead, ProviderRuntimeSettings]:
         """返回测试连接所需的 draft read model 与 runtime settings。"""
         draft = self.build_test_settings(actor, payload)
         embedding_route = draft.pending_embedding_route or draft.embedding_route
         return (
             draft,
-            self.build_runtime_settings(
+            build_runtime_settings(
                 draft,
                 embedding_route=embedding_route,
                 reasoning_mode=reasoning_mode,
@@ -124,13 +113,29 @@ class SettingsService:
         if self._settings_record_cache is not None:
             return self._settings_record_cache
 
-        settings_record = self.repository.get()
+        cached_id = self.repository.get_cached_id()
+        if cached_id is not None:
+            settings_record = self.session.get(AppSettings, cached_id)
+            if settings_record is not None:
+                self._settings_record_cache = settings_record
+                return settings_record
+
+        settings_record = self.repository.get_settings()
         if settings_record is None:
             settings_record = self._build_initial_settings_record()
             self.repository.save(settings_record)
+            self.session.flush()
+            self.session.refresh(settings_record)
+            self._append_settings_version(
+                settings_record,
+                trigger="bootstrap",
+                updated_by_user_id=None,
+                changed_fields=None,
+            )
             self.session.commit()
             self.session.refresh(settings_record)
         self._settings_record_cache = settings_record
+        self.repository.set_cached_id(settings_record.id)
         return settings_record
 
     def update_settings(
@@ -144,6 +149,7 @@ class SettingsService:
 
         update_request = self._normalize_update_request(payload)
         settings_record = self.get_or_create_settings_record()
+        previous_version_snapshot = self._build_version_snapshot(settings_record)
 
         previous_effective_embedding_route = self._effective_embedding_route(settings_record)
         (
@@ -163,8 +169,7 @@ class SettingsService:
         if "system_prompt" in update_request.model_fields_set:
             settings_record.system_prompt = update_request.system_prompt
         resolved_timeout = self._resolve_provider_timeout_seconds(settings_record, update_request)
-        if resolved_timeout is not None:
-            settings_record.provider_timeout_seconds = resolved_timeout
+        settings_record.provider_timeout_seconds = resolved_timeout
 
         rebuild_started = False
         reindex_required = False
@@ -189,9 +194,24 @@ class SettingsService:
             reindex_required = True
 
         settings_record.updated_by_user_id = actor.id
+        self.session.flush()
+        self.session.refresh(settings_record)
+        next_version_snapshot = self._build_version_snapshot(settings_record)
+        changed_fields = self._changed_version_fields(
+            previous_version_snapshot,
+            next_version_snapshot,
+        )
+        if changed_fields:
+            self._append_settings_version(
+                settings_record,
+                trigger="update",
+                updated_by_user_id=actor.id,
+                changed_fields=changed_fields,
+            )
         self.session.commit()
         self.session.refresh(settings_record)
         self._settings_record_cache = settings_record
+        self.repository.invalidate_id_cache()
         return self._to_read(
             settings_record,
             rebuild_started=rebuild_started,
@@ -451,7 +471,7 @@ class SettingsService:
     ) -> dict[str, Any]:
         masked = dump_provider_profiles(profiles)
         for provider_name, secret_fields in PROFILE_SECRET_FIELDS.items():
-            provider_profile = masked.setdefault(provider_name, {})
+            provider_profile = masked.setdefault(provider_name.value, {})
             for field in secret_fields:
                 if provider_profile.get(field):
                     provider_profile[field] = MASKED_SECRET_VALUE
@@ -501,6 +521,54 @@ class SettingsService:
         settings_record: AppSettings,
     ) -> EmbeddingRouteConfig:
         return settings_record.pending_embedding_route or settings_record.embedding_route
+
+    def _build_version_snapshot(
+        self,
+        settings_record: AppSettings,
+    ) -> dict[str, Any]:
+        read_model = self._to_read(settings_record)
+        return {
+            "provider_profiles": read_model.provider_profiles.model_dump(),
+            "response_route": read_model.response_route.model_dump(),
+            "embedding_route": read_model.embedding_route.model_dump(),
+            "pending_embedding_route": (
+                read_model.pending_embedding_route.model_dump()
+                if read_model.pending_embedding_route is not None
+                else None
+            ),
+            "vision_route": read_model.vision_route.model_dump(),
+            "system_prompt": read_model.system_prompt,
+            "provider_timeout_seconds": read_model.provider_timeout_seconds,
+            "active_index_generation": read_model.active_index_generation,
+            "building_index_generation": read_model.building_index_generation,
+            "index_rebuild_status": read_model.index_rebuild_status.value,
+        }
+
+    def _changed_version_fields(
+        self,
+        previous_snapshot: Mapping[str, Any],
+        next_snapshot: Mapping[str, Any],
+    ) -> list[str]:
+        all_keys = sorted(set(previous_snapshot) | set(next_snapshot))
+        return [key for key in all_keys if previous_snapshot.get(key) != next_snapshot.get(key)]
+
+    def _append_settings_version(
+        self,
+        settings_record: AppSettings,
+        *,
+        trigger: str,
+        updated_by_user_id: int | None,
+        changed_fields: list[str] | None,
+    ) -> SettingsVersion:
+        version = SettingsVersion(
+            settings_id=settings_record.id,
+            version_no=self.version_repository.next_version_no(settings_record.id),
+            snapshot_json=self._build_version_snapshot(settings_record),
+            changed_fields_json=changed_fields,
+            trigger=trigger,
+            updated_by_user_id=updated_by_user_id,
+        )
+        return self.version_repository.save(version)
 
     def _to_read(
         self,

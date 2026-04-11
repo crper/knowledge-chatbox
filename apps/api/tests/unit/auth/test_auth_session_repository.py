@@ -16,10 +16,10 @@ def test_revoke_by_user_id_revokes_all_sessions(migrated_db_session) -> None:
     _h2 = timedelta(hours=2)
     migrated_db_session.add_all(
         [
-            AuthSessionFactory.build(  # noqa: E501
+            AuthSessionFactory.build(
                 user_id=user.id, session_token_hash="token-1", expires_at=now + _h1
             ),
-            AuthSessionFactory.build(  # noqa: E501
+            AuthSessionFactory.build(
                 user_id=user.id, session_token_hash="token-2", expires_at=now + _h2
             ),
         ]

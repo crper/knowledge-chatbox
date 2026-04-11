@@ -1,6 +1,6 @@
 import { i18n } from "@/i18n";
 import type { ChatAttachmentItem as ChatMessageAttachmentItem } from "../api/chat";
-import type { ComposerAttachmentItem as ChatComposerAttachmentItem } from "../store/chat-attachment-store";
+import type { ComposerAttachmentItem as ChatComposerAttachmentItem } from "../store/chat-composer-store";
 import {
   buildAttachmentPreviewIndexes,
   buildChatAttachmentDescriptors,

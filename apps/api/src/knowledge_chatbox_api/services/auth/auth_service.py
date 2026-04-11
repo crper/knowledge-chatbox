@@ -1,6 +1,6 @@
 """认证相关服务模块。"""
 
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -18,7 +18,9 @@ from knowledge_chatbox_api.models.auth import AuthSession, User
 from knowledge_chatbox_api.models.enums import ThemePreference, UserRole, UserStatus
 from knowledge_chatbox_api.repositories.auth_session_repository import AuthSessionRepository
 from knowledge_chatbox_api.repositories.user_repository import UserRepository
+from knowledge_chatbox_api.schemas._validators import validate_password_complexity
 from knowledge_chatbox_api.services.auth.rate_limit_service import RateLimitService
+from knowledge_chatbox_api.utils.timing import utc_now
 
 
 class AuthError(AppError):
@@ -87,15 +89,27 @@ class AuthService:
         if admin is not None:
             return admin
 
+        initial_admin_password = self.settings.initial_admin_password.get_secret_value()
+        if not initial_admin_password.strip():
+            raise ValidationError(
+                "INITIAL_ADMIN_PASSWORD must be set before bootstrapping the first admin user."
+            )
+        if len(initial_admin_password) < 8:
+            raise ValidationError("INITIAL_ADMIN_PASSWORD must be at least 8 characters long.")
+        try:
+            validate_password_complexity(initial_admin_password)
+        except ValueError as error:
+            raise ValidationError(str(error)) from error
+
         admin = User(
             username=self.settings.initial_admin_username,
-            password_hash=self.password_manager.hash_password(self.settings.initial_admin_password),
+            password_hash=self.password_manager.hash_password(initial_admin_password),
             role=UserRole.ADMIN,
             status=UserStatus.ACTIVE,
             theme_preference=ThemePreference.SYSTEM,
         )
         try:
-            self.user_repository.add(admin)
+            self.user_repository.add_user(admin)
             self.session.commit()
         except IntegrityError:
             self.session.rollback()
@@ -110,13 +124,13 @@ class AuthService:
             algorithm=self.settings.jwt_algorithm,
             expires_in_minutes=self.settings.access_token_ttl_minutes,
             role=user.role,
-            secret_key=self.settings.jwt_secret_key,
+            secret_key=self.settings.jwt_secret_key.get_secret_value(),
             user_id=user.id,
         )
 
     def _create_refresh_session(self, user: User) -> str:
         token = generate_session_token()
-        now = datetime.now(UTC)
+        now = utc_now()
         auth_session = AuthSession(
             user_id=user.id,
             session_token_hash=hash_session_token(token),
@@ -145,7 +159,7 @@ class AuthService:
         if updated_hash is not None:
             user.password_hash = updated_hash
 
-        now = datetime.now(UTC)
+        now = utc_now()
         refresh_token = self._create_refresh_session(user)
         user.last_login_at = now
         self.session.commit()
@@ -182,7 +196,7 @@ class AuthService:
         try:
             payload = decode_access_token(
                 algorithm=self.settings.jwt_algorithm,
-                secret_key=self.settings.jwt_secret_key,
+                secret_key=self.settings.jwt_secret_key.get_secret_value(),
                 token=token,
             )
         except ValueError as error:
@@ -231,7 +245,7 @@ class AuthService:
         if not verified:
             raise InvalidCredentialsError("Current password is incorrect.")
         user.password_hash = self.password_manager.hash_password(new_password)
-        user.password_changed_at = datetime.now(UTC)
+        user.password_changed_at = utc_now()
         self.auth_session_repository.revoke_by_user_id(user.id)
         self.session.commit()
         self.session.refresh(user)

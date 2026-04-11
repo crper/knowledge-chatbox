@@ -1,6 +1,7 @@
 """聊天数据模型定义。"""
 
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import (
     JSON,
@@ -101,7 +102,7 @@ class ChatRun(Base):
         default=ReasoningMode.DEFAULT,
     )
     client_request_id: Mapped[str] = mapped_column(String(64), nullable=False)
-    usage_json: Mapped[dict | None] = mapped_column(JSON)
+    usage_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     error_code: Mapped[str | None] = mapped_column(String(64))
     error_message: Mapped[str | None] = mapped_column(Text)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -130,7 +131,7 @@ class ChatRunEvent(Base):
     )
     seq: Mapped[int] = mapped_column(nullable=False)
     event_type: Mapped[str] = mapped_column(String(64), nullable=False)
-    payload_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    payload_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -177,7 +178,7 @@ class ChatMessage(Base):
     reply_to_message_id: Mapped[int | None] = mapped_column(
         ForeignKey("chat_messages.id", ondelete="SET NULL")
     )
-    sources_json: Mapped[list[dict] | None] = mapped_column(JSON)
+    sources_json: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -221,4 +222,4 @@ class ChatMessageAttachment(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
-    document_id: int | None = None  # noqa: E702 — 动态填充，非映射列；session.refresh() 后需重新调用 _attach_document_ids
+    document_id: int | None = None

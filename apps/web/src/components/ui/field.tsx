@@ -22,19 +22,28 @@ function FieldSet({ className, ...props }: React.ComponentProps<"fieldset">) {
   );
 }
 
+const fieldLegendVariants = cva("mb-1.5 font-medium", {
+  variants: {
+    variant: {
+      legend: "text-base",
+      label: "text-sm",
+    },
+  },
+  defaultVariants: {
+    variant: "legend",
+  },
+});
+
 function FieldLegend({
   className,
   variant = "legend",
   ...props
-}: React.ComponentProps<"legend"> & { variant?: "legend" | "label" }) {
+}: React.ComponentProps<"legend"> & VariantProps<typeof fieldLegendVariants>) {
   return (
     <legend
       data-slot="field-legend"
       data-variant={variant}
-      className={cn(
-        "mb-1.5 font-medium data-[variant=label]:text-sm data-[variant=legend]:text-base",
-        className,
-      )}
+      className={cn(fieldLegendVariants({ variant }), className)}
       {...props}
     />
   );
@@ -110,16 +119,28 @@ function FieldLabel({ className, ...props }: React.ComponentProps<typeof FieldPr
   );
 }
 
-function FieldTitle({ className, ...props }: React.ComponentProps<"div">) {
+function FieldTitle({
+  className,
+  children,
+  required,
+  ...props
+}: React.ComponentProps<"div"> & { required?: boolean }) {
   return (
     <div
       data-slot="field-label"
       className={cn(
-        "flex w-fit items-center gap-2 text-sm leading-snug font-medium group-data-[disabled=true]/field:opacity-50",
+        "flex w-fit items-center gap-2 text-ui-body leading-snug font-medium group-data-[disabled=true]/field:opacity-50",
         className,
       )}
       {...props}
-    />
+    >
+      {children}
+      {required && (
+        <span className="text-destructive" aria-hidden="true">
+          *
+        </span>
+      )}
+    </div>
   );
 }
 
@@ -128,7 +149,7 @@ function FieldDescription({ className, ...props }: React.ComponentProps<"p">) {
     <FieldPrimitive.Description
       data-slot="field-description"
       className={cn(
-        "text-left text-sm leading-normal font-normal text-muted-foreground group-has-data-horizontal/field:text-balance [[data-variant=legend]+&]:-mt-1.5",
+        "text-left text-ui-subtle leading-normal font-normal text-muted-foreground group-has-data-horizontal/field:text-balance [[data-variant=legend]+&]:-mt-1.5",
         "last:mt-0 nth-last-2:-mt-1",
         "[&>a]:underline [&>a]:underline-offset-4 [&>a:hover]:text-primary",
         className,
@@ -206,9 +227,27 @@ function FieldError({
     <FieldPrimitive.Error
       match
       data-slot="field-error"
-      className={cn("text-sm font-normal text-destructive", className)}
+      className={cn(
+        "text-ui-caption font-normal text-destructive flex items-center gap-1.5",
+        className,
+      )}
       {...props}
     >
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="size-3.5 shrink-0"
+        aria-hidden="true"
+      >
+        <circle cx="12" cy="12" r="10" />
+        <line x1="12" x2="12" y1="8" y2="12" />
+        <line x1="12" x2="12.01" y1="16" y2="16" />
+      </svg>
       {content}
     </FieldPrimitive.Error>
   );
@@ -225,4 +264,6 @@ export {
   FieldSet,
   FieldContent,
   FieldTitle,
+  fieldVariants,
+  fieldLegendVariants,
 };

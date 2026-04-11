@@ -71,7 +71,7 @@ class UserService:
             created_by_user_id=actor.id,
             theme_preference=ThemePreference.SYSTEM,
         )
-        self.user_repository.add(user)
+        self.user_repository.add_user(user)
         self.space_repository.ensure_personal_space(user_id=user.id)
         self.session.commit()
         self.session.refresh(user)
@@ -129,7 +129,7 @@ class UserService:
 
         self.auth_service.auth_session_repository.delete_by_user_id(user.id)
         self.chat_repository.delete_sessions_by_user_id(user.id)
-        self.user_repository.delete(user)
+        self.user_repository.delete_user(user)
         try:
             self.session.commit()
         except IntegrityError as exc:

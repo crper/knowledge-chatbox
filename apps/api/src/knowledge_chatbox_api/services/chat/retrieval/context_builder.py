@@ -65,9 +65,7 @@ class RetrievedContextBuilder:
 
     def _has_relevant_score(self, record: dict[str, Any]) -> bool:
         score = record.get("score")
-        if isinstance(score, (int, float)) and score < 0.1:
-            return False
-        return True
+        return not (isinstance(score, (int, float)) and score < 0.1)
 
     def _resolve_document_name(
         self,
@@ -143,7 +141,7 @@ class RetrievedContextBuilder:
         self,
         retrieved_chunks: list[dict[str, Any]],
     ) -> tuple[dict[int, DocumentRevision], dict[int, Document]]:
-        version_ids = {
+        version_ids: set[int] = {
             record.get("document_revision_id", record.get("document_id"))
             for record in retrieved_chunks
             if isinstance(record.get("document_revision_id", record.get("document_id")), int)
@@ -151,21 +149,21 @@ class RetrievedContextBuilder:
         if not version_ids:
             return {}, {}
 
-        versions = list(
+        versions: list[DocumentRevision] = list(
             self.session.scalars(
                 select(DocumentRevision).where(DocumentRevision.id.in_(version_ids))
             ).all()
         )
-        versions_by_id = {version.id: version for version in versions}
-        document_ids = {version.document_id for version in versions}
+        versions_by_id: dict[int, DocumentRevision] = {version.id: version for version in versions}
+        document_ids: set[int] = {version.document_id for version in versions}
 
         if not document_ids:
             return versions_by_id, {}
 
-        documents = list(
+        documents: list[Document] = list(
             self.session.scalars(select(Document).where(Document.id.in_(document_ids))).all()
         )
-        documents_by_id = {document.id: document for document in documents}
+        documents_by_id: dict[int, Document] = {document.id: document for document in documents}
         return versions_by_id, documents_by_id
 
     def _is_valid_document_version(
@@ -174,9 +172,7 @@ class RetrievedContextBuilder:
         document_version: DocumentRevision,
         active_space_id: int | None,
     ) -> bool:
-        if document.space_id != active_space_id:
-            return False
-        return (
+        return document.space_id == active_space_id and (
             document.latest_revision_id == document_version.id
             or document.current_version_number == document_version.revision_no
         )

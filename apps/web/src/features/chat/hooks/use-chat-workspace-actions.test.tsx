@@ -2,8 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 
 import { createTestQueryClient } from "@/test/query-client";
-import { useChatAttachmentStore } from "../store/chat-attachment-store";
-import { useChatUiStore } from "../store/chat-ui-store";
+import { useChatComposerStore } from "../store/chat-composer-store";
 import { useChatWorkspaceActions } from "./use-chat-workspace-actions";
 
 const submitMessageSpy = vi.fn(async () => {});
@@ -102,10 +101,11 @@ describe("useChatWorkspaceActions", () => {
     findRunByAssistantMessageIdSpy.mockClear();
     invalidateSessionArtifactsSpy.mockClear();
     useChatComposerSubmitSpy.mockClear();
-    useChatAttachmentStore.setState({
+    (
+      useChatComposerStore as unknown as { persist: { clearStorage: () => void } }
+    ).persist.clearStorage();
+    useChatComposerStore.setState({
       attachmentsBySession: {},
-    });
-    useChatUiStore.setState({
       draftsBySession: {},
       sendShortcut: "enter",
     });
@@ -122,7 +122,7 @@ describe("useChatWorkspaceActions", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "edit" }));
 
-    expect(useChatUiStore.getState().draftsBySession["7"]).toBe("repair me");
+    expect(useChatComposerStore.getState().draftsBySession["7"]).toBe("repair me");
   });
 
   it("uses the injected invalidation dependency after deleting a failed message", async () => {

@@ -57,9 +57,6 @@ export async function getCurrentUser() {
   }
 }
 
-/**
- * 定义登录。
- */
 export async function login(input: { username: string; password: string }) {
   const body: LoginRequest = input;
   const result = await openapiRequestRequired<LoginEnvelope>(
@@ -98,16 +95,10 @@ export async function bootstrapAuthSession() {
   };
 }
 
-/**
- * 定义登出。
- */
 export async function logout() {
   return await openapiRequestRequired<{ status: string }>(apiFetchClient.POST("/api/auth/logout"));
 }
 
-/**
- * 定义修改密码。
- */
 export function changePassword(input: { currentPassword: string; newPassword: string }) {
   const body: ChangePasswordRequest = {
     current_password: input.currentPassword,

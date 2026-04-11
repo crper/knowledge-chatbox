@@ -1,13 +1,14 @@
 """聊天路由定义。"""
 
 from collections.abc import Iterable
-from typing import cast
+from typing import Any, cast
 
 from fastapi import APIRouter, Query, status
-from fastapi.responses import StreamingResponse
+from sse_starlette.sse import EventSourceResponse
 
 from knowledge_chatbox_api.api.deps import CurrentUserDep, DbSessionDep, SettingsDep
 from knowledge_chatbox_api.api.error_responses import CHAT_STREAM_RESPONSES
+from knowledge_chatbox_api.api.routes._common.transforms import model_to_read_simple
 from knowledge_chatbox_api.models.chat import (
     ChatMessage,
     ChatMessageAttachment,
@@ -19,6 +20,8 @@ from knowledge_chatbox_api.models.settings import AppSettings
 from knowledge_chatbox_api.schemas.chat import (
     ActiveChatRunRead,
     ArchiveChatAttachmentRequest,
+    CancelChatRunResult,
+    CancelChatStreamRequest,
     ChatAttachmentMetadata,
     ChatAttachmentType,
     ChatMessagePairRead,
@@ -28,6 +31,7 @@ from knowledge_chatbox_api.schemas.chat import (
     ChatRunRead,
     ChatSessionContextRead,
     ChatSessionRead,
+    ChatSourceRead,
     CreateChatMessageRequest,
     CreateChatSessionRequest,
     DeleteChatMessageResult,
@@ -49,7 +53,6 @@ def stream_presented_events(
     events: Iterable[StreamEventEnvelope],
     presenter,
 ):
-    """把聊天事件转换成 SSE，并确保外层关闭时内层流也会关闭。"""
     try:
         for event in events:
             yield presenter.to_sse(event)
@@ -61,7 +64,7 @@ def stream_presented_events(
 
 def to_chat_session_read(chat_session: ChatSession) -> ChatSessionRead:
     """把会话模型转换为会话响应结构。"""
-    return ChatSessionRead.model_validate(chat_session, from_attributes=True)
+    return model_to_read_simple(chat_session, ChatSessionRead)
 
 
 def _build_chat_attachment_payloads(
@@ -73,7 +76,7 @@ def _build_chat_attachment_payloads(
     return [
         ChatAttachmentMetadata(
             attachment_id=attachment.attachment_id,
-            type=cast(ChatAttachmentType, attachment.type),
+            type=cast("ChatAttachmentType", attachment.type),
             name=attachment.name,
             mime_type=attachment.mime_type,
             size_bytes=attachment.size_bytes,
@@ -83,6 +86,13 @@ def _build_chat_attachment_payloads(
         )
         for attachment in attachments
     ]
+
+
+def _parse_sources_json(sources_json: list[dict[str, Any]] | None) -> list[ChatSourceRead] | None:
+    """把来源 JSON 数据解析为 ChatSourceRead 对象列表。"""
+    if not sources_json:
+        return None
+    return [ChatSourceRead.model_validate(source) for source in sources_json]
 
 
 def to_chat_message_read(
@@ -101,30 +111,30 @@ def to_chat_message_read(
         error_message=message.error_message,
         retry_of_message_id=message.retry_of_message_id,
         reply_to_message_id=message.reply_to_message_id,
-        sources_json=message.sources_json,
+        sources_json=_parse_sources_json(message.sources_json),
         created_at=message.created_at,
     )
 
 
-def to_chat_session_context_read(input: dict) -> ChatSessionContextRead:
+def to_chat_session_context_read(input: dict[str, Any]) -> ChatSessionContextRead:
     """把右栏 context 数据转换为响应结构。"""
     return ChatSessionContextRead(
         session_id=input["session_id"],
         attachment_count=input["attachment_count"],
         attachments=_build_chat_attachment_payloads(input["attachments"]) or [],
         latest_assistant_message_id=input["latest_assistant_message_id"],
-        latest_assistant_sources=input["latest_assistant_sources"],
+        latest_assistant_sources=_parse_sources_json(input["latest_assistant_sources"]) or [],
     )
 
 
 def to_chat_run_read(chat_run: ChatRun) -> ChatRunRead:
     """把运行记录模型转换为运行响应结构。"""
-    return ChatRunRead.model_validate(chat_run, from_attributes=True)
+    return model_to_read_simple(chat_run, ChatRunRead)
 
 
 def to_active_chat_run_read(chat_run: ChatRun) -> ActiveChatRunRead:
     """把运行记录模型转换为活动运行响应结构。"""
-    return ActiveChatRunRead.model_validate(chat_run, from_attributes=True)
+    return model_to_read_simple(chat_run, ActiveChatRunRead)
 
 
 def to_chat_profile_read(settings_record: AppSettings) -> ChatProfileRead:
@@ -248,7 +258,7 @@ def list_messages(
         if limit is not None
         else service.list_messages(current_user, session_id)
     )
-    attachments_by_message_id = service.chat_repository.list_attachments_for_message_ids(
+    attachments_by_message_id = service.list_attachments_for_message_ids(
         [message.id for message in messages]
     )
     return Envelope(
@@ -305,7 +315,7 @@ def archive_message_attachment(
     )
     return Envelope(
         success=True,
-        data=to_chat_message_read(message, service.chat_repository.list_attachments(message.id)),
+        data=to_chat_message_read(message, service.list_attachments(message.id)),
         error=None,
     )
 
@@ -321,7 +331,7 @@ def create_message(
     """创建消息。"""
     service = ChatApplicationService(session, settings)
     user_message, assistant_message = service.create_message(current_user, session_id, payload)
-    attachments_by_message_id = service.chat_repository.list_attachments_for_message_ids(
+    attachments_by_message_id = service.list_attachments_for_message_ids(
         [user_message.id, assistant_message.id]
     )
 
@@ -343,7 +353,7 @@ def create_message(
 
 @router.post(
     "/sessions/{session_id}/messages/stream",
-    response_class=StreamingResponse,
+    response_class=EventSourceResponse,
     responses=CHAT_STREAM_RESPONSES,
 )
 def create_message_stream(
@@ -353,11 +363,10 @@ def create_message_stream(
     settings: SettingsDep,
     current_user: CurrentUserDep,
 ):
-    """以 SSE 流式创建聊天消息。"""
     service = ChatApplicationService(session, settings)
     presenter, chat_run_service = service.create_stream_components(current_user, session_id)
 
-    return StreamingResponse(
+    return EventSourceResponse(
         stream_presented_events(
             chat_run_service.stream_run(
                 session_id=session_id,
@@ -372,7 +381,32 @@ def create_message_stream(
             ),
             presenter,
         ),
-        media_type="text/event-stream",
+        ping=15,
+    )
+
+
+@router.post(
+    "/sessions/{session_id}/messages/stream/cancel",
+    response_model=Envelope[CancelChatRunResult],
+)
+def cancel_pending_stream(
+    session_id: int,
+    payload: CancelChatStreamRequest,
+    session: DbSessionDep,
+    settings: SettingsDep,
+    current_user: CurrentUserDep,
+) -> Envelope[CancelChatRunResult]:
+    """按 client_request_id 取消仍在启动中的流式聊天请求。"""
+    service = ChatApplicationService(session, settings)
+    cancelled = service.cancel_run_by_client_request(
+        current_user,
+        session_id,
+        payload.client_request_id,
+    )
+    return Envelope(
+        success=True,
+        data=CancelChatRunResult(cancelled=cancelled),
+        error=None,
     )
 
 
@@ -402,6 +436,23 @@ def get_run(
     return Envelope(success=True, data=to_chat_run_read(run), error=None)
 
 
+@router.post("/runs/{run_id}/cancel", response_model=Envelope[CancelChatRunResult])
+def cancel_run(
+    run_id: int,
+    session: DbSessionDep,
+    settings: SettingsDep,
+    current_user: CurrentUserDep,
+) -> Envelope[CancelChatRunResult]:
+    """取消一个仍在运行中的聊天 run。"""
+    service = ChatApplicationService(session, settings)
+    cancelled = service.cancel_run(current_user, run_id)
+    return Envelope(
+        success=True,
+        data=CancelChatRunResult(cancelled=cancelled),
+        error=None,
+    )
+
+
 @router.get("/runs/{run_id}/events", response_model=Envelope[list[ChatRunEventRead]])
 def list_run_events(
     run_id: int,
@@ -411,9 +462,9 @@ def list_run_events(
     """获取运行事件。"""
     service = ChatApplicationService(session, settings=None)
     run = service.get_run(current_user, run_id)
-    events = service.chat_run_event_repository.list_for_run(run.id)
+    events = service.list_run_events(run.id)
     return Envelope(
         success=True,
-        data=[ChatRunEventRead.model_validate(event, from_attributes=True) for event in events],
+        data=[model_to_read_simple(event, ChatRunEventRead) for event in events],
         error=None,
     )

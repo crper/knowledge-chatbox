@@ -22,13 +22,11 @@ import {
 import type { KnowledgeDocument } from "../api/documents";
 import { getDocumentPreviewKind, loadDocumentTextPreview } from "../api/document-preview";
 import { cn } from "@/lib/utils";
+import { formatDateTime } from "@/lib/date-utils";
 import { DocumentImagePreview } from "./document-image-preview";
+import { DocumentPdfPreview } from "./document-pdf-preview";
 import { DocumentTextPreview } from "./document-text-preview";
-import {
-  formatKnowledgeDocumentDateTime,
-  formatFileSize,
-  getDocumentTypeLabel,
-} from "./resource-document-helpers";
+import { formatFileSize, getDocumentTypeLabel } from "./resource-document-helpers";
 import { openProtectedFile, downloadProtectedFile } from "./protected-file-actions";
 
 type DocumentPreviewSheetProps = {
@@ -79,7 +77,7 @@ export function DocumentPreviewSheet({
   const fileUrl = getDocumentFileUrl(document.id);
   const metaItems = [
     formatFileSize(document.file_size),
-    formatKnowledgeDocumentDateTime(document.updated_at, i18n.resolvedLanguage ?? "zh-CN"),
+    formatDateTime(document.updated_at, i18n.resolvedLanguage ?? "zh-CN") || document.updated_at,
     typeof document.chunk_count === "number" ? `${document.chunk_count} chunks` : null,
   ].filter(Boolean);
 
@@ -153,12 +151,8 @@ export function DocumentPreviewSheet({
                 ) : null}
               </div>
             ) : previewKind === "pdf" ? (
-              <div className="surface-light mt-4 space-y-3 rounded-xl p-4">
-                <p className="text-sm font-medium text-foreground">{t("previewTypePdf")}</p>
-                <p className="text-sm text-muted-foreground">{t("previewPdfDescription")}</p>
-                <Button onClick={() => openProtectedFile(fileUrl)} type="button" variant="outline">
-                  {t("previewOpenPdfAction")}
-                </Button>
+              <div className="mt-4">
+                <DocumentPdfPreview compact document={document} />
               </div>
             ) : (
               <div className="surface-light mt-4 space-y-2 rounded-xl p-4">

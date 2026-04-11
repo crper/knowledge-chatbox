@@ -19,7 +19,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { chatContextQueryOptions } from "@/features/chat/api/chat-query";
 import { AttachmentList } from "@/features/chat/components/attachment-list";
 import { ImageViewerDialog } from "@/features/chat/components/image-viewer-dialog";
-import { parseChatSessionId } from "@/features/chat/utils/chat-session-route";
+import { parseChatSessionId } from "@/lib/routes";
 import {
   buildAttachmentPreviewIndexes,
   buildChatAttachmentDescriptors,

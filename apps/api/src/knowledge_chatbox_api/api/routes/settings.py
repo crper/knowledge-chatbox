@@ -12,13 +12,13 @@ from knowledge_chatbox_api.providers.factory import (
 from knowledge_chatbox_api.providers.health import run_parallel_checks
 from knowledge_chatbox_api.schemas.common import Envelope
 from knowledge_chatbox_api.schemas.settings import (
+    CapabilityHealthRead,
     ProviderConnectionTestRead,
     SettingsRead,
     UpdateSettingsRequest,
 )
 from knowledge_chatbox_api.services.settings.settings_service import SettingsService
 from knowledge_chatbox_api.tasks import document_jobs
-from knowledge_chatbox_api.utils.settings_helpers import to_capability_health
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 DEFAULT_TEST_ROUTES_PAYLOAD = Body(default_factory=UpdateSettingsRequest)
@@ -91,12 +91,27 @@ def test_routes(
     return Envelope(
         success=True,
         data=ProviderConnectionTestRead(
-            response=to_capability_health(
-                results["response"],
-                draft_runtime_settings.response_route,
+            response=CapabilityHealthRead(
+                provider=draft_runtime_settings.response_route.provider,
+                model=draft_runtime_settings.response_route.model,
+                healthy=results["response"].healthy,
+                message=results["response"].message,
+                latency_ms=results["response"].latency_ms,
             ),
-            embedding=to_capability_health(results["embedding"], embedding_route),
-            vision=to_capability_health(results["vision"], draft_runtime_settings.vision_route),
+            embedding=CapabilityHealthRead(
+                provider=embedding_route.provider,
+                model=embedding_route.model,
+                healthy=results["embedding"].healthy,
+                message=results["embedding"].message,
+                latency_ms=results["embedding"].latency_ms,
+            ),
+            vision=CapabilityHealthRead(
+                provider=draft_runtime_settings.vision_route.provider,
+                model=draft_runtime_settings.vision_route.model,
+                healthy=results["vision"].healthy,
+                message=results["vision"].message,
+                latency_ms=results["vision"].latency_ms,
+            ),
         ),
         error=None,
     )

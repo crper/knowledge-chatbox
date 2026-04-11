@@ -1,5 +1,5 @@
 import type { KnowledgeDocument } from "@/features/knowledge/api/documents";
-import type { ComposerAttachmentItem } from "../store/chat-attachment-store";
+import type { ComposerAttachmentItem } from "../store/chat-composer-store";
 import { uploadQueuedChatAttachments } from "./upload-chat-attachments";
 
 function buildQueuedAttachment(id: string, name: string): ComposerAttachmentItem {
@@ -150,5 +150,38 @@ describe("uploadQueuedChatAttachments", () => {
     expect(maxInFlight).toBe(2);
     expect(startedIds).toEqual(["a", "b"]);
     expect(startedC).toBe(false);
+  });
+
+  it("restores queued state instead of marking the attachment failed when upload is aborted", async () => {
+    const attachments = [buildQueuedAttachment("a", "a.png")];
+    const patches: Array<{ id: string; patch: Record<string, unknown> }> = [];
+    const controller = new AbortController();
+
+    const uploadPromise = uploadQueuedChatAttachments({
+      attachments,
+      signal: controller.signal,
+      onPatch: (attachmentId, patch) => {
+        patches.push({ id: attachmentId, patch });
+      },
+      uploadFile: async (_attachment, options) =>
+        new Promise<KnowledgeDocument>((_resolve, reject) => {
+          options?.signal?.addEventListener(
+            "abort",
+            () => reject(new DOMException("The upload was aborted.", "AbortError")),
+            { once: true },
+          );
+        }),
+    });
+
+    controller.abort();
+
+    await expect(uploadPromise).rejects.toMatchObject({ name: "AbortError" });
+    expect(patches).toContainEqual({
+      id: "a",
+      patch: expect.objectContaining({
+        errorMessage: undefined,
+        status: "queued",
+      }),
+    });
   });
 });

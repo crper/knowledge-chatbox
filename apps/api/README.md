@@ -104,8 +104,10 @@ apps/api/
     runtime/       # just / 脚本 / 仓库入口运行时约束
     migrations/    # migration smoke tests
     fixtures/      # 测试工厂与复用 helper
-  docker-entrypoint.sh
   Dockerfile
+
+scripts/
+  api-entrypoint.sh
 ```
 
 建议阅读顺序：
@@ -122,7 +124,7 @@ apps/api/
 | `/api/auth`                | 登录态、登录、刷新 access token、登出、改密                      | `api/routes/auth.py`      |
 | `/api/users`               | 管理员用户管理                                                   | `api/routes/users.py`     |
 | `/api/documents`           | 资源上传前置条件、上传、列表、版本、重建索引、下载文件           | `api/routes/documents.py` |
-| `/api/chat`                | 会话、分页消息读取、会话上下文摘要、同步问答、流式问答、活动 run | `api/routes/chat.py`      |
+| `/api/chat`                | 会话、分页消息读取、会话上下文摘要、同步问答、流式问答、活动 run、运行中取消 | `api/routes/chat.py`      |
 | `/api/settings`            | 系统 provider 配置、系统提示词、连接测试                         | `api/routes/settings.py`  |
 | `/api/health`              | 基础健康检查                                                     | `api/routes/health.py`    |
 | `/api/health/capabilities` | 当前 response / embedding / vision route 健康检查                | `api/routes/health.py`    |
@@ -193,6 +195,7 @@ uv run -m uvicorn knowledge_chatbox_api.main:app --reload --host 0.0.0.0 --port 
 - 当前轮附件会在进入 `ChatWorkflow` 前先由服务端物化成真实 prompt 内容：文档附件转标准化文本片段，图片附件转稳定 JPEG 多模态 payload
 - `/api/chat/sessions/{session_id}/messages` 当前支持可选 `before_id`、`limit`，用于 Web 主区按尾部窗口读取长会话
 - `/api/chat/sessions/{session_id}/context` 返回聊天右栏需要的紧凑摘要：已去重附件、最近一次 assistant 引用和对应消息 id
+- `/api/chat/runs/{run_id}/cancel` 当前支持显式取消仍处于 `pending / running` 的 run；服务端会尽快终止 workflow 流式执行，并把 `chat_runs.status` 收口为 `cancelled`
 - 聊天检索、附件限域、多附件合并和 Chroma `where` 归一化等更细语义，统一以 [runtime-flows.md](../../docs/arch/runtime-flows.md) 为准
 
 ### 存储与并发
@@ -223,8 +226,8 @@ uv run -m uvicorn knowledge_chatbox_api.main:app --reload --host 0.0.0.0 --port 
 
 ## 容器与脚本
 
-- `docker-entrypoint.sh`：准备 `/workspace/data/*`、执行 migration、启动 `uvicorn`
-- `Dockerfile`：builder 阶段用 `uv` 安装依赖并通过 BuildKit cache mount 复用下载缓存，runtime 阶段只保留虚拟环境、迁移文件、源码和 entrypoint
+- `scripts/api-entrypoint.sh`：API 容器启动入口，负责准备 `/workspace/data/*`、执行 migration、启动 `uvicorn`
+- `Dockerfile`：以仓库根为 build context；builder 阶段用 `uv` 安装依赖并通过 BuildKit cache mount 复用下载缓存，runtime 阶段只保留虚拟环境、迁移文件、源码和 `scripts/api-entrypoint.sh`
 - 根目录入口：
 
 ```bash

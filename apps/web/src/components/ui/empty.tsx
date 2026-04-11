@@ -6,25 +6,14 @@ import { cva, type VariantProps } from "class-variance-authority";
 
 import { cn } from "@/lib/utils";
 
-/**
- * 定义空状态。
- */
+const emptyVariants = cva(
+  "surface-light flex w-full min-w-0 flex-1 flex-col items-center justify-center gap-4 rounded-xl border-dashed p-6 text-center text-balance animate-fade-in",
+);
+
 function Empty({ className, ...props }: React.ComponentProps<"div">) {
-  return (
-    <div
-      data-slot="empty"
-      className={cn(
-        "surface-light flex w-full min-w-0 flex-1 flex-col items-center justify-center gap-4 rounded-xl border-dashed p-6 text-center text-balance",
-        className,
-      )}
-      {...props}
-    />
-  );
+  return <div data-slot="empty" className={cn(emptyVariants(), className)} {...props} />;
 }
 
-/**
- * 定义空状态头部。
- */
 function EmptyHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -41,7 +30,7 @@ const emptyMediaVariants = cva(
     variants: {
       variant: {
         default: "bg-transparent",
-        icon: "surface-light flex size-8 shrink-0 items-center justify-center rounded-lg text-foreground [&_svg:not([class*='size-'])]:size-4",
+        icon: "surface-elevated flex size-10 shrink-0 items-center justify-center rounded-xl text-foreground/80 [&_svg:not([class*='size-'])]:size-5",
       },
     },
     defaultVariants: {
@@ -50,9 +39,6 @@ const emptyMediaVariants = cva(
   },
 );
 
-/**
- * 定义空状态Media。
- */
 function EmptyMedia({
   className,
   variant = "default",
@@ -68,28 +54,22 @@ function EmptyMedia({
   );
 }
 
-/**
- * 定义空状态Title。
- */
 function EmptyTitle({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="empty-title"
-      className={cn("text-sm font-medium tracking-tight", className)}
+      className={cn("text-ui-body font-medium tracking-tight text-foreground", className)}
       {...props}
     />
   );
 }
 
-/**
- * 定义空状态描述。
- */
 function EmptyDescription({ className, ...props }: React.ComponentProps<"p">) {
   return (
     <div
       data-slot="empty-description"
       className={cn(
-        "text-muted-foreground [&>a]:underline [&>a]:underline-offset-4 [&>a:hover]:text-primary",
+        "text-ui-subtle text-muted-foreground max-w-[40ch] [&>a]:underline [&>a]:underline-offset-4 [&>a:hover]:text-primary",
         className,
       )}
       {...props}
@@ -97,15 +77,12 @@ function EmptyDescription({ className, ...props }: React.ComponentProps<"p">) {
   );
 }
 
-/**
- * 定义空状态内容。
- */
 function EmptyContent({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="empty-content"
       className={cn(
-        "flex w-full max-w-sm min-w-0 flex-col items-center gap-2.5 text-sm text-balance",
+        "flex w-full max-w-sm min-w-0 flex-col items-center gap-3 text-balance",
         className,
       )}
       {...props}
@@ -113,4 +90,24 @@ function EmptyContent({ className, ...props }: React.ComponentProps<"div">) {
   );
 }
 
-export { Empty, EmptyHeader, EmptyTitle, EmptyDescription, EmptyContent, EmptyMedia };
+function EmptyActions({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="empty-actions"
+      className={cn("flex flex-wrap items-center justify-center gap-2 mt-2", className)}
+      {...props}
+    />
+  );
+}
+
+export {
+  Empty,
+  EmptyHeader,
+  EmptyTitle,
+  EmptyDescription,
+  EmptyContent,
+  EmptyMedia,
+  EmptyActions,
+  emptyVariants,
+  emptyMediaVariants,
+};

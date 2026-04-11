@@ -28,6 +28,10 @@ dependencies = [
   "pydantic-ai-slim[openai,anthropic,logfire]>=1.77.0,<1.78.0",
   "chonkie>=1.6.2,<1.7.0",
   "tenacity>=9.1.2,<9.2.0",
+  "cachetools>=5.5.0",
+  "sse-starlette>=2.2.0",
+  "advanced-alchemy>=1.4.0",
+  "yarl>=1.23.0",
 ]
 
 [project.scripts]
@@ -65,14 +69,88 @@ target-version = "py312"
 src = ["src", "tests"]
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "B", "UP"]
+select = [
+    "E",
+    "F",
+    "I",
+    "B",
+    "UP",
+    "SIM",
+    "RUF",
+    "C4",
+    "TCH",
+    "PT",
+    "PERF",
+    "FLY",
+    "DTZ",
+    "LOG",
+    "T20",
+    "ARG",
+    "PTH",
+    "RET",
+    "N",
+    "S",
+]
+ignore = [
+    "RUF001",
+    "RUF002",
+    "RUF003",
+]
+
+[tool.ruff.lint.flake8-type-checking]
+runtime-evaluated-base-classes = ["pydantic.BaseModel"]
+
+[tool.ruff.lint.pep8-naming]
+classmethod-decorators = ["pydantic.field_validator"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106", "S108", "S603", "S607", "ARG", "PT028", "RUF012"]
+"src/**" = ["PT028"]
 
 [tool.basedpyright]
 pythonVersion = "3.12"
-typeCheckingMode = "standard"
-include = ["src"]
-exclude = ["tests"]
+typeCheckingMode = "strict"
+include = ["src", "tests"]
 reportMissingTypeStubs = false
+reportAny = false
+reportExplicitAny = false
+reportUnusedParameter = true
+reportUnknownArgumentType = false
+reportUnknownVariableType = true
+reportUnknownMemberType = false
+reportUnknownParameterType = false
+reportMissingParameterType = false
+reportMissingTypeArgument = false
+reportPrivateUsage = true
+reportUnknownLambdaType = false
+reportUnnecessaryCast = true
+reportUnnecessaryIsInstance = true
+reportUnnecessaryComparison = true
+reportInvalidTypeForm = true
+reportUnusedFunction = true
+reportArgumentType = true
+reportAttributeAccessIssue = true
+reportCallIssue = true
+reportReturnType = false
+reportGeneralTypeIssues = false
+reportIncompatibleMethodOverride = true
+reportOptionalSubscript = true
+reportOptionalMemberAccess = true
+reportOptionalCall = true
+reportOptionalIterable = true
+reportOptionalContextManager = true
+reportOptionalOperand = true
+reportTypeCommentUsage = true
+reportConstantRedefinition = true
+reportDeprecated = true
+reportDuplicateImport = true
+reportIncompleteStub = true
+reportInconsistentConstructor = true
+reportMatchNotExhaustive = true
+reportMissingModuleSource = true
+reportUntypedClassDecorator = true
+reportUntypedFunctionDecorator = true
+reportUntypedNamedTuple = true
 
 [tool.coverage.run]
 source = ["src/knowledge_chatbox_api"]

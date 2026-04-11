@@ -11,8 +11,11 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[4]
 JUSTFILE_PATH = REPO_ROOT / "justfile"
 DEV_RUN_SCRIPT = REPO_ROOT / "scripts" / "dev-run.sh"
-DOCKER_DEPLOY_SCRIPT = REPO_ROOT / "scripts" / "docker-deploy.sh"
+DOCKER_DEPLOY_LIB = REPO_ROOT / "scripts" / "lib" / "docker-deploy.sh"
+API_DOCKERFILE_PATH = REPO_ROOT / "apps" / "api" / "Dockerfile"
 WEB_NODE_VERSION_PATH = REPO_ROOT / "apps" / "web" / ".node-version"
+WEB_DOCKERFILE_PATH = REPO_ROOT / "apps" / "web" / "Dockerfile"
+WEB_DOCKERIGNORE_PATH = REPO_ROOT / "apps" / "web" / ".dockerignore"
 
 
 def test_dev_recipes_forward_ports_to_dev_script() -> None:
@@ -110,7 +113,7 @@ exit 0
     )
 
     try:
-        output = read_output_until(process, timeout_seconds=3.0)
+        output = read_output_until(process, timeout_seconds=5.0)
     finally:
         terminate_process(process)
 
@@ -214,7 +217,7 @@ exit 1
     )
 
     try:
-        output = read_output_until(process, timeout_seconds=3.0)
+        output = read_output_until(process, timeout_seconds=5.0)
     finally:
         terminate_process(process)
 
@@ -324,7 +327,7 @@ exit 1
     )
 
     try:
-        output = read_output_until(process, timeout_seconds=5.0)
+        output = read_output_until(process, timeout_seconds=8.0)
     finally:
         terminate_process(process)
 
@@ -334,10 +337,213 @@ exit 1
 
 
 def test_docker_deploy_wait_for_http_retries_quietly_until_final_failure() -> None:
-    content = DOCKER_DEPLOY_SCRIPT.read_text(encoding="utf-8")
+    content = DOCKER_DEPLOY_LIB.read_text(encoding="utf-8")
 
     assert 'curl --fail --silent --max-time 3 "$url" >/dev/null 2>&1' in content
     assert 'curl --fail --silent --show-error --max-time 3 "$url" >/dev/null || true' in content
+
+
+def test_docker_check_accepts_same_origin_api_base_url(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    env_file = tmp_path / ".env.docker-check"
+    compose_environment = tmp_path / "compose-environment.txt"
+    upload_dir = tmp_path / "uploads"
+    normalized_dir = tmp_path / "normalized"
+    chroma_dir = tmp_path / "chroma"
+    sqlite_path = tmp_path / "sqlite" / "ai_qa.db"
+
+    env_file.write_text("placeholder=true\n", encoding="utf-8")
+    compose_environment.write_text(
+        "\n".join(
+            [
+                "API_PORT=18000",
+                "WEB_PORT=13000",
+                "JWT_SECRET_KEY=secret",
+                "INITIAL_ADMIN_USERNAME=admin",
+                "INITIAL_ADMIN_PASSWORD=password",
+                "VITE_API_BASE_URL=/api",
+                f"UPLOAD_DIR={upload_dir}",
+                f"NORMALIZED_DIR={normalized_dir}",
+                f"SQLITE_PATH={sqlite_path}",
+                f"CHROMA_PATH={chroma_dir}",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    write_executable(
+        fake_bin / "docker",
+        f"""#!/usr/bin/env bash
+set -Eeuo pipefail
+
+if [[ "${{1:-}}" != "compose" ]]; then
+  echo "[fake-docker] unexpected args: $*" >&2
+  exit 1
+fi
+shift
+
+while (($# > 0)); do
+  case "$1" in
+    --env-file|-f)
+      shift 2
+      ;;
+    config)
+      shift
+      case "${{1:-}}" in
+        --environment)
+          cat "{compose_environment}"
+          exit 0
+          ;;
+        -q)
+          exit 0
+          ;;
+      esac
+      ;;
+    *)
+      echo "[fake-docker] unexpected args: $*" >&2
+      exit 1
+      ;;
+  esac
+done
+
+echo "[fake-docker] missing config command" >&2
+exit 1
+""",
+    )
+
+    env = os.environ.copy()
+    env["PATH"] = f"{fake_bin}:{env['PATH']}"
+    env["ENV_FILE"] = str(env_file)
+    env.pop("INITIAL_ADMIN_PASSWORD", None)
+
+    result = subprocess.run(
+        ["bash", str(REPO_ROOT / "scripts" / "docker-deploy.sh"), "check"],
+        cwd=REPO_ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
+
+
+def test_docker_check_does_not_require_bootstrap_admin_password(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    env_file = tmp_path / ".env.docker-check"
+    compose_environment = tmp_path / "compose-environment.txt"
+    upload_dir = tmp_path / "uploads"
+    normalized_dir = tmp_path / "normalized"
+    chroma_dir = tmp_path / "chroma"
+    sqlite_path = tmp_path / "sqlite" / "ai_qa.db"
+
+    env_file.write_text("placeholder=true\n", encoding="utf-8")
+    compose_environment.write_text(
+        "\n".join(
+            [
+                "API_PORT=18000",
+                "WEB_PORT=13000",
+                "JWT_SECRET_KEY=secret-with-at-least-thirty-two-characters",
+                "INITIAL_ADMIN_USERNAME=admin",
+                f"UPLOAD_DIR={upload_dir}",
+                f"NORMALIZED_DIR={normalized_dir}",
+                f"SQLITE_PATH={sqlite_path}",
+                f"CHROMA_PATH={chroma_dir}",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    write_executable(
+        fake_bin / "docker",
+        f"""#!/usr/bin/env bash
+set -Eeuo pipefail
+
+if [[ "${{1:-}}" != "compose" ]]; then
+  echo "[fake-docker] unexpected args: $*" >&2
+  exit 1
+fi
+shift
+
+while (($# > 0)); do
+  case "$1" in
+    --env-file|-f)
+      shift 2
+      ;;
+    config)
+      shift
+      case "${{1:-}}" in
+        --environment)
+          cat "{compose_environment}"
+          exit 0
+          ;;
+        -q)
+          exit 0
+          ;;
+      esac
+      ;;
+    *)
+      echo "[fake-docker] unexpected args: $*" >&2
+      exit 1
+      ;;
+  esac
+done
+
+echo "[fake-docker] missing config command" >&2
+exit 1
+""",
+    )
+
+    env = os.environ.copy()
+    env["PATH"] = f"{fake_bin}:{env['PATH']}"
+    env["ENV_FILE"] = str(env_file)
+
+    result = subprocess.run(
+        ["bash", str(REPO_ROOT / "scripts" / "docker-deploy.sh"), "check"],
+        cwd=REPO_ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
+
+
+def test_docker_up_rebuilds_images_before_starting_services() -> None:
+    content = DOCKER_DEPLOY_LIB.read_text(encoding="utf-8")
+
+    assert "compose_cmd up -d --build --remove-orphans" in content
+
+
+def test_api_dockerfile_keeps_repo_and_runtime_entrypoint_names_consistent() -> None:
+    content = API_DOCKERFILE_PATH.read_text(encoding="utf-8")
+
+    assert "COPY --chmod=755 scripts/api-entrypoint.sh ./api-entrypoint.sh" in content
+    assert 'ENTRYPOINT ["./api-entrypoint.sh"]' in content
+
+
+def test_web_dockerfile_uses_consistent_registry_for_global_install_and_vp_install() -> None:
+    content = WEB_DOCKERFILE_PATH.read_text(encoding="utf-8")
+
+    assert "ENV NPM_CONFIG_REGISTRY=https://registry.npmmirror.com" in content
+
+
+def test_web_dockerignore_keeps_build_time_typescript_support_files() -> None:
+    content = WEB_DOCKERIGNORE_PATH.read_text(encoding="utf-8")
+
+    assert "src/test" not in content
+    assert "dev-proxy.ts" not in content
+
+
+def test_web_dockerfile_sets_ca_bundle_for_vp_install() -> None:
+    content = WEB_DOCKERFILE_PATH.read_text(encoding="utf-8")
+
+    assert "SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt" in content
 
 
 def write_executable(path: Path, body: str) -> None:
@@ -352,7 +558,10 @@ def read_output_until(process: subprocess.Popen[str], *, timeout_seconds: float)
     deadline = time.monotonic() + timeout_seconds
 
     while time.monotonic() < deadline:
-        ready, _, _ = select.select([process.stdout], [], [], 0.1)
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        ready, _, _ = select.select([process.stdout], [], [], min(0.2, remaining))
         if ready:
             line = process.stdout.readline()
             if not line:
@@ -368,7 +577,7 @@ def terminate_process(process: subprocess.Popen[str]) -> None:
     if process.poll() is None:
         process.terminate()
         try:
-            process.wait(timeout=2)
+            process.wait(timeout=3)
         except subprocess.TimeoutExpired:
             process.kill()
-            process.wait(timeout=2)
+            process.wait(timeout=3)

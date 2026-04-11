@@ -18,7 +18,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from knowledge_chatbox_api.db.base import Base
 from knowledge_chatbox_api.models.enums import IndexRebuildStatus, ProviderName, SettingsScopeType
-from knowledge_chatbox_api.schemas.settings import (  # noqa: E402 — 模型层依赖 schema 层的 JSON 序列化/反序列化函数，待后续重构解耦
+from knowledge_chatbox_api.schemas.settings import (
     EmbeddingRouteConfig,
     ProviderProfiles,
     ResponseRouteConfig,
@@ -33,7 +33,7 @@ from knowledge_chatbox_api.schemas.settings import (  # noqa: E402 — 模型层
     parse_vision_route,
 )
 
-DEFAULT_PROVIDER_PROFILES = {
+DEFAULT_PROVIDER_PROFILES: dict[str, dict[str, Any]] = {
     "openai": {
         "api_key": None,
         "base_url": "https://api.openai.com/v1",
@@ -178,3 +178,46 @@ class AppSettings(Base):
     @property
     def vision_model(self) -> str | None:
         return self.vision_route.model
+
+
+class SettingsVersion(Base):
+    """定义设置快照审计模型。"""
+
+    __tablename__ = "settings_versions"
+    __table_args__ = (
+        Index(
+            "uq_settings_versions_settings_version",
+            "settings_id",
+            "version_no",
+            unique=True,
+        ),
+        Index(
+            "ix_settings_versions_settings_created",
+            "settings_id",
+            "created_at",
+            "id",
+            unique=False,
+        ),
+        CheckConstraint(
+            "trigger IN ('bootstrap', 'update')",
+            name="ck_settings_versions_trigger",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    settings_id: Mapped[int] = mapped_column(
+        ForeignKey("app_settings.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    version_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    snapshot_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    changed_fields_json: Mapped[list[str] | None] = mapped_column(JSON)
+    trigger: Mapped[str] = mapped_column(String(16), nullable=False)
+    updated_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
