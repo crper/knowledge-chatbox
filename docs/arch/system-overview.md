@@ -169,8 +169,9 @@ V1 的核心边界已收敛：
 - 多文档附件当前会先按附件集合做一次批量限域召回，再按 `document_revision_id` 在内存里做轮转式公平选取，避免单个文档吃满全局 `top_k`
 - 当 `space_id` 与 `document_revision_id` 两类限域条件同时存在时，后端会先把它们归一化成 Chroma 兼容的复合 `where` 表达式
 - 纯图片附件且只有泛化看图问法时同样默认跳过 retrieval，直接交给视觉分析
-- Chroma 查询优先使用 query embedding；向量命中不足或 query embedding 生成失败时，退回 SQLite `FTS5` 词法候选兜底索引并做轻量重排；不会退回整代索引的全量词法扫描
+- Chroma 查询优先使用 query embedding；向量命中不足或 query embedding 生成失败时，退回 SQLite `FTS5` 词法候选兜底索引并做轻量重排；不会退回整代索引的全量词法扫描；embedding 生成与词法检索并行执行，减少词法兜底路径的串行等待
 - 切换检索 provider 或检索 embedding model 后，会进入"保存设置 -> 启动后台重建 -> 成功后切换 active generation"的流程
+- API 启动时预热当前 generation 的 Chroma collection，消除首次检索的冷启动延迟
 
 **流式与并发**
 

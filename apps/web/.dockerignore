@@ -12,3 +12,22 @@ coverage
 # 版本控制与系统文件
 .git
 .DS_Store
+
+# Docker 与 CI
+Dockerfile
+.dockerignore
+
+# 编辑器与工具
+.idea
+.vscode
+.node-version
+.prettierignore
+
+# 文档与配置（构建不需要）
+AGENTS.md
+README.md
+dev-proxy.ts
+components.json
+
+# 测试
+src/test

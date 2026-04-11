@@ -65,7 +65,7 @@ load_runtime_env() {
 
   while IFS='=' read -r key value; do
     case "$key" in
-      API_PORT|WEB_PORT|VITE_API_BASE_URL|UPLOAD_DIR|NORMALIZED_DIR|SQLITE_PATH|CHROMA_PATH|INITIAL_ADMIN_USERNAME|INITIAL_ADMIN_PASSWORD)
+      API_PORT|WEB_PORT|VITE_API_BASE_URL|UPLOAD_DIR|NORMALIZED_DIR|SQLITE_PATH|CHROMA_PATH|JWT_SECRET_KEY|INITIAL_ADMIN_USERNAME|INITIAL_ADMIN_PASSWORD)
         printf -v "$key" '%s' "$value"
         ;;
     esac
@@ -156,10 +156,10 @@ prepare_host_paths() {
 }
 
 validate_env() {
-  require_non_empty WEB_PORT API_PORT VITE_API_BASE_URL INITIAL_ADMIN_USERNAME INITIAL_ADMIN_PASSWORD
+  require_non_empty WEB_PORT API_PORT JWT_SECRET_KEY INITIAL_ADMIN_USERNAME INITIAL_ADMIN_PASSWORD
   validate_port WEB_PORT
   validate_port API_PORT
-  validate_url VITE_API_BASE_URL
+  [[ -n "${VITE_API_BASE_URL:-}" ]] && validate_url VITE_API_BASE_URL
 }
 
 wait_for_http() {

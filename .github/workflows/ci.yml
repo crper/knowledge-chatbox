@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  api:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies
+        run: uv sync --all-groups
+
+      - name: Lint (ruff check)
+        run: uv run ruff check
+
+      - name: Format check (ruff format)
+        run: uv run ruff format --check
+
+      - name: Type check (basedpyright)
+        run: uv run basedpyright
+
+      - name: Test
+        run: uv run --group dev python -m pytest
+        env:
+          JWT_SECRET_KEY: "test-jwt-secret-key-for-ci-32chars"
+          INITIAL_ADMIN_PASSWORD: "CiTest123456"
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: apps/web/.node-version
+          cache: pnpm
+          cache-dependency-path: apps/web/pnpm-lock.yaml
+
+      - name: Install Vite+
+        run: npm install -g vite-plus@0.1.16
+
+      - name: Install dependencies
+        run: vp install
+
+      - name: OpenAPI schema check
+        run: vp run api:check
+
+      - name: Lint + type check
+        run: vp check
+
+      - name: Test
+        run: vp test
+
+      - name: Build
+        run: vp build
+
+  repo-surface:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+
+      - name: Repo surface check
+        run: uv run --project apps/api python scripts/check_repo_surface.py

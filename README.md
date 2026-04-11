@@ -87,7 +87,7 @@ cp .env.example .env
 默认 `.env.example` 会在数据库里还没有管理员时初始化一个管理员账号：
 
 - 用户名：`admin`
-- 密码：`admin123456`
+- 密码：需在 `.env` 中设置 `INITIAL_ADMIN_PASSWORD`（至少 8 字符，包含大写字母、小写字母、数字、特殊字符中的至少 3 类）。执行 `just init-env` 会自动生成
 
 ### 3. 安装依赖
 

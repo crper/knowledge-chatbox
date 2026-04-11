@@ -26,7 +26,8 @@ help:
 
 # 环境准备
 init-env:
-    cp .env.example {{env_file}}
+    cp -n .env.example {{env_file}} 2>/dev/null || true
+    @python3 -c 'from pathlib import Path; import secrets, string, sys; env_path = Path(sys.argv[1]); special = "!@#$%^&*()-_=+"; alphabet = string.ascii_letters + string.digits + special; password_chars = [secrets.choice(string.ascii_uppercase), secrets.choice(string.ascii_lowercase), secrets.choice(string.digits), secrets.choice(special)] + [secrets.choice(alphabet) for _ in range(12)]; secrets.SystemRandom().shuffle(password_chars); generated_password = "".join(password_chars); lines = env_path.read_text(encoding="utf-8").splitlines(); updated_lines = [f"JWT_SECRET_KEY={secrets.token_urlsafe(32)}" if line == "JWT_SECRET_KEY=" else f"INITIAL_ADMIN_PASSWORD={generated_password}" if line == "INITIAL_ADMIN_PASSWORD=" else line for line in lines]; env_path.write_text("\n".join(updated_lines) + "\n", encoding="utf-8")' "{{env_file}}"
 
 # 安装依赖
 setup:
