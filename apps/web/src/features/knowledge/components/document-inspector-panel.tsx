@@ -15,8 +15,8 @@ import { Link } from "@/lib/app-router";
 import { cn } from "@/lib/utils";
 import { getDocumentFileUrl } from "@/features/chat/utils/document-file-url";
 import { documentVersionsQueryOptions } from "../api/documents-query";
+import { formatDateTime } from "@/lib/date-utils";
 import {
-  formatKnowledgeDocumentDateTime,
   formatFileSize,
   getKnowledgeDocumentCategoryLabel,
   getKnowledgeDocumentStatusMeta,
@@ -87,7 +87,7 @@ export function DocumentInspectorPanel({
     [t("summaryIndexedLabel"), statusMeta.label],
     [
       t("rowUpdatedLabel"),
-      formatKnowledgeDocumentDateTime(document.updated_at, i18n.resolvedLanguage ?? "zh-CN"),
+      formatDateTime(document.updated_at, i18n.resolvedLanguage ?? "zh-CN") || document.updated_at,
     ],
     ["Size", formatFileSize(document.file_size) ?? "—"],
     ["Chunks", typeof document.chunk_count === "number" ? `${document.chunk_count}` : "—"],

@@ -190,22 +190,29 @@ export function buildDisplayMessages({
   messages: ChatMessageItem[];
   runsById: Record<number, StreamingRunLike>;
 }) {
-  const streamingRuns = sortBy(
+  const allStreamingRuns = sortBy(
     Object.values(runsById)
       .map((run) => normalizeStreamingRun(run))
       .filter((run) => run.sessionId === activeSessionId),
     [(run) => run.assistantMessageId],
   );
 
+  const maxPersistedMessageId = messages.reduce(
+    (currentMax, message) => Math.max(currentMax, message.id),
+    0,
+  );
+
+  const streamingRuns = allStreamingRuns.filter((run) => {
+    if (isStreamingStatus(run.status)) return true;
+    if (run.assistantMessageId >= maxPersistedMessageId) return true;
+    if (run.status === MessageStatus.SUCCEEDED) return false;
+    return true;
+  });
+
   const activeStreamingAssistantMessageIds = new Set(
     streamingRuns
       .filter((run) => isStreamingStatus(run.status))
       .map((run) => run.assistantMessageId),
-  );
-
-  const maxPersistedMessageId = messages.reduce(
-    (currentMax, message) => Math.max(currentMax, message.id),
-    0,
   );
 
   const normalizedMessages = normalizePersistedMessages(
