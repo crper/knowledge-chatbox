@@ -7,7 +7,7 @@ from time import perf_counter
 
 from knowledge_chatbox_api.core.logging import get_logger
 from knowledge_chatbox_api.models.document import Document, DocumentRevision
-from knowledge_chatbox_api.models.enums import IngestStatus
+from knowledge_chatbox_api.models.enums import IndexRebuildStatus, IngestStatus
 from knowledge_chatbox_api.providers.factory import (
     build_embedding_adapter,
     build_vision_adapter_from_settings,
@@ -31,10 +31,7 @@ from knowledge_chatbox_api.services.documents.normalization_service import Norma
 from knowledge_chatbox_api.services.documents.query_service import DocumentQueryService
 from knowledge_chatbox_api.services.documents.versioning_service import VersioningService
 from knowledge_chatbox_api.services.settings.runtime_settings import build_embedding_settings
-from knowledge_chatbox_api.services.settings.settings_service import (
-    INDEX_REBUILD_STATUS_RUNNING,
-    SettingsService,
-)
+from knowledge_chatbox_api.services.settings.settings_service import SettingsService
 from knowledge_chatbox_api.utils.chroma import get_chroma_store
 from knowledge_chatbox_api.utils.document_types import (
     CONTENT_TYPE_TO_FILE_TYPE,
@@ -194,7 +191,7 @@ class IngestionService:
                     )
                 self._remove_file(document_version.origin_path)
             else:
-                self._remove_file(str(upload_artifact.path))
+                self._remove_file(upload_artifact.path)
             if normalized_path:
                 self._remove_file(normalized_path)
             logger.exception(
@@ -385,18 +382,11 @@ class IngestionService:
         indexing_targets = self._build_indexing_targets(settings_record)
 
         index_started_at = perf_counter()
-        section_title = derive_section_title(normalized.content)
-        indexing_services = {
-            id(target.settings): self._build_indexing_service(target.settings)
-            for target in indexing_targets
-        }
-        for target in indexing_targets:
-            indexing_services[id(target.settings)].index_document(
-                document_version,
-                normalized.content,
-                generation=target.generation,
-                section_title=section_title,
-            )
+        self._index_document_for_targets(
+            document_version,
+            normalized.content,
+            indexing_targets=indexing_targets,
+        )
         index_latency_ms = elapsed_ms(index_started_at)
         self._set_revision_indexed(document_version)
         return (
@@ -426,11 +416,11 @@ class IngestionService:
                 settings=build_embedding_settings(settings_record, use_pending=False),
             )
         ]
-        building_generation = getattr(settings_record, "building_index_generation", None)
+        building_generation = settings_record.building_index_generation
         if (
-            getattr(settings_record, "index_rebuild_status", None) == INDEX_REBUILD_STATUS_RUNNING
+            settings_record.index_rebuild_status == IndexRebuildStatus.RUNNING
             and building_generation is not None
-            and getattr(settings_record, "pending_embedding_route", None) is not None
+            and settings_record.pending_embedding_route is not None
         ):
             targets.append(
                 IndexingTarget(
@@ -553,7 +543,7 @@ class IngestionService:
             return detected
         raise UnsupportedFileTypeError(f"Unsupported file type for upload: {filename}")
 
-    def _remove_file(self, path: str | None) -> None:
+    def _remove_file(self, path: Path | str | None) -> None:
         if not path:
             return
         try:

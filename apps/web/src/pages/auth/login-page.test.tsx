@@ -429,7 +429,7 @@ describe("login page", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "修改密码" }));
     fireEvent.change(await screen.findByLabelText("当前密码"), {
-      target: { value: "admin123456" },
+      target: { value: "Admin123456" },
     });
     fireEvent.change(screen.getByLabelText("新密码"), {
       target: { value: "new-admin-123" },

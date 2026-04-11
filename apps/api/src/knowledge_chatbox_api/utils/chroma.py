@@ -33,6 +33,8 @@ TEXT_FALLBACK_MAX_WHERE_DOCUMENT_TERMS = 6
 class ChunkStore(Protocol):
     """Small persistence contract used by indexing and retrieval services."""
 
+    def warmup(self, generation: int = 1) -> None: ...
+
     def upsert(
         self,
         records: list[dict[str, Any]],
@@ -221,6 +223,10 @@ class PersistentChromaStore:
         )
         self._collections[normalized_generation] = collection
         return collection
+
+    def warmup(self, generation: int = 1) -> None:
+        """Pre-load the collection for *generation* so the first query is fast."""
+        self._collection_for_generation(generation)
 
     def upsert(
         self,
@@ -435,15 +441,15 @@ class PersistentChromaStore:
 
 
 @cache
-def _get_persistent_chroma_store(storage_path: str) -> PersistentChromaStore:
+def _get_persistent_chroma_store(storage_path: Path) -> PersistentChromaStore:
     """Cache one persistent store per configured Chroma path."""
-    return PersistentChromaStore(Path(storage_path))
+    return PersistentChromaStore(storage_path)
 
 
 def get_chroma_store() -> PersistentChromaStore:
     """Return the persistent store configured for the current runtime settings."""
     settings = get_settings()
-    return _get_persistent_chroma_store(str(settings.chroma_path))
+    return _get_persistent_chroma_store(settings.chroma_path)
 
 
 def reset_chroma_store(
@@ -455,7 +461,7 @@ def reset_chroma_store(
     resolved_path = (
         Path(storage_path) if storage_path is not None else Path(get_settings().chroma_path)
     )
-    store = _get_persistent_chroma_store(str(resolved_path))
+    store = _get_persistent_chroma_store(resolved_path)
     if clear_persisted:
         store.clear()
     _get_persistent_chroma_store.cache_clear()

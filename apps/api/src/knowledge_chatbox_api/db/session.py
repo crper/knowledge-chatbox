@@ -30,6 +30,7 @@ def _create_engine(sqlite_path: str) -> Engine:
         cursor.fetchone()
         cursor.execute(f"PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT_MS}")
         cursor.execute("PRAGMA foreign_keys = ON")
+        cursor.execute("PRAGMA synchronous = NORMAL")
         cursor.close()
 
     return engine

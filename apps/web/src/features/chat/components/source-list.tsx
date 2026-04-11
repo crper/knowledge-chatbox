@@ -16,10 +16,10 @@ type SourceItem = {
 type SourceItemProps = {
   index: number;
   source: SourceItem;
-  t: ReturnType<typeof useTranslation>["t"];
 };
 
-const SourceItem = memo(function SourceItem({ index, source, t }: SourceItemProps) {
+const SourceItem = memo(function SourceItem({ index, source }: SourceItemProps) {
+  const { t } = useTranslation("chat");
   const title = source.document_name ?? source.section_title ?? source.chunk_id;
   const pageLabel =
     source.page_number != null ? t("sourcePage", { page: source.page_number }) : null;
@@ -62,8 +62,6 @@ type SourceListProps = {
 };
 
 export const SourceList = memo(function SourceList({ sources }: SourceListProps) {
-  const { t } = useTranslation("chat");
-
   if (sources.length === 0) {
     return null;
   }
@@ -71,7 +69,7 @@ export const SourceList = memo(function SourceList({ sources }: SourceListProps)
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       {sources.map((source, index) => (
-        <SourceItem index={index} key={source.chunk_id} source={source} t={t} />
+        <SourceItem index={index} key={source.chunk_id} source={source} />
       ))}
     </div>
   );

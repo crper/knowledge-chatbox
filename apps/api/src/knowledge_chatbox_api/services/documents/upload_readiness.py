@@ -2,8 +2,7 @@
 
 from dataclasses import dataclass
 
-from knowledge_chatbox_api.models.enums import ProviderName
-from knowledge_chatbox_api.services.settings.settings_service import INDEX_REBUILD_STATUS_RUNNING
+from knowledge_chatbox_api.models.enums import IndexRebuildStatus, ProviderName
 from knowledge_chatbox_api.utils.helpers import strip_or_none
 
 
@@ -56,7 +55,7 @@ def get_document_upload_readiness(settings_record) -> DocumentUploadReadiness:
         )
 
     if (
-        settings_record.index_rebuild_status == INDEX_REBUILD_STATUS_RUNNING
+        settings_record.index_rebuild_status == IndexRebuildStatus.RUNNING
         and settings_record.pending_embedding_route is not None
         and not _is_embedding_route_configured(
             settings_record,

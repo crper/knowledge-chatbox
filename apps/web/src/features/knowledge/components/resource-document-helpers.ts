@@ -2,7 +2,6 @@
  * @file 资源展示辅助函数模块。
  */
 
-import { formatDateTime } from "@/lib/date-utils";
 import { getDocumentPreviewKind, type DocumentPreviewKind } from "../api/document-preview";
 import type { KnowledgeDocumentStatus } from "../api/documents";
 
@@ -81,11 +80,4 @@ export function getKnowledgeDocumentStatusMeta(
     label: t(status === "processing" ? "statusProcessing" : "statusUploaded"),
     variant: "outline",
   };
-}
-
-/**
- * 按当前语言格式化资源时间。
- */
-export function formatKnowledgeDocumentDateTime(value: string, locale: string) {
-  return formatDateTime(value, locale) || value;
 }

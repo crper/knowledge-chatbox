@@ -30,12 +30,21 @@ ENV PATH="/opt/venv/bin:$PATH" \
 
 WORKDIR /workspace/apps/api
 
+RUN groupadd --gid 1000 appuser && \
+    useradd --uid 1000 --gid appuser --shell /bin/sh --create-home appuser
+
 # 运行时镜像只保留虚拟环境和应用代码，不带构建阶段的 uv 工具链。
 COPY --from=builder /opt/venv /opt/venv
 COPY --from=builder /workspace/apps/api/alembic.ini ./alembic.ini
 COPY --from=builder /workspace/apps/api/migrations ./migrations
 COPY --from=builder /workspace/apps/api/src ./src
 COPY --chmod=755 docker-entrypoint.sh ./docker-entrypoint.sh
+
+RUN mkdir -p /workspace/data/uploads /workspace/data/normalized \
+    /workspace/data/sqlite /workspace/data/chroma && \
+    chown -R appuser:appuser /workspace/data
+
+USER appuser
 
 EXPOSE 8000
 

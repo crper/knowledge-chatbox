@@ -1,11 +1,11 @@
 """Anthropic capability adapters."""
 
 import base64
-from time import perf_counter
 from typing import Any
 
 from anthropic import Anthropic
 
+from knowledge_chatbox_api.core.logging import get_logger
 from knowledge_chatbox_api.models.enums import ChatMessageRole
 from knowledge_chatbox_api.providers.base import (
     DEFAULT_VISION_PROMPT,
@@ -22,11 +22,12 @@ from knowledge_chatbox_api.providers.base import (
     build_reasoning_config,
     provider_retry,
 )
+from knowledge_chatbox_api.providers.ollama_url import normalize_provider_base_url
 from knowledge_chatbox_api.utils.helpers import safe_getattr
-from knowledge_chatbox_api.utils.timing import elapsed_ms
 
 DEFAULT_ANTHROPIC_BASE_URL = "https://api.anthropic.com"
 DEFAULT_MAX_TOKENS = 4096
+logger = get_logger(__name__)
 
 
 def _usage_to_dict(usage: Any) -> dict[str, Any] | None:
@@ -53,14 +54,13 @@ class _AnthropicClientMixin(ClientCacheMixin):
         super().__init__()
         self.client_factory = client_factory or Anthropic
 
-    def _request_timeout(self, settings: ProviderSettings) -> float:
-        return float(settings.provider_timeout_seconds)
-
     def _normalize_base_url(self, base_url: str | None) -> str:
-        normalized = (base_url or DEFAULT_ANTHROPIC_BASE_URL).strip().rstrip("/")
-        if normalized.endswith("/v1"):
-            return normalized
-        return f"{normalized}/v1"
+        result = normalize_provider_base_url(
+            base_url, default=DEFAULT_ANTHROPIC_BASE_URL, ensure_v1_suffix=True
+        )
+        if result is None:
+            return f"{DEFAULT_ANTHROPIC_BASE_URL}/v1"
+        return result
 
     def _api_key(self, settings: ProviderSettings) -> str | None:
         return settings.provider_profiles.anthropic.api_key
@@ -79,18 +79,10 @@ class _AnthropicClientMixin(ClientCacheMixin):
         self._client(settings).models.retrieve(model)
 
     def _run_health_check(self, settings: ProviderSettings, model: str) -> ProviderHealthResult:
-        start = perf_counter()
         if not self._api_key(settings):
             return ProviderHealthResult(healthy=False, message="Anthropic API key is missing.")
-
-        try:
-            self._quick_model_check(settings, model)
-        except Exception as exc:  # noqa: BLE001
-            return ProviderHealthResult(healthy=False, message=str(exc))
-        return ProviderHealthResult(
-            healthy=True,
-            message="ok",
-            latency_ms=elapsed_ms(start),
+        return self._run_provider_health_check(
+            lambda: self._quick_model_check(settings, model),
         )
 
     def _thinking_config(self, settings: ResponseRuntimeSettings) -> dict[str, Any] | None:
@@ -215,7 +207,8 @@ class AnthropicResponseAdapter(_AnthropicClientMixin, BaseResponseAdapter):
                     usage=_usage_to_dict(safe_getattr(final_message, "usage")),
                 )
         except Exception as exc:  # noqa: BLE001
-            yield ResponseStreamChunk(type="error", error_message=str(exc))
+            logger.warning("anthropic_stream_error", error_message=str(exc))
+            yield ResponseStreamChunk(type="error", error_message="Provider stream error.")
 
     def health_check(self, settings: ResponseSettings) -> ProviderHealthResult:
         return self._run_health_check(settings, settings.response_route.model)

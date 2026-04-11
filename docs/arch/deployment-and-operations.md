@@ -24,8 +24,10 @@
 **启动与依赖**
 
 - 首次 clone 或依赖刚更新时，先执行：`just init-env` -> `just setup`
+- `just` / `just help` 默认只展示当前建议优先记住的高频入口；如果要看完整命令面，执行 `just --list`
 - 依赖已安装后的推荐入口：仓库根目录 `just dev`
-- `just dev` / `just reset-dev` 会把当前 `API_PORT / WEB_PORT` 传给共享开发脚本；脚本会先拉起 API、等待 `GET /api/health` ready，再启动 Web，并在终端打印 Web、API health、docs、redoc 和 OpenAPI 地址
+- `just init-env` 会在复制 `.env.example` 后自动补齐空白的 `JWT_SECRET_KEY` 和 `INITIAL_ADMIN_PASSWORD`，并提示登录密码应回看 `.env`
+- `just dev` / `just reset-dev` 会把当前 `API_PORT / WEB_PORT` 传给共享开发脚本；脚本会先拉起 API、等待 `GET /api/health` ready，再启动 Web，并在终端打印 Web、API health、docs、redoc、OpenAPI 地址，以及 bootstrap 管理员账号提示
 - 共享开发脚本默认会给 API 约 60 秒启动补偿时间（默认 300 次尝试，每次间隔 0.2 秒）
 - 如果本机恢复文档 / chat run / 索引状态较慢，可临时调大 `DEV_API_READY_MAX_ATTEMPTS` 再执行 `just dev`
 - 前端 `vp` 版本由 `apps/web/.node-version` 固定，避免每次启动都先走远端 `lts` 解析
@@ -37,7 +39,9 @@
 
 - 认证使用 `PyJWT` 短期 access token + HttpOnly refresh cookie
 - refresh cookie 默认按请求 scheme 自动决定是否带 `Secure`；若部署在 HTTPS 反向代理后且应用层拿不到 `https` scheme，需显式配置 `SESSION_COOKIE_SECURE=true`
-- 本地和容器环境都需要提供稳定的 `JWT_SECRET_KEY`
+- 本地和容器环境都需要提供稳定的 `JWT_SECRET_KEY`（至少 32 字符；`just init-env` 会自动生成）
+- `INITIAL_ADMIN_PASSWORD` 必须满足密码复杂度要求：至少 8 字符，且包含大写字母、小写字母、数字、特殊字符中的至少 3 类
+- 登录失败时先区分两类情况：如果是旧弱密码或格式不满足复杂度要求，接口当前会稳定返回 `422 validation_error`；如果是密码忘了，直接回看 `.env` 中的 `INITIAL_ADMIN_PASSWORD`
 - 详细认证时序见 [auth-and-session-flow.md](./auth-and-session-flow.md)
 
 **API 契约与校验**
@@ -112,7 +116,7 @@ flowchart LR
 - 如果改走 Docker Compose 且 Ollama 仍跑在宿主机，需要把 `.env` 里的 `INITIAL_OLLAMA_BASE_URL` 改成 `http://host.docker.internal:11434`
 - 默认 Ollama bootstrap 当前对齐为 `qwen3.5:4b` 作为 chat / vision 模板值，embedding 则对齐为 `nomic-embed-text`
 - API 响应头默认附带 `X-Request-ID`，日志里同样会输出 `request_id`
-- SQLite 连接默认开启 `WAL` 和 `busy_timeout=30000`
+- SQLite 连接默认开启 `WAL`、`busy_timeout=30000` 和 `synchronous=NORMAL`（在 WAL 模式下对普通操作安全，操作系统崩溃时可能丢失最近几个事务；如需更强持久性可改为 `FULL`）
 - 文档索引当前拆成两层：`Chroma` 保存向量索引，SQLite 同库保存 `FTS5` 词法候选兜底索引；重置本地 SQLite 文件会一并清掉这部分派生数据
 - 数据目录全部 bind mount 到宿主机，容器重建后数据仍在
 - 同名资源如果内容哈希未变化，API 会直接返回当前版本
@@ -157,14 +161,14 @@ flowchart LR
 - 依赖 `api` 健康后再启动
 - 健康检查：`GET /healthz`
 - 容器内 `nginx` 会把 `/api/*` 反代到 `api:8000`
-- 容器内 `nginx` 同时把 `client_max_body_size` 放宽到 `2g`
+- 容器内 `nginx` 同时把 `client_max_body_size` 限制为 `110m`（与 API 层 `max_upload_size_mb=100` 对齐，留出 multipart 编码余量）
 
 ### Compose 设计取舍
 
 - 使用 bind mount 而不是 Docker volume，目的是让本地文件和 SQLite 可直接查看
 - 日志驱动统一限制大小，避免宿主机被容器日志打满
 - Docker 单机模式把 API 收敛到同源 `/api`，优先避免 refresh cookie、SSE 和受保护文件落到跨源链路
-- 大文件上传的第一层限制来自 `web` 容器里的 `nginx client_max_body_size`（当前 `2g`）；第二层则是 API 自身的磁盘空间与标准化/索引耗时
+- 大文件上传的第一层限制来自 `web` 容器里的 `nginx client_max_body_size`（当前 `110m`）；第二层则是 API 自身的 `max_upload_size_mb`（默认 `100`）
 - 聊天执行后端当前已统一收口到 `ChatWorkflow + PydanticAI`
 - 前端构建期 API 地址是固化值；改了相关构建参数后必须重新 build
 

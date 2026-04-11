@@ -46,7 +46,7 @@ def stub_document_index_embedding(monkeypatch) -> None:
 def login_admin(api_client: TestClient) -> None:
     response = api_client.post(
         "/api/auth/login",
-        json={"username": "admin", "password": "admin123456"},
+        json={"username": "admin", "password": "Admin123456"},
     )
     assert response.status_code == 200
 

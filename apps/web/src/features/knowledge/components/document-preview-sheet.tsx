@@ -22,13 +22,10 @@ import {
 import type { KnowledgeDocument } from "../api/documents";
 import { getDocumentPreviewKind, loadDocumentTextPreview } from "../api/document-preview";
 import { cn } from "@/lib/utils";
+import { formatDateTime } from "@/lib/date-utils";
 import { DocumentImagePreview } from "./document-image-preview";
 import { DocumentTextPreview } from "./document-text-preview";
-import {
-  formatKnowledgeDocumentDateTime,
-  formatFileSize,
-  getDocumentTypeLabel,
-} from "./resource-document-helpers";
+import { formatFileSize, getDocumentTypeLabel } from "./resource-document-helpers";
 import { openProtectedFile, downloadProtectedFile } from "./protected-file-actions";
 
 type DocumentPreviewSheetProps = {
@@ -79,7 +76,7 @@ export function DocumentPreviewSheet({
   const fileUrl = getDocumentFileUrl(document.id);
   const metaItems = [
     formatFileSize(document.file_size),
-    formatKnowledgeDocumentDateTime(document.updated_at, i18n.resolvedLanguage ?? "zh-CN"),
+    formatDateTime(document.updated_at, i18n.resolvedLanguage ?? "zh-CN") || document.updated_at,
     typeof document.chunk_count === "number" ? `${document.chunk_count} chunks` : null,
   ].filter(Boolean);
 

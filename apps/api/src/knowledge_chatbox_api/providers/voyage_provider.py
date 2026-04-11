@@ -1,7 +1,5 @@
 """Voyage embedding adapter."""
 
-from time import perf_counter
-
 import httpx
 
 from knowledge_chatbox_api.providers.base import (
@@ -12,7 +10,7 @@ from knowledge_chatbox_api.providers.base import (
     ProviderSettings,
     provider_retry,
 )
-from knowledge_chatbox_api.utils.timing import elapsed_ms
+from knowledge_chatbox_api.providers.ollama_url import normalize_provider_base_url
 
 DEFAULT_VOYAGE_BASE_URL = "https://api.voyageai.com/v1"
 
@@ -24,14 +22,13 @@ class VoyageEmbeddingAdapter(ClientCacheMixin, BaseEmbeddingAdapter):
         super().__init__()
         self.client_factory = client_factory or httpx.Client
 
-    def _request_timeout(self, settings: ProviderSettings) -> float:
-        return float(settings.provider_timeout_seconds)
-
     def _client(self, settings: ProviderSettings):
         profile = settings.provider_profiles.voyage
-        base_url = (profile.base_url or DEFAULT_VOYAGE_BASE_URL).strip().rstrip("/")
-        if not base_url.endswith("/v1"):
-            base_url = f"{base_url}/v1"
+        base_url = normalize_provider_base_url(
+            profile.base_url, default=DEFAULT_VOYAGE_BASE_URL, ensure_v1_suffix=True
+        )
+        if base_url is None:
+            base_url = DEFAULT_VOYAGE_BASE_URL
         api_key = profile.api_key or ""
         key = (base_url, api_key)
 
@@ -59,13 +56,4 @@ class VoyageEmbeddingAdapter(ClientCacheMixin, BaseEmbeddingAdapter):
         return [item["embedding"] for item in payload.get("data", [])]
 
     def health_check(self, settings: EmbeddingSettings) -> ProviderHealthResult:
-        start = perf_counter()
-        try:
-            self.embed(["ping"], settings)
-        except Exception as exc:  # noqa: BLE001
-            return ProviderHealthResult(healthy=False, message=str(exc))
-        return ProviderHealthResult(
-            healthy=True,
-            message="ok",
-            latency_ms=elapsed_ms(start),
-        )
+        return self._run_provider_health_check(lambda: self.embed(["ping"], settings))

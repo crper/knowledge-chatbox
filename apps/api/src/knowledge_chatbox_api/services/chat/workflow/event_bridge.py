@@ -14,11 +14,7 @@ from pydantic_ai.messages import (
 )
 
 from knowledge_chatbox_api.services.chat.stream_events import (
-    PART_SOURCE_EVENT,
-    PART_TEXT_DELTA_EVENT,
-    PART_TEXT_START_EVENT,
-    TOOL_CALL_EVENT,
-    TOOL_RESULT_EVENT,
+    StreamEvent,
     StreamEventBatchItem,
 )
 
@@ -40,7 +36,7 @@ class ChatWorkflowEventBridge:
         if isinstance(event, FunctionToolCallEvent):
             return [
                 (
-                    TOOL_CALL_EVENT,
+                    StreamEvent.TOOL_CALL,
                     {
                         "run_id": run_id,
                         "tool_name": event.part.tool_name,
@@ -55,7 +51,7 @@ class ChatWorkflowEventBridge:
             sources = self._extract_sources(content)
             events: list[StreamEventBatchItem] = [
                 (
-                    TOOL_RESULT_EVENT,
+                    StreamEvent.TOOL_RESULT,
                     {
                         "run_id": run_id,
                         "tool_name": tool_name,
@@ -65,7 +61,7 @@ class ChatWorkflowEventBridge:
             ]
             events.extend(
                 (
-                    PART_SOURCE_EVENT,
+                    StreamEvent.PART_SOURCE,
                     {
                         "run_id": run_id,
                         "assistant_message_id": assistant_message_id,
@@ -79,7 +75,7 @@ class ChatWorkflowEventBridge:
         if isinstance(event, PartStartEvent) and isinstance(event.part, TextPart):
             return [
                 (
-                    PART_TEXT_START_EVENT,
+                    StreamEvent.PART_TEXT_START,
                     {"run_id": run_id, "assistant_message_id": assistant_message_id},
                 )
             ]
@@ -87,7 +83,7 @@ class ChatWorkflowEventBridge:
         if isinstance(event, PartDeltaEvent) and isinstance(event.delta, TextPartDelta):
             return [
                 (
-                    PART_TEXT_DELTA_EVENT,
+                    StreamEvent.PART_TEXT_DELTA,
                     {
                         "run_id": run_id,
                         "assistant_message_id": assistant_message_id,

@@ -41,6 +41,7 @@ from knowledge_chatbox_api.tasks.document_jobs import (
     compensate_index_rebuild_status,
     compensate_processing_documents,
 )
+from knowledge_chatbox_api.utils.chroma import get_chroma_store
 from knowledge_chatbox_api.utils.timing import elapsed_ms
 
 
@@ -67,6 +68,21 @@ def _detail_to_error_info(
     if isinstance(detail, list):
         return ErrorInfo(code=default_code, message=default_message, details=detail)
     return ErrorInfo(code=default_code, message=str(detail) or default_message)
+
+
+def _json_safe(value: Any) -> Any:
+    """把错误细节收敛为 JSON 可序列化结构。"""
+    if isinstance(value, BaseException):
+        return str(value)
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, tuple):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, set):
+        return [_json_safe(item) for item in value]
+    return value
 
 
 def _raise_if_database_schema_incompatible(error: OperationalError) -> None:
@@ -138,10 +154,16 @@ def create_app() -> FastAPI:
                     "ensure_personal_space",
                     lambda: SpaceRepository(session).ensure_personal_space(user_id=admin.id),
                 )
-                run_startup_step(
+                settings_service = SettingsService(session, settings)
+                settings_record = run_startup_step(
                     "ensure_app_settings",
-                    lambda: SettingsService(session, settings).get_or_create_settings_record(),
+                    settings_service.get_or_create_settings_record,
                 )
+
+                def warmup_active_chroma_collection() -> None:
+                    session.refresh(settings_record)
+                    get_chroma_store().warmup(settings_record.active_index_generation)
+
                 compensated_documents = run_startup_step(
                     "compensate_processing_documents",
                     lambda: compensate_processing_documents(session, settings),
@@ -153,6 +175,10 @@ def create_app() -> FastAPI:
                 compensated_rebuild = run_startup_step(
                     "compensate_index_rebuild_status",
                     lambda: compensate_index_rebuild_status(session, settings),
+                )
+                run_startup_step(
+                    "warmup_chroma_collection",
+                    warmup_active_chroma_collection,
                 )
                 logger.info(
                     "Startup compensation completed",
@@ -167,26 +193,32 @@ def create_app() -> FastAPI:
                 raise
         yield
 
+    is_production = settings.environment == "production"
+
     app = FastAPI(
         title=settings.app_name,
         summary=API_SUMMARY,
         description=API_DESCRIPTION,
         version=__version__,
-        docs_url="/docs",
-        redoc_url="/redoc",
-        openapi_url="/openapi.json",
+        docs_url="/docs" if not is_production else None,
+        redoc_url="/redoc" if not is_production else None,
+        openapi_url="/openapi.json" if not is_production else None,
         openapi_tags=OPENAPI_TAGS,
         lifespan=lifespan,
     )
     app.add_middleware(CorrelationIdMiddleware)
 
     if settings.cors_allow_origins:
+        if "*" in settings.cors_allow_origins:
+            raise RuntimeError(
+                "CORS_ALLOW_ORIGINS cannot contain '*'. Specify explicit origins instead."
+            )
         app.add_middleware(
             CORSMiddleware,
             allow_origins=list(settings.cors_allow_origins),
             allow_credentials=True,
-            allow_methods=["*"],
-            allow_headers=["*"],
+            allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+            allow_headers=["Authorization", "Content-Type", "Accept", "X-Correlation-ID"],
         )
 
     @app.middleware("http")
@@ -231,7 +263,7 @@ def create_app() -> FastAPI:
             ErrorInfo(
                 code="validation_error",
                 message="Request validation failed.",
-                details=exc.errors(),
+                details=_json_safe(exc.errors()),
             ),
         )
 

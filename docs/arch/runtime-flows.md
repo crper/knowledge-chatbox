@@ -10,6 +10,7 @@ flowchart TD
   Settings --> Docs["compensate_processing_documents()"]
   Docs --> Runs["compensate_active_chat_runs()"]
   Runs --> Rebuild["compensate_index_rebuild_status()"]
+  Rebuild --> Warmup["warmup_chroma_collection()"]
 ```
 
 当前默认运行方式：
@@ -109,7 +110,7 @@ flowchart TD
 - 若本轮消息带文档附件，检索会进一步限域到当前附件对应的 `document_revision_id`
 - 多文档附件检索当前会先按附件集合做一次批量限域召回，再按 `document_revision_id` 在内存里做轮转式公平选取，减少单个文档吃满全局 `top_k`，也避免附件数增多时把检索请求线性放大
 - 当两类条件同时存在时，后端会先归一化成 Chroma 兼容的复合过滤表达式；确保测试用内存 store 与持久化 Chroma 在 where 过滤语义上保持一致
-- 若向量命中不足或当前轮 query embedding 生成失败，本轮会降级到 SQLite `FTS5` 词法候选兜底，再做轻量重排；不会退回整代索引的全量词法扫描
+- 若向量命中不足或当前轮 query embedding 生成失败，本轮会降级到 SQLite `FTS5` 词法候选兜底，再做轻量重排；不会退回整代索引的全量词法扫描；embedding 生成与词法检索并行执行，减少词法兜底路径的串行等待
 - 纯图片泛化看图请求默认跳过 retrieval
 - 无附件时，问答仍会继续查询当前用户 personal `space` 里已入库的历史知识
 - 因为图片已经在 provider 调用前直接注入 user prompt，兼容 OpenAI 的多模态模型不会再出现“聊天气泡里有图片，但模型收到的只是附件 JSON 文本”的退化链路
@@ -144,7 +145,7 @@ flowchart TD
 补充说明：
 
 - 前端 `CHAT_STREAM_EVENT` 常量对象和 `ChatStreamEventMap` 类型集中定义了所有事件名及其 payload 结构
-- 后端 `StreamEventName` 是 `Literal` 类型，与前端事件名一一对应（`done` 除外）
+- 后端 `StreamEventName` 是 `StreamEvent` 枚举类型，与前端事件名一一对应（`done` 除外）
 - 事件按 `chat_run_events` 表的 `seq` 字段严格递增；幂等重放时按原序回放
 
 关键入口：

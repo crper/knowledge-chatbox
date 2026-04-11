@@ -2,15 +2,13 @@
  * @file 资源相关 Hook 模块。
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { FileRejection } from "react-dropzone";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 import { currentUserQueryOptions } from "@/features/auth/api/auth-query";
 import { queryKeys } from "@/lib/api/query-keys";
-import { getDocumentUploadRejectionMessage, runDocumentUpload } from "@/lib/document-upload";
 import { getErrorMessage } from "@/lib/utils";
 import {
   deleteDocumentMutationOptions,
@@ -23,16 +21,8 @@ import {
   reindexDocumentMutationOptions,
   type KnowledgeDocument,
 } from "../api/documents-query";
-import { uploadDocument, type KnowledgeDocumentListFilters } from "../api/documents";
-
-type KnowledgeUploadItem = {
-  errorMessage?: string;
-  file: File;
-  id: string;
-  name: string;
-  progress: number;
-  status: "uploading" | "uploaded" | "failed";
-};
+import type { KnowledgeDocumentListFilters } from "../api/documents";
+import { useKnowledgeUpload } from "./use-knowledge-upload";
 
 /**
  * 封装资源工作区的数据与交互。
@@ -42,14 +32,11 @@ export function useKnowledgeWorkspace(filters?: KnowledgeDocumentListFilters) {
   const queryClient = useQueryClient();
   const [versionDrawerOpen, setVersionDrawerOpen] = useState(false);
   const [versions, setVersions] = useState<KnowledgeDocument[]>([]);
-  const [uploadItems, setUploadItems] = useState<KnowledgeUploadItem[]>([]);
-  const uploadQueueRef = useRef(Promise.resolve());
-  const uploadControllersRef = useRef(new Map<string, AbortController>());
-  const canceledUploadIdsRef = useRef(new Set<string>());
-  const queuedRetryUploadIdsRef = useRef(new Set<string>());
   const normalizedQuery = filters?.query?.trim();
   const hasActiveFilters =
     Boolean(normalizedQuery) || filters?.status !== undefined || filters?.type !== undefined;
+
+  const upload = useKnowledgeUpload();
 
   const currentUserQuery = useQuery(currentUserQueryOptions());
   const uploadReadinessQuery = useQuery(documentUploadReadinessQueryOptions());
@@ -84,163 +71,6 @@ export function useKnowledgeWorkspace(filters?: KnowledgeDocumentListFilters) {
     },
   });
 
-  const updateUploadItem = useCallback((uploadId: string, patch: Partial<KnowledgeUploadItem>) => {
-    setUploadItems((currentItems) =>
-      currentItems.map((item) => (item.id === uploadId ? { ...item, ...patch } : item)),
-    );
-  }, []);
-
-  const removeUploadItem = useCallback((uploadId: string) => {
-    setUploadItems((currentItems) => currentItems.filter((item) => item.id !== uploadId));
-    uploadControllersRef.current.delete(uploadId);
-  }, []);
-
-  const isUploadAbortError = useCallback((error: unknown) => {
-    return error instanceof DOMException && error.name === "AbortError";
-  }, []);
-
-  const uploadOneFile = useCallback(
-    async (uploadId: string, file: File) => {
-      if (canceledUploadIdsRef.current.has(uploadId)) {
-        removeUploadItem(uploadId);
-        canceledUploadIdsRef.current.delete(uploadId);
-        return;
-      }
-
-      const controller = new AbortController();
-      uploadControllersRef.current.set(uploadId, controller);
-
-      try {
-        const document = await runDocumentUpload({
-          failedMessage: t("uploadFailedToast"),
-          file,
-          onPatch: (patch) => {
-            updateUploadItem(uploadId, patch);
-          },
-          signal: controller.signal,
-          upload: uploadDocument,
-        });
-        removeUploadItem(uploadId);
-        toast.success(
-          document.deduplicated
-            ? t("uploadDeduplicatedToast", { name: document.name })
-            : t("uploadSuccessToast", { name: document.name }),
-        );
-        void invalidateDocuments(queryClient);
-      } catch (error) {
-        if (canceledUploadIdsRef.current.has(uploadId) || controller.signal.aborted) {
-          removeUploadItem(uploadId);
-          return;
-        }
-
-        if (isUploadAbortError(error)) {
-          removeUploadItem(uploadId);
-          return;
-        }
-
-        updateUploadItem(uploadId, {
-          errorMessage: getErrorMessage(error, t("uploadFailedToast")),
-          progress: 0,
-          status: "failed",
-        });
-        toast.error(getErrorMessage(error, t("uploadFailedToast")));
-      } finally {
-        uploadControllersRef.current.delete(uploadId);
-        canceledUploadIdsRef.current.delete(uploadId);
-        queuedRetryUploadIdsRef.current.delete(uploadId);
-      }
-    },
-    [isUploadAbortError, queryClient, removeUploadItem, t, updateUploadItem],
-  );
-
-  const enqueueUploads = useCallback(
-    (files: File[]) => {
-      if (files.length === 0) {
-        return;
-      }
-
-      const queuedUploads = files.map((file) => ({
-        file,
-        id: crypto.randomUUID(),
-        name: file.name,
-        progress: 0,
-        status: "uploading" as const,
-      }));
-
-      setUploadItems((currentItems) => [...queuedUploads, ...currentItems]);
-      uploadQueueRef.current = uploadQueueRef.current.then(async () => {
-        for (const queuedUpload of queuedUploads) {
-          await uploadOneFile(queuedUpload.id, queuedUpload.file);
-        }
-      });
-    },
-    [uploadOneFile],
-  );
-
-  const rejectFiles = useCallback(
-    (rejections: FileRejection[]) => {
-      if (rejections.length === 0) {
-        return;
-      }
-
-      const failedUploads = rejections.map((rejection) => ({
-        errorMessage: getDocumentUploadRejectionMessage(rejection, {
-          failedMessage: t("uploadFailedToast"),
-          unsupportedFileTypeMessage: t("uploadHint"),
-        }),
-        file: rejection.file,
-        id: crypto.randomUUID(),
-        name: rejection.file.name,
-        progress: 0,
-        status: "failed" as const,
-      }));
-
-      setUploadItems((currentItems) => [...failedUploads, ...currentItems]);
-      failedUploads.forEach((failedUpload) => {
-        toast.error(failedUpload.errorMessage);
-      });
-    },
-    [t],
-  );
-
-  const retryUpload = useCallback(
-    (uploadId: string) => {
-      const target = uploadItems.find((item) => item.id === uploadId);
-      if (!target || target.status !== "failed" || queuedRetryUploadIdsRef.current.has(uploadId)) {
-        return;
-      }
-
-      queuedRetryUploadIdsRef.current.add(uploadId);
-      updateUploadItem(uploadId, {
-        errorMessage: undefined,
-        progress: 0,
-        status: "uploading",
-      });
-      uploadQueueRef.current = uploadQueueRef.current.then(async () => {
-        await uploadOneFile(uploadId, target.file);
-      });
-    },
-    [updateUploadItem, uploadItems, uploadOneFile],
-  );
-
-  const removeUpload = useCallback(
-    (uploadId: string) => {
-      canceledUploadIdsRef.current.delete(uploadId);
-      uploadControllersRef.current.get(uploadId)?.abort();
-      removeUploadItem(uploadId);
-    },
-    [removeUploadItem],
-  );
-
-  const cancelUpload = useCallback(
-    (uploadId: string) => {
-      canceledUploadIdsRef.current.add(uploadId);
-      uploadControllersRef.current.get(uploadId)?.abort();
-      removeUploadItem(uploadId);
-    },
-    [removeUploadItem],
-  );
-
   const showVersions = useCallback(
     async (documentId: number) => {
       const result = await queryClient.fetchQuery(documentVersionsQueryOptions(documentId));
@@ -248,11 +78,6 @@ export function useKnowledgeWorkspace(filters?: KnowledgeDocumentListFilters) {
       setVersionDrawerOpen(true);
     },
     [queryClient],
-  );
-
-  const localUploadingCount = useMemo(
-    () => uploadItems.filter((item) => item.status === "uploading").length,
-    [uploadItems],
   );
 
   const processingCount = useMemo(
@@ -268,21 +93,15 @@ export function useKnowledgeWorkspace(filters?: KnowledgeDocumentListFilters) {
     documentsFetching: documentsQuery.isFetching,
     documentsRefreshing: documentsQuery.isFetching && documentsQuery.data !== undefined,
     documentsUpdatedAt: documentsQuery.dataUpdatedAt,
-    cancelUpload,
-    enqueueUploads,
-    localUploadingCount,
-    rejectFiles,
-    removeUpload,
-    retryUpload,
     processingCount,
     reindexDocument: (documentId: number) => reindexMutation.mutateAsync(documentId),
     reindexPending: reindexMutation.isPending,
     showVersions,
     uploadReadiness: uploadReadinessQuery.data,
     uploadReadinessPending: uploadReadinessQuery.isPending,
-    uploadItems,
     versionDrawerOpen,
     versions,
     closeVersionDrawer: () => setVersionDrawerOpen(false),
+    ...upload,
   };
 }

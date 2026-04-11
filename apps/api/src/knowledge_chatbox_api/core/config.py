@@ -14,6 +14,7 @@ from knowledge_chatbox_api.schemas._validators import (
     PositiveInt,
     ResponseProviderLiteral,
     VisionProviderLiteral,
+    _validate_password_complexity,
 )
 from knowledge_chatbox_api.utils.helpers import unwrap_secret
 
@@ -98,14 +99,14 @@ class Settings(BaseSettings):
     )
     access_token_ttl_minutes: PositiveInt = 15
     jwt_algorithm: str = "HS256"
-    jwt_secret_key: str = "knowledge-chatbox-dev-secret-key-32"
+    jwt_secret_key: str = ""
     session_cookie_name: str = "knowledge_chatbox_session"
     session_cookie_secure: bool | None = None
     session_ttl_hours: PositiveInt = 24
     login_rate_limit_attempts: PositiveInt = 5
     login_rate_limit_window_seconds: PositiveInt = 300
     initial_admin_username: str = "admin"
-    initial_admin_password: str = "admin123456"
+    initial_admin_password: str = ""
     initial_openai_api_key: SecretStr | None = None
     initial_openai_base_url: str = "https://api.openai.com/v1"
     initial_anthropic_api_key: SecretStr | None = None
@@ -199,6 +200,34 @@ class Settings(BaseSettings):
         self.chroma_path = self._resolve_path_field(
             "chroma_path", self.chroma_path, data_dir / "chroma"
         )
+
+        if not self.jwt_secret_key.strip():
+            raise ValueError(
+                "JWT_SECRET_KEY must be set and non-empty. "
+                'Generate one with: python -c "import secrets; print(secrets.token_urlsafe(32))"'
+            )
+        if len(self.jwt_secret_key) < 32:
+            raise ValueError(
+                "JWT_SECRET_KEY must be at least 32 characters long for adequate security."
+            )
+        if not self.initial_admin_password.strip():
+            raise ValueError("INITIAL_ADMIN_PASSWORD must be set and non-empty.")
+        if len(self.initial_admin_password) < 8:
+            raise ValueError("INITIAL_ADMIN_PASSWORD must be at least 8 characters long.")
+        _validate_password_complexity(self.initial_admin_password)
+
+        if self.environment not in ("local", "test"):
+            if self.jwt_secret_key == "knowledge-chatbox-dev-secret-key-32":
+                raise ValueError(
+                    "JWT_SECRET_KEY must be changed from the default value"
+                    " in non-local environments"
+                )
+            if self.initial_admin_password == "admin123456":
+                raise ValueError(
+                    "INITIAL_ADMIN_PASSWORD must be changed from the default"
+                    " value in non-local environments"
+                )
+
         return self
 
     @property

@@ -38,5 +38,8 @@ class RateLimitService:
         now = self.now_provider()
         threshold = now - timedelta(seconds=self.window_seconds)
         attempts = [attempt for attempt in self._attempts.get(key, []) if attempt >= threshold]
-        self._attempts[key] = attempts
+        if attempts:
+            self._attempts[key] = attempts
+        else:
+            self._attempts.pop(key, None)
         return attempts

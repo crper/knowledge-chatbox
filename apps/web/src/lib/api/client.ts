@@ -3,10 +3,12 @@
  */
 
 import {
+  classifyApiError,
   extractErrorDetail,
   getUserFacingErrorMessage,
   translateCommonErrorMessage,
 } from "./error-response";
+import { ApiRequestError } from "./api-request-error";
 import { expireSessionIfStaleAccessToken } from "@/lib/auth/session-manager";
 import { getAccessToken } from "@/lib/auth/token-store";
 import { env } from "@/lib/config/env";
@@ -49,56 +51,7 @@ export type AppUser = {
   theme_preference: "light" | "dark" | "system";
 };
 
-/**
- * 表示 API 请求失败异常。
- */
-export class ApiRequestError extends Error {
-  code?: string;
-  kind: "forbidden" | "network" | "server" | "timeout" | "unauthorized" | "unknown" | "validation";
-  retryable: boolean;
-  status: number;
-
-  constructor(
-    message: string,
-    options: {
-      code?: string;
-      kind?: ApiRequestError["kind"];
-      retryable?: boolean;
-      status: number;
-    },
-  ) {
-    super(message);
-    this.name = "ApiRequestError";
-    this.code = options.code;
-    this.kind = options.kind ?? "unknown";
-    this.retryable = options.retryable ?? false;
-    this.status = options.status;
-  }
-}
-
-function classifyApiError(status: number): Pick<ApiRequestError, "kind" | "retryable"> {
-  if (status === 401) {
-    return { kind: "unauthorized", retryable: false };
-  }
-
-  if (status === 403) {
-    return { kind: "forbidden", retryable: false };
-  }
-
-  if (status === 422) {
-    return { kind: "validation", retryable: false };
-  }
-
-  if (status === 408 || status === 504) {
-    return { kind: "timeout", retryable: true };
-  }
-
-  if (status === 429 || status >= 500) {
-    return { kind: "server", retryable: true };
-  }
-
-  return { kind: "unknown", retryable: false };
-}
+export { ApiRequestError } from "./api-request-error";
 
 export function getApiErrorMessage(error: unknown) {
   if (error instanceof ApiRequestError) {

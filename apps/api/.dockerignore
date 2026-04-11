@@ -3,6 +3,7 @@
 __pycache__
 .pytest_cache
 .ruff_cache
+.mypy_cache
 .DS_Store
 *.pyc
 *.pyo
@@ -11,8 +12,17 @@ __pycache__
 *.log
 .coverage
 coverage.xml
-tests
 htmlcov
+tests
 
 # 版本控制
 .git
+
+# Docker 与 CI
+Dockerfile
+.dockerignore
+
+# 编辑器与工具
+.idea
+.vscode
+.python-version

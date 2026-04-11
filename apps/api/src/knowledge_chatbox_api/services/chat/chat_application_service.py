@@ -3,9 +3,13 @@
 from datetime import UTC, datetime
 from typing import Any
 
+from sqlalchemy.orm import Session
+
+from knowledge_chatbox_api.core.config import Settings
 from knowledge_chatbox_api.core.errors import AppError
 from knowledge_chatbox_api.core.logging import get_logger
 from knowledge_chatbox_api.models.auth import User
+from knowledge_chatbox_api.models.chat import ChatMessage, ChatSession
 from knowledge_chatbox_api.models.enums import (
     ChatMessageRole,
     ChatMessageStatus,
@@ -19,11 +23,7 @@ from knowledge_chatbox_api.repositories.document_repository import DocumentRepos
 from knowledge_chatbox_api.schemas.chat import CreateChatMessageRequest, dump_chat_attachments
 from knowledge_chatbox_api.services.chat.chat_run_service import ChatRunService
 from knowledge_chatbox_api.services.chat.chat_stream_presenter import ChatStreamPresenter
-from knowledge_chatbox_api.services.chat.retry_service import (
-    DuplicateClientRequestConflictError,
-    RetryService,
-    RetryTargetNotFoundError,
-)
+from knowledge_chatbox_api.services.chat.retry_service import RetryService
 from knowledge_chatbox_api.services.chat.workflow import ChatWorkflow, build_chat_workflow_deps
 from knowledge_chatbox_api.services.documents.query_service import DocumentQueryService
 from knowledge_chatbox_api.services.settings.runtime_settings import build_runtime_settings
@@ -54,8 +54,8 @@ class ChatApplicationService:
 
     def __init__(
         self,
-        session,
-        settings,
+        session: Session,
+        settings: Settings | None = None,
     ) -> None:
         self.session = session
         self.settings = settings
@@ -64,7 +64,21 @@ class ChatApplicationService:
         self.chat_run_event_repository = ChatRunEventRepository(session)
         self.document_repository = DocumentRepository(session)
         self.document_query_service = DocumentQueryService(session)
-        self._settings_service = SettingsService(session, settings)
+        self._settings_service: SettingsService | None = None
+
+    @property
+    def settings_service(self) -> SettingsService:
+        if self._settings_service is None:
+            if self.settings is None:
+                from knowledge_chatbox_api.core.errors import AppError
+
+                raise AppError(
+                    "Settings must be provided for this operation.",
+                    status_code=500,
+                    code="internal_error",
+                )
+            self._settings_service = SettingsService(self.session, self.settings)
+        return self._settings_service
 
     def create_session(
         self,
@@ -72,7 +86,7 @@ class ChatApplicationService:
         title: str | None,
         *,
         reasoning_mode: str = ReasoningMode.DEFAULT,
-    ) -> Any:
+    ) -> ChatSession:
         """Create one session for the current user."""
         chat_session = self.chat_repository.create_session(
             actor.id,
@@ -90,11 +104,11 @@ class ChatApplicationService:
         self.chat_repository.delete_session(session_id)
         self.session.commit()
 
-    def list_sessions(self, actor: User) -> list[Any]:
+    def list_sessions(self, actor: User) -> list[ChatSession]:
         """Return all sessions that belong to the current user."""
         return self.chat_repository.list_sessions(actor.id)
 
-    def update_session(self, actor: User, session_id: int, patch: dict[str, Any]) -> Any:
+    def update_session(self, actor: User, session_id: int, patch: dict[str, Any]) -> ChatSession:
         """Update one owned chat session."""
         chat_session = self._require_owned_session(actor, session_id)
         self.chat_repository.update_session(
@@ -106,7 +120,7 @@ class ChatApplicationService:
         self.session.refresh(chat_session)
         return chat_session
 
-    def list_messages(self, actor: User, session_id: int) -> list[Any]:
+    def list_messages(self, actor: User, session_id: int) -> list[ChatMessage]:
         """Return all messages for one owned session."""
         self._require_owned_session(actor, session_id)
         return self.chat_repository.list_messages(session_id)
@@ -118,7 +132,7 @@ class ChatApplicationService:
         *,
         before_id: int | None,
         limit: int,
-    ) -> list[Any]:
+    ) -> list[ChatMessage]:
         """Return one tail window of messages for one owned session."""
         self._require_owned_session(actor, session_id)
         return self.chat_repository.list_messages_window(
@@ -182,7 +196,7 @@ class ChatApplicationService:
         message_id: int,
         attachment_id: str,
         document_revision_id: int,
-    ) -> Any:
+    ) -> ChatMessage:
         """Link one chat attachment to a persisted document record."""
         message = self._require_owned_message(actor, message_id)
         document_version = self.document_query_service.get_document_revision(
@@ -213,35 +227,30 @@ class ChatApplicationService:
         actor: User,
         session_id: int,
         payload: CreateChatMessageRequest,
-    ) -> tuple[Any, Any]:
+    ) -> tuple[ChatMessage, ChatMessage]:
         """Execute the sync chat flow for one owned session."""
         chat_session = self._require_owned_session(actor, session_id)
         retry_service = RetryService(self.chat_repository, self.session)
-        try:
-            if payload.retry_of_message_id is not None:
-                user_message = retry_service.retry_user_message(
-                    session_id=session_id,
-                    content=payload.content,
-                    client_request_id=payload.client_request_id,
-                    retry_of_message_id=payload.retry_of_message_id,
-                )
-            else:
-                user_message = retry_service.create_or_reuse_user_message(
-                    attachments=dump_chat_attachments(payload.attachments),
-                    session_id=session_id,
-                    content=payload.content,
-                    client_request_id=payload.client_request_id,
-                )
-        except RetryTargetNotFoundError as exc:
-            raise ChatRouteError(404, "chat_message_not_found", str(exc)) from exc
-        except DuplicateClientRequestConflictError as exc:
-            raise ChatRouteError(409, "chat_message_conflict", str(exc)) from exc
+        if payload.retry_of_message_id is not None:
+            user_message = retry_service.retry_user_message(
+                session_id=session_id,
+                content=payload.content,
+                client_request_id=payload.client_request_id,
+                retry_of_message_id=payload.retry_of_message_id,
+            )
+        else:
+            user_message = retry_service.create_or_reuse_user_message(
+                attachments=dump_chat_attachments(payload.attachments),
+                session_id=session_id,
+                content=payload.content,
+                client_request_id=payload.client_request_id,
+            )
 
         existing_assistant = self.chat_repository.get_assistant_reply(user_message.id)
         if payload.retry_of_message_id is None and existing_assistant is not None:
             return user_message, existing_assistant
 
-        settings_record = self._settings_service.get_or_create_settings_record()
+        settings_record = self.settings_service.get_or_create_settings_record()
         runtime_settings = build_runtime_settings(
             settings_record,
             reasoning_mode=chat_session.reasoning_mode,
@@ -285,10 +294,10 @@ class ChatApplicationService:
             assistant_message.sources_json = sources
         except Exception as exc:  # noqa: BLE001
             user_message.status = ChatMessageStatus.FAILED
-            user_message.error_message = str(exc)
+            user_message.error_message = "Chat processing failed."
             assistant_message.content = ""
             assistant_message.status = ChatMessageStatus.FAILED
-            assistant_message.error_message = str(exc)
+            assistant_message.error_message = "Chat processing failed."
             assistant_message.sources_json = []
             logger.warning(
                 "chat_sync_message_failed",
@@ -311,7 +320,7 @@ class ChatApplicationService:
     ) -> tuple[ChatStreamPresenter, ChatRunService]:
         """Return the presenter and stream runner for one owned session."""
         chat_session = self._require_owned_session(actor, session_id)
-        settings_record = self._settings_service.get_or_create_settings_record()
+        settings_record = self.settings_service.get_or_create_settings_record()
         runtime_settings = build_runtime_settings(
             settings_record,
             reasoning_mode=chat_session.reasoning_mode,

@@ -15,9 +15,9 @@ from knowledge_chatbox_api.schemas.settings import (
 )
 from knowledge_chatbox_api.utils.helpers import safe_getattr
 
-DEFAULT_RESPONSE_ROUTE = {"provider": ProviderName.OLLAMA, "model": "unknown"}
-DEFAULT_EMBEDDING_ROUTE = {"provider": ProviderName.OLLAMA, "model": "unknown"}
-DEFAULT_VISION_ROUTE = {"provider": ProviderName.OLLAMA, "model": "unknown"}
+DEFAULT_RESPONSE_ROUTE = {"provider": ProviderName.OLLAMA, "model": "qwen3.5:4b"}
+DEFAULT_EMBEDDING_ROUTE = {"provider": ProviderName.OLLAMA, "model": "nomic-embed-text"}
+DEFAULT_VISION_ROUTE = {"provider": ProviderName.OLLAMA, "model": "qwen3.5:4b"}
 DEFAULT_PROVIDER_TIMEOUT_SECONDS = 60
 
 

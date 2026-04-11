@@ -1,5 +1,7 @@
 """Provider capability interfaces."""
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from collections import OrderedDict
 from collections.abc import Callable
@@ -52,6 +54,29 @@ class ClientCacheMixin:
 
     def _get_or_create_client(self, key: tuple, factory: Callable[[], Any]) -> Any:
         return self._client_cache.get_or_create(key, factory)
+
+    def _request_timeout(self, settings: ProviderSettings) -> float:
+        return float(settings.provider_timeout_seconds)
+
+    def _run_provider_health_check(
+        self,
+        check_fn: Callable[[], Any],
+        *,
+        api_key_label: str = "API key",
+    ) -> ProviderHealthResult:
+        import logging
+        from time import perf_counter
+
+        from knowledge_chatbox_api.utils.timing import elapsed_ms
+
+        _logger = logging.getLogger(__name__)
+        start = perf_counter()
+        try:
+            check_fn()
+        except Exception as exc:  # noqa: BLE001
+            _logger.warning("provider_health_check_failed: %s", exc)
+            return ProviderHealthResult(healthy=False, message="Provider health check failed.")
+        return ProviderHealthResult(healthy=True, message="ok", latency_ms=elapsed_ms(start))
 
 
 def build_reasoning_config(provider: str, reasoning_mode: ReasoningModeLiteral) -> dict[str, Any]:

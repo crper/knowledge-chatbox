@@ -4,6 +4,32 @@
 
 import { i18n } from "@/i18n";
 
+import { ApiRequestError } from "./api-request-error";
+
+export function classifyApiError(status: number): Pick<ApiRequestError, "kind" | "retryable"> {
+  if (status === 401) {
+    return { kind: "unauthorized", retryable: false };
+  }
+
+  if (status === 403) {
+    return { kind: "forbidden", retryable: false };
+  }
+
+  if (status === 422) {
+    return { kind: "validation", retryable: false };
+  }
+
+  if (status === 408 || status === 504) {
+    return { kind: "timeout", retryable: true };
+  }
+
+  if (status === 429 || status >= 500) {
+    return { kind: "server", retryable: true };
+  }
+
+  return { kind: "unknown", retryable: false };
+}
+
 const ERROR_CODE_MESSAGE_KEYS = {
   conflict: "apiErrorConflict",
   document_file_not_found: "apiErrorFileNotFound",
@@ -137,5 +163,11 @@ export async function parseErrorResponse(response: Response): Promise<never> {
   }
 
   const detail = extractErrorDetail(rawBody, parsedBody, response);
-  throw new Error(getUserFacingErrorMessage(detail, response));
+  const classification = classifyApiError(response.status);
+  throw new ApiRequestError(getUserFacingErrorMessage(detail, response), {
+    code: detail.code,
+    kind: classification.kind,
+    retryable: classification.retryable,
+    status: response.status,
+  });
 }

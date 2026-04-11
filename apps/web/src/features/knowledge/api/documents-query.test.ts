@@ -25,16 +25,17 @@ describe("documentsListQueryOptions", () => {
       | undefined;
 
     expect(typeof refetchInterval).toBe("function");
-    expect(
-      refetchInterval?.({
-        state: { data: [buildDocument("processing")] },
-      }),
-    ).toBe(3000);
-    expect(
-      refetchInterval?.({
-        state: { data: [buildDocument("uploaded")] },
-      }),
-    ).toBe(3000);
+    const result1 = refetchInterval?.({
+      state: { data: [buildDocument("processing")] },
+    });
+    expect(typeof result1).toBe("number");
+    expect(result1!).toBe(3000);
+
+    const result2 = refetchInterval?.({
+      state: { data: [buildDocument("uploaded")] },
+    });
+    expect(typeof result2).toBe("number");
+    expect(result2 as number).toBeGreaterThan(result1 as number);
   });
 
   it("stops polling once every document is settled", () => {
@@ -57,11 +58,11 @@ describe("documentsListQueryOptions", () => {
       | ((query: { state: { data: KnowledgeDocument[] | undefined } }) => number | false)
       | undefined;
 
-    expect(
-      refetchInterval?.({
-        state: { data: [buildDocument("indexed")] },
-      }),
-    ).toBe(3000);
+    const result = refetchInterval?.({
+      state: { data: [buildDocument("indexed")] },
+    });
+    expect(typeof result).toBe("number");
+    expect(result!).toBe(3000);
   });
 
   it("polls the lightweight summary while hidden pending documents remain", () => {
@@ -70,7 +71,9 @@ describe("documentsListQueryOptions", () => {
       | ((query: { state: { data: { pending_count: number } | undefined } }) => number | false)
       | undefined;
 
-    expect(refetchInterval?.({ state: { data: { pending_count: 1 } } })).toBe(3000);
+    const result1 = refetchInterval?.({ state: { data: { pending_count: 1 } } });
+    expect(typeof result1).toBe("number");
+    expect(result1!).toBe(3000);
     expect(refetchInterval?.({ state: { data: { pending_count: 0 } } })).toBe(false);
   });
 });

@@ -7,8 +7,7 @@ from knowledge_chatbox_api.core.logging import get_logger
 from knowledge_chatbox_api.models.enums import ChatMessageRole, ChatMessageStatus, ChatRunStatus
 from knowledge_chatbox_api.schemas.chat import dump_chat_attachments
 from knowledge_chatbox_api.services.chat.stream_events import (
-    MESSAGE_STARTED_EVENT,
-    RUN_STARTED_EVENT,
+    StreamEvent,
     StreamEventBatchItem,
     append_event_batch,
 )
@@ -172,7 +171,7 @@ class ChatRunService:
     ) -> list[StreamEventBatchItem]:
         return [
             (
-                RUN_STARTED_EVENT,
+                StreamEvent.RUN_STARTED,
                 {
                     "run_id": run_id,
                     "session_id": session_id,
@@ -181,7 +180,7 @@ class ChatRunService:
                 },
             ),
             (
-                MESSAGE_STARTED_EVENT,
+                StreamEvent.MESSAGE_STARTED,
                 {
                     "run_id": run_id,
                     "assistant_message_id": assistant_message_id,
@@ -228,7 +227,7 @@ class ChatRunService:
         self.chat_run_event_repository.append_event(
             run_id=run.id,
             seq=current_seq + 1,
-            event_type="run.failed",
+            event_type=StreamEvent.RUN_FAILED,
             payload_json={
                 "run_id": run.id,
                 "assistant_message_id": assistant_message.id,

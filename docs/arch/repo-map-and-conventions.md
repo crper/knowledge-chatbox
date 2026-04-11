@@ -217,6 +217,8 @@ knowledge-chatbox/
 默认优先在仓库根目录使用 `just`：
 
 ```bash
+just
+just help
 just init-env
 just setup
 just --list
@@ -240,6 +242,13 @@ just docker-health
 首次 clone 或依赖 lockfile 变更后，先按根 `README.md` 执行 `just init-env -> just setup -> just dev`。启动行为细节详见 [deployment-and-operations.md](./deployment-and-operations.md)。
 
 只有当你明确需要子项目独立运行时，再进入 `apps/web` 或 `apps/api` 执行细分命令。
+
+补充约定：
+
+- `just` / `just help` 只展示精简过的高频入口，降低日常记忆负担
+- `just --list` 保留完整命令面，适合排查或查找低频入口
+- `just init-env` 负责补齐空白的本地密钥，并提示你去 `.env` 查看 bootstrap 管理员密码
+- `scripts/dev-run.sh` 在 `just dev` / `just reset-dev` 启动时会打印 bootstrap 管理员账号和密码来源，避免重置数据后还沿用旧默认密码
 
 ### 6.2 前端
 

@@ -5,6 +5,7 @@ from datetime import datetime
 from pydantic import BaseModel
 
 from knowledge_chatbox_api.schemas._validators import (
+    CredentialPasswordStr,
     PasswordStr,
     RoleLiteral,
     StatusLiteral,
@@ -31,7 +32,7 @@ class LoginRequest(BaseModel):
     """描述登录请求体。"""
 
     username: UsernameStr
-    password: PasswordStr
+    password: CredentialPasswordStr
 
 
 class AccessTokenRead(BaseModel):
@@ -64,7 +65,7 @@ class SessionBootstrapRead(BaseModel):
 class ChangePasswordRequest(BaseModel):
     """描述Change密码请求体。"""
 
-    current_password: PasswordStr
+    current_password: CredentialPasswordStr
     new_password: PasswordStr
 
 

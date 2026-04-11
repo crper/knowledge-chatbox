@@ -4,6 +4,7 @@ set -Eeuo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 API_DIR="${API_DIR:-${ROOT_DIR}/apps/api}"
 WEB_DIR="${WEB_DIR:-${ROOT_DIR}/apps/web}"
+ENV_FILE="${ENV_FILE:-${ROOT_DIR}/.env}"
 API_PORT="${API_PORT:-8000}"
 WEB_PORT="${WEB_PORT:-3000}"
 API_HEALTH_URL="http://127.0.0.1:${API_PORT}/api/health"
@@ -19,6 +20,16 @@ log() {
   printf '[dev-run] %s\n' "$*"
 }
 
+read_env_value() {
+  local target_key="$1"
+  local raw_line
+
+  [[ -f "$ENV_FILE" ]] || return 0
+  raw_line="$(grep -E "^${target_key}=" "$ENV_FILE" 2>/dev/null | tail -n 1 || true)"
+  [[ -n "$raw_line" ]] || return 0
+  printf '%s\n' "${raw_line#*=}"
+}
+
 print_urls() {
   log "访问地址（服务启动后可用）"
   log "  Web: http://localhost:${WEB_PORT}"
@@ -26,6 +37,20 @@ print_urls() {
   log "  API docs: http://localhost:${API_PORT}/docs"
   log "  API redoc: http://localhost:${API_PORT}/redoc"
   log "  OpenAPI JSON: http://localhost:${API_PORT}/openapi.json"
+
+  local admin_username
+  local admin_password
+  admin_username="$(read_env_value INITIAL_ADMIN_USERNAME)"
+  admin_username="${admin_username:-admin}"
+  log "  Bootstrap admin: ${admin_username}"
+  if [[ -f "$ENV_FILE" ]]; then
+    admin_password="$(read_env_value INITIAL_ADMIN_PASSWORD)"
+    if [[ -n "$admin_password" ]]; then
+      log "  登录密码请查看 ${ENV_FILE} 中的 INITIAL_ADMIN_PASSWORD"
+    else
+      log "  未检测到 INITIAL_ADMIN_PASSWORD，请先运行 just init-env"
+    fi
+  fi
 }
 
 cleanup() {

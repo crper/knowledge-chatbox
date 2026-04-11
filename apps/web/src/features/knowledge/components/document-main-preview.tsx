@@ -15,11 +15,8 @@ import type { KnowledgeDocument } from "../api/documents";
 import { DocumentImagePreview } from "./document-image-preview";
 import { DocumentTextPreview } from "./document-text-preview";
 import { getDocumentPreviewKind, loadDocumentTextPreview } from "../api/document-preview";
-import {
-  formatKnowledgeDocumentDateTime,
-  formatFileSize,
-  getDocumentTypeLabel,
-} from "./resource-document-helpers";
+import { formatDateTime } from "@/lib/date-utils";
+import { formatFileSize, getDocumentTypeLabel } from "./resource-document-helpers";
 import { openProtectedFile } from "./protected-file-actions";
 
 type DocumentMainPreviewProps = {
@@ -110,7 +107,7 @@ export function DocumentMainPreview({
   const shouldShowFailed = document.status === "failed";
   const metaItems = [
     formatFileSize(document.file_size),
-    formatKnowledgeDocumentDateTime(document.updated_at, i18n.resolvedLanguage ?? "zh-CN"),
+    formatDateTime(document.updated_at, i18n.resolvedLanguage ?? "zh-CN") || document.updated_at,
     typeof document.chunk_count === "number" ? `${document.chunk_count} chunks` : null,
   ].filter(Boolean);
 

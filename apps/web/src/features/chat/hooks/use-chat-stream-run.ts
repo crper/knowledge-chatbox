@@ -18,6 +18,17 @@ import { getStreamRunsBySession } from "../utils/stream-run-query";
 const STREAM_RUN_CLEANUP_DELAY_MS = 5 * 60 * 1000;
 const STREAM_DELTA_FLUSH_INTERVAL_MS = 16;
 
+function updateStreamingRun(
+  queryClient: ReturnType<typeof useQueryClient>,
+  runId: number,
+  updater: (current: StreamingRun) => StreamingRun,
+) {
+  queryClient.setQueryData<StreamingRun | undefined>(queryKeys.chat.streamRun(runId), (current) => {
+    if (!current) return current;
+    return updater(normalizeStreamingRun(current as StreamingRunLike));
+  });
+}
+
 /**
  * 管理聊天流式运行的临时状态。
  */
@@ -147,17 +158,10 @@ export function useChatStreamRun() {
 
   const addSource = useCallback(
     (runId: number, source: Record<string, unknown>) => {
-      queryClient.setQueryData<StreamingRun | undefined>(
-        queryKeys.chat.streamRun(runId),
-        (current) => {
-          if (!current) return current;
-          const normalizedCurrent = normalizeStreamingRun(current as StreamingRunLike);
-          return {
-            ...normalizedCurrent,
-            sources: [...normalizedCurrent.sources, source],
-          };
-        },
-      );
+      updateStreamingRun(queryClient, runId, (normalizedCurrent) => ({
+        ...normalizedCurrent,
+        sources: [...normalizedCurrent.sources, source],
+      }));
     },
     [queryClient],
   );
@@ -165,19 +169,14 @@ export function useChatStreamRun() {
   const completeRun = useCallback(
     (runId: number) => {
       flushBufferedDeltas(runId);
-      queryClient.setQueryData<StreamingRun | undefined>(
-        queryKeys.chat.streamRun(runId),
-        (current) => {
-          if (!current) return current;
-          const normalizedCurrent = normalizeStreamingRun(current as StreamingRunLike);
-          cleanupScheduler.schedule(runId);
-          return {
-            ...normalizedCurrent,
-            errorMessage: null,
-            status: MessageStatus.SUCCEEDED,
-          };
-        },
-      );
+      updateStreamingRun(queryClient, runId, (normalizedCurrent) => {
+        cleanupScheduler.schedule(runId);
+        return {
+          ...normalizedCurrent,
+          errorMessage: null,
+          status: MessageStatus.SUCCEEDED,
+        };
+      });
     },
     [cleanupScheduler, flushBufferedDeltas, queryClient],
   );
@@ -185,36 +184,24 @@ export function useChatStreamRun() {
   const failRun = useCallback(
     (runId: number, errorMessage: string | null = null) => {
       flushBufferedDeltas(runId);
-      queryClient.setQueryData<StreamingRun | undefined>(
-        queryKeys.chat.streamRun(runId),
-        (current) => {
-          if (!current) return current;
-          const normalizedCurrent = normalizeStreamingRun(current as StreamingRunLike);
-          cleanupScheduler.schedule(runId);
-          return {
-            ...normalizedCurrent,
-            errorMessage,
-            status: MessageStatus.FAILED,
-          };
-        },
-      );
+      updateStreamingRun(queryClient, runId, (normalizedCurrent) => {
+        cleanupScheduler.schedule(runId);
+        return {
+          ...normalizedCurrent,
+          errorMessage,
+          status: MessageStatus.FAILED,
+        };
+      });
     },
     [cleanupScheduler, flushBufferedDeltas, queryClient],
   );
 
   const markToastShown = useCallback(
     (runId: number) => {
-      queryClient.setQueryData<StreamingRun | undefined>(
-        queryKeys.chat.streamRun(runId),
-        (current) => {
-          if (!current) return current;
-          const normalizedCurrent = normalizeStreamingRun(current as StreamingRunLike);
-          return {
-            ...normalizedCurrent,
-            toastShown: true,
-          };
-        },
-      );
+      updateStreamingRun(queryClient, runId, (normalizedCurrent) => ({
+        ...normalizedCurrent,
+        toastShown: true,
+      }));
     },
     [queryClient],
   );
