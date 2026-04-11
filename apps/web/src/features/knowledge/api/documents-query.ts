@@ -74,8 +74,9 @@ export function documentsListQueryOptions(
         pollCount = 0;
         return false;
       }
+      const interval = computePollInterval(pollCount);
       pollCount += 1;
-      return computePollInterval(pollCount);
+      return interval;
     },
   });
 }
@@ -114,8 +115,9 @@ export function documentListSummaryQueryOptions() {
         pollCount = 0;
         return false;
       }
+      const interval = computePollInterval(pollCount);
       pollCount += 1;
-      return computePollInterval(pollCount);
+      return interval;
     },
   });
 }

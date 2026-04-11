@@ -155,10 +155,15 @@ def create_app() -> FastAPI:
                     lambda: SpaceRepository(session).ensure_personal_space(user_id=admin.id),
                 )
                 settings_service = SettingsService(session, settings)
-                run_startup_step(
+                settings_record = run_startup_step(
                     "ensure_app_settings",
                     settings_service.get_or_create_settings_record,
                 )
+
+                def warmup_active_chroma_collection() -> None:
+                    session.refresh(settings_record)
+                    get_chroma_store().warmup(settings_record.active_index_generation)
+
                 compensated_documents = run_startup_step(
                     "compensate_processing_documents",
                     lambda: compensate_processing_documents(session, settings),
@@ -173,11 +178,7 @@ def create_app() -> FastAPI:
                 )
                 run_startup_step(
                     "warmup_chroma_collection",
-                    lambda: get_chroma_store().warmup(
-                        SettingsService(session, settings)
-                        .get_or_create_settings_record()
-                        .active_index_generation
-                    ),
+                    warmup_active_chroma_collection,
                 )
                 logger.info(
                     "Startup compensation completed",

@@ -39,11 +39,17 @@ print_urls() {
   log "  OpenAPI JSON: http://localhost:${API_PORT}/openapi.json"
 
   local admin_username
+  local admin_password
   admin_username="$(read_env_value INITIAL_ADMIN_USERNAME)"
   admin_username="${admin_username:-admin}"
   log "  Bootstrap admin: ${admin_username}"
   if [[ -f "$ENV_FILE" ]]; then
-    log "  登录密码请查看 ${ENV_FILE} 中的 INITIAL_ADMIN_PASSWORD"
+    admin_password="$(read_env_value INITIAL_ADMIN_PASSWORD)"
+    if [[ -n "$admin_password" ]]; then
+      log "  登录密码请查看 ${ENV_FILE} 中的 INITIAL_ADMIN_PASSWORD"
+    else
+      log "  未检测到 INITIAL_ADMIN_PASSWORD，请先运行 just init-env"
+    fi
   fi
 }
 

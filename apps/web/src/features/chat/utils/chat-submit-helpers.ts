@@ -1,5 +1,6 @@
 import { trim } from "es-toolkit";
 
+import { ApiRequestError } from "@/lib/api/api-request-error";
 import { getErrorMessage } from "@/lib/utils";
 import type { ChatMessageItem } from "../api/chat";
 import type { ComposerAttachmentItem } from "../store/chat-attachment-store";
@@ -51,7 +52,14 @@ export function collectLocalAttachmentFingerprints(attachments: ComposerAttachme
 
 export function resolveSubmitErrorMessage(error: unknown, fallback: string) {
   const message = trim(getErrorMessage(error, ""));
-  if (!message || message === "chat stream request failed") {
+  const normalizedMessage = message
+    .toLowerCase()
+    .replace(/[.!]+$/g, "")
+    .trim();
+  if (error instanceof ApiRequestError && error.status >= 500) {
+    return fallback;
+  }
+  if (!normalizedMessage || normalizedMessage.includes("chat stream request failed")) {
     return fallback;
   }
   return message;
