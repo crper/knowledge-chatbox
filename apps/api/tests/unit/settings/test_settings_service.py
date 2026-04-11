@@ -23,6 +23,18 @@ from knowledge_chatbox_api.services.settings.settings_service import (
     SettingsService,
 )
 
+_TEST_JWT_KEY = "test-jwt-secret-key-for-unit-tests-32ch"
+_TEST_ADMIN_PW = "Admin123456"
+
+
+def _test_settings(**overrides):
+    return Settings(
+        _env_file=None,
+        jwt_secret_key=_TEST_JWT_KEY,
+        initial_admin_password=_TEST_ADMIN_PW,
+        **overrides,
+    )
+
 
 def create_settings_service(migrated_db_session) -> SettingsService:
     return SettingsService(migrated_db_session, get_settings())
@@ -38,7 +50,7 @@ def seed_admin(migrated_db_session):
 
 
 def test_settings_service_bootstraps_routes_and_profiles(migrated_db_session) -> None:
-    service = SettingsService(migrated_db_session, Settings(_env_file=None))
+    service = SettingsService(migrated_db_session, _test_settings())
 
     settings_record = service.get_or_create_settings()
 
@@ -53,13 +65,13 @@ def test_settings_only_accepts_initial_response_provider_env(monkeypatch) -> Non
     monkeypatch.delenv("INITIAL_RESPONSE_PROVIDER", raising=False)
     monkeypatch.setenv("INITIAL_ACTIVE_PROVIDER", "anthropic")
 
-    settings = Settings(_env_file=None)
+    settings = _test_settings()
 
     assert settings.initial_response_provider == "ollama"
 
     monkeypatch.setenv("INITIAL_RESPONSE_PROVIDER", "anthropic")
 
-    settings = Settings(_env_file=None)
+    settings = _test_settings()
 
     assert settings.initial_response_provider == "anthropic"
 
@@ -70,7 +82,7 @@ def test_settings_accepts_comma_separated_cors_allow_origins(monkeypatch) -> Non
         "http://localhost:3000, http://127.0.0.1:5173",
     )
 
-    settings = Settings(_env_file=None)
+    settings = _test_settings()
 
     assert settings.cors_allow_origins == (
         "http://localhost:3000",
@@ -84,7 +96,7 @@ def test_settings_accepts_json_array_and_blank_cors_allow_origins(monkeypatch) -
         '["http://localhost:3000", "http://127.0.0.1:5173"]',
     )
 
-    settings = Settings(_env_file=None)
+    settings = _test_settings()
 
     assert settings.cors_allow_origins == (
         "http://localhost:3000",
@@ -93,14 +105,13 @@ def test_settings_accepts_json_array_and_blank_cors_allow_origins(monkeypatch) -
 
     monkeypatch.setenv("CORS_ALLOW_ORIGINS", "   ")
 
-    settings = Settings(_env_file=None)
+    settings = _test_settings()
 
     assert settings.cors_allow_origins == ()
 
 
 def test_settings_resolves_storage_paths_to_absolute_runtime_paths(tmp_path) -> None:
-    settings = Settings(
-        _env_file=None,
+    settings = _test_settings(
         project_root=tmp_path,
         data_dir=Path("runtime-data"),
         upload_dir=Path("uploads"),
@@ -118,13 +129,13 @@ def test_settings_resolves_storage_paths_to_absolute_runtime_paths(tmp_path) -> 
 
 def test_settings_positive_int_fields_reject_non_positive_values() -> None:
     with pytest.raises(PydanticValidationError):
-        Settings(_env_file=None, session_ttl_hours=0)
+        _test_settings(session_ttl_hours=0)
 
     with pytest.raises(PydanticValidationError):
-        Settings(_env_file=None, login_rate_limit_attempts=0)
+        _test_settings(login_rate_limit_attempts=0)
 
     with pytest.raises(PydanticValidationError):
-        Settings(_env_file=None, initial_provider_timeout_seconds=0)
+        _test_settings(initial_provider_timeout_seconds=0)
 
 
 def test_parse_runtime_settings_accepts_attribute_and_mapping_inputs(migrated_db_session) -> None:
@@ -242,7 +253,7 @@ def test_db_session_uses_singleton_engine_and_session_factory(monkeypatch, tmp_p
 def test_settings_api_returns_capability_first_shape(api_client: TestClient) -> None:
     api_client.post(
         "/api/auth/login",
-        json={"username": "admin", "password": "admin123456"},
+        json={"username": "admin", "password": "Admin123456"},
     )
 
     response = api_client.get("/api/settings")
@@ -260,7 +271,7 @@ def test_settings_api_returns_capability_first_shape(api_client: TestClient) -> 
 def test_test_routes_endpoint_returns_three_capabilities(api_client: TestClient) -> None:
     api_client.post(
         "/api/auth/login",
-        json={"username": "admin", "password": "admin123456"},
+        json={"username": "admin", "password": "Admin123456"},
     )
 
     response = api_client.post(

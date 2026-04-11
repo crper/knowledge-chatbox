@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from pathlib import Path
@@ -25,12 +26,17 @@ from tests.fixtures.stubs import (
 ALEMBIC_CONFIG_PATH = Path(__file__).resolve().parents[1] / "alembic.ini"
 DEFAULT_ADMIN_ENV = {
     "INITIAL_ADMIN_USERNAME": "admin",
-    "INITIAL_ADMIN_PASSWORD": "admin123456",
+    "INITIAL_ADMIN_PASSWORD": "Admin123456",
+    "JWT_SECRET_KEY": "test-jwt-secret-key-for-unit-tests-32ch",
 }
 
 
 @pytest.fixture(autouse=True)
-def clear_settings_cache() -> None:
+def clear_settings_cache(monkeypatch: pytest.MonkeyPatch) -> None:
+    if not os.environ.get("JWT_SECRET_KEY"):
+        monkeypatch.setenv("JWT_SECRET_KEY", "test-jwt-secret-key-for-unit-tests-32ch")
+    if not os.environ.get("INITIAL_ADMIN_PASSWORD"):
+        monkeypatch.setenv("INITIAL_ADMIN_PASSWORD", "Admin123456")
     get_settings.cache_clear()
     _build_rate_limit_service.cache_clear()
     yield
@@ -48,6 +54,8 @@ def _prepare_test_runtime(
     monkeypatch.delenv("SESSION_COOKIE_SECURE", raising=False)
     monkeypatch.setenv("SQLITE_PATH", str(sqlite_path))
     monkeypatch.setenv("CHROMA_PATH", str(chroma_path))
+    monkeypatch.setenv("JWT_SECRET_KEY", "test-jwt-secret-key-for-unit-tests-32ch")
+    monkeypatch.setenv("INITIAL_ADMIN_PASSWORD", "Admin123456")
     for key, value in (env_overrides or {}).items():
         monkeypatch.setenv(key, value)
     get_settings.cache_clear()
@@ -257,7 +265,7 @@ def logged_in_admin(api_client: TestClient) -> dict:
     """登录管理员并返回认证信息"""
     response = api_client.post(
         "/api/auth/login",
-        json={"username": "admin", "password": "admin123456"},
+        json={"username": "admin", "password": "Admin123456"},
     )
     assert response.status_code == 200
     return {

@@ -3,10 +3,10 @@
 import base64
 from time import perf_counter
 from typing import Any, cast
-from urllib.parse import urlsplit, urlunsplit
 
 from openai import NOT_GIVEN
 
+from knowledge_chatbox_api.core.logging import get_logger
 from knowledge_chatbox_api.providers.base import (
     DEFAULT_VISION_PROMPT,
     BaseEmbeddingAdapter,
@@ -24,11 +24,13 @@ from knowledge_chatbox_api.providers.base import (
     build_reasoning_config,
     provider_retry,
 )
+from knowledge_chatbox_api.providers.ollama_url import normalize_provider_base_url
 from knowledge_chatbox_api.utils.timing import elapsed_ms
 
 DEFAULT_MAX_OUTPUT_TOKENS = 4096
 OPENAI_MODEL_NOT_AVAILABLE_CODE = "openai_model_not_available"
 OPENAI_INVALID_API_KEY_CODE = "openai_invalid_api_key"
+logger = get_logger(__name__)
 
 
 class OpenAIModelNotAvailableError(Exception):
@@ -52,17 +54,7 @@ class _OpenAIClientMixin(ClientCacheMixin):
         self.client_factory = client_factory
 
     def _normalize_base_url(self, base_url: str | None) -> str | None:
-        if not base_url:
-            return None
-
-        parsed = urlsplit(base_url.strip())
-        if not parsed.scheme or not parsed.netloc:
-            return base_url.strip().rstrip("/") or None
-
-        normalized_path = parsed.path.rstrip("/") or "/v1"
-        return urlunsplit(
-            (parsed.scheme, parsed.netloc, normalized_path, parsed.query, parsed.fragment)
-        )
+        return normalize_provider_base_url(base_url, ensure_v1_suffix=True)
 
     def _client(self, settings: ProviderSettings):
         from openai import OpenAI
@@ -165,9 +157,9 @@ class _OpenAIClientMixin(ClientCacheMixin):
 
     def _run_health_check(self, settings, model: str) -> ProviderHealthResult:
         start = perf_counter()
+        if not self._api_key(settings):
+            return ProviderHealthResult(healthy=False, message="OpenAI API key is missing.")
         try:
-            if not self._api_key(settings):
-                return ProviderHealthResult(healthy=False, message="OpenAI API key is missing.")
             self._quick_model_check(settings, model)
         except OpenAIInvalidApiKeyError as exc:
             return ProviderHealthResult(
@@ -279,7 +271,8 @@ class OpenAIResponseAdapter(_OpenAIClientMixin, BaseResponseAdapter):
                             usage=cast(Any, usage_payload),
                         )
         except Exception as exc:  # noqa: BLE001
-            yield ResponseStreamChunk(type="error", error_message=str(exc))
+            logger.warning("openai_stream_error", error_message=str(exc))
+            yield ResponseStreamChunk(type="error", error_message="Provider stream error.")
 
     def health_check(self, settings: ResponseSettings) -> ProviderHealthResult:
         return self._run_health_check(settings, settings.response_route.model)

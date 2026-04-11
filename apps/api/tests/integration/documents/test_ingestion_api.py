@@ -12,14 +12,12 @@ from tests.fixtures.stubs import InMemoryChromaStore
 
 from knowledge_chatbox_api.core.config import get_settings
 from knowledge_chatbox_api.db.session import create_session_factory
+from knowledge_chatbox_api.models.enums import IndexRebuildStatus
 from knowledge_chatbox_api.repositories.document_repository import DocumentRepository
 from knowledge_chatbox_api.services.documents.chunking_service import ChunkingService
 from knowledge_chatbox_api.services.documents.indexing_service import IndexingService
 from knowledge_chatbox_api.services.documents.ingestion_service import IngestionService
-from knowledge_chatbox_api.services.settings.settings_service import (
-    INDEX_REBUILD_STATUS_RUNNING,
-    SettingsService,
-)
+from knowledge_chatbox_api.services.settings.settings_service import SettingsService
 from knowledge_chatbox_api.tasks import document_jobs
 from knowledge_chatbox_api.utils.chroma import get_chroma_store
 from knowledge_chatbox_api.utils.document_types import derive_section_title
@@ -28,7 +26,7 @@ from knowledge_chatbox_api.utils.document_types import derive_section_title
 def login_admin(api_client: TestClient) -> None:
     response = api_client.post(
         "/api/auth/login",
-        json={"username": "admin", "password": "admin123456"},
+        json={"username": "admin", "password": "Admin123456"},
     )
     assert response.status_code == 200
 
@@ -214,7 +212,7 @@ def test_upload_readiness_blocks_when_pending_embedding_is_not_configured(
             "provider": "voyage",
             "model": "voyage-3.5",
         }
-        settings_record.index_rebuild_status = INDEX_REBUILD_STATUS_RUNNING
+        settings_record.index_rebuild_status = IndexRebuildStatus.RUNNING
         settings_record.building_index_generation = settings_record.active_index_generation + 1
 
     update_provider_profiles(break_pending_voyage)
@@ -273,7 +271,7 @@ def test_upload_document_writes_to_building_generation_when_rebuild_running(
             "provider": "ollama",
             "model": "nomic-embed-text",
         }
-        settings_record.index_rebuild_status = INDEX_REBUILD_STATUS_RUNNING
+        settings_record.index_rebuild_status = IndexRebuildStatus.RUNNING
         settings_record.building_index_generation = settings_record.active_index_generation + 1
         active_generation = settings_record.active_index_generation
         building_generation = settings_record.building_index_generation

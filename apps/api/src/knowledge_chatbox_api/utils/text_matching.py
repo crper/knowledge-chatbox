@@ -1,6 +1,7 @@
 """Text matching utilities for retrieval and search."""
 
 import re
+from itertools import pairwise
 
 
 def _is_cjk_character(char: str) -> bool:
@@ -34,7 +35,7 @@ def raw_quoted_phrases(text: str) -> list[str]:
 def _extract_cjk_tokens(cjk_chars: list[str]) -> set[str]:
     if len(cjk_chars) == 1:
         return {cjk_chars[0]}
-    return {cjk_chars[i] + cjk_chars[i + 1] for i in range(len(cjk_chars) - 1)}
+    return {a + b for a, b in pairwise(cjk_chars)}
 
 
 def tokenize_text(text: str) -> set[str]:

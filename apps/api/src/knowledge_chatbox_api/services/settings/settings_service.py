@@ -10,6 +10,7 @@ from knowledge_chatbox_api.core.config import Settings
 from knowledge_chatbox_api.models.auth import User
 from knowledge_chatbox_api.models.enums import (
     IndexRebuildStatus,
+    ProviderName,
     ReasoningMode,
     SettingsScopeType,
     UserRole,
@@ -54,14 +55,11 @@ DEFAULT_SYSTEM_PROMPT = (
     "永远回复中文。"
 )
 MASKED_SECRET_VALUE = "********"
-INDEX_REBUILD_STATUS_IDLE = IndexRebuildStatus.IDLE
-INDEX_REBUILD_STATUS_RUNNING = IndexRebuildStatus.RUNNING
-INDEX_REBUILD_STATUS_FAILED = IndexRebuildStatus.FAILED
-PROFILE_SECRET_FIELDS = {
-    "openai": ("api_key",),
-    "anthropic": ("api_key",),
-    "voyage": ("api_key",),
-    "ollama": (),
+PROFILE_SECRET_FIELDS: dict[ProviderName, tuple[str, ...]] = {
+    ProviderName.OPENAI: ("api_key",),
+    ProviderName.ANTHROPIC: ("api_key",),
+    ProviderName.VOYAGE: ("api_key",),
+    ProviderName.OLLAMA: (),
 }
 
 
@@ -451,7 +449,7 @@ class SettingsService:
     ) -> dict[str, Any]:
         masked = dump_provider_profiles(profiles)
         for provider_name, secret_fields in PROFILE_SECRET_FIELDS.items():
-            provider_profile = masked.setdefault(provider_name, {})
+            provider_profile = masked.setdefault(provider_name.value, {})
             for field in secret_fields:
                 if provider_profile.get(field):
                     provider_profile[field] = MASKED_SECRET_VALUE

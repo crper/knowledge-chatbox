@@ -1,5 +1,7 @@
 """Knowledge retrieval helpers used by chat prompt assembly."""
 
+import logging
+from concurrent.futures import ThreadPoolExecutor
 from time import perf_counter
 from typing import Any
 
@@ -16,6 +18,11 @@ from knowledge_chatbox_api.utils.text_matching import (
     normalize_and_tokenize,
     quoted_phrases,
 )
+
+logger = logging.getLogger(__name__)
+
+_EMBED_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="embed")
+_EMBED_TIMEOUT_SECONDS = 120
 
 
 class RetrievalService:
@@ -71,8 +78,23 @@ class RetrievalService:
             )
 
         generation = getattr(self.settings, "active_index_generation", 1)
-        query_embedding = self.query_engine.embed_query_or_none(normalized_query)
 
+        embed_future = _EMBED_EXECUTOR.submit(
+            self.query_engine.embed_query_or_none, normalized_query
+        )
+
+        lexical_chunks = self.query_engine.query_lexical_chunks(
+            normalized_query,
+            active_space_id=active_space_id,
+            attachment_revision_ids=attachment_revision_ids,
+            generation=generation,
+        )
+
+        try:
+            query_embedding = embed_future.result(timeout=_EMBED_TIMEOUT_SECONDS)
+        except Exception:
+            logger.warning("embed_future_timeout_or_error", exc_info=True)
+            query_embedding = None
         vector_chunks = self.query_engine.query_retrieved_chunks(
             normalized_query,
             active_space_id=active_space_id,
@@ -81,6 +103,7 @@ class RetrievalService:
             query_embedding=query_embedding,
             where_filter=where_filter,
         )
+
         relevant_vector_chunks = [
             record
             for record in vector_chunks
@@ -104,12 +127,6 @@ class RetrievalService:
                 ),
             )
 
-        lexical_chunks = self.query_engine.query_lexical_chunks(
-            normalized_query,
-            active_space_id=active_space_id,
-            attachment_revision_ids=attachment_revision_ids,
-            generation=generation,
-        )
         relevant_lexical_chunks = [
             record
             for record in lexical_chunks

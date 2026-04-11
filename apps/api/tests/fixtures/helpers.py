@@ -9,7 +9,7 @@ def login_as_admin(api_client: TestClient) -> dict[str, Any]:
     """登录管理员并返回响应数据"""
     response = api_client.post(
         "/api/auth/login",
-        json={"username": "admin", "password": "admin123456"},
+        json={"username": "admin", "password": "Admin123456"},
     )
     assert response.status_code == 200
     return response.json()["data"]

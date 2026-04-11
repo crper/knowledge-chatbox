@@ -4,7 +4,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from knowledge_chatbox_api.db.session import create_session_factory
-from knowledge_chatbox_api.models.enums import ChatMessageStatus, ChatRunStatus, IngestStatus
+from knowledge_chatbox_api.models.enums import (
+    ChatMessageStatus,
+    ChatRunStatus,
+    IndexRebuildStatus,
+    IngestStatus,
+)
 from knowledge_chatbox_api.repositories.chat_repository import ChatRepository
 from knowledge_chatbox_api.repositories.chat_run_repository import ChatRunRepository
 from knowledge_chatbox_api.repositories.document_repository import DocumentRepository
@@ -12,11 +17,7 @@ from knowledge_chatbox_api.services.chat.chat_run_service import STREAM_INTERRUP
 from knowledge_chatbox_api.services.documents.constants import IMAGE_DOCUMENT_FILE_TYPES
 from knowledge_chatbox_api.services.documents.ingestion_service import IngestionService
 from knowledge_chatbox_api.services.documents.rebuild_service import RebuildService
-from knowledge_chatbox_api.services.settings.settings_service import (
-    INDEX_REBUILD_STATUS_FAILED,
-    INDEX_REBUILD_STATUS_RUNNING,
-    SettingsService,
-)
+from knowledge_chatbox_api.services.settings.settings_service import SettingsService
 
 
 def complete_document_ingestion(settings, revision_id: int) -> bool:
@@ -72,9 +73,9 @@ def compensate_index_rebuild_status(session, settings) -> bool:
     """启动时将 running 的重建状态补偿为 failed。"""
     service = SettingsService(session, settings)
     settings_record = service.get_or_create_settings_record()
-    if settings_record.index_rebuild_status != INDEX_REBUILD_STATUS_RUNNING:
+    if settings_record.index_rebuild_status != IndexRebuildStatus.RUNNING:
         return False
-    settings_record.index_rebuild_status = INDEX_REBUILD_STATUS_FAILED
+    settings_record.index_rebuild_status = IndexRebuildStatus.FAILED
     session.commit()
     return True
 

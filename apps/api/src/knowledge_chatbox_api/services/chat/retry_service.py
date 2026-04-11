@@ -1,5 +1,6 @@
 """聊天相关服务模块。"""
 
+from knowledge_chatbox_api.core.errors import AppError
 from knowledge_chatbox_api.models.enums import (
     ChatMessageRole,
     ChatMessageStatus,
@@ -7,12 +8,20 @@ from knowledge_chatbox_api.models.enums import (
 from knowledge_chatbox_api.repositories.chat_repository import ChatRepository
 
 
-class RetryTargetNotFoundError(Exception):
+class RetryTargetNotFoundError(AppError):
     """表示重试目标消息不存在或不可重试。"""
 
+    status_code = 404
+    code = "chat_message_not_found"
+    default_message = "Retry target not found."
 
-class DuplicateClientRequestConflictError(Exception):
+
+class DuplicateClientRequestConflictError(AppError):
     """表示幂等键已被不同请求载荷占用。"""
+
+    status_code = 409
+    code = "chat_message_conflict"
+    default_message = "client_request_id already exists for a different message payload."
 
 
 _ATTACHMENT_COMPARE_FIELDS = (

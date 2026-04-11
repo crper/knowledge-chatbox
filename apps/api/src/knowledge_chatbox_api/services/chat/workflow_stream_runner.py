@@ -11,13 +11,7 @@ from knowledge_chatbox_api.core.logging import get_logger
 from knowledge_chatbox_api.models.enums import ChatMessageStatus
 from knowledge_chatbox_api.services.chat.chat_persistence_service import ChatPersistenceService
 from knowledge_chatbox_api.services.chat.stream_events import (
-    MESSAGE_COMPLETED_EVENT,
-    PART_TEXT_DELTA_EVENT,
-    PART_TEXT_END_EVENT,
-    PART_TEXT_START_EVENT,
-    RUN_COMPLETED_EVENT,
-    RUN_FAILED_EVENT,
-    USAGE_FINAL_EVENT,
+    StreamEvent,
     StreamEventBatchItem,
     StreamEventEnvelope,
     StreamEventName,
@@ -114,11 +108,11 @@ class WorkflowStreamRunner:
                         run_id=self.run.id,
                         assistant_message_id=self.assistant_message.id,
                     ):
-                        if event_name == PART_TEXT_START_EVENT:
+                        if event_name == StreamEvent.PART_TEXT_START:
                             self.persistence.mark_run_running(self.run, self.assistant_message)
                             started_text = True
                             event_seq, event = self._append_event(event_seq, event_name, payload)
-                        elif event_name == PART_TEXT_DELTA_EVENT:
+                        elif event_name == StreamEvent.PART_TEXT_DELTA:
                             delta = payload.get("delta", "") or ""
                             self.persistence.append_text_delta(self.assistant_message, delta)
                             event_seq, event = self._append_event(
@@ -148,10 +142,10 @@ class WorkflowStreamRunner:
                     sources=sources,
                 )
                 raise
-            except Exception as exc:  # noqa: BLE001
+            except Exception:  # noqa: BLE001
                 event_seq, event = self._record_failed_run(
                     current_seq=event_seq,
-                    error_message=str(exc),
+                    error_message="Chat processing failed.",
                     failure_type="workflow_error",
                     session_id=session_id,
                     sources=sources,
@@ -175,7 +169,7 @@ class WorkflowStreamRunner:
         if started_text:
             completion_events.append(
                 (
-                    PART_TEXT_END_EVENT,
+                    StreamEvent.PART_TEXT_END,
                     {
                         "run_id": self.run.id,
                         "assistant_message_id": self.assistant_message.id,
@@ -184,7 +178,7 @@ class WorkflowStreamRunner:
             )
         completion_events.append(
             (
-                USAGE_FINAL_EVENT,
+                StreamEvent.USAGE_FINAL,
                 {
                     "run_id": self.run.id,
                     "usage": usage or {},
@@ -209,7 +203,7 @@ class WorkflowStreamRunner:
             next_seq,
             [
                 (
-                    MESSAGE_COMPLETED_EVENT,
+                    StreamEvent.MESSAGE_COMPLETED,
                     {
                         "run_id": self.run.id,
                         "assistant_message_id": self.assistant_message.id,
@@ -217,7 +211,7 @@ class WorkflowStreamRunner:
                     },
                 ),
                 (
-                    RUN_COMPLETED_EVENT,
+                    StreamEvent.RUN_COMPLETED,
                     {
                         "run_id": self.run.id,
                         "assistant_message_id": self.assistant_message.id,
@@ -255,7 +249,7 @@ class WorkflowStreamRunner:
         )
         return self._append_event(
             current_seq,
-            RUN_FAILED_EVENT,
+            StreamEvent.RUN_FAILED,
             {
                 "run_id": self.run.id,
                 "assistant_message_id": self.assistant_message.id,

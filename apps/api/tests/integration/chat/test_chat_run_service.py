@@ -491,7 +491,7 @@ def test_chat_run_service_keeps_retrieved_sources_when_provider_returns_error(
         "run.failed",
     ]
     assert assistant_message.status == "failed"
-    assert assistant_message.error_message == "provider stream failed"
+    assert assistant_message.error_message == "Chat processing failed."
     assert assistant_message.sources_json == [
         {
             "document_id": 7,

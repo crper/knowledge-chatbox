@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 def test_login_sets_http_only_session_cookie_with_path(api_client: TestClient) -> None:
     response = api_client.post(
         "/api/auth/login",
-        json={"username": "admin", "password": "admin123456"},
+        json={"username": "admin", "password": "Admin123456"},
     )
 
     assert response.status_code == 200
@@ -22,7 +22,7 @@ def test_login_sets_http_only_session_cookie_with_path(api_client: TestClient) -
 def test_login_sets_secure_cookie_for_https_requests(api_client_https: TestClient) -> None:
     response = api_client_https.post(
         "/api/auth/login",
-        json={"username": "admin", "password": "admin123456"},
+        json={"username": "admin", "password": "Admin123456"},
     )
 
     assert response.status_code == 200
@@ -37,7 +37,7 @@ def test_login_can_disable_secure_cookie_with_explicit_override(
 ) -> None:
     response = api_client_https_cookie_insecure.post(
         "/api/auth/login",
-        json={"username": "admin", "password": "admin123456"},
+        json={"username": "admin", "password": "Admin123456"},
     )
 
     assert response.status_code == 200
@@ -50,7 +50,7 @@ def test_login_can_disable_secure_cookie_with_explicit_override(
 def test_logout_deletes_session_cookie_with_root_path(api_client: TestClient) -> None:
     api_client.post(
         "/api/auth/login",
-        json={"username": "admin", "password": "admin123456"},
+        json={"username": "admin", "password": "Admin123456"},
     )
 
     response = api_client.post("/api/auth/logout")
@@ -64,7 +64,7 @@ def test_logout_deletes_session_cookie_with_root_path(api_client: TestClient) ->
 def test_login_and_me_return_current_user(api_client: TestClient) -> None:
     login_response = api_client.post(
         "/api/auth/login",
-        json={"username": "admin", "password": "admin123456"},
+        json={"username": "admin", "password": "Admin123456"},
     )
     login_payload = login_response.json()
     access_token = login_payload["data"]["access_token"]
@@ -88,7 +88,7 @@ def test_login_and_me_return_current_user(api_client: TestClient) -> None:
 def test_refresh_rotates_cookie_and_returns_new_access_token(api_client: TestClient) -> None:
     login_response = api_client.post(
         "/api/auth/login",
-        json={"username": "admin", "password": "admin123456"},
+        json={"username": "admin", "password": "Admin123456"},
     )
 
     original_cookie = login_response.cookies.get("knowledge_chatbox_session")
@@ -118,7 +118,7 @@ def test_bootstrap_returns_authenticated_false_without_session_cookie(
 def test_bootstrap_restores_session_without_rotating_cookie(api_client: TestClient) -> None:
     api_client.post(
         "/api/auth/login",
-        json={"username": "admin", "password": "admin123456"},
+        json={"username": "admin", "password": "Admin123456"},
     )
 
     bootstrap_response = api_client.post("/api/auth/bootstrap")
@@ -150,14 +150,14 @@ def test_login_preflight_request_is_allowed(api_client: TestClient) -> None:
 def test_change_password_invalidates_old_session(api_client: TestClient) -> None:
     login_response = api_client.post(
         "/api/auth/login",
-        json={"username": "admin", "password": "admin123456"},
+        json={"username": "admin", "password": "Admin123456"},
     )
     assert login_response.status_code == 200
     old_access_token = login_response.json()["data"]["access_token"]
 
     change_password_response = api_client.post(
         "/api/auth/change-password",
-        json={"current_password": "admin123456", "new_password": "new-admin-123"},
+        json={"current_password": "Admin123456", "new_password": "new-admin-123"},
         headers={"Authorization": f"Bearer {old_access_token}"},
     )
     assert change_password_response.status_code == 200
@@ -175,7 +175,7 @@ def test_change_password_invalidates_old_session(api_client: TestClient) -> None
 def test_patch_preferences_updates_current_user_theme(api_client: TestClient) -> None:
     login_response = api_client.post(
         "/api/auth/login",
-        json={"username": "admin", "password": "admin123456"},
+        json={"username": "admin", "password": "Admin123456"},
     )
     access_token = login_response.json()["data"]["access_token"]
 
@@ -193,11 +193,11 @@ def test_patch_preferences_updates_current_user_theme(api_client: TestClient) ->
 @pytest.mark.parametrize(
     ("path", "payload", "field"),
     [
-        ("/api/auth/login", {"username": "", "password": "admin123456"}, "username"),
+        ("/api/auth/login", {"username": "", "password": "Admin123456"}, "username"),
         ("/api/auth/login", {"username": "admin", "password": "1234567"}, "password"),
         (
             "/api/auth/change-password",
-            {"current_password": "admin123456", "new_password": "1234567"},
+            {"current_password": "Admin123456", "new_password": "1234567"},
             "new_password",
         ),
         ("/api/auth/preferences", {"theme_preference": "blue"}, "theme_preference"),
@@ -211,7 +211,7 @@ def test_auth_request_schemas_reject_invalid_payloads(
 ) -> None:
     api_client.post(
         "/api/auth/login",
-        json={"username": "admin", "password": "admin123456"},
+        json={"username": "admin", "password": "Admin123456"},
     )
 
     if path == "/api/auth/preferences":
@@ -231,7 +231,7 @@ def test_auth_request_schemas_reject_invalid_payloads(
 def test_admin_can_create_user_and_non_admin_is_forbidden(api_client: TestClient) -> None:
     api_client.post(
         "/api/auth/login",
-        json={"username": "admin", "password": "admin123456"},
+        json={"username": "admin", "password": "Admin123456"},
     )
     create_response = api_client.post(
         "/api/users",
@@ -255,7 +255,7 @@ def test_admin_can_create_user_and_non_admin_is_forbidden(api_client: TestClient
 def test_admin_can_delete_regular_user(api_client: TestClient) -> None:
     api_client.post(
         "/api/auth/login",
-        json={"username": "admin", "password": "admin123456"},
+        json={"username": "admin", "password": "Admin123456"},
     )
     create_response = api_client.post(
         "/api/users",
@@ -274,7 +274,7 @@ def test_admin_can_delete_regular_user(api_client: TestClient) -> None:
 def test_admin_cannot_disable_or_delete_admin(api_client: TestClient) -> None:
     api_client.post(
         "/api/auth/login",
-        json={"username": "admin", "password": "admin123456"},
+        json={"username": "admin", "password": "Admin123456"},
     )
     create_response = api_client.post(
         "/api/users",
@@ -292,7 +292,7 @@ def test_admin_cannot_disable_or_delete_admin(api_client: TestClient) -> None:
 def test_admin_update_missing_user_returns_not_found(api_client: TestClient) -> None:
     api_client.post(
         "/api/auth/login",
-        json={"username": "admin", "password": "admin123456"},
+        json={"username": "admin", "password": "Admin123456"},
     )
 
     response = api_client.patch("/api/users/999999", json={"status": "active"})

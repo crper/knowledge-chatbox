@@ -80,7 +80,7 @@ def test_chat_stream_api_emits_runtime_events_and_persists_messages(
 ) -> None:
     del mock_pydanticai_chat_workflow
 
-    api_client.post("/api/auth/login", json={"username": "admin", "password": "admin123456"})
+    api_client.post("/api/auth/login", json={"username": "admin", "password": "Admin123456"})
     session_response = api_client.post("/api/chat/sessions", json={"title": "Stream Session"})
     session_id = session_response.json()["data"]["id"]
 
@@ -126,7 +126,7 @@ def test_chat_stream_api_replays_existing_run_for_duplicate_client_request_id(
         workflow_cls,
     )
 
-    api_client.post("/api/auth/login", json={"username": "admin", "password": "admin123456"})
+    api_client.post("/api/auth/login", json={"username": "admin", "password": "Admin123456"})
     session_response = api_client.post("/api/chat/sessions", json={"title": "Idempotent Session"})
     session_id = session_response.json()["data"]["id"]
 
@@ -173,7 +173,7 @@ def test_chat_stream_api_replays_existing_run_for_duplicate_client_request_id(
 def test_chat_profile_api_exposes_response_route_to_authenticated_users(
     api_client: TestClient,
 ) -> None:
-    api_client.post("/api/auth/login", json={"username": "admin", "password": "admin123456"})
+    api_client.post("/api/auth/login", json={"username": "admin", "password": "Admin123456"})
     api_client.post(
         "/api/users",
         json={"username": "alice", "password": "secret-123", "role": "user"},
@@ -208,7 +208,7 @@ def test_chat_stream_api_passes_unified_image_attachments_to_provider(
         workflow_cls,
     )
 
-    api_client.post("/api/auth/login", json={"username": "admin", "password": "admin123456"})
+    api_client.post("/api/auth/login", json={"username": "admin", "password": "Admin123456"})
     session_response = api_client.post("/api/chat/sessions", json={"title": "Stream Session"})
     session_id = session_response.json()["data"]["id"]
     upload_response = api_client.post(
@@ -266,7 +266,7 @@ def test_settings_api_stays_available_while_chat_stream_is_open(
         workflow_cls,
     )
 
-    api_client.post("/api/auth/login", json={"username": "admin", "password": "admin123456"})
+    api_client.post("/api/auth/login", json={"username": "admin", "password": "Admin123456"})
     session_response = api_client.post("/api/chat/sessions", json={"title": "Stream Session"})
     session_id = session_response.json()["data"]["id"]
     stream_status_code: dict[str, int] = {}
@@ -311,7 +311,7 @@ def test_chat_session_rename_stays_available_while_chat_stream_is_open(
         workflow_cls,
     )
 
-    api_client.post("/api/auth/login", json={"username": "admin", "password": "admin123456"})
+    api_client.post("/api/auth/login", json={"username": "admin", "password": "Admin123456"})
     session_response = api_client.post("/api/chat/sessions", json={"title": "Rename Session"})
     session_id = session_response.json()["data"]["id"]
     stream_status_code: dict[str, int] = {}
@@ -370,7 +370,7 @@ def test_chat_session_creation_stays_available_while_chat_stream_is_open(
         workflow_cls,
     )
 
-    api_client.post("/api/auth/login", json={"username": "admin", "password": "admin123456"})
+    api_client.post("/api/auth/login", json={"username": "admin", "password": "Admin123456"})
     session_response = api_client.post("/api/chat/sessions", json={"title": "Origin Session"})
     session_id = session_response.json()["data"]["id"]
     stream_status_code: dict[str, int] = {}

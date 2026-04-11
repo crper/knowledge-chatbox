@@ -33,7 +33,7 @@ from knowledge_chatbox_api.schemas.settings import (  # noqa: E402 — 模型层
     parse_vision_route,
 )
 
-DEFAULT_PROVIDER_PROFILES = {
+DEFAULT_PROVIDER_PROFILES: dict[str, dict[str, Any]] = {
     "openai": {
         "api_key": None,
         "base_url": "https://api.openai.com/v1",

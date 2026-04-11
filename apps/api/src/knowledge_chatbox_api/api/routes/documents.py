@@ -9,6 +9,7 @@ from fastapi.responses import FileResponse
 from knowledge_chatbox_api.api.deps import CurrentUserDep, DbSessionDep, SettingsDep
 from knowledge_chatbox_api.api.error_responses import DOCUMENT_REINDEX_ERROR_RESPONSES
 from knowledge_chatbox_api.core.logging import get_logger
+from knowledge_chatbox_api.models.enums import IngestStatus
 from knowledge_chatbox_api.repositories.document_repository import DocumentRepository
 from knowledge_chatbox_api.schemas.common import Envelope
 from knowledge_chatbox_api.schemas.document import (
@@ -312,7 +313,7 @@ def reindex_document(
     """重新索引文档。"""
     service = IngestionService(session, settings)
     document = service.reindex_document(current_user, document_id)
-    if document.ingest_status == "failed":
+    if document.ingest_status == IngestStatus.FAILED:
         raise DocumentReindexFailedError(document.error_message)
     return Envelope(success=True, data=to_document_revision_read(document), error=None)
 

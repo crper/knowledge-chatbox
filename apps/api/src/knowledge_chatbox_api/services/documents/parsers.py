@@ -57,7 +57,7 @@ class PdfDocumentParser:
 
     def parse(self, file_path: Path) -> ParsedDocument:
         """处理Parse相关逻辑。"""
-        document = pymupdf.open(str(file_path))
+        document = pymupdf.open(file_path)
         try:
             parts = []
             for page in document:
@@ -148,8 +148,7 @@ class DocxDocumentParser:
     def _collapse_text(self, value: object) -> str:
         if not isinstance(value, str):
             return ""
-        parts = [part.strip() for part in value.replace("\xa0", " ").splitlines()]
-        return " ".join(part for part in parts if part)
+        return " ".join(value.replace("\xa0", " ").split())
 
 
 class ImageDocumentParser:

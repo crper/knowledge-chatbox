@@ -47,8 +47,20 @@ class RetrievalChunkRepository:
             for record in records
             if isinstance(record.get("document_revision_id"), int)
         }
-        for revision_id in revision_ids:
-            self.delete_by_document_id(revision_id, generation=generation)
+        if revision_ids:
+            placeholders = ", ".join(f":rid_{i}" for i in range(len(revision_ids)))
+            params = {
+                **{f"rid_{i}": rid for i, rid in enumerate(revision_ids)},
+                "generation": generation,
+            }
+            self.session.execute(
+                text(
+                    f"DELETE FROM retrieval_chunks_fts "
+                    f"WHERE generation = :generation "
+                    f"AND document_revision_id IN ({placeholders})"
+                ),
+                params,
+            )
 
         self.session.execute(
             text(

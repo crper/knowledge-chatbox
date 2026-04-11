@@ -13,13 +13,11 @@ from knowledge_chatbox_api.db.session import create_session_factory
 from knowledge_chatbox_api.main import _raise_if_database_schema_incompatible, create_app
 from knowledge_chatbox_api.models.auth import User
 from knowledge_chatbox_api.models.chat import ChatMessage, ChatRun
+from knowledge_chatbox_api.models.enums import IndexRebuildStatus
 from knowledge_chatbox_api.models.space import Space
 from knowledge_chatbox_api.repositories.space_repository import SpaceRepository
 from knowledge_chatbox_api.services.chat.chat_run_service import STREAM_INTERRUPTED_ERROR_MESSAGE
-from knowledge_chatbox_api.services.settings.settings_service import (
-    INDEX_REBUILD_STATUS_RUNNING,
-    SettingsService,
-)
+from knowledge_chatbox_api.services.settings.settings_service import SettingsService
 from tests.fixtures.factories import (
     ChatMessageFactory,
     ChatRunFactory,
@@ -73,7 +71,7 @@ def test_startup_compensates_running_index_rebuild(
         service = SettingsService(session, settings)
         settings_record = service.get_or_create_settings_record()
         active_generation = settings_record.active_index_generation
-        settings_record.index_rebuild_status = INDEX_REBUILD_STATUS_RUNNING
+        settings_record.index_rebuild_status = IndexRebuildStatus.RUNNING
         settings_record.building_index_generation = active_generation + 1
         session.commit()
 
@@ -87,6 +85,41 @@ def test_startup_compensates_running_index_rebuild(
         assert reloaded.index_rebuild_status == "failed"
         assert reloaded.active_index_generation == active_generation
         assert reloaded.building_index_generation == active_generation + 1
+
+
+def test_startup_warmups_active_chroma_generation(
+    clear_settings_cache,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    del clear_settings_cache
+    sqlite_path = tmp_path / "app.db"
+    monkeypatch.setenv("SQLITE_PATH", str(sqlite_path))
+    get_settings.cache_clear()
+
+    config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
+    command.upgrade(config, "head")
+
+    settings = get_settings()
+    session_factory = create_session_factory()
+    with session_factory() as session:
+        settings_record = SettingsService(session, settings).get_or_create_settings_record()
+        settings_record.active_index_generation = 3
+        session.commit()
+
+    warmed_generations: list[int] = []
+
+    class WarmupSpy:
+        def warmup(self, generation: int = 1) -> None:
+            warmed_generations.append(generation)
+
+    monkeypatch.setattr("knowledge_chatbox_api.main.get_chroma_store", lambda: WarmupSpy())
+
+    app = create_app()
+    with TestClient(app):
+        pass
+
+    assert warmed_generations == [3]
 
 
 def test_startup_rejects_legacy_schema_instead_of_migrating_it(
@@ -129,7 +162,8 @@ def test_startup_creates_personal_space_for_admin(
     sqlite_path = tmp_path / "app.db"
     monkeypatch.setenv("SQLITE_PATH", str(sqlite_path))
     monkeypatch.setenv("INITIAL_ADMIN_USERNAME", "admin")
-    monkeypatch.setenv("INITIAL_ADMIN_PASSWORD", "admin123456")
+    monkeypatch.setenv("INITIAL_ADMIN_PASSWORD", "Admin123456")
+    monkeypatch.setenv("JWT_SECRET_KEY", "test-jwt-secret-key-for-unit-tests-32ch")
     get_settings.cache_clear()
 
     config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))

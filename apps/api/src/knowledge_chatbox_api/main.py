@@ -41,6 +41,7 @@ from knowledge_chatbox_api.tasks.document_jobs import (
     compensate_index_rebuild_status,
     compensate_processing_documents,
 )
+from knowledge_chatbox_api.utils.chroma import get_chroma_store
 from knowledge_chatbox_api.utils.timing import elapsed_ms
 
 
@@ -138,9 +139,10 @@ def create_app() -> FastAPI:
                     "ensure_personal_space",
                     lambda: SpaceRepository(session).ensure_personal_space(user_id=admin.id),
                 )
+                settings_service = SettingsService(session, settings)
                 run_startup_step(
                     "ensure_app_settings",
-                    lambda: SettingsService(session, settings).get_or_create_settings_record(),
+                    settings_service.get_or_create_settings_record,
                 )
                 compensated_documents = run_startup_step(
                     "compensate_processing_documents",
@@ -153,6 +155,14 @@ def create_app() -> FastAPI:
                 compensated_rebuild = run_startup_step(
                     "compensate_index_rebuild_status",
                     lambda: compensate_index_rebuild_status(session, settings),
+                )
+                run_startup_step(
+                    "warmup_chroma_collection",
+                    lambda: get_chroma_store().warmup(
+                        SettingsService(session, settings)
+                        .get_or_create_settings_record()
+                        .active_index_generation
+                    ),
                 )
                 logger.info(
                     "Startup compensation completed",
@@ -167,26 +177,32 @@ def create_app() -> FastAPI:
                 raise
         yield
 
+    is_production = settings.environment == "production"
+
     app = FastAPI(
         title=settings.app_name,
         summary=API_SUMMARY,
         description=API_DESCRIPTION,
         version=__version__,
-        docs_url="/docs",
-        redoc_url="/redoc",
-        openapi_url="/openapi.json",
+        docs_url="/docs" if not is_production else None,
+        redoc_url="/redoc" if not is_production else None,
+        openapi_url="/openapi.json" if not is_production else None,
         openapi_tags=OPENAPI_TAGS,
         lifespan=lifespan,
     )
     app.add_middleware(CorrelationIdMiddleware)
 
     if settings.cors_allow_origins:
+        if "*" in settings.cors_allow_origins:
+            raise RuntimeError(
+                "CORS_ALLOW_ORIGINS cannot contain '*'. Specify explicit origins instead."
+            )
         app.add_middleware(
             CORSMiddleware,
             allow_origins=list(settings.cors_allow_origins),
             allow_credentials=True,
-            allow_methods=["*"],
-            allow_headers=["*"],
+            allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+            allow_headers=["Authorization", "Content-Type", "Accept", "X-Correlation-ID"],
         )
 
     @app.middleware("http")

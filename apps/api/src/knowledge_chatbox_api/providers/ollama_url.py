@@ -1,8 +1,38 @@
-"""Helpers for normalizing Ollama base URLs."""
+"""Helpers for normalizing provider base URLs."""
 
 from urllib.parse import urlsplit, urlunsplit
 
 from knowledge_chatbox_api.utils.helpers import strip_or_none
+
+
+def normalize_provider_base_url(
+    base_url: str | None,
+    *,
+    default: str | None = None,
+    ensure_v1_suffix: bool = True,
+) -> str | None:
+    normalized = (base_url or default or "").strip().rstrip("/")
+    if not normalized:
+        return None
+
+    parsed = urlsplit(normalized)
+    if not parsed.scheme or not parsed.netloc:
+        candidate = f"https://{normalized}"
+        reparsed = urlsplit(candidate)
+        if reparsed.scheme and reparsed.netloc:
+            normalized = candidate
+            parsed = reparsed
+        else:
+            result = normalized.rstrip("/")
+            if ensure_v1_suffix and not result.endswith("/v1"):
+                result = f"{result}/v1"
+            return result or None
+
+    path = parsed.path.rstrip("/")
+    if ensure_v1_suffix and not path.endswith("/v1"):
+        path = f"{path}/v1"
+    result = urlunsplit((parsed.scheme, parsed.netloc, path, parsed.query, parsed.fragment))
+    return result or None
 
 
 def _trim_v1_suffix(path: str) -> str:

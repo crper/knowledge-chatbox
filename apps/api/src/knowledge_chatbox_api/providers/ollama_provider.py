@@ -6,6 +6,7 @@ from functools import lru_cache
 from time import perf_counter
 from typing import Any
 
+from knowledge_chatbox_api.core.logging import get_logger
 from knowledge_chatbox_api.providers.base import (
     DEFAULT_VISION_PROMPT,
     BaseEmbeddingAdapter,
@@ -36,6 +37,7 @@ OLLAMA_PROXY_ENV_KEYS = (
     "HTTPS_PROXY",
     "https_proxy",
 )
+logger = get_logger(__name__)
 
 
 @lru_cache(maxsize=1)
@@ -155,9 +157,6 @@ class _OllamaClientMixin(ClientCacheMixin):
     def __init__(self, client_factory=None) -> None:
         super().__init__()
         self.client_factory = client_factory
-
-    def _request_timeout(self, settings: ProviderSettings) -> float:
-        return float(settings.provider_timeout_seconds)
 
     def _host(self, settings: ProviderSettings) -> str:
         return (
@@ -285,7 +284,8 @@ class OllamaResponseAdapter(_OllamaClientMixin, BaseResponseAdapter):
                     )
                     return
         except Exception as exc:  # noqa: BLE001
-            yield ResponseStreamChunk(type="error", error_message=str(exc))
+            logger.warning("ollama_stream_error", error_message=str(exc))
+            yield ResponseStreamChunk(type="error", error_message="Provider stream error.")
 
     def health_check(self, settings: ResponseSettings) -> ProviderHealthResult:
         return self._health_check(

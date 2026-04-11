@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 
 from knowledge_chatbox_api.models.enums import ChatMessageStatus, ChatRunStatus
 
-TEXT_DELTA_FLUSH_INTERVAL = 8
+TEXT_DELTA_FLUSH_INTERVAL = 32
 
 
 class ChatPersistenceService:
