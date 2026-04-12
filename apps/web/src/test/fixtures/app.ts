@@ -92,7 +92,7 @@ export function buildAppSettings(overrides: AppSettingsOverrides = {}): AppSetti
     reindex_required: false,
   };
 
-  return {
+  const settings = {
     ...base,
     ...overrides,
     provider_profiles: {
@@ -130,6 +130,27 @@ export function buildAppSettings(overrides: AppSettingsOverrides = {}): AppSetti
     vision_route: {
       ...base.vision_route,
       ...overrides.vision_route,
+    },
+  };
+
+  const effectiveEmbeddingRoute = settings.pending_embedding_route ?? settings.embedding_route;
+
+  return {
+    ...settings,
+    provider_profiles: {
+      ...settings.provider_profiles,
+      [settings.response_route.provider]: {
+        ...settings.provider_profiles[settings.response_route.provider],
+        chat_model: settings.response_route.model,
+      },
+      [effectiveEmbeddingRoute.provider]: {
+        ...settings.provider_profiles[effectiveEmbeddingRoute.provider],
+        embedding_model: effectiveEmbeddingRoute.model,
+      },
+      [settings.vision_route.provider]: {
+        ...settings.provider_profiles[settings.vision_route.provider],
+        vision_model: settings.vision_route.model,
+      },
     },
   };
 }

@@ -251,6 +251,93 @@ describe("documents api", () => {
     globalThis.XMLHttpRequest = originalXMLHttpRequest;
   });
 
+  it("retries the upload once after refreshing the access token", async () => {
+    setAccessToken("stale-token");
+    useSessionStore.getState().setStatus("authenticated");
+
+    const originalXMLHttpRequest = globalThis.XMLHttpRequest;
+    globalThis.XMLHttpRequest = MockXMLHttpRequest as unknown as typeof XMLHttpRequest;
+
+    overrideHandler(
+      http.post("*/api/auth/refresh", () => {
+        return apiResponse({
+          access_token: "fresh-token",
+          expires_in: 3600,
+        });
+      }),
+    );
+
+    const uploadPromise = uploadDocument(
+      new File(["content"], "test.pdf", { type: "application/pdf" }),
+    );
+
+    await vi.waitFor(() => {
+      expect(MockXMLHttpRequest.instances).toHaveLength(1);
+    });
+
+    const firstRequest = MockXMLHttpRequest.instances[0]!;
+    expect(firstRequest.headers["Authorization"]).toBe("Bearer stale-token");
+    firstRequest.simulateResponse(
+      401,
+      JSON.stringify({
+        success: false,
+        data: null,
+        error: {
+          code: "unauthorized",
+          message: "Authentication required.",
+        },
+      }),
+      "Unauthorized",
+    );
+
+    await vi.waitFor(() => {
+      expect(MockXMLHttpRequest.instances).toHaveLength(2);
+    });
+
+    const retryRequest = MockXMLHttpRequest.instances[1]!;
+    expect(retryRequest.headers["Authorization"]).toBe("Bearer fresh-token");
+    retryRequest.simulateResponse(
+      200,
+      JSON.stringify({
+        success: true,
+        data: {
+          deduplicated: false,
+          document: {
+            id: 1,
+            title: "test.pdf",
+            ingest_status: "pending",
+            created_at: "2026-03-19T08:00:00Z",
+          },
+          revision: {
+            id: 1,
+            document_id: 1,
+            revision_no: 1,
+            source_filename: "test.pdf",
+            ingest_status: "pending",
+            created_at: "2026-03-19T08:00:00Z",
+          },
+          latest_revision: {
+            id: 1,
+            document_id: 1,
+            revision_no: 1,
+            source_filename: "test.pdf",
+            ingest_status: "pending",
+            created_at: "2026-03-19T08:00:00Z",
+          },
+        },
+        error: null,
+      }),
+    );
+
+    await expect(uploadPromise).resolves.toMatchObject({
+      id: 1,
+      name: "test.pdf",
+    });
+    expect(getAccessToken()).toBe("fresh-token");
+
+    globalThis.XMLHttpRequest = originalXMLHttpRequest;
+  });
+
   it("does not clear a newer session when an older upload refresh fails later", async () => {
     setAccessToken("stale-token");
     useSessionStore.getState().setStatus("authenticated");

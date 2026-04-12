@@ -3,16 +3,10 @@
  */
 
 import { ApiRequestError, buildApiUrl, openapiRequestRequired } from "@/lib/api/client";
+import { authenticatedUpload } from "@/lib/api/authenticated-upload";
 import { apiFetchClient } from "@/lib/api/generated/client";
 import type { components } from "@/lib/api/generated/schema";
-import { refreshSession } from "@/features/auth/api/auth";
-import { expireSessionIfStaleAccessToken } from "@/lib/auth/session-manager";
-import { getAccessToken } from "@/lib/auth/token-store";
-import {
-  extractErrorDetail,
-  getUserFacingErrorMessage,
-  translateCommonErrorMessage,
-} from "@/lib/api/error-response";
+import { extractErrorDetail, getUserFacingErrorMessage } from "@/lib/api/error-response";
 
 export const KNOWLEDGE_DOCUMENT_STATUSES = ["uploaded", "processing", "indexed", "failed"] as const;
 
@@ -185,115 +179,48 @@ export function uploadDocument(
     signal?: AbortSignal;
   },
 ) {
-  const sendUploadRequest = (
-    accessToken: string | null,
-    canRetryAfterRefresh: boolean,
-  ): Promise<KnowledgeDocument> =>
-    new Promise((resolve, reject) => {
-      const formData = new FormData();
-      formData.append("file", file);
+  const formData = new FormData();
+  formData.append("file", file);
 
-      const xhr = new XMLHttpRequest();
-      xhr.open("POST", buildApiUrl("/api/documents/upload"));
-      xhr.withCredentials = true;
-      if (accessToken) {
-        xhr.setRequestHeader("Authorization", `Bearer ${accessToken}`);
-      }
+  return authenticatedUpload({
+    body: formData,
+    onProgress: options?.onProgress,
+    signal: options?.signal,
+    url: buildApiUrl("/api/documents/upload"),
+  }).then(({ response, responseText: rawBody }) => {
+    let parsedBody: unknown = null;
 
-      xhr.upload.onprogress = (event) => {
-        if (!event.lengthComputable || !options?.onProgress || event.total <= 0) {
-          return;
-        }
-        options.onProgress(Math.round((event.loaded / event.total) * 100));
-      };
-
-      xhr.onerror = () => {
-        reject(
-          new ApiRequestError(translateCommonErrorMessage("apiErrorServiceUnavailable"), {
-            status: 503,
-          }),
-        );
-      };
-
-      xhr.onabort = () => {
-        reject(new DOMException("The upload was aborted.", "AbortError"));
-      };
-
-      xhr.onload = async () => {
-        const response = new Response(xhr.responseText, {
-          status: xhr.status,
-          statusText: xhr.statusText,
+    if (rawBody.trim()) {
+      try {
+        parsedBody = JSON.parse(rawBody) as unknown;
+      } catch {
+        const detail = extractErrorDetail(rawBody, null, response);
+        throw new ApiRequestError(getUserFacingErrorMessage(detail, response), {
+          code: detail.code,
+          status: response.status,
         });
-        const requestAccessToken = accessToken;
-        const rawBody = xhr.responseText ?? "";
-        let parsedBody: unknown = null;
-
-        if (rawBody.trim()) {
-          try {
-            parsedBody = JSON.parse(rawBody) as unknown;
-          } catch {
-            const detail = extractErrorDetail(rawBody, null, response);
-            reject(
-              new ApiRequestError(getUserFacingErrorMessage(detail, response), {
-                code: detail.code,
-                status: response.status,
-              }),
-            );
-            return;
-          }
-        }
-
-        const payload = parsedBody as {
-          success?: boolean;
-          data?: DocumentUploadRead | null;
-        } | null;
-
-        if (response.ok && payload?.success && payload.data) {
-          resolve(
-            toKnowledgeDocument(
-              payload.data.document,
-              payload.data.latest_revision,
-              payload.data.deduplicated ?? false,
-            ),
-          );
-          return;
-        }
-
-        if (response.status === 401 && canRetryAfterRefresh) {
-          try {
-            const nextAccessToken = await refreshSession();
-            const retriedDocument = await sendUploadRequest(nextAccessToken, false);
-            resolve(retriedDocument);
-            return;
-          } catch (error) {
-            expireSessionIfStaleAccessToken(requestAccessToken);
-            reject(error);
-            return;
-          }
-        }
-
-        const detail = extractErrorDetail(rawBody, parsedBody, response);
-        reject(
-          new ApiRequestError(getUserFacingErrorMessage(detail, response), {
-            code: detail.code,
-            status: response.status,
-          }),
-        );
-      };
-
-      if (options?.signal) {
-        if (options.signal.aborted) {
-          xhr.abort();
-          return;
-        }
-
-        options.signal.addEventListener("abort", () => xhr.abort(), { once: true });
       }
+    }
 
-      xhr.send(formData);
+    const payload = parsedBody as {
+      success?: boolean;
+      data?: DocumentUploadRead | null;
+    } | null;
+
+    if (response.ok && payload?.success && payload.data) {
+      return toKnowledgeDocument(
+        payload.data.document,
+        payload.data.latest_revision,
+        payload.data.deduplicated ?? false,
+      );
+    }
+
+    const detail = extractErrorDetail(rawBody, parsedBody, response);
+    throw new ApiRequestError(getUserFacingErrorMessage(detail, response), {
+      code: detail.code,
+      status: response.status,
     });
-
-  return sendUploadRequest(getAccessToken(), true);
+  });
 }
 
 export async function reindexDocument(documentId: number) {

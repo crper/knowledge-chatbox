@@ -5,7 +5,7 @@ import type {
   ProviderProfiles,
   ResponseProviderName,
 } from "../api/settings";
-import { getProviderProfileModel, setProviderProfileModel } from "./provider-model-fields";
+import { getProviderProfileModel } from "./provider-model-fields";
 
 export type PrimaryProviderName = ResponseProviderName;
 export type TemplateProviderName = keyof ProviderProfiles;
@@ -47,33 +47,7 @@ export function getDefaultEmbeddingProvider(
   return defaultEmbeddingProviderByPrimary[primaryProvider];
 }
 
-function syncRouteModelsIntoProfiles(settings: AppSettings): ProviderProfiles {
-  let profiles = settings.provider_profiles;
-  const effectiveEmbeddingRoute = settings.pending_embedding_route ?? settings.embedding_route;
-  profiles = setProviderProfileModel(
-    profiles,
-    settings.response_route.provider,
-    "chat_model",
-    settings.response_route.model,
-  );
-  profiles = setProviderProfileModel(
-    profiles,
-    effectiveEmbeddingRoute.provider,
-    "embedding_model",
-    effectiveEmbeddingRoute.model,
-  );
-  profiles = setProviderProfileModel(
-    profiles,
-    settings.vision_route.provider,
-    "vision_model",
-    settings.vision_route.model,
-  );
-
-  return profiles;
-}
-
 export function buildProviderSettingsView(settings: AppSettings): ProviderSettingsView {
-  const providerProfiles = syncRouteModelsIntoProfiles(settings);
   const primaryProvider = settings.response_route.provider;
   const defaultEmbeddingProvider = getDefaultEmbeddingProvider(primaryProvider);
   const targetEmbeddingRoute = settings.pending_embedding_route ?? settings.embedding_route;
@@ -86,7 +60,7 @@ export function buildProviderSettingsView(settings: AppSettings): ProviderSettin
       ? targetEmbeddingRoute.provider
       : defaultEmbeddingProvider,
     templateProvider: preferredTemplateProvider(primaryProvider),
-    providerProfiles,
+    providerProfiles: settings.provider_profiles,
     providerTimeoutSeconds: settings.provider_timeout_seconds ?? 60,
   };
 }
