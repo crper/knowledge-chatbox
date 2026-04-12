@@ -129,7 +129,6 @@ class DocumentRevision(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
 
-    file_name = synonym("source_filename")
     lifecycle_status = synonym("ingest_status")
     origin_path = synonym("source_path")
 

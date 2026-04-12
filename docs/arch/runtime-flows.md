@@ -10,6 +10,7 @@ flowchart TD
   Settings --> Docs["compensate_processing_documents()"]
   Docs --> Runs["compensate_active_chat_runs()"]
   Runs --> Rebuild["compensate_index_rebuild_status()"]
+  Rebuild --> Warmup["warmup_chroma_collection()"]
 ```
 
 当前默认运行方式：
@@ -99,17 +100,18 @@ flowchart TD
 6. assistant 投影随事件流更新
 7. 成功时持久化 `sources_json / usage_json`
 8. 若命中相同 `client_request_id`，直接复用既有 run 并重放事件
+9. 若前端显式调用 `POST /api/chat/runs/{run_id}/cancel`，服务端会把 run 标记为 `cancelled`，流式执行器在轮询到取消状态后主动终止当前 workflow 流，并把 assistant 投影收口为“已停止生成”
 
 关键约束：
 
-- `reasoning_mode` 是会话级思考模式覆盖，取值为 `default`（模型默认行为）、`on`（启用思考/推理）、`off`（关闭思考/推理）；该字段存在于 `ChatSessionRead`、`ChatRunRead`、`ActiveChatRunRead` 三个响应模型中；创建会话时可通过 `CreateChatSessionRequest.reasoning_mode` 指定，更新会话时可通过 `UpdateChatSessionRequest.reasoning_mode` 修改；`ChatWorkflow` 在构建 `ModelSettings` 时会根据当前 provider 和 `reasoning_mode` 生成对应的推理配置（OpenAI: `reasoning.effort`，Anthropic: `thinking`）
+- `reasoning_mode` 是会话级思考模式覆盖，取值为 `default`（模型默认行为）、`on`（启用思考/推理）、`off`（关闭思考/推理）；该字段存在于 `ChatSessionRead`、`ChatRunRead`、`ActiveChatRunRead` 三个响应模型中；创建会话时可通过 `CreateChatSessionRequest.reasoning_mode` 指定，更新会话时可通过 `UpdateChatSessionRequest.reasoning_mode` 修改；`ChatWorkflow` 在构建 `ModelSettings` 时会根据当前 provider 和 `reasoning_mode` 生成对应的推理配置（OpenAI: `openai_reasoning_effort`，Anthropic: `anthropic_thinking`）
 - `ChatWorkflow + PydanticAI` 当前按两条输出链路接入：同步问答走结构化输出，流式问答走文本增量事件，并在最终结果事件里回收 `sources_json / usage_json`
 - 当前轮附件采用 eager hydration：文档附件先转成标准化文本块，图片附件先转成稳定 JPEG bytes，然后直接作为多模态 user content 随本轮 user prompt 进入模型；`load_prompt_attachments` 工具只作为确认或补读手段，不再承担“图片是否能进模型”的主路径
 - 检索范围默认按当前会话 `space_id` 过滤
 - 若本轮消息带文档附件，检索会进一步限域到当前附件对应的 `document_revision_id`
 - 多文档附件检索当前会先按附件集合做一次批量限域召回，再按 `document_revision_id` 在内存里做轮转式公平选取，减少单个文档吃满全局 `top_k`，也避免附件数增多时把检索请求线性放大
 - 当两类条件同时存在时，后端会先归一化成 Chroma 兼容的复合过滤表达式；确保测试用内存 store 与持久化 Chroma 在 where 过滤语义上保持一致
-- 若向量命中不足或当前轮 query embedding 生成失败，本轮会降级到 SQLite `FTS5` 词法候选兜底，再做轻量重排；不会退回整代索引的全量词法扫描
+- 若向量命中不足或当前轮 query embedding 生成失败，本轮会降级到 SQLite `FTS5` 词法候选兜底，再做轻量重排；不会退回整代索引的全量词法扫描；embedding 生成与词法检索并行执行，减少词法兜底路径的串行等待
 - 纯图片泛化看图请求默认跳过 retrieval
 - 无附件时，问答仍会继续查询当前用户 personal `space` 里已入库的历史知识
 - 因为图片已经在 provider 调用前直接注入 user prompt，兼容 OpenAI 的多模态模型不会再出现“聊天气泡里有图片，但模型收到的只是附件 JSON 文本”的退化链路
@@ -118,6 +120,7 @@ flowchart TD
 - 受保护读取接口在鉴权阶段保持纯读，不再为 session 心跳同步写 `auth_sessions.last_seen_at`；避免流式回答持有 SQLite 写事务时，把 `/api/auth/me`、`/api/settings` 这类并发页面读取锁成 `database is locked`
 - 流式 assistant projection 和 `chat_run_events` 当前按短批次提交；目标是让整段回答进行中，仍能继续处理会话改名、新建会话这类并发写请求，而不是一直等到流结束才释放 SQLite 写锁
 - Web 侧流式完成或失败时，当前会优先 patch 已加载消息窗口和会话摘要；只有 patch miss 时才回退到对应 query 的失效刷新
+- Web 侧 stop 按钮当前是前后端协同：前端先终止本地提交控制器，再向 `/api/chat/runs/{run_id}/cancel` 发显式取消请求，避免服务端继续把迟到成功结果落库回放
 - 文档重建或删除失败时，后端补偿路径不再通过 Chroma 回读整份 chunk + embedding 快照，而是改为从 `normalized_path` 重新构建索引，避免失败路径把大文档向量整体拉进 Python 内存
 - 图片不可解码或 provider 仍拒绝处理时，后端先收敛成稳定语义，不把 provider 原始格式报错直接暴露为长期契约
 
@@ -144,7 +147,7 @@ flowchart TD
 补充说明：
 
 - 前端 `CHAT_STREAM_EVENT` 常量对象和 `ChatStreamEventMap` 类型集中定义了所有事件名及其 payload 结构
-- 后端 `StreamEventName` 是 `Literal` 类型，与前端事件名一一对应（`done` 除外）
+- 后端 `StreamEventName` 是 `StreamEvent` 枚举类型，与前端事件名一一对应（`done` 除外）
 - 事件按 `chat_run_events` 表的 `seq` 字段严格递增；幂等重放时按原序回放
 
 关键入口：
@@ -193,3 +196,71 @@ flowchart TD
 - `app_settings.active_index_generation`
 - `app_settings.building_index_generation`
 - `app_settings.index_rebuild_status`
+
+## 8. 结构化日志与统一观测字段
+
+系统采用 `structlog` 实现结构化日志，所有日志事件统一包含以下观测字段：
+
+### 8.1 字段定义
+
+| 字段名 | 类型 | 说明 |
+|--------|------|------|
+| `request_id` | `string \| null` | HTTP 请求关联的唯一标识符，由 `CorrelationIdMiddleware` 自动生成 |
+| `operation_kind` | `string \| null` | 操作类型，标识不同业务操作 |
+| `session_id` | `int \| null` | 聊天会话 ID |
+| `run_id` | `int \| null` | 聊天运行 ID |
+| `document_revision_id` | `int \| null` | 文档版本 ID |
+| `provider` | `string \| null` | 当前使用的 LLM provider 名称 |
+| `model` | `string \| null` | 当前使用的 LLM 模型名称 |
+| `generation` | `int \| null` | 当前索引 generation 版本号 |
+
+### 8.2 操作类型常量
+
+| 常量 | 值 | 适用范围 |
+|------|-----|---------|
+| `OPERATION_KIND_CHAT_STREAM` | `"chat_stream"` | 流式聊天执行 |
+| `OPERATION_KIND_CHAT_SYNC` | `"chat_sync"` | 同步聊天执行 |
+| `OPERATION_KIND_DOCUMENT_UPLOAD` | `"document_upload"` | 文档上传（同步） |
+| `OPERATION_KIND_DOCUMENT_BACKGROUND_INGESTION` | `"document_background_ingestion"` | 文档后台处理 |
+| `OPERATION_KIND_INDEX_REBUILD` | `"index_rebuild"` | 索引重建 |
+| `OPERATION_KIND_COMPENSATION` | `"compensation"` | 启动补偿任务 |
+
+### 8.3 核心日志事件
+
+**聊天流式执行**
+
+- `chat_stream_run_started`：流式聊天运行开始
+- `chat_stream_run_completed`：流式聊天运行完成
+- `chat_stream_run_failed`：流式聊天运行失败
+- `chat_stream_run_cancelled`：流式聊天运行被取消
+- `chat_stream_run_exception`：流式聊天运行异常
+
+**聊天同步执行**
+
+- `chat_sync_message_failed`：同步聊天消息处理失败
+
+**文档处理**
+
+- `document_upload_completed`：文档上传完成
+- `document_upload_failed`：文档上传失败
+- `document_background_ingestion_completed`：后台文档处理完成
+- `document_background_ingestion_failed`：后台文档处理失败
+- `document_index_restore_failed`：文档索引恢复失败
+
+### 8.4 关键实现文件
+
+- `apps/api/src/knowledge_chatbox_api/core/observation.py` - 观测字段定义
+- `apps/api/src/knowledge_chatbox_api/core/logging.py` - 日志配置与绑定工具
+- `apps/api/src/knowledge_chatbox_api/services/chat/chat_run_service.py` - 流式聊天日志
+- `apps/api/src/knowledge_chatbox_api/services/chat/workflow_stream_runner.py` - 工作流运行日志
+- `apps/api/src/knowledge_chatbox_api/services/chat/chat_application_service.py` - 同步聊天日志
+- `apps/api/src/knowledge_chatbox_api/services/documents/ingestion_service.py` - 文档处理日志
+
+### 8.5 数据来源
+
+- `request_id`：由 `asgi_correlation_id` 库的 `CorrelationIdMiddleware` 自动生成并通过 `correlation_id.get()` 获取
+- `session_id`/`run_id`：来自 `ChatSession` 和 `ChatRun` 数据库模型
+- `document_revision_id`：来自 `DocumentRevision` 数据库模型
+- `provider`/`model`：来自 `runtime_settings.response_route`
+- `generation`：来自 `settings_record.active_index_generation`
+- `operation_kind`：由开发者根据业务场景手动指定

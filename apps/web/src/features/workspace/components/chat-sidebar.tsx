@@ -36,10 +36,7 @@ import {
 } from "@/components/ui/sidebar";
 import { chatSessionsQueryOptions } from "@/features/chat/api/chat-query";
 import { deleteChatSession, renameChatSession } from "@/features/chat/api/chat";
-import {
-  buildChatSessionPath,
-  parseChatSessionIdFromPathname,
-} from "@/features/chat/utils/chat-session-route";
+import { buildChatSessionPath, parseChatSessionPathname } from "@/lib/routes";
 import type { AppUser } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/query-keys";
 import { useAppForm } from "@/lib/form/use-app-form";
@@ -258,7 +255,7 @@ export function ChatSidebar({
   const [editingSessionId, setEditingSessionId] = useState<number | null>(null);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const activeSessionId = parseChatSessionIdFromPathname(pathname);
+  const activeSessionId = parseChatSessionPathname(pathname);
   const deferredSearchValue = useDeferredValue(searchValue);
   const sessionTitleFallback = t("sessionTitleFallback", { ns: "chat" });
   const renameForm = useAppForm({

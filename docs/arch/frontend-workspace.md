@@ -120,7 +120,7 @@
 | 页面         | 主区                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | 辅助区 / 壳层说明                                                                                                                     |
 | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | `/chat`      | 虚拟化消息流、交错消息卡片、输入区、发送与重试、统一折叠附件面板；主区默认先读取最近一段消息窗口，继续向上滚动时再请求更早消息；新会话空态默认只保留一句短引导并鼓励直接提问；系统默认标题只在渲染层按当前语言显示，不把本地化默认值写进持久化数据                                                                                                                                                                                                                                                                                      | 会话概览、会话附件折叠面板、最近一次回答的来源分组、运行状态；右栏通过独立 `context` 摘要 query 读取；无附件 / 引用时只显示单张概览卡 |
-| `/knowledge` | 上传、满宽资源列表、批量状态浏览；桌面端采用 `section / main / inspector` 三栏 workbench，主区使用 `flat + wide` 连续轨道，不再包独立外卡片；长资源表格在行数超过阈值后切到固定表头 + 虚拟行；搜索框与类型 / 状态筛选当前由 `/knowledge` 的 route search 统一承接，再驱动服务端列表 query，不再只在页面本地过滤；如果筛选结果里已经看不到 pending 文档，前端会改读轻量 `summary` 摘要判断是否还要继续刷新当前筛选列表；移动端不再把三张指标卡长期顶在列表前，而是把资源总数 / 处理中 / 已索引压成列表区里的紧凑摘要 badge，让搜索、上传和资源列表本体优先进入首屏 | 桌面端 inspector 常驻；移动端通过抽屉承接 section / inspector；资源详情与动作统一由预览面板承接 |
+| `/knowledge` | 上传、满宽资源列表、批量状态浏览；桌面端采用 `section / main / inspector` 三栏 workbench，主区使用 `flat + wide` 连续轨道，不再包独立外卡片；桌面端顶部资源总数 / 处理中 / 已索引状态区已压平成单层扁平指标卡，不再使用外层大容器套内层小卡片；长资源表格在行数超过阈值后切到固定表头 + 虚拟行；搜索框与类型 / 状态筛选当前由 `/knowledge` 的 route search 统一承接，再驱动服务端列表 query，不再只在页面本地过滤；如果筛选结果里已经看不到 pending 文档，前端会改读轻量 `summary` 摘要判断是否还要继续刷新当前筛选列表；桌面主预览和移动端抽屉里的 PDF 当前统一通过 `EmbedPDF` 内嵌加载，受保护文件继续走同源 `/api` + cookie 凭证读取；移动端不再把三张指标卡长期顶在列表前，而是把资源总数 / 处理中 / 已索引压成列表区里的紧凑摘要 badge，让搜索、上传和资源列表本体优先进入首屏 | 桌面端 inspector 常驻；移动端通过抽屉承接 section / inspector；资源详情与动作统一由预览面板承接 |
 | `/graph`     | 当前只提供占位主区与说明文案，明确图谱入口已预留                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | 复用同一一级 `WorkspaceRail`；不承诺图谱数据和图形交互已实现                                                                          |
 | `/settings`  | 当前设置分组内容                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | 复用标准工作区壳层；页面内部可自行排布辅助卡片，但不额外占用工作区第三栏                                                              |
 | `/users`     | 管理员用户表和操作                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | 复用标准工作区壳层；当前以主区为主，不依赖常驻右侧面板                                                                                |
@@ -205,8 +205,8 @@
 
 当前实现里，这些状态进一步分成两类：
 
-- `useUiStore + useChatUiStore`：通过 persist middleware 落到 `localStorage`，并在跨标签页通过 `storage` 事件重放到 store
-- `useChatAttachmentStore`：只保留会话内、页面内附件队列，不落持久化
+- `useUiStore`（`language` + `theme`）：通过 persist middleware 落到 `localStorage`，并在跨标签页通过 `storage` 事件重放到 store
+- `useChatComposerStore`：统一持有 `draftsBySession + attachmentsBySession + sendShortcut`，其中只有 `draftsBySession + sendShortcut` 会落到 `localStorage`；`attachmentsBySession` 保持内存态，避免把 `File` 对象写进 persist store
 
 认证回跳目标当前不再放进 store，而是直接编码进 `/login?redirect=...` 这条 URL 契约。
 
@@ -227,8 +227,7 @@
         -> [useChatStreamRun]                ← 流式运行 action (QueryClient cache)
      -> [useChatRuntimeState]            # 订阅 StreamingRun 变更
      -> [useChatWorkspaceViewModel]      # 视图模型中间层
-        -> [useChatAttachmentStore]         ← 附件 (Zustand, 不持久化)
-        -> [useChatUiStore]                 ← 草稿/快捷键 (Zustand, localStorage)
+        -> [useChatComposerStore]           ← 草稿/附件/快捷键（仅草稿/快捷键持久化）
         -> [useChatSessionData]             ← 只读模型
            -> [useQuery(sessions)]          ← 会话列表
            -> [useInfiniteQuery(messages)]  ← 消息窗口
@@ -247,10 +246,9 @@
 - `useChatSessionSubmitController` 管理会话级提交锁；提交锁不是 Zustand 真相，也不落持久化
 - `useChatStreamRun` 管理流式运行的 action
 - `useChatSessionCacheActions` 统一承接 `appendStartedUserMessage`、`patchUserMessageAttachments`、`patchAssistantMessage`、`patchRetriedUserMessage`、`patchSessionContext` 与 `invalidateSessionArtifacts`
-- `useChatWorkspaceViewModel` 是视图模型中间层，组合 `useChatAttachmentStore`、`useChatUiStore` 和 `useChatSessionData`，向外暴露统一的视图模型（activeSession、attachments、draft、displayMessages、submitPending 等），避免装配层直接拼接多个 store 和 query
+- `useChatWorkspaceViewModel` 是视图模型中间层，组合 `useChatComposerStore` 和 `useChatSessionData`，向外暴露统一的视图模型（activeSession、attachments、draft、displayMessages、submitPending 等），避免装配层直接拼接多个 store 和 query
 - `useChatWorkspace` 当前退回聊天页面装配层，只负责把 view model、runtime controller、cache actions、submit/stream 生命周期组合成页面可消费接口
-- `useChatUiStore` 当前只保留 `draftsBySession + sendShortcut`
-- `useChatAttachmentStore` 当前单独承接 `attachmentsBySession`，避免把 `File` 和 persist store 混在一起
+- `useChatComposerStore` 当前是 composer 唯一 owner；持久化只覆盖 `draftsBySession + sendShortcut`，`attachmentsBySession` 继续保持会话内内存态
 
 认证补充约束：
 
@@ -320,10 +318,19 @@
 
 - `components/ui`：基础 UI 组件
 - `components/shared`：跨 feature 复用但不带强业务语义的组件
-- `lib/api`：API 客户端、query keys、基础类型
+- `components/upload`：文件拖放上传区组件
+- `lib/api`：API 客户端、query keys、基础类型、envelope 解包与错误归一化、认证 fetch 封装、受保护文件读取
 - `lib/api/generated`：OpenAPI 生成的契约类型和 typed client 入口
-- `lib/forms.ts`：轻量表单辅助
+- `lib/auth`：前端会话状态、access token 内存存储和启动恢复编排
 - `lib/config`：环境变量和常量
+- `lib/form`：TanStack Form 对话框共享组件（form-feedback、use-app-form）
+- `lib/forms.ts`：轻量表单辅助
+- `lib/hooks`：通用 hooks（如 use-mobile）
+- `lib/store`：全局 UI store（language、theme）
+- `lib/validation`：表单校验适配器和 schema
+- `lib/dom`：DOM 工具
+- `lib/document-upload.ts`：聊天区和资源页共用的上传 helper
+- `lib/date-utils.ts`、`lib/provider-display.ts`、`lib/routes.ts`、`lib/utils.ts`：通用工具
 - `providers`：Query、Theme、i18n、store 同步等 provider
 - `i18n`：多语言文案，文件结构为 `src/i18n/locales/{zh-CN,en}/*.json`（按语言分子目录、按功能域分 JSON 文件），key 命名采用点分路径（如 `chat.emptyState.title`）
 

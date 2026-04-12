@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import pytest
-from fastapi.testclient import TestClient
 from tests.fixtures.factories import UserFactory
 from tests.fixtures.stubs import make_adapter_backed_chat_workflow_class
 
@@ -11,6 +12,9 @@ from knowledge_chatbox_api.services.chat.retry_service import (
     RetryService,
     RetryTargetNotFoundError,
 )
+
+if TYPE_CHECKING:
+    from fastapi.testclient import TestClient
 
 
 def create_user_and_session(migrated_db_session):
@@ -27,7 +31,7 @@ def test_retry_service_rejects_same_client_request_id_for_different_payload(
     migrated_db_session,
 ) -> None:
     _, chat_session, repository = create_user_and_session(migrated_db_session)
-    service = RetryService(repository, migrated_db_session)
+    service = RetryService(repository)
     service.create_or_reuse_user_message(
         session_id=chat_session.id,
         content="question",
@@ -45,7 +49,7 @@ def test_retry_service_rejects_same_client_request_id_for_different_payload(
 @pytest.mark.unit
 def test_retry_service_retry_user_message_succeeds(migrated_db_session) -> None:
     _, chat_session, repository = create_user_and_session(migrated_db_session)
-    service = RetryService(repository, migrated_db_session)
+    service = RetryService(repository)
 
     original = service.create_or_reuse_user_message(
         session_id=chat_session.id,
@@ -55,7 +59,6 @@ def test_retry_service_retry_user_message_succeeds(migrated_db_session) -> None:
 
     retried = service.retry_user_message(
         session_id=chat_session.id,
-        content="original question",
         client_request_id="req-retry",
         retry_of_message_id=original.id,
     )
@@ -69,7 +72,7 @@ def test_retry_service_retry_user_message_reuses_same_client_request_id(
     migrated_db_session,
 ) -> None:
     _, chat_session, repository = create_user_and_session(migrated_db_session)
-    service = RetryService(repository, migrated_db_session)
+    service = RetryService(repository)
 
     original = service.create_or_reuse_user_message(
         session_id=chat_session.id,
@@ -79,13 +82,11 @@ def test_retry_service_retry_user_message_reuses_same_client_request_id(
 
     first_retry = service.retry_user_message(
         session_id=chat_session.id,
-        content="ignored content",
         client_request_id="req-retry",
         retry_of_message_id=original.id,
     )
     second_retry = service.retry_user_message(
         session_id=chat_session.id,
-        content="still ignored",
         client_request_id="req-retry",
         retry_of_message_id=original.id,
     )
@@ -99,12 +100,11 @@ def test_retry_service_retry_user_message_fails_for_nonexistent_message(
     migrated_db_session,
 ) -> None:
     _, chat_session, repository = create_user_and_session(migrated_db_session)
-    service = RetryService(repository, migrated_db_session)
+    service = RetryService(repository)
 
     with pytest.raises(RetryTargetNotFoundError):
         service.retry_user_message(
             session_id=chat_session.id,
-            content="question",
             client_request_id="req-retry",
             retry_of_message_id=99999,
         )
@@ -115,7 +115,7 @@ def test_retry_service_retry_user_message_fails_for_wrong_session(
     migrated_db_session,
 ) -> None:
     _, chat_session, repository = create_user_and_session(migrated_db_session)
-    service = RetryService(repository, migrated_db_session)
+    service = RetryService(repository)
 
     original = service.create_or_reuse_user_message(
         session_id=chat_session.id,
@@ -126,7 +126,6 @@ def test_retry_service_retry_user_message_fails_for_wrong_session(
     with pytest.raises(RetryTargetNotFoundError):
         service.retry_user_message(
             session_id=99999,
-            content="question",
             client_request_id="req-retry",
             retry_of_message_id=original.id,
         )
@@ -135,7 +134,7 @@ def test_retry_service_retry_user_message_fails_for_wrong_session(
 @pytest.mark.unit
 def test_retry_service_create_assistant_reply_succeeds(migrated_db_session) -> None:
     _, chat_session, repository = create_user_and_session(migrated_db_session)
-    service = RetryService(repository, migrated_db_session)
+    service = RetryService(repository)
 
     user_message = service.create_or_reuse_user_message(
         session_id=chat_session.id,

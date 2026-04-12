@@ -112,6 +112,8 @@ describe("finalizeTerminalStreamRun", () => {
       sources: [],
       errorMessage: null,
       status: "succeeded",
+      suppressPersistedAssistantMessage: false,
+      terminalState: null,
       toastShown: false,
     };
 
@@ -214,6 +216,8 @@ describe("finalizeTerminalStreamRun", () => {
       sources: [],
       errorMessage: null,
       status: "succeeded",
+      suppressPersistedAssistantMessage: false,
+      terminalState: null,
       toastShown: false,
     };
 

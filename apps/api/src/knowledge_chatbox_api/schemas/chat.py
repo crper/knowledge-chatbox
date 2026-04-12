@@ -7,9 +7,7 @@ from typing import Any
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, TypeAdapter
 
 from knowledge_chatbox_api.models.enums import (
-    ChatAttachmentType as ChatAttachmentTypeEnum,
-)
-from knowledge_chatbox_api.models.enums import (
+    ChatAttachmentType,
     ChatMessageRole,
     ChatMessageStatus,
     ReasoningMode,
@@ -18,8 +16,6 @@ from knowledge_chatbox_api.schemas._validators import (
     ReasoningModeLiteral,
     ResponseProviderLiteral,
 )
-
-ChatAttachmentType = ChatAttachmentTypeEnum
 
 
 class ChatAttachmentInput(BaseModel):
@@ -115,8 +111,16 @@ class ArchiveChatAttachmentRequest(BaseModel):
 
 
 class CreateChatSessionRequest(BaseModel):
-    title: str | None = None
-    reasoning_mode: ReasoningModeLiteral = ReasoningMode.DEFAULT
+    """Request to create a new chat session."""
+
+    title: str | None = Field(
+        default=None,
+        description="Optional session title; auto-generated if not provided",
+    )
+    reasoning_mode: ReasoningMode = Field(
+        default=ReasoningMode.DEFAULT,
+        description="Reasoning mode for the session",
+    )
 
 
 class UpdateChatSessionRequest(BaseModel):
@@ -125,10 +129,28 @@ class UpdateChatSessionRequest(BaseModel):
 
 
 class CreateChatMessageRequest(BaseModel):
-    attachments: list[ChatAttachmentInput] | None = None
-    content: str
+    """Request to create a new chat message."""
+
+    attachments: list[ChatAttachmentInput] | None = Field(
+        default=None,
+        description="Optional list of document attachments",
+    )
+    content: str = Field(description="Message content / user question")
+    client_request_id: str = Field(
+        description="Client-generated ID for idempotency and retry tracking"
+    )
+    retry_of_message_id: int | None = Field(
+        default=None,
+        description="If set, indicates this is a retry of the specified message",
+    )
+
+
+class CancelChatStreamRequest(BaseModel):
     client_request_id: str
-    retry_of_message_id: int | None = None
+
+
+class CancelChatRunResult(BaseModel):
+    cancelled: bool
 
 
 class DeleteChatMessageResult(BaseModel):
@@ -137,6 +159,21 @@ class DeleteChatMessageResult(BaseModel):
 
 class DeleteChatSessionResult(BaseModel):
     deleted: bool
+
+
+class ChatSourceRead(BaseModel):
+    """聊天来源引用信息。"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    chunk_id: str
+    document_id: int | None = None
+    document_revision_id: int | None = None
+    document_name: str | None = None
+    page_number: int | None = None
+    score: float | None = None
+    section_title: str | None = None
+    snippet: str | None = None
 
 
 class ChatSessionRead(BaseModel):
@@ -159,7 +196,7 @@ class ChatMessageRead(BaseModel):
     error_message: str | None
     retry_of_message_id: int | None
     reply_to_message_id: int | None
-    sources_json: list[dict] | None
+    sources_json: list[ChatSourceRead] | None
     created_at: datetime
 
 
@@ -168,7 +205,7 @@ class ChatSessionContextRead(BaseModel):
     attachment_count: int
     attachments: list[ChatAttachmentMetadata]
     latest_assistant_message_id: int | None
-    latest_assistant_sources: list[dict[str, Any]]
+    latest_assistant_sources: list[ChatSourceRead]
 
 
 class ChatMessagePairRead(BaseModel):

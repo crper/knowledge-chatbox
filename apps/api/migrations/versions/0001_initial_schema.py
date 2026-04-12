@@ -391,10 +391,62 @@ def upgrade() -> None:
         unique=True,
     )
 
+    op.create_table(
+        "settings_versions",
+        sa.Column("id", sa.Integer(), primary_key=True),
+        sa.Column("settings_id", sa.Integer(), nullable=False),
+        sa.Column("version_no", sa.Integer(), nullable=False),
+        sa.Column("snapshot_json", sa.JSON(), nullable=False),
+        sa.Column("changed_fields_json", sa.JSON(), nullable=True),
+        sa.Column("trigger", sa.String(length=16), nullable=False),
+        sa.Column("updated_by_user_id", sa.Integer(), nullable=True),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+        sa.CheckConstraint(
+            "trigger IN ('bootstrap', 'update')",
+            name="ck_settings_versions_trigger",
+        ),
+        sa.ForeignKeyConstraint(["settings_id"], ["app_settings.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["updated_by_user_id"], ["users.id"], ondelete="SET NULL"),
+    )
+    op.create_index(
+        "uq_settings_versions_settings_version",
+        "settings_versions",
+        ["settings_id", "version_no"],
+        unique=True,
+    )
+    op.create_index(
+        "ix_settings_versions_settings_created",
+        "settings_versions",
+        ["settings_id", "created_at", "id"],
+        unique=False,
+    )
+
+    op.create_table(
+        "rate_limit_attempts",
+        sa.Column("id", sa.Integer(), primary_key=True),
+        sa.Column("key", sa.String(length=255), nullable=False),
+        sa.Column(
+            "attempted_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=False,
+        ),
+    )
+    op.create_index(
+        "ix_rate_limit_attempts_key_attempted_at",
+        "rate_limit_attempts",
+        ["key", "attempted_at"],
+    )
+
 
 def downgrade() -> None:
     op.execute("DROP TABLE IF EXISTS retrieval_chunks_fts")
+    op.drop_index("ix_rate_limit_attempts_key_attempted_at")
     for table_name in (
+        "rate_limit_attempts",
+        "settings_versions",
         "app_settings",
         "chat_message_attachments",
         "chat_run_events",

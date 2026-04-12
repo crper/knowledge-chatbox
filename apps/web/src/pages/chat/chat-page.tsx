@@ -27,7 +27,7 @@ import { AssistantWaitingCard } from "@/features/chat/components/markdown-messag
 import { MessageInput } from "@/features/chat/components/message-input";
 import { useChatWorkspace } from "@/features/chat/hooks/use-chat-workspace";
 import type { ChatMessageItem } from "@/features/chat/api/chat";
-import { parseChatSessionId } from "@/features/chat/utils/chat-session-route";
+import { parseChatSessionId } from "@/lib/routes";
 import { resolveSessionTitle } from "@/features/chat/utils/session-title";
 import { getProviderLabel } from "@/lib/provider-display";
 import { queryKeys } from "@/lib/api/query-keys";
@@ -90,6 +90,7 @@ export function ChatPage() {
     sendShortcut,
     sessionsReady,
     setDraft,
+    stopMessage,
     submitMessage,
     submitPending,
   } = useChatWorkspace(routeSessionId);
@@ -143,6 +144,9 @@ export function ChatPage() {
     }
     void submitMessage();
   }, [activeProfileConfigured, submitMessage, t]);
+  const handleStopSubmit = useCallback(() => {
+    stopMessage();
+  }, [stopMessage]);
 
   const shouldShowResolvingState = routeSessionId !== null && !sessionsReady;
   const shouldShowPendingEmptyState = submitPending && !hasMessages;
@@ -222,7 +226,7 @@ export function ChatPage() {
               <section className="py-3">
                 <AssistantWaitingCard
                   caption={t("sendingAction")}
-                  detail={t("assistantStreamingFallback")}
+                  detail={t("sendingInteractiveHint")}
                   frame="plain"
                   statusLabel={t("assistantStreamingStatus")}
                   testId="assistant-waiting-card"
@@ -275,6 +279,7 @@ export function ChatPage() {
             onRejectFiles={rejectFiles}
             onRemoveAttachment={handleRemoveAttachment}
             onReasoningModeChange={handleReasoningModeChange}
+            onStopSubmit={handleStopSubmit}
             onSubmit={handleSubmit}
             reasoningMode={activeSession?.reasoning_mode ?? "default"}
             reasoningModeVisible={activeSessionId !== null}

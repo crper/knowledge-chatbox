@@ -1,5 +1,4 @@
-import { resetChatAttachmentStore } from "../store/chat-attachment-store";
-import { useChatUiStore } from "../store/chat-ui-store";
+import { useChatComposerStore } from "../store/chat-composer-store";
 import { clearLastVisitedChatSessionId } from "./chat-session-recovery";
 
 type ResetChatSessionStateOptions = {
@@ -11,12 +10,12 @@ export function resetChatSessionState(options: ResetChatSessionStateOptions = {}
     return;
   }
 
-  const chatUiState = useChatUiStore.getState();
-  useChatUiStore.persist.clearStorage();
-  useChatUiStore.setState({
+  const composerState = useChatComposerStore.getState();
+  useChatComposerStore.persist.clearStorage();
+  useChatComposerStore.setState({
+    attachmentsBySession: {},
     draftsBySession: {},
-    sendShortcut: chatUiState.sendShortcut,
+    sendShortcut: composerState.sendShortcut,
   });
-  resetChatAttachmentStore();
   clearLastVisitedChatSessionId();
 }

@@ -13,6 +13,7 @@ from knowledge_chatbox_api.services.auth.auth_service import (
     AuthService,
     InvalidCredentialsError,
     RateLimitExceededError,
+    ValidationError,
 )
 from knowledge_chatbox_api.services.auth.rate_limit_service import RateLimitService
 
@@ -73,14 +74,29 @@ def test_ensure_default_admin_creates_admin_user(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("INITIAL_ADMIN_USERNAME", "admin")
-    monkeypatch.setenv("INITIAL_ADMIN_PASSWORD", "admin123456")
+    monkeypatch.setenv("INITIAL_ADMIN_PASSWORD", "Admin123456")
+    monkeypatch.setenv("JWT_SECRET_KEY", "test-jwt-secret-key-for-unit-tests-32ch")
     service = build_auth_service(migrated_db_session)
 
     user = service.ensure_default_admin()
 
     assert user.username == "admin"
     assert user.role == "admin"
-    assert user.password_hash != "admin123456"
+    assert user.password_hash != "Admin123456"
+
+
+def test_ensure_default_admin_requires_password_only_when_bootstrap_needed(
+    migrated_db_session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("INITIAL_ADMIN_USERNAME", "admin")
+    monkeypatch.setenv("INITIAL_ADMIN_PASSWORD", "")
+    monkeypatch.setenv("JWT_SECRET_KEY", "test-jwt-secret-key-for-unit-tests-32ch")
+    get_settings.cache_clear()
+    service = build_auth_service(migrated_db_session)
+
+    with pytest.raises(ValidationError, match="INITIAL_ADMIN_PASSWORD"):
+        service.ensure_default_admin()
 
 
 def test_login_creates_session_and_rehashes_password(
@@ -95,7 +111,8 @@ def test_login_creates_session_and_rehashes_password(
     )
 
     monkeypatch.setenv("INITIAL_ADMIN_USERNAME", "admin")
-    monkeypatch.setenv("INITIAL_ADMIN_PASSWORD", "admin123456")
+    monkeypatch.setenv("INITIAL_ADMIN_PASSWORD", "Admin123456")
+    monkeypatch.setenv("JWT_SECRET_KEY", "test-jwt-secret-key-for-unit-tests-32ch")
 
     service = build_auth_service(migrated_db_session)
     refresh_token, access_token, logged_in_user = service.login("alice", "secret-123")

@@ -102,7 +102,7 @@ describe("documents api", () => {
       }),
     );
 
-    const result = await getDocuments();
+    const result = await getDocuments({});
 
     expect(result).toHaveLength(1);
   });

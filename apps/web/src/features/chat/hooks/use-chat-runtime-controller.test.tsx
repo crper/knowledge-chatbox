@@ -13,7 +13,7 @@ function RuntimeControllerHost() {
       <div data-testid="pending-session-2">{String(runtime.isSessionSubmitPending(2))}</div>
       <button
         onClick={() => {
-          runtime.beginSessionSubmit(1);
+          runtime.beginSessionSubmit(1, new AbortController());
         }}
         type="button"
       >
@@ -21,7 +21,7 @@ function RuntimeControllerHost() {
       </button>
       <button
         onClick={() => {
-          runtime.beginSessionSubmit(2);
+          runtime.beginSessionSubmit(2, new AbortController());
         }}
         type="button"
       >

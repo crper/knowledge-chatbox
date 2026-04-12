@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from typing import Any
 
 from knowledge_chatbox_api.models.enums import ChatAttachmentType
 from knowledge_chatbox_api.services.chat.prompt_attachment_service import PromptAttachmentService
 
 
 class FakeDocumentRepository:
-    def __init__(self, revisions_by_id, documents_by_id) -> None:
+    def __init__(self, revisions_by_id: dict[int, Any], documents_by_id: dict[int, Any]) -> None:
         self._revisions_by_id = revisions_by_id
         self._documents_by_id = documents_by_id
         self.list_revisions_by_ids_calls: list[list[int]] = []
@@ -15,19 +16,19 @@ class FakeDocumentRepository:
         self.get_by_id_calls = 0
         self.get_document_entity_calls = 0
 
-    def list_revisions_by_ids(self, revision_ids: list[int]):
+    def list_revisions_by_ids(self, revision_ids: list[int]) -> dict[int, Any]:
         self.list_revisions_by_ids_calls.append(list(revision_ids))
         return {revision_id: self._revisions_by_id[revision_id] for revision_id in revision_ids}
 
-    def list_documents_by_ids(self, document_ids: list[int]):
+    def list_documents_by_ids(self, document_ids: list[int]) -> dict[int, Any]:
         self.list_documents_by_ids_calls.append(list(document_ids))
         return {document_id: self._documents_by_id[document_id] for document_id in document_ids}
 
-    def get_by_id(self, revision_id: int):
+    def get_by_id(self, revision_id: int) -> Any:
         self.get_by_id_calls += 1
         raise AssertionError(f"expected batch lookup, got get_by_id({revision_id})")
 
-    def get_document_entity(self, document_id: int):
+    def get_document_entity(self, document_id: int) -> Any:
         self.get_document_entity_calls += 1
         raise AssertionError(f"expected batch lookup, got get_document_entity({document_id})")
 
@@ -59,9 +60,8 @@ def test_build_prompt_attachments_batches_document_context_queries(tmp_path) -> 
         102: SimpleNamespace(id=102, space_id=9, logical_name="b.txt"),
     }
 
-    service = PromptAttachmentService(session=object())
     repository = FakeDocumentRepository(revisions_by_id, documents_by_id)
-    service.document_repository = repository
+    service = PromptAttachmentService(document_repository=repository)
 
     result = service.build_prompt_attachments(
         [

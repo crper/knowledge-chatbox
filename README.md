@@ -19,12 +19,14 @@
 | -------------------- | ------ | ------------------------------------------------------------------------------------- |
 | 📱 响应式工作台      | 已支持 | 桌面端统一一级 `WorkspaceRail`；`/chat` 固定三栏，`/knowledge` 三栏工作台，移动端退化为抽屉和单栏 |
 | 📚 多格式资料入库    | 已支持 | `txt / md / pdf / docx / png / jpg / jpeg / webp`；切块使用 chonkie Markdown 感知策略 |
-| 🌊 流式问答          | 已支持 | 同步问答、SSE 流式输出、失败重试、活动 run 查询；长会话主区默认只加载最近一段消息窗口 |
+| 📄 PDF 内嵌预览      | 已支持 | 资源页桌面主预览和移动端抽屉统一通过 `EmbedPDF` 内嵌加载受保护 PDF |
+| 🌊 流式问答          | 已支持 | 同步问答、SSE 流式输出、失败重试、活动 run 查询与运行中主动中断；长会话主区默认只加载最近一段消息窗口 |
 | 🧾 来源引用回看      | 已支持 | 回答内容带来源片段；右侧上下文栏走独立会话摘要接口，不再依赖整段消息重拉              |
 | 🔎 检索兜底          | 已支持 | `Chroma` 向量召回优先，`SQLite FTS5` 负责词法候选兜底                                 |
 | 🧠 三路模型路由      | 已支持 | `response / embedding / vision` 独立配置与切换                                        |
 | 🤖 ChatWorkflow 后端 | 已支持 | 聊天执行当前统一由 `ChatWorkflow + PydanticAI` 驱动，同步和流式共用同一路径           |
 | 🔌 多 Provider       | 已支持 | `OpenAI / Anthropic / Voyage / Ollama`                                                |
+| 🧾 设置变更留痕      | 已支持 | `settings_versions` 保存脱敏设置快照与变更字段，方便追溯谁在什么时候改了什么          |
 | 🌐 中英双语          | 已支持 | 前端内置 `zh-CN / en` 文案与切换能力                                                  |
 | 🌓 主题切换          | 已支持 | `light / dark / system` 三种主题偏好                                                  |
 | 🔐 角色与设置中心    | 已支持 | `admin / user` 两类角色，带设置中心和用户管理                                         |
@@ -53,7 +55,8 @@ just dev
 
 - 这条路径是仓库唯一官方开发主线
 - `apps/web/README.md` 和 `apps/api/README.md` 只补充各自包内命令，不再重复定义仓库级启动流程
-- `just dev` 会先拉起 API，等 `/api/health` ready 后再启动 Web，并在终端统一打印 Web / API 的访问地址；若覆盖了 `API_PORT` / `WEB_PORT`，这里显示的链接也会同步变化
+- `just` 默认会打印一份精简过的高频入口清单；如果要看完整命令面，执行 `just --list`
+- `just dev` 会先拉起 API，等 `/api/health` ready 后再启动 Web，并在终端统一打印 Web / API 的访问地址，以及 bootstrap 管理员账号提示；若覆盖了 `API_PORT` / `WEB_PORT`，这里显示的链接也会同步变化
 - 默认会给 API 约 60 秒完成启动补偿；如果你的机器更慢，可临时调大 `DEV_API_READY_MAX_ATTEMPTS` 后再执行 `just dev`
 - 前端开发态默认建议把 `VITE_API_BASE_URL` 留空，统一走同源 `/api`；`vp dev` 会通过 Vite proxy 转发到当前 `API_PORT` 对应的本机 API（默认 `8000`）
 - 如果你只想先理解接手顺序和提交前要求，再看 [CONTRIBUTING.md](./CONTRIBUTING.md)
@@ -87,7 +90,8 @@ cp .env.example .env
 默认 `.env.example` 会在数据库里还没有管理员时初始化一个管理员账号：
 
 - 用户名：`admin`
-- 密码：`admin123456`
+- 密码：如果当前数据库里还没有管理员，需要在 `.env` 中设置 `INITIAL_ADMIN_PASSWORD`（至少 8 字符，包含大写字母、小写字母、数字、特殊字符中的至少 3 类）。执行 `just init-env` 会自动生成
+- `just init-env` 完成后会直接提示 `.env` 路径；如果忘了登录密码，直接查看同一个文件里的 `INITIAL_ADMIN_PASSWORD`
 
 ### 3. 安装依赖
 
@@ -104,29 +108,17 @@ just setup
 - `.env.example` 当前默认把 `response / embedding / vision` bootstrap 都指向本机 Ollama，并把 `INITIAL_OLLAMA_BASE_URL` 设为 `http://localhost:11434`
 - 如果改走 Docker Compose，且 Ollama 仍跑在宿主机，请把 `.env` 里的 `INITIAL_OLLAMA_BASE_URL` 改成 `http://host.docker.internal:11434`
 
-### 4. 选择运行方式
+### 4. 常用命令
 
 | 目标               | 命令               | 说明                                                                                               |
 | ------------------ | ------------------ | -------------------------------------------------------------------------------------------------- |
-| 首次安装依赖       | `just setup`       | 同步后端虚拟环境和前端依赖                                                                         |
-| 看仓库入口         | `just --list`      | 查看当前保留的高频命令                                                                             |
-| 手动执行数据库迁移 | `just api-migrate` | 只补齐本地 API schema，不启动服务                                                                  |
-| 本地开发           | `just dev`         | 依赖已安装后先启动 API、等健康检查 ready，再启动 Web 并打印访问地址                                |
-| 检查仓库表面约束   | `just repo-check`  | 校验 README / 包级 README 和 `justfile` 的关键入口是否保持一致                                     |
-| 只跑后端           | `just api-dev`     | FastAPI 开发态                                                                                     |
-| 只跑前端           | `just web-dev`     | Web 开发态                                                                                         |
-| 检查与测试         | `just test`        | 先跑 `repo-check`，再执行后端静态检查（ruff + basedpyright）与测试、前端静态检查与测试 |
-| 重置本地数据       | `just reset-dev`   | 清空全部本地数据（上传文件/标准化结果/向量索引/SQLite含WAL）、重装依赖、重启前后端，并打印访问地址 |
+| 本地开发           | `just dev`         | 启动 API 和 Web 开发服务                                                                           |
+| 检查与测试         | `just test`        | 执行仓库检查、后端静态检查与测试、前端静态检查与测试                                                 |
+| 重置本地数据       | `just reset-dev`   | 清空数据、重装依赖、重启开发环境（用于环境混乱时）                                                   |
 | 单机部署           | `just docker-up`   | Docker Compose 运行                                                                                |
+| 查看全部命令       | `just --list`      | 查看完整命令列表                                                                                   |
 
-`just reset-dev` 会按顺序执行以下操作：
-
-1. **清空本地数据**：删除 `data/uploads/`、`data/normalized/`、`data/chroma/` 目录内容，以及 `data/sqlite/ai_qa.db`（含 `-wal` / `-shm` 副本）
-2. **重建数据库 schema**：通过 Alembic migration 重新创建空表结构
-3. **重装依赖**：后端 `uv sync --all-groups`，前端 `vp install`
-4. **重启开发态**：先拉起 API，等健康检查 ready 后再启动 Web，终端打印访问地址
-
-只适合“环境已经乱掉，需要一键回到干净状态”的场景，**不作为首次启动入口**（首次请用 `just init-env && just setup && just dev`）。
+> 详细命令说明见 [docs/arch/deployment-and-operations.md](./docs/arch/deployment-and-operations.md)
 
 ### 5. 打开服务
 
@@ -163,27 +155,16 @@ just setup
 
 ```bash
 just init-env
-just docker-check
-just docker-build
 just docker-up
-just docker-ps
-just docker-logs api
-just docker-health
-just docker-down
 ```
 
-说明：
+关键说明：
 
 - `just init-env` 是显式前置步骤，Docker 相关入口不再静默帮你生成 `.env`
-- `just docker-check` 只做 Compose 和 `.env` 静态校验，不要求 Docker daemon 已启动
-- Docker 单机模式里，`web` 容器会把同源 `/api` 反代到 `api` 服务，避免 refresh cookie / 文件预览落到跨源链路
-- Docker 单机模式里，`web` 容器的 Nginx 已把单次请求体上限放宽到 `2GB`，避免大 PDF 被默认 `413 Payload Too Large` 提前拦截；API 侧上传链路也会先按块落盘并增量计算哈希，避免把整份文件一次性读进 Python 内存
-- 资源页进入上传流程前会先读取 `upload-readiness`：如果当前检索 provider 还没满足最小配置，前端会直接禁用上传入口，而不是等文件传完再报错
-- 文本文档上传当前仍在请求内完成标准化与索引；图片上传会先返回 `processing`，随后由后台任务补做 vision 标准化与索引
-- 如果当前 vision provider 不可用，图片仍可入库，但会退化成仅保留基础文件信息
-- `just docker-up` 默认复用当前镜像；首次启动、改了 Dockerfile / lockfile，或改了前端构建期 API 地址时，先执行 `just docker-build`
+- `just docker-up` 会在启动前自动重建当前工作区对应镜像
+- Docker 单机模式里，`web` 容器会把同源 `/api` 反代到 `api` 服务
 
-更细的容器拓扑、部署脚本、副作用和重置 runbook 见 [docs/arch/deployment-and-operations.md](./docs/arch/deployment-and-operations.md)。
+> 完整部署说明、容器拓扑、运维脚本和故障排查见 [docs/arch/deployment-and-operations.md](./docs/arch/deployment-and-operations.md)
 
 ## 手工验证样例
 
@@ -217,11 +198,13 @@ knowledge-chatbox/
     chroma/            # Chroma 向量索引数据
     sqlite/            # SQLite 业务数据与 FTS5 词法候选兜底索引
   scripts/
+    api-entrypoint.sh
     check_repo_surface.py
     dev-run.sh
     docker-deploy.sh
     export_openapi.py
-  reset-local-data.sh
+    reset-local-data.sh
+    lib/
   justfile
   .env.example
   docker-compose.yml

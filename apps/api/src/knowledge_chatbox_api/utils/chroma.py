@@ -1,18 +1,17 @@
 """Local chunk store adapters backed by Chroma or in-memory state."""
 
-from functools import cache
+import threading
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Protocol, cast
 
 from chromadb import PersistentClient
 
 from knowledge_chatbox_api.core.config import get_settings
+from knowledge_chatbox_api.core.logging import get_logger
 from knowledge_chatbox_api.utils.files import ensure_directory
 from knowledge_chatbox_api.utils.text_matching import (
-    has_text_overlap,
-)
-from knowledge_chatbox_api.utils.text_matching import (
-    normalize_match_text as _normalize_match_text,
+    normalize_and_tokenize as _normalize_and_tokenize,
 )
 from knowledge_chatbox_api.utils.text_matching import (
     quoted_phrases as _quoted_phrases,
@@ -20,18 +19,19 @@ from knowledge_chatbox_api.utils.text_matching import (
 from knowledge_chatbox_api.utils.text_matching import (
     raw_quoted_phrases as _raw_quoted_phrases,
 )
-from knowledge_chatbox_api.utils.text_matching import (
-    tokenize_text as _tokenize_text,
-)
 
 CHROMA_COLLECTION_NAME = "knowledge_chatbox_chunks"
 METADATA_PREFIX = "meta__"
 VECTOR_RERANK_CANDIDATE_MULTIPLIER = 4
 TEXT_FALLBACK_MAX_WHERE_DOCUMENT_TERMS = 6
 
+logger = get_logger(__name__)
+
 
 class ChunkStore(Protocol):
     """Small persistence contract used by indexing and retrieval services."""
+
+    def warmup(self, generation: int = 1) -> None: ...
 
     def upsert(
         self,
@@ -84,7 +84,7 @@ def _is_collection_missing_error(error: BaseException) -> bool:
     return False
 
 
-def _text_fallback_where_document_terms(query_text: str) -> list[str]:
+def text_fallback_where_document_terms(query_text: str) -> list[str]:
     candidates: list[str] = []
     seen: set[str] = set()
 
@@ -102,7 +102,8 @@ def _text_fallback_where_document_terms(query_text: str) -> list[str]:
     if 2 <= len(stripped_query) <= 120:
         add_candidate(stripped_query)
 
-    for token in sorted(_tokenize_text(query_text), key=lambda t: (-len(t), t)):
+    _, query_tokens = _normalize_and_tokenize(query_text)
+    for token in sorted(query_tokens, key=lambda t: (-len(t), t)):
         if token.isascii() and len(token) < 3:
             continue
         if not token.isascii() and len(token) < 2:
@@ -120,35 +121,40 @@ def _score_records(
     *,
     top_k: int,
 ) -> list[dict[str, Any]]:
-    query_terms = _tokenize_text(query_text)
+    query_normalized, query_tokens = _normalize_and_tokenize(query_text)
     query_phrases = _quoted_phrases(query_text)
-    normalized_query = _normalize_match_text(query_text)
 
-    if not query_terms and not query_phrases and len(normalized_query) < 2:
+    if not query_tokens and not query_phrases and len(query_normalized) < 2:
         return []
 
     scored_records: list[tuple[float, dict[str, Any]]] = []
-    query_term_count = max(len(query_terms), 1)
+    query_term_count = max(len(query_tokens), 1)
 
     for record in records:
         section_title = record.get("metadata", {}).get("section_title") or ""
         haystack = f"{record.get('text', '')} {section_title}"
-        normalized_haystack = _normalize_match_text(haystack)
-        if not has_text_overlap(
-            query_text,
-            haystack,
-            query_normalized=normalized_query,
-            query_tokens=query_terms,
-            query_quoted_phrases=query_phrases,
+        normalized_haystack, tokens = _normalize_and_tokenize(haystack)
+
+        has_overlap = False
+        for phrase in query_phrases:
+            if phrase in normalized_haystack:
+                has_overlap = True
+                break
+        if (
+            not has_overlap
+            and len(query_normalized) >= 2
+            and query_normalized in normalized_haystack
         ):
+            has_overlap = True
+        if not has_overlap and len(query_tokens & tokens) == 0:
             continue
-        tokens = _tokenize_text(haystack)
-        overlap = len(query_terms & tokens)
+
+        overlap = len(query_tokens & tokens)
         score = overlap / query_term_count
         phrase_hits = sum(1 for phrase in query_phrases if phrase in normalized_haystack)
         if phrase_hits:
             score += float(phrase_hits)
-        if len(normalized_query) >= 2 and normalized_query in normalized_haystack:
+        if len(query_normalized) >= 2 and query_normalized in normalized_haystack:
             score += 1.0
         scored_records.append((score, record))
 
@@ -209,18 +215,27 @@ class PersistentChromaStore:
         ensure_directory(storage_path)
         self._client = PersistentClient(path=str(storage_path))
         self._collections: dict[int, Any] = {}
+        self._lock = threading.Lock()
 
     def _collection_for_generation(self, generation: int) -> Any:
         normalized_generation = max(int(generation), 1)
-        collection = self._collections.get(normalized_generation)
-        if collection is not None:
+        with self._lock:
+            collection = self._collections.get(normalized_generation)
+            if collection is not None:
+                return collection
+            collection = self._client.get_or_create_collection(
+                name=collection_name_for_generation(normalized_generation),
+                metadata={
+                    "purpose": "knowledge-chatbox-chunks",
+                    "generation": normalized_generation,
+                },
+            )
+            self._collections[normalized_generation] = collection
             return collection
-        collection = self._client.get_or_create_collection(
-            name=collection_name_for_generation(normalized_generation),
-            metadata={"purpose": "knowledge-chatbox-chunks", "generation": normalized_generation},
-        )
-        self._collections[normalized_generation] = collection
-        return collection
+
+    def warmup(self, generation: int = 1) -> None:
+        """Pre-load the collection for *generation* so the first query is fast."""
+        self._collection_for_generation(generation)
 
     def upsert(
         self,
@@ -238,7 +253,7 @@ class PersistentChromaStore:
             ids=[record["id"] for record in records],
             documents=[record["text"] for record in records],
             metadatas=[self._serialize_record_metadata(record) for record in records],
-            embeddings=cast(Any, embeddings),
+            embeddings=cast("Any", embeddings),
         )
 
     def list_by_document_id(
@@ -251,7 +266,7 @@ class PersistentChromaStore:
         collection = self._collection_for_generation(generation)
         result = collection.get(
             where=_normalize_chroma_where({"document_revision_id": document_id}),
-            include=["documents", "metadatas", "embeddings"],
+            include=["documents", "metadatas"],
         )
         return self._deserialize_records(result)
 
@@ -270,6 +285,7 @@ class PersistentChromaStore:
         except Exception as error:
             if _is_collection_missing_error(error):
                 return
+            logger.debug("chroma_clear_generation_failed", generation=generation, exc_info=True)
             raise
 
     def query(
@@ -319,12 +335,14 @@ class PersistentChromaStore:
             try:
                 self._client.delete_collection(collection.name)
             except Exception:
+                logger.debug("chroma_delete_collection_failed", name=collection.name, exc_info=True)
                 continue
         try:
             for collection in self._client.list_collections():
                 if collection.name.startswith(f"{CHROMA_COLLECTION_NAME}__gen_"):
                     self._client.delete_collection(collection.name)
         except Exception:
+            logger.debug("chroma_list_collections_failed", exc_info=True)
             return
 
     def _serialize_record_metadata(
@@ -333,22 +351,21 @@ class PersistentChromaStore:
     ) -> dict[str, str | int | float | bool]:
         metadata: dict[str, str | int | float | bool] = {}
         for key in ("document_id", "document_revision_id", "space_id"):
-            value = record.get(key)
+            value: Any = record.get(key)
             if isinstance(value, int):
                 metadata[key] = value
         for key, value in (record.get("metadata") or {}).items():
-            if value is None or isinstance(value, (str, int, float, bool)):
-                if value is not None:
-                    metadata[f"{METADATA_PREFIX}{key}"] = value
+            if isinstance(value, (str, int, float, bool)):
+                metadata[f"{METADATA_PREFIX}{key}"] = value
         return metadata
 
     def _build_record_from_metadata(
         self,
         record_id: str,
         text: str,
-        metadata: dict,
+        metadata: dict[str, Any],
         *,
-        embedding: list | None = None,
+        embedding: list[float] | None = None,
         score: float | None = None,
     ) -> dict[str, Any]:
         record: dict[str, Any] = {
@@ -434,16 +451,16 @@ class PersistentChromaStore:
         return merged
 
 
-@cache
-def _get_persistent_chroma_store(storage_path: str) -> PersistentChromaStore:
+@lru_cache(maxsize=1)
+def _get_persistent_chroma_store(storage_path: Path) -> PersistentChromaStore:
     """Cache one persistent store per configured Chroma path."""
-    return PersistentChromaStore(Path(storage_path))
+    return PersistentChromaStore(storage_path)
 
 
 def get_chroma_store() -> PersistentChromaStore:
     """Return the persistent store configured for the current runtime settings."""
     settings = get_settings()
-    return _get_persistent_chroma_store(str(settings.chroma_path))
+    return _get_persistent_chroma_store(settings.chroma_path)
 
 
 def reset_chroma_store(
@@ -455,7 +472,7 @@ def reset_chroma_store(
     resolved_path = (
         Path(storage_path) if storage_path is not None else Path(get_settings().chroma_path)
     )
-    store = _get_persistent_chroma_store(str(resolved_path))
+    store = _get_persistent_chroma_store(resolved_path)
     if clear_persisted:
         store.clear()
     _get_persistent_chroma_store.cache_clear()

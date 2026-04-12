@@ -10,7 +10,7 @@ class Chunk:
     chunk_id: str
     chunk_index: int
     text: str
-    metadata: dict
+    metadata: dict[str, int | str | None]
 
 
 _DEFAULT_CHUNK_SIZE = 512
@@ -63,7 +63,7 @@ def _build_chunk_metadata(
     chunk_index: int,
     section_title: str | None,
     page_number: int | None,
-) -> dict:
+) -> dict[str, int | str | None]:
     return {
         "document_id": document_id,
         "chunk_id": chunk_id,

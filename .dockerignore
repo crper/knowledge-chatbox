@@ -1,0 +1,39 @@
+.git
+.github
+.idea
+.vscode
+.DS_Store
+
+.env
+.env.*
+data
+
+# API 镜像以仓库根为 context，但不需要整个前端工作区或样例数据。
+apps/web
+examples
+
+# API 镜像只需要容器入口脚本，不需要其余本地 shell/python 运维脚本。
+scripts/**
+!scripts/api-entrypoint.sh
+
+# API 镜像不携带测试与本地产物。
+apps/api/tests
+apps/api/.coverage
+apps/api/coverage.xml
+apps/api/htmlcov
+apps/api/.python-version
+
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache
+**/.mypy_cache
+**/*.pyc
+**/*.pyo
+**/*.log
+
+**/node_modules
+**/dist
+**/coverage
+
+docs

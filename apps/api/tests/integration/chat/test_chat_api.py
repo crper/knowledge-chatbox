@@ -1,7 +1,13 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import pytest
-from fastapi.testclient import TestClient
+
+from knowledge_chatbox_api.schemas.chat import ChatSourceRead
+
+if TYPE_CHECKING:
+    from fastapi.testclient import TestClient
 
 
 @pytest.mark.integration
@@ -80,13 +86,13 @@ def test_list_messages_api_supports_limit_for_latest_window(
 ) -> None:
     """测试列表消息 API 支持 limit 参数获取最新窗口"""
     del mock_pydanticai_chat_workflow
-    from tests.fixtures.helpers import create_chat_session, create_sync_message, login_as_admin
+    from tests.fixtures.helpers import create_chat_session, create_message, login_as_admin
 
     login_as_admin(api_client)
     session_id = create_chat_session(api_client, title="分页会话")
 
     created_pairs = [
-        create_sync_message(
+        create_message(
             api_client,
             session_id,
             client_request_id=f"req-chat-page-{index}",
@@ -113,13 +119,13 @@ def test_list_messages_api_supports_before_id_for_previous_window(
 ) -> None:
     """测试列表消息 API 支持 before_id 参数获取上一页"""
     del mock_pydanticai_chat_workflow
-    from tests.fixtures.helpers import create_chat_session, create_sync_message, login_as_admin
+    from tests.fixtures.helpers import create_chat_session, create_message, login_as_admin
 
     login_as_admin(api_client)
     session_id = create_chat_session(api_client, title="分页会话")
 
     created_pairs = [
-        create_sync_message(
+        create_message(
             api_client,
             session_id,
             client_request_id=f"req-chat-before-{index}",
@@ -139,3 +145,38 @@ def test_list_messages_api_supports_before_id_for_previous_window(
         created_pairs[1]["user_message"]["id"],
         created_pairs[1]["assistant_message"]["id"],
     ]
+
+
+@pytest.mark.integration
+@pytest.mark.requires_db
+def test_message_sources_conform_to_chat_source_read_schema(
+    api_client: TestClient,
+    mock_pydanticai_chat_workflow,
+) -> None:
+    """测试消息来源数据符合 ChatSourceRead 结构定义"""
+    del mock_pydanticai_chat_workflow
+    from tests.fixtures.helpers import create_chat_session, login_as_admin
+
+    login_as_admin(api_client)
+    session_id = create_chat_session(api_client)
+
+    response = api_client.post(
+        f"/api/chat/sessions/{session_id}/messages",
+        json={
+            "content": "请提供引用来源",
+            "client_request_id": "req-chat-sources-1",
+        },
+    )
+
+    payload = response.json()
+    assert response.status_code == 200
+
+    sources = payload["data"]["assistant_message"]["sources_json"]
+    assert isinstance(sources, list)
+    assert len(sources) > 0
+
+    for src in sources:
+        source: dict[str, Any] = src
+        validated = ChatSourceRead.model_validate(source)
+        assert isinstance(validated.chunk_id, str)
+        assert validated.chunk_id

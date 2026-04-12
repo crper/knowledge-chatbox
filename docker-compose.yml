@@ -7,8 +7,8 @@ x-json-file-logging: &json-file-logging
 services:
   api:
     build:
-      context: ./apps/api
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: apps/api/Dockerfile
     env_file:
       - ${ENV_FILE:-.env}
     init: true

@@ -3,7 +3,6 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from knowledge_chatbox_api.models.auth import User
 from knowledge_chatbox_api.repositories.chat_repository import ChatRepository
 from knowledge_chatbox_api.repositories.chat_run_event_repository import ChatRunEventRepository
 from knowledge_chatbox_api.repositories.chat_run_repository import ChatRunRepository
@@ -17,7 +16,6 @@ from knowledge_chatbox_api.services.chat.workflow.output import WorkflowSource
 class ChatWorkflowDeps:
     session_id: int
     session: Session
-    actor: User
     chat_repository: ChatRepository
     chat_run_repository: ChatRunRepository
     chat_run_event_repository: ChatRunEventRepository

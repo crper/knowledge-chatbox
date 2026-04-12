@@ -6,7 +6,6 @@ import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
 type WorkspaceMetricCardProps = {
@@ -43,20 +42,18 @@ export function WorkspaceMetricCard({
   value,
 }: WorkspaceMetricCardProps) {
   return (
-    <Card className="workspace-surface-subtle shadow-none" size="sm">
-      <CardContent className="pt-0">
-        <div className="flex items-start justify-between gap-4">
-          <div className="space-y-2">
-            <p className="text-ui-caption text-muted-foreground">{label}</p>
-            <p className="text-ui-heading text-foreground">{value}</p>
-            {detail ? <p className="text-ui-subtle text-muted-foreground">{detail}</p> : null}
-          </div>
-          <span className="surface-light flex size-10 shrink-0 items-center justify-center rounded-2xl text-primary">
-            <Icon aria-hidden="true" className="size-4" />
-          </span>
-        </div>
-      </CardContent>
-    </Card>
+    <div className="flex items-start justify-between gap-4 rounded-[1.75rem] border border-border/60 bg-background/84 px-5 py-4 shadow-[0_1px_0_hsl(var(--border)/0.24)] backdrop-blur-sm">
+      <div className="min-w-0 space-y-1">
+        <p className="text-[0.72rem] font-medium tracking-[0.08em] text-muted-foreground">
+          {label}
+        </p>
+        <div className="text-3xl font-semibold tracking-tight text-foreground">{value}</div>
+        {detail ? <p className="text-xs text-muted-foreground">{detail}</p> : null}
+      </div>
+      <span className="surface-light flex size-11 shrink-0 items-center justify-center rounded-2xl text-primary">
+        <Icon aria-hidden="true" className="size-4" />
+      </span>
+    </div>
   );
 }
 
@@ -118,15 +115,7 @@ export function WorkspacePage({
       </section>
 
       {metrics ? (
-        <section
-          className={cn(
-            // 更统一的 metrics 间距
-            "grid gap-3 rounded-2xl border border-border/40 bg-muted/20 px-4 py-4 md:grid-cols-3",
-            metricsClassName,
-          )}
-        >
-          {metrics}
-        </section>
+        <section className={cn("grid gap-3 md:grid-cols-3", metricsClassName)}>{metrics}</section>
       ) : null}
 
       <section

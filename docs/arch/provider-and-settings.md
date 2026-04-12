@@ -7,6 +7,7 @@
 - 只保留一个全局设置真相源，减少多表同步复杂度
 - provider profile 与 capability route 仍保持强类型，避免“一个大 JSON 什么都能塞”
 - embedding route 切换继续保留 `pending + generation rebuild` 语义
+- 设置变更需要可追溯，但不在历史表里复制 secret 明文
 - 前端和测试统一消费扁平 settings API，不再维护旧的 `profiles / routes / indexing` 兼容形状
 - 前端 provider 表单的本地校验保持纯逻辑：helper 只返回校验 key，展示层按当前 i18n 语言翻译，避免在纯函数里写死中文文案
 
@@ -36,6 +37,25 @@
 - `pending_embedding_route_json` 只在检索链路切换期间存在，用来描述“下一代索引要切到哪个 embedding route”
 - secret 字段（如 `api_key`）在 GET 接口返回时会被掩码成 `********`，前端不会看到明文
 - PUT 接口支持部分更新：未提供的字段保持原值不变，提供的 secret 字段如果是完整字符串则会覆盖原值
+
+### `settings_versions`
+
+当前关键字段：
+
+- `settings_id`
+- `version_no`
+- `snapshot_json`
+- `changed_fields_json`
+- `trigger`
+- `updated_by_user_id`
+- `created_at`
+
+说明：
+
+- `settings_versions` 当前保存的是脱敏 settings 快照，不保存 secret 明文
+- `trigger` 当前只有 `bootstrap / update`
+- `changed_fields_json` 记录顶层字段变化，例如 `provider_profiles / response_route / vision_route`
+- 这张表当前的职责是审计和排障，不是配置回滚真相源
 
 ### `provider_profiles_json` 的逻辑内容
 

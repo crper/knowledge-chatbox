@@ -607,6 +607,10 @@
     animation: slide-in-right 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
   }
 
+  .animate-fade-in {
+    animation: fade-in-up 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
   .stagger-1 {
     animation-delay: 0.05s;
   }
@@ -621,6 +625,37 @@
   }
   .stagger-5 {
     animation-delay: 0.25s;
+  }
+
+  /* 焦点环样式 - 增强可访问性 */
+  .focus-ring {
+    @apply focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background;
+  }
+
+  /* 文本对比度增强 */
+  .text-high-contrast {
+    color: hsl(var(--foreground));
+  }
+
+  .text-medium-contrast {
+    color: hsl(var(--muted-foreground));
+  }
+
+  /* 状态色彩 - 确保对比度 */
+  .status-success {
+    @apply text-emerald-600 dark:text-emerald-400;
+  }
+
+  .status-error {
+    @apply text-destructive;
+  }
+
+  .status-warning {
+    @apply text-amber-600 dark:text-amber-400;
+  }
+
+  .status-info {
+    @apply text-blue-600 dark:text-blue-400;
   }
 }
 

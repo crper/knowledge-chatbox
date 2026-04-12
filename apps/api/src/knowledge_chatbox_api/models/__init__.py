@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from knowledge_chatbox_api.models.auth import AuthSession as AuthSession
+    from knowledge_chatbox_api.models.auth import RateLimitAttempt as RateLimitAttempt
     from knowledge_chatbox_api.models.auth import User as User
     from knowledge_chatbox_api.models.chat import (
         ChatMessage as ChatMessage,
@@ -29,4 +30,5 @@ if TYPE_CHECKING:
         DocumentRevision as DocumentRevision,
     )
     from knowledge_chatbox_api.models.settings import AppSettings as AppSettings
+    from knowledge_chatbox_api.models.settings import SettingsVersion as SettingsVersion
     from knowledge_chatbox_api.models.space import Space as Space

@@ -7,11 +7,14 @@ import { useMutation } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
+import { isAbortError } from "@/lib/utils";
 import type { ChatMessageItem, ChatSessionContextItem, ChatSourceItem } from "../api/chat";
 import { startChatStream, type ChatStreamAttachmentInput } from "../api/chat-stream";
 import { CHAT_STREAM_EVENT } from "../api/chat-stream-events";
+import type { MessageStatus } from "../constants";
 import type { useChatStreamRun } from "../hooks/use-chat-stream-run";
 import { finalizeTerminalStreamRun } from "../utils/finalize-terminal-stream-run";
+import { parseChatSourceItem } from "../utils/chat-source";
 import { resolveSubmitErrorMessage } from "../utils/chat-submit-helpers";
 type StreamRunTerminalStatus = "failed" | "succeeded";
 
@@ -30,7 +33,7 @@ type UseChatStreamLifecycleParams = {
       content?: string;
       error_message?: string | null;
       sources_json?: ChatSourceItem[] | null;
-      status?: string;
+      status?: MessageStatus;
     };
     sessionId: number;
   }) => boolean;
@@ -58,11 +61,13 @@ export function useChatStreamLifecycle({
   const finalizeStreamRun = useCallback(
     ({
       errorMessage,
+      reason,
       runId,
       sessionId,
       status,
     }: {
       errorMessage: string | null;
+      reason?: "failed" | "stopped" | "succeeded";
       runId: number;
       sessionId: number;
       status: StreamRunTerminalStatus;
@@ -75,6 +80,7 @@ export function useChatStreamLifecycle({
         patchAssistantMessage,
         patchRetriedUserMessage,
         patchSessionContext,
+        reason,
         sessionId,
         status,
       }).then((result) => {
@@ -96,17 +102,22 @@ export function useChatStreamLifecycle({
   const sendMutation = useMutation({
     mutationFn: async ({
       attachments,
+      clientRequestId,
       content,
       retryOfMessageId,
       sessionId,
+      signal,
     }: {
       attachments?: ChatStreamAttachmentInput[];
+      clientRequestId: string;
       content: string;
       retryOfMessageId?: number;
       sessionId: number;
+      signal?: AbortSignal;
     }) => {
       let activeRunId: number | null = null;
       let receivedTerminalRunEvent = false;
+      const stoppedErrorMessage = t("assistantStreamingStoppedError");
 
       try {
         return await startChatStream({
@@ -114,10 +125,15 @@ export function useChatStreamLifecycle({
           body: {
             attachments,
             content,
-            client_request_id: crypto.randomUUID(),
+            client_request_id: clientRequestId,
             retry_of_message_id: retryOfMessageId,
           },
+          signal,
           onEvent: (event) => {
+            if (signal?.aborted) {
+              return;
+            }
+
             const runId = Number(event.data.run_id ?? 0);
 
             if (event.event === CHAT_STREAM_EVENT.runStarted) {
@@ -152,7 +168,10 @@ export function useChatStreamLifecycle({
             }
 
             if (event.event === CHAT_STREAM_EVENT.partSource && event.data.source) {
-              streamRun.addSource(runId, event.data.source as Record<string, unknown>); // TODO: 定义 ChatStreamSource 接口与后端 schema 对齐，替换 Record<string, unknown>
+              const source = parseChatSourceItem(event.data.source);
+              if (source !== null) {
+                streamRun.addSource(runId, source);
+              }
               return;
             }
 
@@ -161,6 +180,7 @@ export function useChatStreamLifecycle({
               streamRun.completeRun(runId);
               finalizeStreamRun({
                 errorMessage: null,
+                reason: "succeeded",
                 runId,
                 sessionId,
                 status: "succeeded",
@@ -177,6 +197,7 @@ export function useChatStreamLifecycle({
               streamRun.failRun(runId, errorMessage);
               finalizeStreamRun({
                 errorMessage,
+                reason: "failed",
                 runId,
                 sessionId,
                 status: "failed",
@@ -185,10 +206,26 @@ export function useChatStreamLifecycle({
           },
         });
       } catch (error) {
+        const resolvedErrorMessage = resolveSubmitErrorMessage(error, t("messageSendFailedToast"));
+        if (isAbortError(error)) {
+          if (activeRunId !== null && !receivedTerminalRunEvent) {
+            streamRun.stopRun(activeRunId, stoppedErrorMessage);
+            finalizeStreamRun({
+              errorMessage: stoppedErrorMessage,
+              reason: "stopped",
+              runId: activeRunId,
+              sessionId,
+              status: "failed",
+            });
+          }
+
+          throw error;
+        }
+
         if (activeRunId !== null && !receivedTerminalRunEvent) {
           streamRun.failRun(activeRunId, t("assistantStreamingInterruptedError"));
-        } else {
-          toast.error(resolveSubmitErrorMessage(error, t("messageSendFailedToast")));
+        } else if (resolvedErrorMessage !== stoppedErrorMessage) {
+          toast.error(resolvedErrorMessage);
         }
 
         throw error;

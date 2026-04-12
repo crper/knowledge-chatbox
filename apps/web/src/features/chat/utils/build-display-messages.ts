@@ -124,14 +124,13 @@ function collapseRetryMessageAttempts(messages: ChatMessageItem[]) {
   });
 }
 
-function processUserMessage(
-  message: ChatMessageItem,
-  deps: {
-    getRootUserMessageId: (id: number) => number;
-    emittedUserRootIds: Set<number>;
-    latestUserAttemptByRootId: Map<number, ChatMessageItem>;
-  },
-): ChatMessageItem[] {
+type UserMessageDeps = {
+  getRootUserMessageId: (id: number) => number;
+  emittedUserRootIds: Set<number>;
+  latestUserAttemptByRootId: Map<number, ChatMessageItem>;
+};
+
+function processUserMessage(message: ChatMessageItem, deps: UserMessageDeps): ChatMessageItem[] {
   const rootUserMessageId = deps.getRootUserMessageId(message.id);
   if (message.id !== rootUserMessageId || deps.emittedUserRootIds.has(rootUserMessageId)) {
     return [];
@@ -142,24 +141,24 @@ function processUserMessage(
   return [latestUserAttempt];
 }
 
+type AssistantMessageDeps = {
+  getRootUserMessageId: (id: number) => number;
+  emittedAssistantRootIds: Set<number>;
+  assistantAnchorMessageIdByRootId: Map<number, number>;
+  latestUserAttemptByRootId: Map<number, ChatMessageItem>;
+  latestAssistantAttemptByRootId: Map<number, ChatMessageItem>;
+};
+
 function processAssistantMessage(
   message: ChatMessageItem,
-  deps: {
-    getRootUserMessageId: (id: number) => number;
-    emittedAssistantRootIds: Set<number>;
-    assistantAnchorMessageIdByRootId: Map<number, number>;
-    latestUserAttemptByRootId: Map<number, ChatMessageItem>;
-    latestAssistantAttemptByRootId: Map<number, ChatMessageItem>;
-  },
+  deps: AssistantMessageDeps,
 ): ChatMessageItem[] {
   const rootUserMessageId = deps.getRootUserMessageId(message.reply_to_message_id!);
 
-  // 检查是否已发射
   if (deps.emittedAssistantRootIds.has(rootUserMessageId)) {
     return [];
   }
 
-  // 检查是否是锚点消息
   if (deps.assistantAnchorMessageIdByRootId.get(rootUserMessageId) !== message.id) {
     return [];
   }
@@ -168,7 +167,6 @@ function processAssistantMessage(
   const latestAssistantAttempt =
     deps.latestAssistantAttemptByRootId.get(rootUserMessageId) ?? message;
 
-  // 检查是否需要抑制失败的占位符
   if (shouldSuppressFailedAssistantPlaceholder(latestAssistantAttempt, latestUserAttempt)) {
     deps.emittedAssistantRootIds.add(rootUserMessageId);
     return [];
@@ -190,22 +188,28 @@ export function buildDisplayMessages({
   messages: ChatMessageItem[];
   runsById: Record<number, StreamingRunLike>;
 }) {
-  const streamingRuns = sortBy(
+  const allStreamingRuns = sortBy(
     Object.values(runsById)
       .map((run) => normalizeStreamingRun(run))
       .filter((run) => run.sessionId === activeSessionId),
     [(run) => run.assistantMessageId],
   );
 
+  const maxPersistedMessageId = messages[messages.length - 1]?.id ?? 0;
+
+  const persistedMessageIds = new Set(messages.map((message) => message.id));
+
+  const streamingRuns = allStreamingRuns.filter((run) => {
+    if (run.status === MessageStatus.SUCCEEDED && !run.suppressPersistedAssistantMessage) {
+      return !persistedMessageIds.has(run.assistantMessageId);
+    }
+    return true;
+  });
+
   const activeStreamingAssistantMessageIds = new Set(
     streamingRuns
       .filter((run) => isStreamingStatus(run.status))
       .map((run) => run.assistantMessageId),
-  );
-
-  const maxPersistedMessageId = messages.reduce(
-    (currentMax, message) => Math.max(currentMax, message.id),
-    0,
   );
 
   const normalizedMessages = normalizePersistedMessages(
@@ -263,6 +267,16 @@ function shouldSkipStreamingRun(run: StreamingRun, maxPersistedMessageId: number
 }
 
 function shouldKeepPersistedState(message: ChatMessageItem, run: StreamingRun) {
+  if (
+    run.suppressPersistedAssistantMessage &&
+    message.role === MessageRole.ASSISTANT &&
+    message.status === MessageStatus.SUCCEEDED
+  ) {
+    return true;
+  }
+  if (run.suppressPersistedAssistantMessage) {
+    return false;
+  }
   const hasPersistedTerminalAssistantState =
     message.role === MessageRole.ASSISTANT && !isStreamingStatus(message.status);
   return hasPersistedTerminalAssistantState && run.status !== MessageStatus.SUCCEEDED;

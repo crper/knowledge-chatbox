@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 from pydantic_ai import AgentRunResultEvent
 from pydantic_ai.messages import (
@@ -19,7 +18,13 @@ from pydantic_ai.messages import (
 from pydantic_ai.usage import RunUsage
 
 from knowledge_chatbox_api.services.chat.workflow.output import ChatWorkflowResult
-from knowledge_chatbox_api.utils.chroma import _matches_where_clause, _score_records
+from knowledge_chatbox_api.utils.chroma import (
+    _matches_where_clause,  # pyright: ignore[reportPrivateUsage]
+    _score_records,  # pyright: ignore[reportPrivateUsage]
+)
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
 
 
 class InMemoryChromaStore:
@@ -27,6 +32,9 @@ class InMemoryChromaStore:
 
     def __init__(self) -> None:
         self._records_by_generation: dict[int, dict[str, dict[str, Any]]] = {}
+
+    def warmup(self, generation: int = 1) -> None:
+        del generation
 
     def upsert(
         self,
@@ -74,6 +82,7 @@ class InMemoryChromaStore:
         generation: int = 1,
         where: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
+        del query_embedding
         records = list(self._records_by_generation.get(generation, {}).values())
         filtered = self._apply_where_filter(records, where)
         return _score_records(filtered, query_text, top_k=top_k)
@@ -135,31 +144,35 @@ class WorkflowRunResultStub:
 
 def make_adapter_backed_chat_workflow_class(
     *,
-    response_adapter=None,
+    response_adapter: Any | None = None,
     sync_answer: str = "workflow sync answer",
     sync_sources: list[dict[str, Any]] | None = None,
     stream_sources: list[dict[str, Any]] | None = None,
-):
+) -> type:
     class AdapterBackedChatWorkflow:
         def run_sync(self, *, deps, session_id: int, question: str, attachments=None):
+            del attachments
             assert deps.request_metadata["path"] == "sync"
             assert session_id > 0
             assert isinstance(question, str)
             return ChatWorkflowResult(
                 answer=sync_answer,
-                sources=sync_sources
-                or [
-                    {
-                        "document_id": 7,
-                        "document_revision_id": 11,
-                        "document_name": "playbook.md",
-                        "chunk_id": "chunk-1",
-                        "snippet": "workflow source",
-                        "page_number": None,
-                        "section_title": "Intro",
-                        "score": 0.82,
-                    }
-                ],
+                sources=cast(
+                    "Any",
+                    sync_sources
+                    or [
+                        {
+                            "document_id": 7,
+                            "document_revision_id": 11,
+                            "document_name": "playbook.md",
+                            "chunk_id": "chunk-1",
+                            "snippet": "workflow source",
+                            "page_number": None,
+                            "section_title": "Intro",
+                            "score": 0.82,
+                        }
+                    ],
+                ),
             )
 
         def run_stream_events(
@@ -194,19 +207,22 @@ def make_adapter_backed_chat_workflow_class(
                     yield PartDeltaEvent(index=0, delta=TextPartDelta("world"))
                     yield PartEndEvent(index=0, part=TextPart("hello world"))
                     yield AgentRunResultEvent(
-                        result=WorkflowRunResultStub("hello world", {"output_tokens": 2})
+                        result=cast(
+                            "Any",
+                            WorkflowRunResultStub("hello world", {"output_tokens": 2}),
+                        )
                     )
                     return
 
                 text_parts: list[str] = []
                 started_text = False
-                chat_session = deps.chat_repository.get_session(session_id)
-                active_space_id = chat_session.space_id if chat_session is not None else None
-                prompt_attachments = deps.prompt_attachment_service.build_prompt_attachments(
+                chat_session: Any = deps.chat_repository.get_session(session_id)
+                active_space_id: int | None = chat_session.space_id if chat_session is not None else None
+                prompt_attachments: list[Any] = deps.prompt_attachment_service.build_prompt_attachments(
                     attachments,
                     active_space_id,
                 )
-                prompt_text = deps.prompt_attachment_service.resolve_prompt_text(
+                prompt_text: str = deps.prompt_attachment_service.resolve_prompt_text(
                     question,
                     attachments,
                 )
@@ -218,11 +234,11 @@ def make_adapter_backed_chat_workflow_class(
                     [{"role": "user", "content": user_content}],
                     deps.runtime_settings,
                 ):
-                    chunk_type = getattr(chunk, "type", None)
+                    chunk_type: str | None = getattr(chunk, "type", None)
                     if chunk_type is None and isinstance(chunk, dict):
                         chunk_type = chunk.get("type")
                     if chunk_type == "text_delta":
-                        delta = getattr(chunk, "delta", None)
+                        delta: Any = getattr(chunk, "delta", None)
                         if delta is None and isinstance(chunk, dict):
                             delta = chunk.get("delta", "")
                         if not started_text:
@@ -232,17 +248,17 @@ def make_adapter_backed_chat_workflow_class(
                         text_parts.append(str(delta))
                         yield PartDeltaEvent(index=0, delta=TextPartDelta(str(delta)))
                     elif chunk_type == "completed":
-                        usage = getattr(chunk, "usage", None)
+                        usage: Any = getattr(chunk, "usage", None)
                         if usage is None and isinstance(chunk, dict):
                             usage = chunk.get("usage", {})
                         if started_text:
                             yield PartEndEvent(index=0, part=TextPart("".join(text_parts)))
                         yield AgentRunResultEvent(
-                            result=WorkflowRunResultStub("".join(text_parts), usage)
+                            result=cast("Any", WorkflowRunResultStub("".join(text_parts), usage))
                         )
                         return
                     elif chunk_type == "error":
-                        error_message = getattr(chunk, "error_message", None)
+                        error_message: str | None = getattr(chunk, "error_message", None)
                         if error_message is None and isinstance(chunk, dict):
                             error_message = chunk.get("error_message")
                         raise RuntimeError(error_message or "provider stream failed")

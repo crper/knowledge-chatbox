@@ -11,6 +11,19 @@ import { DocumentPreviewSheet } from "./document-preview-sheet";
 
 declare const fetchMockCalls: Array<[string, RequestInit?]>;
 
+vi.mock("@embedpdf/react-pdf-viewer", () => ({
+  PDFViewer: ({
+    config,
+  }: {
+    config?: { documentManager?: { initialDocuments?: Array<{ url?: string }> } };
+  }) => (
+    <div
+      data-src={config?.documentManager?.initialDocuments?.[0]?.url ?? ""}
+      data-testid="pdf-viewer"
+    />
+  ),
+}));
+
 vi.mock("@/features/chat/components/markdown-message", () => ({
   MarkdownMessage: ({ content }: { content: string }) => (
     <div data-testid="markdown-preview">{content}</div>
@@ -145,7 +158,7 @@ describe("DocumentPreviewSheet", () => {
     expect(screen.queryByTestId("markdown-preview")).not.toBeInTheDocument();
   });
 
-  it("renders a pdf fallback that opens in a new tab", async () => {
+  it("renders pdf previews inline in the sheet", async () => {
     renderSheet(
       buildDocument({
         id: 10,
@@ -154,8 +167,10 @@ describe("DocumentPreviewSheet", () => {
       }),
     );
 
-    expect(await screen.findByText("PDF 预览将通过浏览器在新标签打开")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "在新标签打开 PDF" })).toBeInTheDocument();
+    expect(await screen.findByTestId("pdf-viewer")).toHaveAttribute(
+      "data-src",
+      expect.stringContaining("/api/documents/revisions/10/file"),
+    );
   });
 
   it("renders an unsupported preview fallback for docx files", async () => {

@@ -1,15 +1,16 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from fastapi.testclient import TestClient
+if TYPE_CHECKING:
+    from fastapi.testclient import TestClient
 
 
 def login_as_admin(api_client: TestClient) -> dict[str, Any]:
     """登录管理员并返回响应数据"""
     response = api_client.post(
         "/api/auth/login",
-        json={"username": "admin", "password": "admin123456"},
+        json={"username": "admin", "password": "Admin123456"},
     )
     assert response.status_code == 200
     return response.json()["data"]
@@ -39,22 +40,6 @@ def create_message(
     )
     assert response.status_code == 200
     return response.json()["data"]
-
-
-def create_sync_message(
-    api_client: TestClient,
-    session_id: int,
-    *,
-    client_request_id: str,
-    content: str,
-) -> dict[str, Any]:
-    """创建同步消息并返回数据（create_message 的别名）"""
-    return create_message(
-        api_client,
-        session_id,
-        client_request_id=client_request_id,
-        content=content,
-    )
 
 
 def assert_error_response(response, expected_code: str, expected_status: int = 400):

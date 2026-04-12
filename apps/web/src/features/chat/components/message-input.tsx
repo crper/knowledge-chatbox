@@ -4,33 +4,24 @@
 
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { ClipboardEvent, FormEvent, KeyboardEvent } from "react";
-import { LoaderCircleIcon, PaperclipIcon, SendHorizontalIcon } from "lucide-react";
 import type { FileRejection } from "react-dropzone";
 import { useTranslation } from "react-i18next";
 
 import { FileDropzone } from "@/components/upload/file-dropzone";
 import { Button } from "@/components/ui/button";
 import { isInputComposing } from "@/lib/dom";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import type { ChatReasoningMode } from "../api/chat";
-import type { ComposerAttachmentItem } from "../store/chat-attachment-store";
-import type { ChatSendShortcut } from "../store/chat-ui-store";
-import { hasSendableChatAttachments } from "../utils/chat-attachments";
+import type { ChatSendShortcut, ComposerAttachmentItem } from "../store/chat-composer-store";
 import {
   buildAttachmentPreviewIndexes,
   buildComposerAttachmentListItems,
   buildComposerImageViewerItems,
 } from "../utils/attachment-list-items";
-import { AttachmentList } from "./attachment-list";
 import { ImageViewerDialog } from "./image-viewer-dialog";
+import { MessageInputActionRail } from "./message-input-action-rail";
+import { MessageInputAttachments } from "./message-input-attachments";
 
 type MessageInputProps = {
   activeModelActionLabel?: string | null;
@@ -44,6 +35,7 @@ type MessageInputProps = {
   onRejectFiles?: (fileRejections: FileRejection[]) => void;
   onRemoveAttachment?: (attachmentId: string) => void;
   onReasoningModeChange?: (mode: ChatReasoningMode) => void;
+  onStopSubmit?: () => void;
   onSubmit: () => void | Promise<void>;
   reasoningMode?: ChatReasoningMode;
   reasoningModeVisible?: boolean;
@@ -52,10 +44,6 @@ type MessageInputProps = {
 };
 
 const PASTED_FILE_NAME_FALLBACK = "pasted-image";
-const composerControlSurfaceClassName =
-  "border border-border/68 bg-input/72 shadow-[0_8px_18px_-18px_hsl(var(--shadow-color)/0.2)] transition-[background-color,border-color,box-shadow,color] dark:bg-input/84";
-const composerTouchControlClassName =
-  "min-h-[2.625rem] focus-visible:border-ring focus-visible:bg-input focus-visible:ring-3 focus-visible:ring-ring/42 md:min-h-9";
 
 /** 根据 MIME 类型获取文件扩展名 */
 function getPastedFileExtension(file: File): string {
@@ -121,6 +109,7 @@ export function MessageInput({
   onRejectFiles,
   onRemoveAttachment,
   onReasoningModeChange,
+  onStopSubmit,
   onSubmit,
   reasoningMode = "default",
   reasoningModeVisible = false,
@@ -141,11 +130,16 @@ export function MessageInput({
     }),
     [t],
   );
+  const submitPendingHint = t("sendingInteractiveHint", {
+    defaultValue: "正在生成，可随时停止",
+  });
+  const stopSubmitLabel = t("stopStreamingAction", {
+    defaultValue: "停止生成",
+  });
+  const sendLabel = t("sendAction");
+  const sendingLabel = t("sendingAction");
 
-  const hasSendableAttachment = hasSendableChatAttachments(attachments);
-  const hasContextControls = Boolean(
-    activeModelActionLabel || activeModelLabel || reasoningModeVisible,
-  );
+  const hasSendableAttachment = attachments.some((attachment) => attachment.status !== "failed");
   const canSubmit = (draft.trim().length > 0 || hasSendableAttachment) && !submitPending;
 
   const imageViewerItems = useMemo(() => buildComposerImageViewerItems(attachments), [attachments]);
@@ -226,7 +220,13 @@ export function MessageInput({
     }
   }, []);
 
-  const attachmentErrors = useMemo(() => attachments.filter((a) => a.errorMessage), [attachments]);
+  const attachmentErrors = useMemo(
+    () =>
+      attachments.flatMap((attachment) =>
+        attachment.errorMessage ? [attachment.errorMessage] : [],
+      ),
+    [attachments],
+  );
 
   return (
     <FileDropzone
@@ -254,31 +254,11 @@ export function MessageInput({
           >
             <input {...getInputProps({ "aria-label": t("attachResourceAction") })} />
 
-            {/* 附件列表 */}
-            {attachments.length > 0 && (
-              <div className="space-y-2.5">
-                <div className="space-y-2" data-testid="message-input-attachments">
-                  <AttachmentList
-                    defaultCollapsed={false}
-                    expandOnItemAdd
-                    items={attachmentListItems}
-                    testId="composer-attachment-list"
-                  />
-                </div>
-                {attachmentErrors.length > 0 && (
-                  <div className="space-y-1 px-1">
-                    {attachmentErrors.map((attachment) => (
-                      <p
-                        key={`${attachment.id}-error`}
-                        className="text-ui-caption text-destructive"
-                      >
-                        {attachment.errorMessage}
-                      </p>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
+            <MessageInputAttachments
+              attachmentErrors={attachmentErrors}
+              attachmentScopeHint={attachmentScopeHint}
+              items={attachmentListItems}
+            />
 
             {/* 模型操作提示 */}
             {activeModelActionLabel && (
@@ -296,13 +276,6 @@ export function MessageInput({
                   {activeModelActionLabel}
                 </Button>
               </div>
-            )}
-
-            {/* 附件范围提示 */}
-            {attachmentScopeHint && (
-              <p className="mt-2.5 px-1 text-ui-caption text-muted-foreground">
-                {attachmentScopeHint}
-              </p>
             )}
 
             {/* 拖拽状态提示 */}
@@ -336,121 +309,24 @@ export function MessageInput({
               />
             </div>
 
-            {/* 操作按钮区 */}
-            <div
-              className="mt-2.5 grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-2 gap-y-1.5 border-t border-border/60 pt-2.5 sm:mt-3 sm:gap-x-2.5 sm:gap-y-2 sm:pt-3"
-              data-testid="message-input-actions"
-              onPointerDownCapture={blurTextareaIfFocused}
-            >
-              {/* 附件按钮 */}
-              <Button
-                aria-label={t("attachResourceAction")}
-                className={cn(
-                  composerControlSurfaceClassName,
-                  composerTouchControlClassName,
-                  "col-start-1 row-start-1 size-[2.625rem] self-start rounded-full border-border/60 hover:bg-background/36 md:size-9",
-                )}
-                disabled={submitPending}
-                onClick={open}
-                size="icon-sm"
-                type="button"
-                variant="outline"
-              >
-                <PaperclipIcon className="size-4 md:size-3.5" />
-              </Button>
-
-              {/* 上下文控制区 */}
-              {hasContextControls && (
-                <div className="col-start-2 row-start-1 grid min-w-0 gap-2 sm:flex sm:min-w-0 sm:flex-1 sm:flex-row sm:items-center sm:gap-2">
-                  {/* 模型标签/操作 */}
-                  {activeModelActionLabel ? (
-                    <Button
-                      className={cn(
-                        composerControlSurfaceClassName,
-                        composerTouchControlClassName,
-                        "w-full min-w-0 justify-start rounded-xl px-2.5 py-1.5 text-ui-caption text-foreground shadow-none hover:bg-background/34 hover:text-foreground sm:max-w-[min(48vw,20rem)] sm:px-3 sm:py-2",
-                      )}
-                      onClick={onActiveModelAction}
-                      size="sm"
-                      title={activeModelActionLabel}
-                      type="button"
-                      variant="ghost"
-                    >
-                      <span className="truncate">{activeModelActionLabel}</span>
-                    </Button>
-                  ) : activeModelLabel ? (
-                    <div
-                      className={cn(
-                        composerControlSurfaceClassName,
-                        composerTouchControlClassName,
-                        "flex w-full min-w-0 select-none items-center rounded-xl px-2.5 py-1.5 text-ui-caption text-foreground sm:max-w-[min(48vw,20rem)] sm:px-3 sm:py-2",
-                      )}
-                      title={activeModelLabel}
-                    >
-                      <span className="truncate">{activeModelLabel}</span>
-                    </div>
-                  ) : null}
-
-                  {/* 推理模式选择 */}
-                  {reasoningModeVisible && (
-                    <Select
-                      disabled={submitPending}
-                      items={[
-                        { label: reasoningLabels.default, value: "default" },
-                        { label: reasoningLabels.off, value: "off" },
-                        { label: reasoningLabels.on, value: "on" },
-                      ]}
-                      onValueChange={(value) => onReasoningModeChange?.(value as ChatReasoningMode)}
-                      value={reasoningMode}
-                    >
-                      <SelectTrigger
-                        aria-label={reasoningLabels.label}
-                        className={cn(
-                          composerControlSurfaceClassName,
-                          composerTouchControlClassName,
-                          "w-full min-w-0 rounded-xl px-2.5 text-ui-caption sm:min-w-28 sm:w-auto sm:px-3",
-                        )}
-                      >
-                        <SelectValue>{() => reasoningLabels[reasoningMode]}</SelectValue>
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="default">{reasoningLabels.default}</SelectItem>
-                        <SelectItem value="off">{reasoningLabels.off}</SelectItem>
-                        <SelectItem value="on">{reasoningLabels.on}</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  )}
-                </div>
-              )}
-
-              {/* 发送按钮 */}
-              <Button
-                aria-label={submitPending ? t("sendingAction") : t("sendAction")}
-                className="col-start-3 row-start-1 size-[2.625rem] self-start rounded-full md:size-9"
-                disabled={!canSubmit}
-                size="icon"
-                type="submit"
-              >
-                {submitPending ? (
-                  <LoaderCircleIcon aria-hidden="true" className="size-4 animate-spin" />
-                ) : (
-                  <SendHorizontalIcon aria-hidden="true" className="size-4" />
-                )}
-              </Button>
-
-              {/* 发送状态提示（屏幕阅读器） */}
-              {submitPending && (
-                <span
-                  aria-atomic="true"
-                  aria-label={t("sendingAction")}
-                  aria-live="polite"
-                  className="sr-only"
-                  role="status"
-                >
-                  {t("sendingAction")}
-                </span>
-              )}
-            </div>
+            <MessageInputActionRail
+              activeModelActionLabel={activeModelActionLabel}
+              activeModelLabel={activeModelLabel}
+              canSubmit={canSubmit}
+              onActionPointerDown={blurTextareaIfFocused}
+              onActiveModelAction={onActiveModelAction}
+              onOpenAttachments={open}
+              onReasoningModeChange={onReasoningModeChange}
+              onStopSubmit={onStopSubmit}
+              reasoningLabels={reasoningLabels}
+              reasoningMode={reasoningMode}
+              reasoningModeVisible={reasoningModeVisible}
+              sendLabel={sendLabel}
+              sendingLabel={sendingLabel}
+              stopSubmitLabel={stopSubmitLabel}
+              submitPending={submitPending}
+              submitPendingHint={submitPendingHint}
+            />
           </div>
 
           {/* 图片查看器 */}

@@ -27,8 +27,13 @@ ATTACHED_DOCUMENT_PROMPT_CHAR_LIMIT = 6000
 class PromptAttachmentService:
     """Prepare attachment payloads that are safe to send to response providers."""
 
-    def __init__(self, session) -> None:
-        self.document_repository = DocumentRepository(session)
+    def __init__(self, session=None, *, document_repository=None) -> None:
+        if document_repository is not None:
+            self.document_repository = document_repository
+        elif session is not None:
+            self.document_repository = DocumentRepository(session)
+        else:
+            raise TypeError("Either session or document_repository must be provided")
 
     def resolve_prompt_text(
         self,
@@ -78,7 +83,7 @@ class PromptAttachmentService:
     def _build_document_context_cache(
         self, attachments: list[dict[str, Any]]
     ) -> tuple[dict[int, DocumentRevision], dict[int, Document]]:
-        revision_ids = sorted(
+        revision_ids: list[int] = sorted(
             {
                 revision_id
                 for attachment in attachments
@@ -88,9 +93,9 @@ class PromptAttachmentService:
         if not revision_ids:
             return {}, {}
 
-        revision_cache = self.document_repository.list_revisions_by_ids(revision_ids)
-        document_ids = sorted({revision.document_id for revision in revision_cache.values()})
-        document_cache = self.document_repository.list_documents_by_ids(document_ids)
+        revision_cache: dict[int, DocumentRevision] = self.document_repository.list_revisions_by_ids(revision_ids)
+        document_ids: list[int] = sorted({revision.document_id for revision in revision_cache.values()})
+        document_cache: dict[int, Document] = self.document_repository.list_documents_by_ids(document_ids)
         return revision_cache, document_cache
 
     def _build_prompt_document_attachment(
@@ -152,11 +157,11 @@ class PromptAttachmentService:
         revision_cache: dict[int, DocumentRevision] | None = None,
         document_cache: dict[int, Document] | None = None,
     ) -> tuple[DocumentRevision, str]:
-        revision_id = attachment.get("document_revision_id")
+        revision_id: Any = attachment.get("document_revision_id")
         if not isinstance(revision_id, int):
             raise ValueError(error_message)
 
-        document_version = (
+        document_version: DocumentRevision | None = (
             revision_cache.get(revision_id)
             if revision_cache is not None
             else self.document_repository.get_by_id(revision_id)
@@ -164,7 +169,7 @@ class PromptAttachmentService:
         if document_version is None:
             raise ValueError(error_message)
 
-        document = (
+        document: Document | None = (
             document_cache.get(document_version.document_id)
             if document_cache is not None
             else self.document_repository.get_document_entity(document_version.document_id)
@@ -174,7 +179,7 @@ class PromptAttachmentService:
         ):
             raise ValueError(error_message)
 
-        attachment_name = attachment.get("name") or document.logical_name
+        attachment_name: Any = attachment.get("name") or document.logical_name
         if not isinstance(attachment_name, str) or not attachment_name:
             attachment_name = document.logical_name
         return document_version, attachment_name

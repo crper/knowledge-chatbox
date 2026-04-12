@@ -5,9 +5,7 @@
 import "@testing-library/jest-dom/vitest";
 import { configure } from "@testing-library/react";
 
-import { useChatAttachmentStore } from "../features/chat/store/chat-attachment-store";
 import { LAST_VISITED_CHAT_SESSION_STORAGE_KEY } from "../features/chat/utils/chat-session-recovery";
-import { useChatUiStore } from "../features/chat/store/chat-ui-store";
 import { i18n } from "../i18n";
 import {
   DEFAULT_LANGUAGE,
@@ -16,8 +14,6 @@ import {
   THEME_STORAGE_KEY,
   THEME_SYNC_ON_LOGIN_STORAGE_KEY,
 } from "../lib/config/constants";
-import { useUiStore } from "../lib/store/ui-store";
-import { server } from "./msw/server";
 
 configure({
   asyncUtilTimeout: 5000,
@@ -82,12 +78,21 @@ function createStorageMock(): Storage {
   } satisfies Storage;
 }
 
-if (typeof window.localStorage?.getItem !== "function") {
-  Object.defineProperty(window, "localStorage", {
-    configurable: true,
-    value: createStorageMock(),
-  });
-}
+const localStorageMock = createStorageMock();
+
+Object.defineProperty(window, "localStorage", {
+  configurable: true,
+  value: localStorageMock,
+});
+
+Object.defineProperty(globalThis, "localStorage", {
+  configurable: true,
+  value: localStorageMock,
+});
+
+const { useChatComposerStore } = await import("../features/chat/store/chat-composer-store");
+const { useUiStore } = await import("../lib/store/ui-store");
+const { server } = await import("./msw/server");
 
 Object.defineProperty(globalThis, "CustomEvent", {
   configurable: true,
@@ -220,10 +225,8 @@ beforeEach(() => {
   document.documentElement.className = "";
   document.documentElement.style.colorScheme = "light";
   useUiStore.setState({ language: DEFAULT_LANGUAGE, theme: DEFAULT_THEME });
-  useChatAttachmentStore.setState({
+  useChatComposerStore.setState({
     attachmentsBySession: {},
-  });
-  useChatUiStore.setState({
     draftsBySession: {},
     sendShortcut: "enter",
   });

@@ -1,16 +1,17 @@
 """应用入口与启动初始化。"""
 
-import sqlite3
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from time import perf_counter
 from typing import Any
 
+import orjson
 from asgi_correlation_id import CorrelationIdMiddleware
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.exc import OperationalError
 from structlog.contextvars import bind_contextvars, clear_contextvars
 
@@ -31,6 +32,7 @@ from knowledge_chatbox_api.core.errors import AppError
 from knowledge_chatbox_api.core.logging import get_logger, setup_logging
 from knowledge_chatbox_api.core.security import PasswordManager
 from knowledge_chatbox_api.db.session import create_session_factory
+from knowledge_chatbox_api.repositories.rate_limit_repository import RateLimitRepository
 from knowledge_chatbox_api.repositories.space_repository import SpaceRepository
 from knowledge_chatbox_api.schemas.common import Envelope, ErrorInfo
 from knowledge_chatbox_api.services.auth.auth_service import AuthService
@@ -41,7 +43,10 @@ from knowledge_chatbox_api.tasks.document_jobs import (
     compensate_index_rebuild_status,
     compensate_processing_documents,
 )
+from knowledge_chatbox_api.utils.chroma import get_chroma_store
 from knowledge_chatbox_api.utils.timing import elapsed_ms
+
+logger = get_logger(__name__)
 
 
 def _error_response(status_code: int, error: ErrorInfo) -> JSONResponse:
@@ -62,27 +67,32 @@ def _detail_to_error_info(
     if isinstance(detail, dict):
         try:
             return ErrorInfo.model_validate(detail)
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception:
+            logger.debug("error_info_parse_failed", detail_type=type(detail).__name__)
     if isinstance(detail, list):
         return ErrorInfo(code=default_code, message=default_message, details=detail)
     return ErrorInfo(code=default_code, message=str(detail) or default_message)
+
+
+def _json_safe(value: Any) -> Any:
+    """把错误细节收敛为 JSON 可序列化结构。"""
+    try:
+        orjson.dumps(value)
+        return value
+    except (TypeError, ValueError):
+        return orjson.loads(orjson.dumps(value, default=str))
 
 
 def _raise_if_database_schema_incompatible(error: OperationalError) -> None:
     """在数据库未迁移或 schema 过旧时抛出更明确的错误。"""
     message = str(error.orig).lower() if error.orig is not None else str(error).lower()
     if "no such table:" in message:
-        settings = get_settings()
         try:
-            with sqlite3.connect(settings.sqlite_path) as connection:
-                tables = {
-                    row[0]
-                    for row in connection.execute(
-                        "SELECT name FROM sqlite_master WHERE type='table'"
-                    ).fetchall()
-                }
-        except sqlite3.Error:
+            from knowledge_chatbox_api.db.session import create_db_engine
+
+            engine = create_db_engine()
+            tables = set(sa_inspect(engine).get_table_names())
+        except Exception:
             tables = set()
 
         if "alembic_version" in tables:
@@ -108,7 +118,6 @@ def create_app() -> FastAPI:
     """创建并配置 FastAPI 应用。"""
     settings = get_settings()
     setup_logging(settings.log_level, settings.environment)
-    logger = get_logger(__name__)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -138,10 +147,22 @@ def create_app() -> FastAPI:
                     "ensure_personal_space",
                     lambda: SpaceRepository(session).ensure_personal_space(user_id=admin.id),
                 )
-                run_startup_step(
+                settings_service = SettingsService(session, settings)
+                settings_record = run_startup_step(
                     "ensure_app_settings",
-                    lambda: SettingsService(session, settings).get_or_create_settings_record(),
+                    settings_service.get_or_create_settings_record,
                 )
+
+                def warmup_active_chroma_collection() -> None:
+                    session.refresh(settings_record)
+                    try:
+                        get_chroma_store().warmup(settings_record.active_index_generation)
+                    except Exception:
+                        logger.exception(
+                            "warmup_chroma_collection_failed",
+                            generation=settings_record.active_index_generation,
+                        )
+
                 compensated_documents = run_startup_step(
                     "compensate_processing_documents",
                     lambda: compensate_processing_documents(session, settings),
@@ -154,6 +175,20 @@ def create_app() -> FastAPI:
                     "compensate_index_rebuild_status",
                     lambda: compensate_index_rebuild_status(session, settings),
                 )
+                run_startup_step(
+                    "warmup_chroma_collection",
+                    warmup_active_chroma_collection,
+                )
+                rate_limit_service = RateLimitService(
+                    rate_limit_repository=RateLimitRepository(session),
+                    max_attempts=settings.login_rate_limit_attempts,
+                    window_seconds=settings.login_rate_limit_window_seconds,
+                )
+                run_startup_step(
+                    "rate_limit_startup_cleanup",
+                    rate_limit_service.startup_cleanup,
+                )
+                session.commit()
                 logger.info(
                     "Startup compensation completed",
                     admin_id=admin.id,
@@ -167,30 +202,42 @@ def create_app() -> FastAPI:
                 raise
         yield
 
+    is_production = settings.environment == "production"
+
     app = FastAPI(
         title=settings.app_name,
         summary=API_SUMMARY,
         description=API_DESCRIPTION,
         version=__version__,
-        docs_url="/docs",
-        redoc_url="/redoc",
-        openapi_url="/openapi.json",
+        docs_url="/docs" if not is_production else None,
+        redoc_url="/redoc" if not is_production else None,
+        openapi_url="/openapi.json" if not is_production else None,
         openapi_tags=OPENAPI_TAGS,
         lifespan=lifespan,
     )
     app.add_middleware(CorrelationIdMiddleware)
 
     if settings.cors_allow_origins:
+        if "*" in settings.cors_allow_origins:
+            raise RuntimeError(
+                "CORS_ALLOW_ORIGINS cannot contain '*'. Specify explicit origins instead."
+            )
         app.add_middleware(
             CORSMiddleware,
             allow_origins=list(settings.cors_allow_origins),
             allow_credentials=True,
-            allow_methods=["*"],
-            allow_headers=["*"],
+            allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+            allow_headers=[
+                "Authorization",
+                "Content-Type",
+                "Accept",
+                "X-Correlation-ID",
+                "X-Requested-With",
+            ],
         )
 
     @app.middleware("http")
-    async def bind_request_context(request: Request, call_next):
+    async def bind_request_context(request: Request, call_next):  # pyright: ignore[reportUnusedFunction]
         """绑定请求级日志上下文并记录基础访问日志。"""
         clear_contextvars()
         bind_contextvars(
@@ -203,7 +250,7 @@ def create_app() -> FastAPI:
         return response
 
     @app.exception_handler(AppError)
-    async def handle_app_error(request: Request, exc: AppError) -> JSONResponse:
+    async def handle_app_error(request: Request, exc: AppError) -> JSONResponse:  # pyright: ignore[reportUnusedFunction]
         """把应用异常转换为统一响应结构。"""
         logger.warning(
             "Application error returned",
@@ -215,7 +262,7 @@ def create_app() -> FastAPI:
         return _error_response(exc.status_code, exc.to_error_info())
 
     @app.exception_handler(RequestValidationError)
-    async def handle_request_validation_error(
+    async def handle_request_validation_error(  # pyright: ignore[reportUnusedFunction]
         request: Request,
         exc: RequestValidationError,
     ) -> JSONResponse:
@@ -231,12 +278,12 @@ def create_app() -> FastAPI:
             ErrorInfo(
                 code="validation_error",
                 message="Request validation failed.",
-                details=exc.errors(),
+                details=_json_safe(exc.errors()),
             ),
         )
 
     @app.exception_handler(HTTPException)
-    async def handle_http_exception(request: Request, exc: HTTPException) -> JSONResponse:
+    async def handle_http_exception(request: Request, exc: HTTPException) -> JSONResponse:  # pyright: ignore[reportUnusedFunction]
         """兼容框架或遗留逻辑抛出的 HTTPException。"""
         logger.warning(
             "HTTP exception returned",
@@ -254,7 +301,7 @@ def create_app() -> FastAPI:
         )
 
     @app.exception_handler(Exception)
-    async def handle_unexpected_error(request: Request, exc: Exception) -> JSONResponse:
+    async def handle_unexpected_error(request: Request, _exc: Exception) -> JSONResponse:  # pyright: ignore[reportUnusedFunction]
         """兜底处理未知异常，避免泄露内部细节。"""
         logger.exception(
             "Unhandled exception returned",

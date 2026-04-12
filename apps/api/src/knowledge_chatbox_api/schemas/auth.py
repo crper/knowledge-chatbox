@@ -4,11 +4,10 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
+from knowledge_chatbox_api.models.enums import ThemePreference, UserRole, UserStatus
 from knowledge_chatbox_api.schemas._validators import (
+    CredentialPasswordStr,
     PasswordStr,
-    RoleLiteral,
-    StatusLiteral,
-    ThemeLiteral,
     UsernameStr,
 )
 
@@ -18,9 +17,9 @@ class AuthUserRead(BaseModel):
 
     id: int
     username: str
-    role: RoleLiteral
-    status: StatusLiteral
-    theme_preference: ThemeLiteral
+    role: UserRole
+    status: UserStatus
+    theme_preference: ThemePreference
     last_login_at: datetime | None
     password_changed_at: datetime | None
     created_at: datetime
@@ -31,7 +30,7 @@ class LoginRequest(BaseModel):
     """描述登录请求体。"""
 
     username: UsernameStr
-    password: PasswordStr
+    password: CredentialPasswordStr
 
 
 class AccessTokenRead(BaseModel):
@@ -39,7 +38,7 @@ class AccessTokenRead(BaseModel):
 
     access_token: str
     expires_in: int
-    token_type: str = "Bearer"
+    token_type: str = "Bearer"  # noqa: S105
 
 
 class LoginResponse(BaseModel):
@@ -47,7 +46,7 @@ class LoginResponse(BaseModel):
 
     access_token: str
     expires_in: int
-    token_type: str = "Bearer"
+    token_type: str = "Bearer"  # noqa: S105
     user: AuthUserRead
 
 
@@ -57,18 +56,18 @@ class SessionBootstrapRead(BaseModel):
     authenticated: bool
     access_token: str | None = None
     expires_in: int | None = None
-    token_type: str = "Bearer"
+    token_type: str = "Bearer"  # noqa: S105
     user: AuthUserRead | None = None
 
 
 class ChangePasswordRequest(BaseModel):
     """描述Change密码请求体。"""
 
-    current_password: PasswordStr
+    current_password: CredentialPasswordStr
     new_password: PasswordStr
 
 
 class UpdatePreferencesRequest(BaseModel):
     """描述Update偏好请求体。"""
 
-    theme_preference: ThemeLiteral
+    theme_preference: ThemePreference

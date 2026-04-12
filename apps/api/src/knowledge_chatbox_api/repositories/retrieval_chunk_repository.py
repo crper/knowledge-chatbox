@@ -1,13 +1,10 @@
-"""SQLite FTS5-backed lexical retrieval side index."""
-
 from typing import Any
 
-from sqlalchemy import text
+from sqlalchemy import delete, insert, literal_column, select, text
 from sqlalchemy.orm import Session
 
-from knowledge_chatbox_api.utils.chroma import _text_fallback_where_document_terms
-
-LEXICAL_INDEX_TABLE = "retrieval_chunks_fts"
+from knowledge_chatbox_api.models.retrieval_chunk import retrieval_chunks_fts
+from knowledge_chatbox_api.utils.chroma import text_fallback_where_document_terms
 
 
 def _escape_fts_term(term: str) -> str:
@@ -15,7 +12,7 @@ def _escape_fts_term(term: str) -> str:
 
 
 def _build_match_query(query_text: str) -> str | None:
-    terms = _text_fallback_where_document_terms(query_text)
+    terms = text_fallback_where_document_terms(query_text)
     if not terms:
         return None
     return " OR ".join(f'"{_escape_fts_term(term)}"' for term in terms)
@@ -28,8 +25,6 @@ def _score_from_bm25(rank: float | int | None) -> float:
 
 
 class RetrievalChunkRepository:
-    """Manage the SQLite lexical side index used by retrieval fallback."""
-
     def __init__(self, session: Session) -> None:
         self.session = session
 
@@ -47,33 +42,16 @@ class RetrievalChunkRepository:
             for record in records
             if isinstance(record.get("document_revision_id"), int)
         }
-        for revision_id in revision_ids:
-            self.delete_by_document_id(revision_id, generation=generation)
+        if revision_ids:
+            self.session.execute(
+                delete(retrieval_chunks_fts).where(
+                    retrieval_chunks_fts.c.generation == generation,
+                    retrieval_chunks_fts.c.document_revision_id.in_(revision_ids),
+                )
+            )
 
         self.session.execute(
-            text(
-                """
-                INSERT INTO retrieval_chunks_fts (
-                    generation,
-                    chunk_id,
-                    document_revision_id,
-                    document_id,
-                    space_id,
-                    page_number,
-                    section_title,
-                    content
-                ) VALUES (
-                    :generation,
-                    :chunk_id,
-                    :document_revision_id,
-                    :document_id,
-                    :space_id,
-                    :page_number,
-                    :section_title,
-                    :content
-                )
-                """
-            ),
+            insert(retrieval_chunks_fts),
             [
                 {
                     "generation": generation,
@@ -91,23 +69,17 @@ class RetrievalChunkRepository:
 
     def delete_by_document_id(self, document_id: int, *, generation: int) -> None:
         self.session.execute(
-            text(
-                """
-                DELETE FROM retrieval_chunks_fts
-                WHERE generation = :generation
-                  AND document_revision_id = :document_revision_id
-                """
-            ),
-            {
-                "generation": generation,
-                "document_revision_id": document_id,
-            },
+            delete(retrieval_chunks_fts).where(
+                retrieval_chunks_fts.c.generation == generation,
+                retrieval_chunks_fts.c.document_revision_id == document_id,
+            )
         )
 
     def clear_generation(self, generation: int) -> None:
         self.session.execute(
-            text("DELETE FROM retrieval_chunks_fts WHERE generation = :generation"),
-            {"generation": generation},
+            delete(retrieval_chunks_fts).where(
+                retrieval_chunks_fts.c.generation == generation,
+            )
         )
 
     def query(
@@ -126,43 +98,36 @@ class RetrievalChunkRepository:
         if match_query is None:
             return []
 
-        sql_parts = [
-            """
-            SELECT
-                chunk_id,
-                document_id,
-                document_revision_id,
-                space_id,
-                page_number,
-                section_title,
-                content,
-                bm25(retrieval_chunks_fts) AS rank
-            FROM retrieval_chunks_fts
-            WHERE retrieval_chunks_fts MATCH :match_query
-              AND generation = :generation
-            """
-        ]
+        from sqlalchemy import Select
+
+        statement: Select[tuple[Any, ...]] = select(
+            retrieval_chunks_fts.c.chunk_id,
+            retrieval_chunks_fts.c.document_id,
+            retrieval_chunks_fts.c.document_revision_id,
+            retrieval_chunks_fts.c.space_id,
+            retrieval_chunks_fts.c.page_number,
+            retrieval_chunks_fts.c.section_title,
+            retrieval_chunks_fts.c.content,
+            literal_column("bm25(retrieval_chunks_fts)").label("rank"),
+        ).where(
+            text("retrieval_chunks_fts MATCH :match_query"),
+            retrieval_chunks_fts.c.generation == generation,
+        )
         params: dict[str, Any] = {
-            "generation": generation,
-            "limit": top_k,
             "match_query": match_query,
         }
 
         if space_id is not None:
-            sql_parts.append("AND space_id = :space_id")
-            params["space_id"] = space_id
+            statement = statement.where(retrieval_chunks_fts.c.space_id == space_id)
 
         if document_revision_ids:
-            placeholders: list[str] = []
-            for index, revision_id in enumerate(document_revision_ids):
-                key = f"revision_id_{index}"
-                placeholders.append(f":{key}")
-                params[key] = revision_id
-            sql_parts.append(f"AND document_revision_id IN ({', '.join(placeholders)})")
+            statement = statement.where(
+                retrieval_chunks_fts.c.document_revision_id.in_(document_revision_ids)
+            )
 
-        sql_parts.append("ORDER BY rank LIMIT :limit")
+        statement = statement.order_by(literal_column("rank")).limit(top_k)
 
-        rows = self.session.execute(text("\n".join(sql_parts)), params).mappings().all()
+        rows = self.session.execute(statement, params).mappings().all()
         return [
             {
                 "id": row["chunk_id"],

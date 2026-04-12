@@ -1,23 +1,40 @@
 """聊天运行时服务。"""
 
 import asyncio
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+from sqlalchemy.orm import Session
 
 from knowledge_chatbox_api.core.logging import get_logger
+from knowledge_chatbox_api.core.observation import OPERATION_KIND_CHAT_STREAM
 from knowledge_chatbox_api.models.enums import ChatMessageRole, ChatMessageStatus, ChatRunStatus
+from knowledge_chatbox_api.providers.base import BaseEmbeddingAdapter
+from knowledge_chatbox_api.repositories.chat_repository import ChatRepository
+from knowledge_chatbox_api.repositories.chat_run_event_repository import ChatRunEventRepository
+from knowledge_chatbox_api.repositories.chat_run_repository import ChatRunRepository
 from knowledge_chatbox_api.schemas.chat import dump_chat_attachments
+from knowledge_chatbox_api.schemas.settings import ProviderRuntimeSettings
+from knowledge_chatbox_api.services.chat.chat_stream_presenter import ChatStreamPresenter
+from knowledge_chatbox_api.services.chat.pending_stream_cancel_registry import (
+    pending_stream_cancel_registry,
+)
+from knowledge_chatbox_api.services.chat.retry_service import RetryService
 from knowledge_chatbox_api.services.chat.stream_events import (
-    MESSAGE_STARTED_EVENT,
-    RUN_STARTED_EVENT,
+    StreamEvent,
     StreamEventBatchItem,
     append_event_batch,
 )
 from knowledge_chatbox_api.services.chat.workflow import ChatWorkflow, build_chat_workflow_deps
 from knowledge_chatbox_api.services.chat.workflow_stream_runner import (
+    STREAM_CANCELLED_ERROR_MESSAGE,
     STREAM_INTERRUPTED_ERROR_MESSAGE,
     WorkflowStreamRunner,
 )
 from knowledge_chatbox_api.services.settings.runtime_settings import parse_runtime_settings
+from knowledge_chatbox_api.utils.chroma import ChunkStore
+
+if TYPE_CHECKING:
+    from knowledge_chatbox_api.models.chat import ChatMessage, ChatRun
 
 logger = get_logger(__name__)
 
@@ -28,16 +45,16 @@ class ChatRunService:
     def __init__(
         self,
         *,
-        session,
-        chat_repository,
-        chat_run_repository,
-        chat_run_event_repository,
-        retry_service,
-        chroma_store,
-        embedding_adapter,
-        settings,
-        workflow_factory=None,
-        presenter,
+        session: Session,
+        chat_repository: ChatRepository,
+        chat_run_repository: ChatRunRepository,
+        chat_run_event_repository: ChatRunEventRepository,
+        retry_service: RetryService,
+        chroma_store: ChunkStore,
+        embedding_adapter: BaseEmbeddingAdapter,
+        settings: ProviderRuntimeSettings,
+        workflow_factory: type[ChatWorkflow] | None = None,
+        presenter: ChatStreamPresenter,
     ) -> None:
         self.session = session
         self.chat_repository = chat_repository
@@ -59,10 +76,13 @@ class ChatRunService:
         client_request_id: str,
         retry_of_message_id: int | None = None,
     ):
+        if self._consume_pending_cancel(session_id, client_request_id):
+            self.session.rollback()
+            return
+
         if retry_of_message_id is not None:
             user_message = self.retry_service.retry_user_message(
                 session_id=session_id,
-                content=content,
                 client_request_id=client_request_id,
                 retry_of_message_id=retry_of_message_id,
             )
@@ -73,6 +93,10 @@ class ChatRunService:
                 content=content,
                 client_request_id=client_request_id,
             )
+        if self._consume_pending_cancel(session_id, client_request_id):
+            self.session.rollback()
+            return
+
         existing_run = self.chat_run_repository.get_run_by_client_request_id(
             session_id=session_id,
             client_request_id=client_request_id,
@@ -98,10 +122,22 @@ class ChatRunService:
         )
         run.user_message_id = user_message.id
         run.assistant_message_id = assistant_message.id
+        if self._consume_pending_cancel(session_id, client_request_id):
+            self.session.rollback()
+            return
+
         self.session.commit()
         self.session.refresh(user_message)
         self.session.refresh(assistant_message)
         self.session.refresh(run)
+        if self._consume_pending_cancel(session_id, client_request_id):
+            self._discard_unstarted_run(
+                run=run,
+                assistant_message=assistant_message,
+                user_message=user_message,
+            )
+            return
+
         event_seq = 0
         logger.info(
             "chat_stream_run_started",
@@ -110,6 +146,7 @@ class ChatRunService:
             attachment_count=len(attachments or []),
             response_provider=response_provider,
             response_model=response_model,
+            operation_kind=OPERATION_KIND_CHAT_STREAM,
         )
 
         try:
@@ -133,7 +170,6 @@ class ChatRunService:
                 workflow_deps=build_chat_workflow_deps(
                     session_id=session_id,
                     session=self.session,
-                    actor=None,
                     chat_repository=self.chat_repository,
                     chat_run_repository=self.chat_run_repository,
                     chat_run_event_repository=self.chat_run_event_repository,
@@ -162,6 +198,21 @@ class ChatRunService:
             )
             raise
 
+    def _consume_pending_cancel(self, session_id: int, client_request_id: str) -> bool:
+        return pending_stream_cancel_registry.consume_cancel(session_id, client_request_id)
+
+    def _discard_unstarted_run(
+        self,
+        *,
+        run,
+        assistant_message,
+        user_message,
+    ) -> None:
+        self.session.delete(run)
+        self.session.delete(assistant_message)
+        self.session.delete(user_message)
+        self.session.commit()
+
     def _initial_events(
         self,
         *,
@@ -172,7 +223,7 @@ class ChatRunService:
     ) -> list[StreamEventBatchItem]:
         return [
             (
-                RUN_STARTED_EVENT,
+                StreamEvent.RUN_STARTED,
                 {
                     "run_id": run_id,
                     "session_id": session_id,
@@ -181,7 +232,7 @@ class ChatRunService:
                 },
             ),
             (
-                MESSAGE_STARTED_EVENT,
+                StreamEvent.MESSAGE_STARTED,
                 {
                     "run_id": run_id,
                     "assistant_message_id": assistant_message_id,
@@ -205,9 +256,12 @@ class ChatRunService:
             session=self.session,
         )
 
-    def _replay_existing_run(self, run):
+    def _replay_existing_run(self, run: "ChatRun"):
         for event in self.chat_run_event_repository.list_for_run(run.id):
-            yield self.presenter.event(event.event_type, event.payload_json)
+            yield self.presenter.event(
+                event.event_type,  # type: ignore[arg-type]
+                event.payload_json,
+            )
 
     def _reasoning_mode(self) -> str:
         return self.settings.reasoning_mode
@@ -215,8 +269,8 @@ class ChatRunService:
     def _mark_interrupted_run(
         self,
         *,
-        run,
-        assistant_message,
+        run: "ChatRun",
+        assistant_message: "ChatMessage",
         current_seq: int,
     ) -> None:
         if run.status not in {ChatRunStatus.PENDING, ChatRunStatus.RUNNING}:
@@ -228,7 +282,7 @@ class ChatRunService:
         self.chat_run_event_repository.append_event(
             run_id=run.id,
             seq=current_seq + 1,
-            event_type="run.failed",
+            event_type=StreamEvent.RUN_FAILED,
             payload_json={
                 "run_id": run.id,
                 "assistant_message_id": assistant_message.id,
@@ -237,3 +291,13 @@ class ChatRunService:
             flush=False,
         )
         self.session.commit()
+
+    def request_cancel(self, run: "ChatRun") -> bool:
+        if run.status == ChatRunStatus.CANCELLED:
+            return True
+        if run.status not in {ChatRunStatus.PENDING, ChatRunStatus.RUNNING}:
+            return False
+        run.status = ChatRunStatus.CANCELLED
+        run.error_message = STREAM_CANCELLED_ERROR_MESSAGE
+        self.session.commit()
+        return True

@@ -3,6 +3,7 @@
  */
 
 import * as React from "react";
+import { cva } from "class-variance-authority";
 import { AlertDialog as AlertDialogPrimitive } from "@base-ui/react/alert-dialog";
 
 import { cn } from "@/lib/utils";
@@ -22,6 +23,10 @@ function AlertDialogPortal({ ...props }: React.ComponentProps<typeof AlertDialog
   return <AlertDialogPrimitive.Portal data-slot="alert-dialog-portal" {...props} />;
 }
 
+const alertDialogOverlayVariants = cva(
+  "fixed inset-0 isolate z-50 min-h-dvh bg-black/10 transition-opacity duration-100 supports-[-webkit-touch-callout:none]:absolute supports-backdrop-filter:backdrop-blur-xs data-[ending-style]:opacity-0 data-[starting-style]:opacity-0",
+);
+
 function AlertDialogOverlay({
   className,
   ...props
@@ -29,14 +34,15 @@ function AlertDialogOverlay({
   return (
     <AlertDialogPrimitive.Backdrop
       data-slot="alert-dialog-overlay"
-      className={cn(
-        "fixed inset-0 isolate z-50 min-h-dvh bg-black/10 transition-opacity duration-100 supports-[-webkit-touch-callout:none]:absolute supports-backdrop-filter:backdrop-blur-xs data-[ending-style]:opacity-0 data-[starting-style]:opacity-0",
-        className,
-      )}
+      className={cn(alertDialogOverlayVariants(), className)}
       {...props}
     />
   );
 }
+
+const alertDialogContentVariants = cva(
+  "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl bg-background p-4 text-sm ring-1 ring-foreground/10 transition-[opacity,transform] duration-100 outline-none sm:max-w-md data-[ending-style]:scale-95 data-[ending-style]:opacity-0 data-[starting-style]:scale-95 data-[starting-style]:opacity-0",
+);
 
 function AlertDialogContent({
   className,
@@ -48,10 +54,7 @@ function AlertDialogContent({
       <AlertDialogPrimitive.Viewport className="fixed inset-0 z-50 overflow-y-auto p-4">
         <AlertDialogPrimitive.Popup
           data-slot="alert-dialog-content"
-          className={cn(
-            "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl bg-background p-4 text-sm ring-1 ring-foreground/10 transition-[opacity,transform] duration-100 outline-none sm:max-w-md data-[ending-style]:scale-95 data-[ending-style]:opacity-0 data-[starting-style]:scale-95 data-[starting-style]:opacity-0",
-            className,
-          )}
+          className={cn(alertDialogContentVariants(), className)}
           {...props}
         />
       </AlertDialogPrimitive.Viewport>
@@ -86,7 +89,7 @@ function AlertDialogTitle({
   return (
     <AlertDialogPrimitive.Title
       data-slot="alert-dialog-title"
-      className={cn("text-base leading-none font-medium", className)}
+      className={cn("text-ui-title leading-none font-medium", className)}
       {...props}
     />
   );
@@ -99,7 +102,7 @@ function AlertDialogDescription({
   return (
     <AlertDialogPrimitive.Description
       data-slot="alert-dialog-description"
-      className={cn("text-sm leading-6 text-muted-foreground", className)}
+      className={cn("text-ui-subtle leading-6 text-muted-foreground", className)}
       {...props}
     />
   );
@@ -149,4 +152,6 @@ export {
   AlertDialogPortal,
   AlertDialogTitle,
   AlertDialogTrigger,
+  alertDialogOverlayVariants,
+  alertDialogContentVariants,
 };

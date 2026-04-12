@@ -1,10 +1,13 @@
 """聊天投影持久化服务。"""
 
-from datetime import UTC, datetime
+from typing import Any
 
+from knowledge_chatbox_api.core.logging import get_logger
 from knowledge_chatbox_api.models.enums import ChatMessageStatus, ChatRunStatus
+from knowledge_chatbox_api.utils.timing import utc_now
 
-TEXT_DELTA_FLUSH_INTERVAL = 8
+TEXT_DELTA_FLUSH_INTERVAL = 32
+logger = get_logger(__name__)
 
 
 class ChatPersistenceService:
@@ -23,17 +26,28 @@ class ChatPersistenceService:
         if self._pending_text_deltas == 0:
             return
         if self._pending_text_message is not None and self._pending_text_fragments:
-            self._pending_text_message.content = (
-                f"{self._pending_text_message.content}{''.join(self._pending_text_fragments)}"
-            )
+            self._pending_text_message.content += "".join(self._pending_text_fragments)
         self.session.commit()
         self._pending_text_deltas = 0
         self._pending_text_fragments = []
         self._pending_text_message = None
 
+    def _safe_flush_text_buffer(self) -> None:
+        try:
+            self.flush_text_buffer()
+        except Exception:
+            logger.warning(
+                "flush_text_buffer_failed",
+                pending_deltas=self._pending_text_deltas,
+                exc_info=True,
+            )
+            self._pending_text_deltas = 0
+            self._pending_text_fragments = []
+            self._pending_text_message = None
+
     def mark_run_running(self, run, assistant_message) -> None:
         self.flush_text_buffer()
-        now = datetime.now(UTC)
+        now = utc_now()
         run.status = ChatRunStatus.RUNNING
         run.started_at = now
         assistant_message.status = ChatMessageStatus.STREAMING
@@ -50,9 +64,15 @@ class ChatPersistenceService:
         if self._pending_text_deltas >= self._text_delta_flush_interval:
             self.flush_text_buffer()
 
-    def complete_run(self, run, assistant_message, sources: list[dict], usage: dict | None) -> None:
-        self.flush_text_buffer()
-        now = datetime.now(UTC)
+    def complete_run(
+        self,
+        run,
+        assistant_message,
+        sources: list[dict[str, Any]],
+        usage: dict[str, Any] | None,
+    ) -> None:
+        self._safe_flush_text_buffer()
+        now = utc_now()
         run.status = ChatRunStatus.SUCCEEDED
         run.finished_at = now
         run.usage_json = usage
@@ -69,11 +89,31 @@ class ChatPersistenceService:
         assistant_message,
         error_message: str,
         *,
-        sources: list[dict] | None = None,
+        sources: list[dict[str, Any]] | None = None,
     ) -> None:
-        self.flush_text_buffer()
-        now = datetime.now(UTC)
+        self._safe_flush_text_buffer()
+        now = utc_now()
         run.status = ChatRunStatus.FAILED
+        run.error_message = error_message
+        run.finished_at = now
+        assistant_message.status = ChatMessageStatus.FAILED
+        assistant_message.error_message = error_message
+        assistant_message.sources_json = [] if sources is None else list(sources)
+        assistant_message.updated_at = now
+        self.session.commit()
+        self._pending_text_deltas = 0
+
+    def cancel_run(
+        self,
+        run,
+        assistant_message,
+        error_message: str,
+        *,
+        sources: list[dict[str, Any]] | None = None,
+    ) -> None:
+        self._safe_flush_text_buffer()
+        now = utc_now()
+        run.status = ChatRunStatus.CANCELLED
         run.error_message = error_message
         run.finished_at = now
         assistant_message.status = ChatMessageStatus.FAILED

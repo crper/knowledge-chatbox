@@ -1,4 +1,5 @@
 import * as React from "react";
+import { cva } from "class-variance-authority";
 import { Accordion as AccordionPrimitive } from "@base-ui/react/accordion";
 import { ChevronDownIcon } from "lucide-react";
 
@@ -8,18 +9,24 @@ function Accordion({ ...props }: React.ComponentProps<typeof AccordionPrimitive.
   return <AccordionPrimitive.Root data-slot="accordion" {...props} />;
 }
 
+const accordionItemVariants = cva("border-b border-border/50 last:border-b-0");
+
 function AccordionItem({
   className,
   ...props
 }: React.ComponentProps<typeof AccordionPrimitive.Item>) {
   return (
     <AccordionPrimitive.Item
-      className={cn("border-b border-border/50 last:border-b-0", className)}
+      className={cn(accordionItemVariants(), className)}
       data-slot="accordion-item"
       {...props}
     />
   );
 }
+
+const accordionTriggerVariants = cva(
+  "flex flex-1 items-center justify-between py-3 text-sm font-medium transition-all hover:underline [&[data-panel-open]>svg]:rotate-180",
+);
 
 function AccordionTrigger({
   className,
@@ -29,10 +36,7 @@ function AccordionTrigger({
   return (
     <AccordionPrimitive.Header className="flex">
       <AccordionPrimitive.Trigger
-        className={cn(
-          "flex flex-1 items-center justify-between py-3 text-sm font-medium transition-all hover:underline [&[data-panel-open]>svg]:rotate-180",
-          className,
-        )}
+        className={cn(accordionTriggerVariants(), className)}
         data-slot="accordion-trigger"
         {...props}
       >
@@ -43,6 +47,10 @@ function AccordionTrigger({
   );
 }
 
+const accordionContentVariants = cva(
+  "overflow-hidden text-sm data-[ending-style]:h-0 data-[starting-style]:h-0",
+);
+
 function AccordionContent({
   className,
   children,
@@ -50,10 +58,7 @@ function AccordionContent({
 }: React.ComponentProps<typeof AccordionPrimitive.Panel>) {
   return (
     <AccordionPrimitive.Panel
-      className={cn(
-        "overflow-hidden text-sm data-[ending-style]:h-0 data-[starting-style]:h-0",
-        className,
-      )}
+      className={cn(accordionContentVariants(), className)}
       data-slot="accordion-content"
       {...props}
     >
@@ -62,4 +67,12 @@ function AccordionContent({
   );
 }
 
-export { Accordion, AccordionItem, AccordionTrigger, AccordionContent };
+export {
+  Accordion,
+  AccordionItem,
+  AccordionTrigger,
+  AccordionContent,
+  accordionItemVariants,
+  accordionTriggerVariants,
+  accordionContentVariants,
+};

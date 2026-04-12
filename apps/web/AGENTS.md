@@ -1,84 +1,48 @@
 <!--VITE PLUS START-->
 
-# Using Vite+, the Unified Toolchain for the Web
+# 前端执行约束
 
-This project is using Vite+, a unified toolchain built on top of Vite, Rolldown, Vitest, tsdown, Oxlint, Oxfmt, and Vite Task. Vite+ wraps runtime management, package management, and frontend tooling in a single global CLI called `vp`. Vite+ is distinct from Vite, but it invokes Vite through `vp dev` and `vp build`.
+本目录约束优先级高于根 `AGENTS.md`；根目录通用约束仍适用。
 
-## Vite+ Workflow
+## Vite+ 工具链
 
-`vp` is a global binary that handles the full development lifecycle. Run `vp help` to print a list of commands and `vp <command> --help` for information about a specific command.
+`vp` 是统一 CLI，封装 Vite + Rolldown + Vitest + Oxlint + Oxfmt。
 
-### Start
+- 常用命令：`vp dev` / `vp check --fix` / `vp test` / `vp build` / `vp install`。
+- 禁止直接使用 `pnpm`、`npm`、`yarn`；禁止单独安装 `vitest`、`oxlint`、`oxfmt`、`tsdown`。
+- 禁止运行 `vp vitest` 或 `vp oxlint`，用 `vp test` 和 `vp lint` 代替。
+- Import 来源统一为 `vite-plus`：`import { defineConfig } from 'vite-plus'`、`import { expect, test, vi } from 'vite-plus/test'`。
+- `vp` 命令优先于 `package.json` scripts；如需运行同名 script，用 `vp run <name>`。
 
-- create - Create a new project from a template
-- migrate - Migrate an existing project to Vite+
-- config - Configure hooks and agent integration
-- staged - Run linters on staged files
-- install (`i`) - Install dependencies
-- env - Manage Node.js versions
+## 路径与别名
 
-### Develop
+- 唯一路径别名：`@/` → `src/`（tsconfig + vite resolve.alias 同步配置）。
+- 所有模块引用统一用 `@/` 前缀，禁止相对路径跨目录引用。
 
-- dev - Run the development server
-- check - Run format, lint, and TypeScript type checks
-- lint - Lint code
-- fmt - Format code
-- test - Run tests
+## 组件约定
 
-### Execute
+- 基础交互组件基于 `Base UI` 组装，优先使用 `render` prop，禁止新增 `asChild` 或重新引入 `radix-ui`。
+- 路由基于 TanStack Router file-based routes（`autoCodeSplitting`），禁止引入 `react-router-dom`。
 
-- run - Run monorepo tasks
-- exec - Execute a command from local `node_modules/.bin`
-- dlx - Execute a package binary without installing it as a dependency
-- cache - Manage the task cache
+## 样式
 
-### Build
+- Tailwind CSS v4 + shadcn/ui CSS 变量主题，无 `tailwind.config` 文件。
+- Dark mode 通过 `.dark` class 切换（`@custom-variant dark`）。
+- 使用项目定义的 surface token（`surface-panel` / `surface-floating` / `surface-elevated` 等）和排版 token（`text-ui-display` / `text-ui-heading` / `text-ui-body` 等），禁止硬编码颜色或字号。
 
-- build - Build for production
-- pack - Build libraries
-- preview - Preview production build
+## API 层
 
-### Manage Dependencies
+- 类型真相源：`src/lib/api/generated/schema.d.ts`，由 `vp run api:generate` 从 OpenAPI 生成，禁止手写。
+- 请求走 `openapi-fetch` typed client + `openapiRequestRequired<T>()` 解包 Envelope，禁止手写 `fetch` 或引入 `axios`。
+- 查询键集中在 `src/lib/api/query-keys.ts`，按领域分组，带参数的用函数工厂。
+- 认证请求通过 `authenticatedFetch`（自动注入 token + 401 刷新重放）。
 
-Vite+ automatically detects and wraps the underlying package manager such as pnpm, npm, or Yarn through the `packageManager` field in `package.json` or package manager-specific lockfiles.
+## 测试
 
-- add - Add packages to dependencies
-- remove (`rm`, `un`, `uninstall`) - Remove packages from dependencies
-- update (`up`) - Update packages to latest versions
-- dedupe - Deduplicate dependencies
-- outdated - Check for outdated packages
-- list (`ls`) - List installed packages
-- why (`explain`) - Show why a package is installed
-- info (`view`, `show`) - View package information from the registry
-- link (`ln`) / unlink - Manage local package links
-- pm - Forward a command to the package manager
+- MSW 工具：`createTestServer(options?)` 重置全局状态，`overrideHandler(handler)` 覆盖单个接口。
+- Mock 响应：`apiResponse(data)` / `apiError(error, init?)`，禁止使用已废弃的 `jsonResponse` / `apiSuccessResponse` / `apiErrorResponse` / `stubFetch` / `createAuthFetchMock`。
+- 测试数据用 fixture 工厂（`buildAppUser` / `buildAppSettings` / `buildProviderConnectionResult`），禁止手写大段 JSON。
+- 页面级测试用 `renderRoute("/path")`，组件级测试用 `render(<Component />)`；只需 path/params 上下文的组件用 `TestRouter`。
+- 测试 import 从 `vite-plus/test` 引入。
 
-### Maintain
-
-- upgrade - Update `vp` itself to the latest version
-
-These commands map to their corresponding tools. For example, `vp dev --port 3000` runs Vite's dev server and works the same as Vite. `vp test` runs JavaScript tests through the bundled Vitest. The version of all tools can be checked using `vp --version`. This is useful when researching documentation, features, and bugs.
-
-## Common Pitfalls
-
-- **Using the package manager directly:** Do not use pnpm, npm, or Yarn directly. Vite+ can handle all package manager operations.
-- **Always use Vite commands to run tools:** Don't attempt to run `vp vitest` or `vp oxlint`. They do not exist. Use `vp test` and `vp lint` instead.
-- **Running scripts:** Vite+ commands take precedence over `package.json` scripts. If there is a `test` script defined in `scripts` that conflicts with the built-in `vp test` command, run it using `vp run test`.
-- **Do not install Vitest, Oxlint, Oxfmt, or tsdown directly:** Vite+ wraps these tools. They must not be installed directly. You cannot upgrade these tools by installing their latest versions. Always use Vite+ commands.
-- **Use Vite+ wrappers for one-off binaries:** Use `vp dlx` instead of package-manager-specific `dlx`/`npx` commands.
-- **Import JavaScript modules from `vite-plus`:** Instead of importing from `vite` or `vitest`, all modules should be imported from the project's `vite-plus` dependency. For example, `import { defineConfig } from 'vite-plus';` or `import { expect, test, vi } from 'vite-plus/test';`. You must not install `vitest` to import test utilities.
-- **Type-Aware Linting:** There is no need to install `oxlint-tsgolint`, `vp lint --type-aware` works out of the box.
-
-## Review Checklist for Agents
-
-- [ ] Run `vp install` after pulling remote changes and before getting started.
-- [ ] Run `vp check` and `vp test` to validate changes.
-- [ ] Use MSW for API mocking in tests. Do not use `vi.spyOn(globalThis, "fetch")` or `vi.stubGlobal("fetch", mockFetch)`.
-- [ ] Use `createTestServer()` to create test environment with default handlers.
-- [ ] Use `overrideHandler()` to override specific handlers for individual tests.
-- [ ] Use `apiResponse()` and `apiError()` to create mock responses.
-- [ ] Do not use deprecated test utilities: `jsonResponse`, `apiSuccessResponse`, `apiErrorResponse`, `stubFetch`, `createAuthFetchMock`.
-- [ ] Route contract / page-level routing tests should reuse `src/test/render-route.tsx`.
-- [ ] Component tests that only need path / params / search context should reuse `src/test/test-router.tsx`.
-- [ ] Do not reintroduce `react-router-dom`; runtime and routing tests are standardized on TanStack Router.
 <!--VITE PLUS END-->

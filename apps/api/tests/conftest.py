@@ -1,8 +1,12 @@
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping
+import os
 from contextlib import contextmanager
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
 
 import pytest
 from alembic import command
@@ -11,7 +15,6 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import Session, sessionmaker
 
-from knowledge_chatbox_api.api.deps import _build_rate_limit_service
 from knowledge_chatbox_api.core.config import get_settings
 from knowledge_chatbox_api.db.session import create_session_factory
 from knowledge_chatbox_api.main import create_app
@@ -22,20 +25,26 @@ from tests.fixtures.stubs import (
     make_adapter_backed_chat_workflow_class,
 )
 
+if TYPE_CHECKING:
+    from collections.abc import Iterator, Mapping
+
 ALEMBIC_CONFIG_PATH = Path(__file__).resolve().parents[1] / "alembic.ini"
 DEFAULT_ADMIN_ENV = {
     "INITIAL_ADMIN_USERNAME": "admin",
-    "INITIAL_ADMIN_PASSWORD": "admin123456",
+    "INITIAL_ADMIN_PASSWORD": "Admin123456",
+    "JWT_SECRET_KEY": "test-jwt-secret-key-for-unit-tests-32ch",
 }
 
 
 @pytest.fixture(autouse=True)
-def clear_settings_cache() -> None:
+def clear_settings_cache(monkeypatch: pytest.MonkeyPatch) -> Generator[None, None, None]:
+    if not os.environ.get("JWT_SECRET_KEY"):
+        monkeypatch.setenv("JWT_SECRET_KEY", "test-jwt-secret-key-for-unit-tests-32ch")
+    if not os.environ.get("INITIAL_ADMIN_PASSWORD"):
+        monkeypatch.setenv("INITIAL_ADMIN_PASSWORD", "Admin123456")
     get_settings.cache_clear()
-    _build_rate_limit_service.cache_clear()
     yield
     get_settings.cache_clear()
-    _build_rate_limit_service.cache_clear()
 
 
 def _prepare_test_runtime(
@@ -48,6 +57,8 @@ def _prepare_test_runtime(
     monkeypatch.delenv("SESSION_COOKIE_SECURE", raising=False)
     monkeypatch.setenv("SQLITE_PATH", str(sqlite_path))
     monkeypatch.setenv("CHROMA_PATH", str(chroma_path))
+    monkeypatch.setenv("JWT_SECRET_KEY", "test-jwt-secret-key-for-unit-tests-32ch")
+    monkeypatch.setenv("INITIAL_ADMIN_PASSWORD", "Admin123456")
     for key, value in (env_overrides or {}).items():
         monkeypatch.setenv(key, value)
     get_settings.cache_clear()
@@ -80,33 +91,34 @@ def _test_client(
         yield test_client
 
 
-@pytest.fixture()
+@pytest.fixture
 def client(
     clear_settings_cache,
     monkeypatch: pytest.MonkeyPatch,
     sqlite_path: Path,
     chroma_path: Path,
 ) -> Iterator[TestClient]:
+    del clear_settings_cache
     with _test_client(monkeypatch, sqlite_path, chroma_path) as test_client:
         yield test_client
 
 
-@pytest.fixture()
+@pytest.fixture
 def temp_dir(tmp_path: Path) -> Path:
     return tmp_path
 
 
-@pytest.fixture()
+@pytest.fixture
 def sqlite_path(tmp_path: Path) -> Path:
     return tmp_path / "test.db"
 
 
-@pytest.fixture()
+@pytest.fixture
 def chroma_path(tmp_path: Path) -> Path:
     return tmp_path / "chroma"
 
 
-@pytest.fixture()
+@pytest.fixture
 def alembic_config(
     monkeypatch: pytest.MonkeyPatch,
     sqlite_path: Path,
@@ -116,8 +128,10 @@ def alembic_config(
     return Config(str(ALEMBIC_CONFIG_PATH))
 
 
-@pytest.fixture()
-def migrated_db_session(alembic_config: Config, sqlite_path: Path) -> Session:
+@pytest.fixture
+def migrated_db_session(
+    alembic_config: Config, sqlite_path: Path
+) -> Generator[Session, None, None]:
     command.upgrade(alembic_config, "head")
 
     engine = create_engine(f"sqlite:///{sqlite_path}")
@@ -140,13 +154,14 @@ def migrated_db_session(alembic_config: Config, sqlite_path: Path) -> Session:
         engine.dispose()
 
 
-@pytest.fixture()
+@pytest.fixture
 def api_client(
     clear_settings_cache,
     monkeypatch: pytest.MonkeyPatch,
     sqlite_path: Path,
     chroma_path: Path,
 ) -> Iterator[TestClient]:
+    del clear_settings_cache
     with _test_client(
         monkeypatch,
         sqlite_path,
@@ -156,13 +171,14 @@ def api_client(
         yield test_client
 
 
-@pytest.fixture()
+@pytest.fixture
 def api_client_https(
     clear_settings_cache,
     monkeypatch: pytest.MonkeyPatch,
     sqlite_path: Path,
     chroma_path: Path,
 ) -> Iterator[TestClient]:
+    del clear_settings_cache
     with _test_client(
         monkeypatch,
         sqlite_path,
@@ -173,13 +189,14 @@ def api_client_https(
         yield test_client
 
 
-@pytest.fixture()
+@pytest.fixture
 def api_client_https_cookie_insecure(
     clear_settings_cache,
     monkeypatch: pytest.MonkeyPatch,
     sqlite_path: Path,
     chroma_path: Path,
 ) -> Iterator[TestClient]:
+    del clear_settings_cache
     with _test_client(
         monkeypatch,
         sqlite_path,
@@ -193,7 +210,7 @@ def api_client_https_cookie_insecure(
         yield test_client
 
 
-@pytest.fixture()
+@pytest.fixture
 def configure_upload_provider() -> None:
     session_factory = create_session_factory()
     with session_factory() as session:
@@ -253,11 +270,11 @@ def mock_pydanticai_chat_workflow(monkeypatch):
 
 
 @pytest.fixture
-def logged_in_admin(api_client: TestClient) -> dict:
+def logged_in_admin(api_client: TestClient) -> dict[str, object]:
     """登录管理员并返回认证信息"""
     response = api_client.post(
         "/api/auth/login",
-        json={"username": "admin", "password": "admin123456"},
+        json={"username": "admin", "password": "Admin123456"},
     )
     assert response.status_code == 200
     return {

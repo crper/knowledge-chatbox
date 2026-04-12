@@ -39,6 +39,50 @@
 - 文档切块使用 `chonkie` 的 Markdown 感知递归策略（`RecursiveChunker.from_recipe("markdown")`），不要恢复为固定字符硬切。
 - Provider 层 API 调用重试使用 `tenacity`（`provider_retry` 装饰器），不要在各 provider 里手写重试循环。
 
+## 文档注释规范
+
+### 前端 JSDoc 标准
+
+```typescript
+/**
+ * 功能描述：简明说明该函数/类的作用
+ * @param {string} param1 - 参数说明（类型、含义、是否必填）
+ * @param {number} [param2=0] - 可选参数，默认值 0
+ * @returns {Promise<Result>} 返回值说明
+ * @throws {Error} 异常抛出情况及原因
+ * @example
+ * const result = await myFunction('value', 42);
+ */
+```
+
+### 后端 Docstring 标准
+
+```python
+def my_function(param1: str, param2: int = 0) -> Result:
+    """功能描述：简明说明该函数的作用。
+
+    Args:
+        param1: 参数说明（类型、含义、是否必填）
+        param2: 可选参数，默认值 0
+
+    Returns:
+        返回值说明
+
+    Raises:
+        ValueError: 异常说明及触发条件
+
+    Example:
+        >>> result = my_function("value", 42)
+    """
+```
+
+### 注释原则
+
+- 所有注释使用中文，表达准确、简洁、专业
+- 注释与代码同步更新，描述与实际功能一致
+- 复杂逻辑添加步骤说明，关键变量说明用途和取值范围
+- 对外暴露接口必须包含完整文档注释
+
 ## 测试约束
 
 - 优先测试用户可见行为、稳定公共契约、关键边界条件。
@@ -60,6 +104,7 @@
 
 - 以 `README.md` 和 `docs/arch/*` 文档为准推进，不擅自扩展超出 V1 范围的大功能。
 - 保持 API 简洁、命名清晰、行为可预测。
+- 现代化开发，充分使用内置API 和三方库的能力
 - 新增模型、接口、约束时，优先补测试，再做最小实现。
 - 聊天检索当前以 `Chroma` 负责向量召回、以 SQLite `FTS5` 负责词法候选兜底；不要恢复为整代索引的全量词法扫描路径。
 
@@ -67,3 +112,4 @@
 
 - `apps/web` 下若存在更细粒度 `AGENTS.md`，进入该目录后优先遵守其约束。
 - 根目录约束适用于整个仓库。
+

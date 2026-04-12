@@ -2,6 +2,8 @@ import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import { i18n } from "@/i18n";
 import { toast } from "sonner";
 
+// cspell:words ollama chatbox
+
 vi.mock("@tanstack/react-virtual", () => ({
   useVirtualizer: vi.fn((options: { count?: number }) => {
     const count = options.count ?? 0;
@@ -25,8 +27,7 @@ vi.mock("@tanstack/react-virtual", () => ({
 
 import type { ChatMessageItem } from "@/features/chat/api/chat";
 import { CHAT_STREAM_EVENT } from "@/features/chat/api/chat-stream-events";
-import { useChatAttachmentStore } from "@/features/chat/store/chat-attachment-store";
-import { useChatUiStore } from "@/features/chat/store/chat-ui-store";
+import { useChatComposerStore } from "@/features/chat/store/chat-composer-store";
 import { useSessionStore } from "@/lib/auth/session-store";
 import { setAccessToken } from "@/lib/auth/token-store";
 import { useUiStore } from "@/lib/store/ui-store";
@@ -214,8 +215,10 @@ function setupAuthenticatedWorkspace(options?: {
     body: unknown;
     status: number;
   };
+  streamAbortable?: boolean;
   streamFrames?: string[];
   streamFramesSequence?: string[][];
+  streamInitialDelayMs?: number;
   streamFinalDelayMs?: number;
   streamFramesBySession?: Record<number, string[]>;
 }) {
@@ -294,6 +297,22 @@ function setupAuthenticatedWorkspace(options?: {
   overrideHandler(http.get("*/api/chat/runs/active", () => apiResponse([])));
 
   overrideHandler(
+    http.post("*/api/chat/runs/:runId/cancel", () =>
+      apiResponse({
+        cancelled: true,
+      }),
+    ),
+  );
+
+  overrideHandler(
+    http.post("*/api/chat/sessions/:sessionId/messages/stream/cancel", () =>
+      apiResponse({
+        cancelled: true,
+      }),
+    ),
+  );
+
+  overrideHandler(
     http.get("*/api/chat/profile", () =>
       apiResponse({
         configured: true,
@@ -343,7 +362,9 @@ function setupAuthenticatedWorkspace(options?: {
           createChatStreamFrame(CHAT_STREAM_EVENT.partSource, {
             run_id: sessionId * 10 + 5,
             assistant_message_id: sessionId * 10 + 4,
-            source: {},
+            source: {
+              chunk_id: `chunk-${sessionId}`,
+            },
           }),
           createChatStreamFrame(CHAT_STREAM_EVENT.runCompleted, {
             run_id: sessionId * 10 + 5,
@@ -387,24 +408,77 @@ function setupAuthenticatedWorkspace(options?: {
             sources_json: [],
           };
       const encoder = new TextEncoder();
-      const stream = new ReadableStream({
-        start(controller) {
-          let index = 0;
+      const stream = options?.streamAbortable
+        ? new ReadableStream({
+            start(controller) {
+              let index = 0;
+              let closed = false;
+              const abortError = new DOMException("The operation was aborted.", "AbortError");
 
-          const pushFrame = () => {
-            if (index >= frames.length) {
-              controller.close();
-              return;
-            }
+              if (request.signal.aborted) {
+                closed = true;
+                controller.error(abortError);
+                return;
+              }
 
-            controller.enqueue(encoder.encode(frames[index]!));
-            index += 1;
-            window.setTimeout(pushFrame, index < 3 ? 0 : (options?.streamFinalDelayMs ?? 25));
-          };
+              request.signal.addEventListener(
+                "abort",
+                () => {
+                  if (closed) {
+                    return;
+                  }
+                  closed = true;
+                  controller.error(abortError);
+                },
+                { once: true },
+              );
 
-          pushFrame();
-        },
-      });
+              const pushFrame = () => {
+                if (closed) {
+                  return;
+                }
+                if (index >= frames.length) {
+                  closed = true;
+                  controller.close();
+                  return;
+                }
+
+                controller.enqueue(encoder.encode(frames[index]!));
+                index += 1;
+                window.setTimeout(pushFrame, index < 3 ? 0 : (options?.streamFinalDelayMs ?? 25));
+              };
+
+              const initialDelayMs = options?.streamInitialDelayMs ?? 0;
+              if (initialDelayMs > 0) {
+                window.setTimeout(pushFrame, initialDelayMs);
+              } else {
+                pushFrame();
+              }
+            },
+          })
+        : new ReadableStream({
+            start(controller) {
+              let index = 0;
+
+              const pushFrame = () => {
+                if (index >= frames.length) {
+                  controller.close();
+                  return;
+                }
+
+                controller.enqueue(encoder.encode(frames[index]!));
+                index += 1;
+                window.setTimeout(pushFrame, index < 3 ? 0 : (options?.streamFinalDelayMs ?? 25));
+              };
+
+              const initialDelayMs = options?.streamInitialDelayMs ?? 0;
+              if (initialDelayMs > 0) {
+                window.setTimeout(pushFrame, initialDelayMs);
+              } else {
+                pushFrame();
+              }
+            },
+          });
 
       return new Response(stream, {
         status: 200,
@@ -600,10 +674,9 @@ describe("chat workspace", () => {
         revokeObjectURL: vi.fn(),
       }),
     );
-    useChatAttachmentStore.setState({
+    useChatComposerStore.persist.clearStorage();
+    useChatComposerStore.setState({
       attachmentsBySession: {},
-    });
-    useChatUiStore.setState({
       draftsBySession: {},
       sendShortcut: "enter",
     });
@@ -770,7 +843,7 @@ describe("chat workspace", () => {
 
   it("clears stale local draft and attachments for a newly created session id", async () => {
     setupAuthenticatedWorkspace();
-    useChatAttachmentStore.setState({
+    useChatComposerStore.setState({
       attachmentsBySession: {
         "3": [
           {
@@ -783,8 +856,6 @@ describe("chat workspace", () => {
           },
         ],
       },
-    });
-    useChatUiStore.setState({
       draftsBySession: {
         "3": "stale draft",
       },
@@ -1059,6 +1130,107 @@ describe("chat workspace", () => {
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "发送" })).toBeEnabled();
     });
+  });
+
+  it("stops the active generation when the user clicks the stop action", async () => {
+    setupAuthenticatedWorkspace({ streamAbortable: true, streamFinalDelayMs: 180 });
+
+    renderChatRoute("/chat/1");
+
+    expect(await findSessionLink("Session A")).toBeInTheDocument();
+    fireEvent.change(await screen.findByLabelText("消息输入"), {
+      target: { value: "hello stream" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    const stopButton = await screen.findByRole("button", { name: "停止生成" });
+    fireEvent.click(stopButton);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("消息输入")).toHaveValue("hello stream");
+      expect(screen.getByRole("button", { name: "发送" })).toBeEnabled();
+    });
+
+    await waitFor(() => {
+      expect(
+        fetchMockCalls.some(
+          ([url, init]) =>
+            endsWithApiPath(url, "/api/chat/runs/15/cancel") &&
+            typeof init === "object" &&
+            init !== null &&
+            "method" in init &&
+            init.method === "POST",
+        ),
+      ).toBe(true);
+    });
+
+    expect(await findTextContent("已停止生成。你可以继续提问，或重新发送。")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "停止生成" })).not.toBeInTheDocument();
+  });
+
+  it("syncs a stop request to the server even before the first run.started event arrives", async () => {
+    setupAuthenticatedWorkspace({ streamAbortable: true, streamInitialDelayMs: 180 });
+
+    renderChatRoute("/chat/1");
+
+    expect(await findSessionLink("Session A")).toBeInTheDocument();
+    fireEvent.change(await screen.findByLabelText("消息输入"), {
+      target: { value: "stop before run started" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    fireEvent.click(await screen.findByRole("button", { name: "停止生成" }));
+
+    await waitFor(() => {
+      expect(
+        fetchMockCalls.some(
+          ([url, init]) =>
+            endsWithApiPath(url, "/api/chat/sessions/1/messages/stream/cancel") &&
+            typeof init === "object" &&
+            init !== null &&
+            "method" in init &&
+            init.method === "POST",
+        ),
+      ).toBe(true);
+    });
+  });
+
+  it("keeps the stream alive when pending cancel is not yet confirmed by the server", async () => {
+    setupAuthenticatedWorkspace({ streamAbortable: true, streamInitialDelayMs: 180 });
+    overrideHandler(
+      http.post("*/api/chat/sessions/:sessionId/messages/stream/cancel", () =>
+        apiResponse({
+          cancelled: false,
+        }),
+      ),
+    );
+
+    renderChatRoute("/chat/1");
+
+    expect(await findSessionLink("Session A")).toBeInTheDocument();
+    fireEvent.change(await screen.findByLabelText("消息输入"), {
+      target: { value: "stop before run started" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    fireEvent.click(await screen.findByRole("button", { name: "停止生成" }));
+
+    await waitFor(() => {
+      expect(
+        fetchMockCalls.some(
+          ([url, init]) =>
+            endsWithApiPath(url, "/api/chat/sessions/1/messages/stream/cancel") &&
+            typeof init === "object" &&
+            init !== null &&
+            "method" in init &&
+            init.method === "POST",
+        ),
+      ).toBe(true);
+    });
+
+    expect(await findTextContent("streamed answer")).toBeInTheDocument();
+    expect(screen.getByLabelText("消息输入")).toHaveValue("");
+    expect(screen.queryByText("已停止生成。你可以继续提问，或重新发送。")).not.toBeInTheDocument();
   });
 
   it("shows a toast when the stream request fails before any runtime event arrives", async () => {
@@ -1366,7 +1538,7 @@ describe("chat workspace", () => {
     await waitFor(() => {
       expect(screen.getByLabelText("消息输入")).toHaveValue("");
       expect(screen.queryByTestId("message-input-attachments")).not.toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "发送中" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "停止生成" })).toBeEnabled();
     });
 
     await waitFor(() => {
@@ -1595,7 +1767,7 @@ describe("chat workspace", () => {
     await waitFor(() => {
       expect(screen.getByLabelText("消息输入")).toHaveValue("");
       expect(screen.queryByTestId("message-input-attachments")).not.toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "发送中" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "停止生成" })).toBeEnabled();
     });
 
     await waitFor(() => {
@@ -1917,7 +2089,7 @@ describe("chat workspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "发送中" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "停止生成" })).toBeEnabled();
     });
 
     fireEvent.click(await findSessionLink("Session B"));
@@ -1980,7 +2152,7 @@ describe("chat workspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "发送中" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "停止生成" })).toBeEnabled();
     });
 
     fireEvent.click(await findSessionLink("Session B"));
@@ -1993,12 +2165,12 @@ describe("chat workspace", () => {
 
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Session A" })).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "发送中" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "停止生成" })).toBeEnabled();
       expect(screen.getByLabelText("消息输入")).toBeDisabled();
     });
 
     await waitFor(() => {
-      expect(screen.queryByRole("button", { name: "发送中" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "停止生成" })).not.toBeInTheDocument();
       expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();
       expect(screen.getByLabelText("消息输入")).toBeEnabled();
     });
@@ -2035,7 +2207,7 @@ describe("chat workspace", () => {
     fireEvent.click(await screen.findByRole("button", { name: "重试" }));
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "发送中" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "停止生成" })).toBeEnabled();
     });
 
     fireEvent.click(await findSessionLink("Session B"));
@@ -2086,7 +2258,7 @@ describe("chat workspace", () => {
     await findSessionLink("Session A");
     expect(await findSessionLink("Session B")).toBeInTheDocument();
     act(() => {
-      useChatAttachmentStore.setState({
+      useChatComposerStore.setState({
         attachmentsBySession: {
           "1": [
             {
@@ -2101,8 +2273,6 @@ describe("chat workspace", () => {
             },
           ],
         },
-      });
-      useChatUiStore.setState({
         draftsBySession: {
           "1": "文档说了啥",
         },
@@ -2134,7 +2304,7 @@ describe("chat workspace", () => {
 
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Session A" })).toBeInTheDocument();
-      expect(screen.queryByRole("button", { name: "发送中" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "停止生成" })).not.toBeInTheDocument();
       expect(screen.getByLabelText("消息输入")).toHaveValue("");
       expect(screen.queryByTestId("message-input-attachments")).not.toBeInTheDocument();
     });
@@ -2178,7 +2348,7 @@ describe("chat workspace", () => {
 
     await findSessionLink("Session A");
     act(() => {
-      useChatAttachmentStore.setState({
+      useChatComposerStore.setState({
         attachmentsBySession: {
           "1": [
             {
@@ -2193,8 +2363,6 @@ describe("chat workspace", () => {
             },
           ],
         },
-      });
-      useChatUiStore.setState({
         draftsBySession: {
           "1": "后来新写的问题",
         },
@@ -2211,7 +2379,7 @@ describe("chat workspace", () => {
     fireEvent.click(await screen.findByRole("button", { name: "重试" }));
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "发送中" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "停止生成" })).toBeEnabled();
       expect(screen.getByLabelText("消息输入")).toHaveValue("后来新写的问题");
       expect(
         within(screen.getByTestId("message-input-attachments")).getByText("new.pdf"),
@@ -2219,7 +2387,7 @@ describe("chat workspace", () => {
     });
 
     await waitFor(() => {
-      expect(screen.queryByRole("button", { name: "发送中" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "停止生成" })).not.toBeInTheDocument();
       expect(screen.getByLabelText("消息输入")).toHaveValue("后来新写的问题");
       expect(
         within(screen.getByTestId("message-input-attachments")).getByText("new.pdf"),
@@ -2250,8 +2418,11 @@ describe("chat workspace", () => {
       },
     });
 
-    useChatAttachmentStore.setState({ attachmentsBySession: {} });
-    useChatUiStore.setState({ draftsBySession: {}, sendShortcut: "enter" });
+    useChatComposerStore.setState({
+      attachmentsBySession: {},
+      draftsBySession: {},
+      sendShortcut: "enter",
+    });
 
     const { queryClient } = renderChatRoute("/chat/2");
     queryClient.setQueryData(queryKeys.chat.streamRun(900), {

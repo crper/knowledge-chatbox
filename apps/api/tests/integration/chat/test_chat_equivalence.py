@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import json
-from collections.abc import AsyncIterator
+from typing import TYPE_CHECKING, Any
 
-from fastapi.testclient import TestClient
 from pydantic_ai.messages import PartDeltaEvent, PartStartEvent, TextPart, TextPartDelta
 from tests.fixtures.stubs import make_adapter_backed_chat_workflow_class
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
+    from fastapi.testclient import TestClient
 
 
 class UnifiedResponseAdapterStub:
@@ -37,16 +41,19 @@ class EmbeddingAdapterStub:
 
 
 def stub_document_index_embedding(monkeypatch) -> None:
+    def _build_embedding_adapter(_route: object) -> EmbeddingAdapterStub:
+        return EmbeddingAdapterStub()
+
     monkeypatch.setattr(
         "knowledge_chatbox_api.services.documents.ingestion_service.build_embedding_adapter",
-        lambda _route: EmbeddingAdapterStub(),
+        _build_embedding_adapter,
     )
 
 
 def login_admin(api_client: TestClient) -> None:
     response = api_client.post(
         "/api/auth/login",
-        json={"username": "admin", "password": "admin123456"},
+        json={"username": "admin", "password": "Admin123456"},
     )
     assert response.status_code == 200
 
@@ -57,7 +64,7 @@ def create_chat_session(api_client: TestClient, title: str) -> int:
     return response.json()["data"]["id"]
 
 
-def read_session_messages(api_client: TestClient, session_id: int) -> list[dict]:
+def read_session_messages(api_client: TestClient, session_id: int) -> list[dict[str, Any]]:
     response = api_client.get(f"/api/chat/sessions/{session_id}/messages")
     assert response.status_code == 200
     return response.json()["data"]
@@ -75,28 +82,29 @@ def read_run_id(stream_body: str) -> int:
     raise AssertionError("run.started event not found")
 
 
-def pick_user_and_assistant(messages: list[dict]) -> tuple[dict, dict]:
+def pick_user_and_assistant(
+    messages: list[dict[str, Any]],
+) -> tuple[dict[str, Any], dict[str, Any]]:
     assert len(messages) == 2
     user_message = next(message for message in messages if message["role"] == "user")
     assistant_message = next(message for message in messages if message["role"] == "assistant")
     return user_message, assistant_message
 
 
-def comparable_message_fields(message: dict) -> dict:
-    sources = []
-    for source in message["sources_json"] or []:
-        sources.append(
-            {
-                "chunk_id": source.get("chunk_id"),
-                "document_id": source.get("document_id"),
-                "document_revision_id": source.get("document_revision_id"),
-                "document_name": source.get("document_name"),
-                "page_number": source.get("page_number"),
-                "score": source.get("score"),
-                "section_title": source.get("section_title"),
-                "snippet": source.get("snippet"),
-            }
-        )
+def comparable_message_fields(message: dict[str, Any]) -> dict[str, Any]:
+    sources: list[dict[str, Any]] = [
+        {
+            "chunk_id": source.get("chunk_id"),
+            "document_id": source.get("document_id"),
+            "document_revision_id": source.get("document_revision_id"),
+            "document_name": source.get("document_name"),
+            "page_number": source.get("page_number"),
+            "score": source.get("score"),
+            "section_title": source.get("section_title"),
+            "snippet": source.get("snippet"),
+        }
+        for source in message["sources_json"] or []
+    ]
     return {
         "attachments_json": message["attachments_json"],
         "content": message["content"],

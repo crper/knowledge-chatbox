@@ -2,10 +2,12 @@
 
 import base64
 import os
+from collections.abc import Generator
 from functools import lru_cache
 from time import perf_counter
 from typing import Any
 
+from knowledge_chatbox_api.core.logging import get_logger
 from knowledge_chatbox_api.providers.base import (
     DEFAULT_VISION_PROMPT,
     BaseEmbeddingAdapter,
@@ -21,6 +23,7 @@ from knowledge_chatbox_api.providers.base import (
     ResponseStreamChunk,
     VisionSettings,
     build_reasoning_config,
+    extract_content_parts,
     provider_retry,
 )
 from knowledge_chatbox_api.providers.ollama_url import normalize_ollama_base_url
@@ -36,26 +39,34 @@ OLLAMA_PROXY_ENV_KEYS = (
     "HTTPS_PROXY",
     "https_proxy",
 )
+logger = get_logger(__name__)
 
 
 @lru_cache(maxsize=1)
 def _load_ollama_sdk_without_proxy_env():
     """Lazily import the Ollama SDK without inheriting proxy env vars during import.
 
-    lru_cache 保证只执行一次，因此全局 environ 的短暂修改窗口极小。
-    若需彻底消除风险，可在应用启动阶段预先调用此函数。
+    lru_cache 保证只执行一次。导入期间短暂修改全局 ``os.environ``，
+    因此 **不是线程安全的**——应在应用启动阶段（单线程）预先调用此函数，
+    避免在并发请求中首次触发。
     """
-    preserved_env = {key: os.environ.pop(key) for key in OLLAMA_PROXY_ENV_KEYS if key in os.environ}
+    import importlib
+
+    preserved = {}
+    for key in OLLAMA_PROXY_ENV_KEYS:
+        if key in os.environ:
+            preserved[key] = os.environ.pop(key)
     try:
-        from ollama import Client as OllamaClient
-        from ollama import RequestError as OllamaRequestError
+        ollama_mod = importlib.import_module("ollama")
+        OllamaClient = ollama_mod.Client  # noqa: N806
+        OllamaRequestError = ollama_mod.RequestError  # noqa: N806
     finally:
-        os.environ.update(preserved_env)
+        os.environ.update(preserved)
     return OllamaClient, OllamaRequestError
 
 
 def _ollama_status_code(exc: Exception) -> int | None:
-    status_code = getattr(exc, "status_code", None)
+    status_code = safe_getattr(exc, "status_code")
     return status_code if isinstance(status_code, int) else None
 
 
@@ -112,9 +123,15 @@ def _message_content(response: Any) -> str:
 
 def _usage_to_dict(response: Any) -> dict[str, Any] | None:
     eval_count = safe_getattr(response, "eval_count")
-    if eval_count is None:
+    prompt_eval_count = safe_getattr(response, "prompt_eval_count")
+    if eval_count is None and prompt_eval_count is None:
         return None
-    return {"output_tokens": eval_count}
+    result: dict[str, Any] = {}
+    if prompt_eval_count is not None:
+        result["input_tokens"] = prompt_eval_count
+    if eval_count is not None:
+        result["output_tokens"] = eval_count
+    return result
 
 
 def _raw_dict(response: Any) -> dict[str, Any] | None:
@@ -156,16 +173,13 @@ class _OllamaClientMixin(ClientCacheMixin):
         super().__init__()
         self.client_factory = client_factory
 
-    def _request_timeout(self, settings: ProviderSettings) -> float:
-        return float(settings.provider_timeout_seconds)
-
     def _host(self, settings: ProviderSettings) -> str:
         return (
             normalize_ollama_base_url(settings.provider_profiles.ollama.base_url)
             or "http://host.docker.internal:11434"
         )
 
-    def _client(self, settings: ProviderSettings):
+    def _client(self, settings: ProviderSettings) -> Any:
         host = self._host(settings)
         timeout = self._request_timeout(settings)
         cache_key = (host, timeout)
@@ -191,7 +205,7 @@ class _OllamaClientMixin(ClientCacheMixin):
         start = perf_counter()
         try:
             show_result = self._quick_model_check(settings, model)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             return _ollama_failure_message(
                 exc,
                 host=self._host(settings),
@@ -220,30 +234,13 @@ class _OllamaClientMixin(ClientCacheMixin):
     def _serialize_messages(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
         serialized_messages: list[dict[str, Any]] = []
         for message in messages:
-            content = message.get("content")
-            if not isinstance(content, list):
-                serialized_messages.append(
-                    {
-                        "role": message.get("role"),
-                        "content": content if isinstance(content, str) else "",
-                    }
-                )
-                continue
-
-            text_parts: list[str] = []
-            images: list[str] = []
-            for item in content:
-                if item.get("type") == "text":
-                    text_parts.append(item.get("text", ""))
-                elif item.get("type") == "image":
-                    images.append(item.get("data_base64", ""))
-
+            parts = extract_content_parts(message.get("content"))
             payload: dict[str, Any] = {
                 "role": message.get("role"),
-                "content": "\n\n".join(part for part in text_parts if part),
+                "content": "\n\n".join(part for part in parts.text_parts if part),
             }
-            if images:
-                payload["images"] = images
+            if parts.image_parts:
+                payload["images"] = [img["data_base64"] for img in parts.image_parts]
             serialized_messages.append(payload)
 
         return serialized_messages
@@ -261,7 +258,11 @@ class OllamaResponseAdapter(_OllamaClientMixin, BaseResponseAdapter):
         )
         return _message_content(response)
 
-    def stream_response(self, messages: list[dict[str, Any]], settings: ResponseRuntimeSettings):
+    def stream_response(
+        self,
+        messages: list[dict[str, Any]],
+        settings: ResponseRuntimeSettings,
+    ) -> Generator[ResponseStreamChunk, None, None]:
         try:
             stream = self._client(settings).chat(
                 model=settings.response_route.model,
@@ -284,8 +285,9 @@ class OllamaResponseAdapter(_OllamaClientMixin, BaseResponseAdapter):
                         raw=_raw_dict(chunk),
                     )
                     return
-        except Exception as exc:  # noqa: BLE001
-            yield ResponseStreamChunk(type="error", error_message=str(exc))
+        except Exception as exc:
+            logger.warning("ollama_stream_error", error_message=str(exc))
+            yield ResponseStreamChunk(type="error", error_message="Provider stream error.")
 
     def health_check(self, settings: ResponseSettings) -> ProviderHealthResult:
         return self._health_check(

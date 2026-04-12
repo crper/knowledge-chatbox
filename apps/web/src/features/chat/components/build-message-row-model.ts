@@ -26,18 +26,29 @@ function getUserFacingMessageError(message: ChatMessageItem, t: (key: string) =>
   return rawErrorMessage;
 }
 
+function resolveAssistantContent(message: ChatMessageItem, t: (key: string) => string): string {
+  if (message.content.trim().length > 0) return message.content;
+  if (message.status === MessageStatus.FAILED) return t("assistantFailedFallback");
+  return t("assistantStreamingFallback");
+}
+
+function resolveReadyStatusLabel(
+  isUserMessage: boolean,
+  isAssistantMessage: boolean,
+  t: (key: string) => string,
+): string {
+  if (isUserMessage) return t("messageStatusUserReady");
+  if (isAssistantMessage) return t("messageStatusAssistantReady");
+  return t("messageStatusSystemReady");
+}
+
 export function buildMessageRowModel(message: ChatMessageItem, t: (key: string) => string) {
   const isUserMessage = message.role === MessageRole.USER;
   const isAssistantMessage = message.role === MessageRole.ASSISTANT;
   const canRetry =
     message.status === MessageStatus.FAILED &&
     (isUserMessage || message.reply_to_message_id != null);
-  const assistantContent =
-    message.content.trim().length > 0
-      ? message.content
-      : message.status === MessageStatus.FAILED
-        ? t("assistantFailedFallback")
-        : t("assistantStreamingFallback");
+  const assistantContent = resolveAssistantContent(message, t);
   const displayErrorMessage = getUserFacingMessageError(message, t);
   let statusMeta: { label: string; tone: "error" | "pending" | "default" };
   if (message.status === MessageStatus.FAILED) {
@@ -52,11 +63,7 @@ export function buildMessageRowModel(message: ChatMessageItem, t: (key: string) 
     };
   } else {
     statusMeta = {
-      label: isUserMessage
-        ? t("messageStatusUserReady")
-        : isAssistantMessage
-          ? t("messageStatusAssistantReady")
-          : t("messageStatusSystemReady"),
+      label: resolveReadyStatusLabel(isUserMessage, isAssistantMessage, t),
       tone: "default",
     };
   }

@@ -24,7 +24,7 @@ class VisionProviderStub:
 class NoVisionProviderStub:
     supports_vision = False
 
-    def analyze_image(self, inputs, settings) -> str:
+    def analyze_image(self, _inputs, _settings) -> str:
         raise AssertionError("should not be called")
 
 
@@ -71,7 +71,7 @@ def test_pdf_extracts_text(tmp_path: Path) -> None:
     document = fitz.open()
     page = document.new_page()
     page.insert_text((72, 72), "PDF content")
-    document.save(file_path)
+    document.save(str(file_path))
     document.close()
 
     result = create_service(tmp_path).normalize(file_path, "pdf")
@@ -90,7 +90,7 @@ def test_docx_extracts_headings_paragraphs_and_tables(tmp_path: Path) -> None:
     table.rows[0].cells[1].text = "Owner"
     table.rows[1].cells[0].text = "Chatbox"
     table.rows[1].cells[1].text = "Team"
-    document.save(file_path)
+    document.save(str(file_path))
 
     result = create_service(tmp_path).normalize(file_path, "docx")
 

@@ -1,7 +1,8 @@
 """SQLAlchemy engine and session factory lifecycle."""
 
 from collections.abc import Generator
-from functools import cache
+from functools import lru_cache
+from typing import Any
 
 from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
@@ -12,7 +13,7 @@ from knowledge_chatbox_api.utils.files import ensure_directory
 SQLITE_BUSY_TIMEOUT_MS = 30_000
 
 
-@cache
+@lru_cache(maxsize=1)
 def _create_engine(sqlite_path: str) -> Engine:
     """Build one engine per SQLite path so requests share the same connection pool."""
     engine = create_engine(
@@ -25,11 +26,12 @@ def _create_engine(sqlite_path: str) -> Engine:
     def set_sqlite_pragma(dbapi_connection, connection_record) -> None:  # type: ignore[no-untyped-def]
         """Enable SQLite pragmas that make mixed read/write traffic more resilient."""
         del connection_record
-        cursor = dbapi_connection.cursor()
+        cursor: Any = dbapi_connection.cursor()
         cursor.execute("PRAGMA journal_mode = WAL")
         cursor.fetchone()
         cursor.execute(f"PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT_MS}")
         cursor.execute("PRAGMA foreign_keys = ON")
+        cursor.execute("PRAGMA synchronous = NORMAL")
         cursor.close()
 
     return engine
@@ -42,7 +44,7 @@ def create_db_engine() -> Engine:
     return _create_engine(str(settings.sqlite_path))
 
 
-@cache
+@lru_cache(maxsize=1)
 def _create_session_factory(sqlite_path: str) -> sessionmaker[Session]:
     """Build one sessionmaker per SQLite path."""
     engine = _create_engine(sqlite_path)
@@ -72,3 +74,9 @@ def get_db_session() -> Generator[Session, None, None]:
         raise
     finally:
         session.close()
+
+
+def reset_db_caches() -> None:
+    """Clear cached engine and session factory so they are rebuilt on next access."""
+    _create_session_factory.cache_clear()
+    _create_engine.cache_clear()

@@ -46,6 +46,7 @@ type StartChatStreamInput = {
     retry_of_message_id?: number;
   };
   onEvent: (event: ChatStreamEvent) => void;
+  signal?: AbortSignal;
 };
 
 type ParsedChatStreamState = {
@@ -107,7 +108,7 @@ function createChatStreamEvent<TEventName extends ChatStreamEventName>(
   return { event, data } as Extract<ChatStreamEvent, { event: TEventName }>;
 }
 
-export async function startChatStream({ sessionId, body, onEvent }: StartChatStreamInput) {
+export async function startChatStream({ sessionId, body, onEvent, signal }: StartChatStreamInput) {
   const response = await authenticatedFetch(
     `${env.apiBaseUrl}/api/chat/sessions/${sessionId}/messages/stream`,
     {
@@ -115,6 +116,7 @@ export async function startChatStream({ sessionId, body, onEvent }: StartChatStr
       credentials: "include",
       headers: { "Content-Type": "application/json" },
       method: "POST",
+      signal,
     },
   );
 

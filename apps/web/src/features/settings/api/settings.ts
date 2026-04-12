@@ -93,24 +93,20 @@ function narrowCapabilityRoute<TProvider extends string>(
   };
 }
 
+const RESPONSE_PROVIDERS = ["openai", "anthropic", "ollama"] as const;
+const EMBEDDING_PROVIDERS = ["openai", "voyage", "ollama"] as const;
+const VISION_PROVIDERS = ["openai", "anthropic", "ollama"] as const;
+
 function toAppSettings(settings: SettingsRead): AppSettings {
   return {
     id: settings.id,
     provider_profiles: settings.provider_profiles as ProviderProfiles,
-    response_route: narrowCapabilityRoute(settings.response_route, [
-      "openai",
-      "anthropic",
-      "ollama",
-    ]),
-    embedding_route: narrowCapabilityRoute(settings.embedding_route, [
-      "openai",
-      "voyage",
-      "ollama",
-    ]),
+    response_route: narrowCapabilityRoute(settings.response_route, RESPONSE_PROVIDERS),
+    embedding_route: narrowCapabilityRoute(settings.embedding_route, EMBEDDING_PROVIDERS),
     pending_embedding_route: settings.pending_embedding_route
-      ? narrowCapabilityRoute(settings.pending_embedding_route, ["openai", "voyage", "ollama"])
+      ? narrowCapabilityRoute(settings.pending_embedding_route, EMBEDDING_PROVIDERS)
       : null,
-    vision_route: narrowCapabilityRoute(settings.vision_route, ["openai", "anthropic", "ollama"]),
+    vision_route: narrowCapabilityRoute(settings.vision_route, VISION_PROVIDERS),
     system_prompt: settings.system_prompt ?? null,
     provider_timeout_seconds: settings.provider_timeout_seconds,
     updated_by_user_id: settings.updated_by_user_id ?? null,

@@ -32,11 +32,13 @@ knowledge-chatbox/
     chroma/
     sqlite/
   scripts/
+    api-entrypoint.sh
     check_repo_surface.py
     dev-run.sh
     docker-deploy.sh
     export_openapi.py
-  reset-local-data.sh
+    reset-local-data.sh
+    lib/
   README.md
   AGENTS.md
   .env.example
@@ -52,7 +54,7 @@ knowledge-chatbox/
 | `docs/arch`               | 当前实现的长期架构文档                                                |
 | `examples/upload-samples` | 手工验证上传与问答链路的样例文件                                      |
 | `data`                    | 本地运行时数据目录，不是代码目录                                      |
-| `scripts`                 | Docker 部署和运维脚本                                                 |
+| `scripts`                 | 仓库级运行、部署与维护脚本（含 `lib/` 共享 Bash 模块）                |
 | `apps/web/openapi`        | 前端消费的 OpenAPI schema 快照                                        |
 
 ## 3. 前端代码地图
@@ -87,16 +89,23 @@ knowledge-chatbox/
 
 `lib/` 细分：
 
-| 子目录         | 责任                                                |
-| -------------- | --------------------------------------------------- |
-| `lib/api`      | 生成契约与 typed client 入口                        |
-| `lib/auth`     | 前端会话状态、access token 内存存储和启动恢复编排   |
-| `lib/config`   | 环境变量、常量、主题同步存储                        |
-| `lib/form`     | TanStack Form 对话框共享组件                        |
-| `lib/hooks`    | 通用 hooks                                          |
-| `lib/store`    | 全局 UI store                                       |
-| `lib/validation` | 表单校验适配器和 schema                           |
-| `lib/dom`      | DOM 工具                                            |
+| 子目录/文件            | 责任                                                |
+| ---------------------- | --------------------------------------------------- |
+| `lib/api`              | 生成契约、typed client 入口、envelope 解包、错误归一化、认证 fetch 封装、受保护文件读取、query keys |
+| `lib/api/generated`    | OpenAPI 生成的契约类型和 typed client 入口          |
+| `lib/auth`             | 前端会话状态、access token 内存存储和启动恢复编排   |
+| `lib/config`           | 环境变量、常量、主题同步存储                        |
+| `lib/form`             | TanStack Form 对话框共享组件（form-feedback、use-app-form） |
+| `lib/hooks`            | 通用 hooks（如 use-mobile）                         |
+| `lib/store`            | 全局 UI store（language、theme）                    |
+| `lib/validation`       | 表单校验适配器和 schema                             |
+| `lib/dom`              | DOM 工具                                            |
+| `lib/forms.ts`         | 轻量表单辅助（错误消息抽取、submit event helper）   |
+| `lib/document-upload.ts` | 聊天区和资源页共用的上传 workflow helper           |
+| `lib/date-utils.ts`    | 日期格式化工具                                      |
+| `lib/provider-display.ts` | Provider 展示名称/图标映射                        |
+| `lib/routes.ts`        | 路由工具                                            |
+| `lib/utils.ts`         | 通用工具函数（cn、getErrorMessage、formatFileSize） |
 
 补充约定：
 
@@ -114,9 +123,9 @@ knowledge-chatbox/
 
 | 你要改什么                                   | 先看哪里                                                                                                                                                                                                                                                                       |
 | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 工作台导航或设置中心结构                     | `src/layouts/app-shell-layout.tsx`、`src/layouts/workbench-layout.tsx`、`features/workspace/*`、`features/settings/settings-sections.ts`                                                                                                                                       |
+| 工作台导航或设置中心结构                     | `src/layouts/app-shell-layout.tsx`、`src/layouts/app-shell-layout-shells.tsx`、`src/layouts/workbench-layout.tsx`、`features/workspace/*`、`features/settings/settings-sections.ts`                                                                                             |
 | 聊天请求、流式状态、重试、附件展示           | `features/chat/api/*`、`features/chat/hooks/*`、`features/chat/store/*`、`features/chat/components/chat-message-viewport.tsx`、`features/chat/components/attachment-list.tsx`、`features/chat/components/image-viewer-dialog.tsx`、`features/chat/components/message-list.tsx` |
-| 资源页表格、上传队列、重建索引、重复上传反馈 | `features/knowledge/*`、`components/shared/data-table.tsx`、`features/knowledge/components/upload-queue-summary.tsx`、`lib/document-upload.ts`                                                                                                                                 |
+| 资源页表格、上传队列、PDF 预览、重建索引、重复上传反馈 | `features/knowledge/*`、`features/knowledge/components/document-pdf-preview.tsx`、`components/shared/data-table.tsx`、`features/knowledge/components/upload-queue-summary.tsx`、`lib/document-upload.ts`                                                                                                                                 |
 | 当前用户、登录、改密、主题偏好               | `features/auth/*`、`lib/auth/*`、`router/*`、`features/workspace/components/workspace-account-menu.tsx`                                                                                                                                                                        |
 | 页面表单校验与提交流程                       | 对应 `features/*/components/*form*`，默认先看 TanStack Form 用法；共享 submit / 错误抽取先看 `lib/forms.ts`                                                                                                                                                                    |
 
@@ -146,6 +155,7 @@ knowledge-chatbox/
 | `services/chat/prompt_attachment_service.py` | 附件物化（文档标准化文本 + 图片 JPEG 转换）                |
 | `services/chat/chat_stream_presenter.py`     | SSE 流式事件呈现                                           |
 | `services/chat/retry_service.py`             | 聊天重试逻辑                                               |
+| `services/chat/chat_persistence_service.py`  | 聊天运行持久化（run / event 写入与查询）                   |
 | `providers`                                  | OpenAI / Anthropic / Voyage / Ollama capability adapters；API 调用通过 `tenacity` 自动重试 |
 | `tasks`                                      | 启动补偿任务                                               |
 | `utils`                                      | 文件、哈希、Chroma 等工具                                  |
@@ -159,7 +169,7 @@ knowledge-chatbox/
 | 上传、内容哈希去重、标准化、切块、索引 | `services/documents/*`                                                                                       |
 | 聊天、SSE、失败恢复、活跃 run 补偿     | `services/chat/*`、`tasks/document_jobs.py`、`main.py`                                                       |
 | `ChatWorkflow` / `PydanticAI` 聊天执行 | `services/chat/workflow/*`、`services/chat/chat_application_service.py`、`services/chat/chat_run_service.py` |
-| 认证、会话、用户管理                   | `services/auth/*`、`api/routes/auth.py`、`api/routes/users.py`                                               |
+| 认证、会话、用户管理                   | `services/auth/*`、`repositories/rate_limit_repository.py`、`api/routes/auth.py`、`api/routes/users.py`     |
 | personal space bootstrap               | `repositories/space_repository.py`、`main.py`                                                                |
 
 ## 5. 修改时的基本规则
@@ -177,7 +187,7 @@ knowledge-chatbox/
 
 | 改动领域         | 权威文档                                                               | 核心文件                                                                                                        |
 | ---------------- | ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| 检索 / 索引 / provider | [provider-and-settings.md](./provider-and-settings.md)、[runtime-flows.md](./runtime-flows.md) | `app_settings` 上的 route 字段、`services/chat/retrieval/policy.py`、`repositories/retrieval_chunk_repository.py` |
+| 检索 / 索引 / provider | [provider-and-settings.md](./provider-and-settings.md)、[runtime-flows.md](./runtime-flows.md) | `app_settings` 上的 route 字段、`settings_versions` 审计快照、`services/chat/retrieval/policy.py`、`repositories/retrieval_chunk_repository.py` |
 | 聊天检索限域     | [runtime-flows.md](./runtime-flows.md)                                 | `services/chat/retrieval/policy.py`（组合 `space_id + document_revision_id`）、`services/chat/retrieval_service.py` |
 | 聊天执行 owner   | [runtime-flows.md](./runtime-flows.md)                                 | `services/chat/workflow/*`；不要在 route / repository / provider 层再平行塞第二套聊天执行状态机                  |
 | 认证与会话       | [auth-and-session-flow.md](./auth-and-session-flow.md)                 | 前端 access token 只存内存、refresh session 走 HttpOnly cookie、受保护读取接口鉴权阶段保持纯读                  |
@@ -190,7 +200,7 @@ knowledge-chatbox/
 | 聊天数据读取     | [frontend-workspace.md](./frontend-workspace.md)                       | 主区走 `/messages?limit=80`、右栏走 `/context`；不要让 UI 组件依赖整段消息列表反推摘要                          |
 | 流式问答收尾     | [frontend-workspace.md](./frontend-workspace.md)                       | 优先 patch `messagesWindow` 和 `context`，patch miss 时才回退到 query 失效刷新                                  |
 | 聊天前端运行时   | [frontend-workspace.md](./frontend-workspace.md)                       | `useChatRuntimeState` 读 `streamRun`、`useChatSessionSubmitController` 管提交锁、`useChatStreamRun` 管流式运行、`useChatSessionCacheActions` 负责 cache 写入 |
-| 聊天 composer    | [frontend-workspace.md](./frontend-workspace.md)                       | `useChatUiStore` 只持久化草稿和快捷键、`useChatAttachmentStore` 持有待发送附件；不要把 `File` 对象塞回 persist store |
+| 聊天 composer    | [frontend-workspace.md](./frontend-workspace.md)                       | `useChatComposerStore` 是唯一 owner；只持久化草稿和快捷键，附件继续保留内存态；不要把 `File` 对象塞回 persist store |
 | 设置页交互       | [provider-and-settings.md](./provider-and-settings.md)                 | 纯 helper 返回 i18n key，主区承载当前生效配置，高级区承载检索覆盖和备用模板                                     |
 | API 文档 / 契约  | —                                                                      | FastAPI OpenAPI 为唯一接口契约源；不要维护平行手写接口文档                                                      |
 
@@ -217,6 +227,8 @@ knowledge-chatbox/
 默认优先在仓库根目录使用 `just`：
 
 ```bash
+just
+just help
 just init-env
 just setup
 just --list
@@ -240,6 +252,13 @@ just docker-health
 首次 clone 或依赖 lockfile 变更后，先按根 `README.md` 执行 `just init-env -> just setup -> just dev`。启动行为细节详见 [deployment-and-operations.md](./deployment-and-operations.md)。
 
 只有当你明确需要子项目独立运行时，再进入 `apps/web` 或 `apps/api` 执行细分命令。
+
+补充约定：
+
+- `just` / `just help` 只展示精简过的高频入口，降低日常记忆负担
+- `just --list` 保留完整命令面，适合排查或查找低频入口
+- `just init-env` 负责补齐空白的本地密钥，并提示你去 `.env` 查看 bootstrap 管理员密码
+- `scripts/dev-run.sh` 在 `just dev` / `just reset-dev` 启动时会打印 bootstrap 管理员账号和密码来源，避免重置数据后还沿用旧默认密码
 
 ### 6.2 前端
 
@@ -293,16 +312,16 @@ scripts/docker-deploy.sh build
 - Docker 入口默认不再静默复制 `.env`；先执行 `just init-env`
 - `just docker-check` / `scripts/docker-deploy.sh check` 只做静态校验，不要求 Docker daemon 已启动
 - Docker 单机模式里，`web` 会通过 nginx 把同源 `/api` 反代到 `api` 服务
-- `just docker-up` 默认复用现有镜像；改 Dockerfile、依赖 lockfile 或前端构建期 API 地址后，先执行 `just docker-build`
+- `just docker-up` 会在启动前重建当前镜像，优先保证容器内前后端产物与工作区一致；`just docker-build` 主要用于单独预热镜像或排查构建失败
 
 ### 6.5 涉及本地数据目录
 
-`just reset-dev` 会先执行 `reset-local-data.sh`，再同步依赖并拉起前后端开发态脚本。
+`just reset-dev` 会先执行 `scripts/reset-local-data.sh`，再同步依赖并拉起前后端开发态脚本。
 
 如果你只想补齐依赖、不想清空本地数据，使用 `just setup`。
 
 ```bash
-./reset-local-data.sh --yes
+./scripts/reset-local-data.sh --yes
 just setup
 just reset-dev
 ```

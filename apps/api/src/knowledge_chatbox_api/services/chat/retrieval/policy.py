@@ -2,7 +2,7 @@ from typing import Any
 
 from knowledge_chatbox_api.models.enums import ChatAttachmentType
 from knowledge_chatbox_api.services.chat.retrieval.models import ATTACHMENT_SCOPED_QUERY_MULTIPLIER
-from knowledge_chatbox_api.utils.text_matching import normalize_match_text as _normalize_match_text
+from knowledge_chatbox_api.utils.text_matching import normalize_match_text
 
 SMALL_TALK_QUERIES = frozenset(
     {
@@ -36,8 +36,7 @@ SMALL_TALK_QUERIES = frozenset(
 )
 
 GENERIC_IMAGE_ONLY_QUERIES = frozenset(
-    _normalize_match_text(value)
-    for value in {
+    {
         "帮我看看这张图",
         "帮我看看这幅图",
         "看看这张图",
@@ -48,10 +47,10 @@ GENERIC_IMAGE_ONLY_QUERIES = frozenset(
         "分析这幅图",
         "这张图说了什么",
         "这幅图说了什么",
-        "describe this image",
-        "analyze this image",
-        "look at this image",
-        "what does this image say",
+        "describethisimage",
+        "analyzethisimage",
+        "lookatthisimage",
+        "whatdoesthisimagesay",
     }
 )
 
@@ -80,7 +79,7 @@ def is_image_only_analysis_turn(
     if not has_only_image_attachments(attachments):
         return False
 
-    normalized_query = _normalize_match_text(query_text)
+    normalized_query = normalize_match_text(query_text)
     if not normalized_query:
         return True
 
@@ -95,7 +94,7 @@ def should_retrieve_knowledge(
     if is_image_only_analysis_turn(query_text, attachments):
         return False
 
-    normalized_query = _normalize_match_text(query_text)
+    normalized_query = normalize_match_text(query_text)
     if not normalized_query:
         return False
     return normalized_query not in SMALL_TALK_QUERIES
@@ -145,7 +144,7 @@ def select_attachment_scoped_records(
 
     selected: list[dict[str, Any]] = []
     seen_chunk_ids: set[str] = set()
-    revision_iterators: dict[int, int] = {rid: 0 for rid in attachment_revision_ids}
+    revision_iterators: dict[int, int] = dict.fromkeys(attachment_revision_ids, 0)
 
     while True:
         round_added = False

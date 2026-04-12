@@ -170,6 +170,49 @@ describe("buildDisplayMessages", () => {
     ]);
   });
 
+  it("prefers the persisted succeeded assistant message over a stopped local run", () => {
+    const messages: ChatMessageItem[] = [
+      {
+        id: 1,
+        role: "user",
+        content: "hello",
+        status: "succeeded",
+        sources_json: null,
+      },
+      {
+        id: 5,
+        role: "assistant",
+        content: "server answer",
+        status: "succeeded",
+        reply_to_message_id: 1,
+        sources_json: [],
+      },
+    ];
+
+    const result = buildDisplayMessages({
+      activeSessionId: 1,
+      messages,
+      runsById: {
+        12: {
+          assistantMessageId: 5,
+          content: "partial",
+          errorMessage: "已停止生成。你可以继续提问，或重新发送。",
+          runId: 12,
+          sessionId: 1,
+          userMessageId: 1,
+          userContent: "hello",
+          status: "failed",
+          suppressPersistedAssistantMessage: true,
+          terminalState: "stopped",
+          toastShown: false,
+          sources: [],
+        },
+      },
+    });
+
+    expect(result).toEqual([messages[0], messages[1]]);
+  });
+
   it("marks a historical pending assistant message as failed when newer messages already exist", () => {
     const messages: ChatMessageItem[] = [
       {

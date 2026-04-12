@@ -1,12 +1,14 @@
 """OpenAI capability adapters."""
 
+from __future__ import annotations
+
 import base64
 from time import perf_counter
-from typing import Any, cast
-from urllib.parse import urlsplit, urlunsplit
+from typing import TYPE_CHECKING, Any, cast
 
-from openai import NOT_GIVEN
+from openai import NOT_GIVEN, OpenAI
 
+from knowledge_chatbox_api.core.logging import get_logger
 from knowledge_chatbox_api.providers.base import (
     DEFAULT_VISION_PROMPT,
     BaseEmbeddingAdapter,
@@ -22,13 +24,24 @@ from knowledge_chatbox_api.providers.base import (
     ResponseStreamChunk,
     VisionSettings,
     build_reasoning_config,
+    extract_content_parts,
     provider_retry,
+    transform_content,
 )
+from knowledge_chatbox_api.providers.ollama_url import normalize_provider_base_url
+from knowledge_chatbox_api.utils.helpers import safe_getattr
 from knowledge_chatbox_api.utils.timing import elapsed_ms
+
+if TYPE_CHECKING:
+    import collections.abc
+    from collections.abc import Callable
+
+    from openai.types.responses import ResponseInputParam
 
 DEFAULT_MAX_OUTPUT_TOKENS = 4096
 OPENAI_MODEL_NOT_AVAILABLE_CODE = "openai_model_not_available"
 OPENAI_INVALID_API_KEY_CODE = "openai_invalid_api_key"
+logger = get_logger(__name__)
 
 
 class OpenAIModelNotAvailableError(Exception):
@@ -47,38 +60,31 @@ class OpenAIInvalidApiKeyError(Exception):
 
 
 class _OpenAIClientMixin(ClientCacheMixin):
-    def __init__(self, client_factory=None) -> None:
+    def __init__(self, client_factory: Callable[..., Any] | None = None) -> None:
         super().__init__()
-        self.client_factory = client_factory
+        self._client_factory: Callable[..., Any] = client_factory or OpenAI
 
     def _normalize_base_url(self, base_url: str | None) -> str | None:
-        if not base_url:
-            return None
-
-        parsed = urlsplit(base_url.strip())
-        if not parsed.scheme or not parsed.netloc:
-            return base_url.strip().rstrip("/") or None
-
-        normalized_path = parsed.path.rstrip("/") or "/v1"
-        return urlunsplit(
-            (parsed.scheme, parsed.netloc, normalized_path, parsed.query, parsed.fragment)
+        return normalize_provider_base_url(
+            base_url,
+            ensure_v1_suffix=True,
+            preserve_existing_path=True,
         )
 
-    def _client(self, settings: ProviderSettings):
-        from openai import OpenAI
-
+    def _client(self, settings: ProviderSettings) -> OpenAI:
         profile = settings.provider_profiles.openai
-        factory = self.client_factory or OpenAI
+        factory = self._client_factory
         timeout = settings.provider_timeout_seconds
         client_timeout = float(timeout) if timeout else NOT_GIVEN
         normalized_base_url = self._normalize_base_url(profile.base_url)
         cache_key = (profile.api_key, normalized_base_url, client_timeout)
 
-        def create_client():
-            kwargs = {"api_key": profile.api_key, "timeout": client_timeout}
-            if normalized_base_url:
-                kwargs["base_url"] = normalized_base_url
-            return factory(**kwargs)
+        def create_client() -> OpenAI:
+            return factory(
+                api_key=profile.api_key,
+                timeout=client_timeout,
+                base_url=normalized_base_url,
+            )
 
         return self._get_or_create_client(cache_key, create_client)
 
@@ -86,7 +92,7 @@ class _OpenAIClientMixin(ClientCacheMixin):
         return settings.provider_profiles.openai.api_key
 
     def _model_exists_in_list(self, models_response: Any, model: str) -> bool:
-        data = getattr(models_response, "data", models_response)
+        data = safe_getattr(models_response, "data", models_response)
         if isinstance(data, dict):
             data = data.get("data", [])
 
@@ -95,62 +101,40 @@ class _OpenAIClientMixin(ClientCacheMixin):
         except TypeError:
             return True
 
-        for item in items:
-            candidate = getattr(item, "id", None)
-            if candidate is None and isinstance(item, dict):
-                candidate = item.get("id")
-            if candidate == model:
-                return True
-        return False
+        return any(
+            (safe_getattr(item, "id", None) or (item.get("id") if isinstance(item, dict) else None))
+            == model
+            for item in items
+        )
 
     def _is_not_found_error(self, exc: Exception) -> bool:
+        from openai import NotFoundError
+
+        if isinstance(exc, NotFoundError):
+            return True
         status_code = getattr(exc, "status_code", None)
         if status_code in {404, 405, 501}:
             return True
-
         response = getattr(exc, "response", None)
-        if getattr(response, "status_code", None) in {404, 405, 501}:
-            return True
-
-        message = str(exc).lower()
-        return "404" in message or "not found" in message
+        return getattr(response, "status_code", None) in {404, 405, 501}
 
     def _is_auth_error(self, exc: Exception) -> bool:
+        from openai import AuthenticationError
+
+        if isinstance(exc, AuthenticationError):
+            return True
         status_code = getattr(exc, "status_code", None)
         if status_code in {401, 403}:
             return True
-
         response = getattr(exc, "response", None)
-        if getattr(response, "status_code", None) in {401, 403}:
-            return True
-
-        code = getattr(exc, "code", None)
-        if isinstance(code, str) and code.upper() in {
-            "INVALID_API_KEY",
-            "UNAUTHORIZED",
-            "AUTHENTICATION_ERROR",
-        }:
-            return True
-
-        body = getattr(exc, "body", None)
-        if isinstance(body, dict):
-            body_code = body.get("code")
-            if isinstance(body_code, str) and body_code.upper() in {
-                "INVALID_API_KEY",
-                "UNAUTHORIZED",
-                "AUTHENTICATION_ERROR",
-            }:
-                return True
-
-        message = str(exc).lower()
-        return "invalid api key" in message or "unauthorized" in message
+        return getattr(response, "status_code", None) in {401, 403}
 
     def _quick_model_check(self, settings: ProviderSettings, model: str) -> None:
         client = self._client(settings)
         try:
             client.models.retrieve(model)
             return
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             if self._is_auth_error(exc):
                 raise OpenAIInvalidApiKeyError() from exc
             if not self._is_not_found_error(exc):
@@ -165,9 +149,9 @@ class _OpenAIClientMixin(ClientCacheMixin):
 
     def _run_health_check(self, settings, model: str) -> ProviderHealthResult:
         start = perf_counter()
+        if not self._api_key(settings):
+            return ProviderHealthResult(healthy=False, message="OpenAI API key is missing.")
         try:
-            if not self._api_key(settings):
-                return ProviderHealthResult(healthy=False, message="OpenAI API key is missing.")
             self._quick_model_check(settings, model)
         except OpenAIInvalidApiKeyError as exc:
             return ProviderHealthResult(
@@ -181,7 +165,7 @@ class _OpenAIClientMixin(ClientCacheMixin):
                 code=OPENAI_MODEL_NOT_AVAILABLE_CODE,
                 message=str(exc),
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             return ProviderHealthResult(healthy=False, message=str(exc))
         return ProviderHealthResult(
             healthy=True,
@@ -189,48 +173,34 @@ class _OpenAIClientMixin(ClientCacheMixin):
             latency_ms=elapsed_ms(start),
         )
 
-    def _reasoning_config(self, settings: ResponseRuntimeSettings) -> Any:
+    def _reasoning_config(self, settings: ResponseRuntimeSettings) -> dict[str, str] | None:
         config = build_reasoning_config(ProviderName.OPENAI, settings.reasoning_mode)
         effort = config.get("openai_reasoning_effort")
         if effort is not None:
             return {"effort": effort}
-        return NOT_GIVEN
+        return None
 
-    def _serialize_response_input(self, messages: list[dict[str, Any]]) -> Any:
+    def _serialize_response_input(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
         serialized_messages: list[dict[str, Any]] = []
         for message in messages:
             content = message.get("content")
-            if not isinstance(content, list):
+            parts = extract_content_parts(content)
+            if not parts.image_parts:
                 serialized_messages.append(
-                    {
-                        "role": message.get("role"),
-                        "content": content if isinstance(content, str) else "",
-                    }
+                    {"role": message.get("role"), "content": parts.text_parts[0]}
                 )
                 continue
 
-            serialized_content: list[dict[str, Any]] = []
-            for item in content:
-                if item.get("type") == "text":
-                    serialized_content.append({"type": "input_text", "text": item.get("text", "")})
-                elif item.get("type") == "image":
-                    serialized_content.append(
-                        {
-                            "type": "input_image",
-                            "image_url": (
-                                f"data:{item.get('mime_type', 'image/jpeg')};base64,"
-                                f"{item.get('data_base64', '')}"
-                            ),
-                            "detail": "auto",
-                        }
-                    )
-
-            serialized_messages.append(
-                {
-                    "role": message.get("role"),
-                    "content": serialized_content,
-                }
+            serialized_content = transform_content(
+                content,
+                text_fn=lambda t: {"type": "input_text", "text": t},
+                image_fn=lambda img: {
+                    "type": "input_image",
+                    "image_url": f"data:{img['mime_type']};base64,{img['data_base64']}",
+                    "detail": "auto",
+                },
             )
+            serialized_messages.append({"role": message.get("role"), "content": serialized_content})
 
         return serialized_messages
 
@@ -242,44 +212,59 @@ class OpenAIResponseAdapter(_OpenAIClientMixin, BaseResponseAdapter):
         client = self._client(settings)
         response = client.responses.create(
             model=settings.response_route.model,
-            input=cast(Any, self._serialize_response_input(messages)),
+            input=cast("ResponseInputParam", self._serialize_response_input(messages)),
             max_output_tokens=DEFAULT_MAX_OUTPUT_TOKENS,
-            reasoning=cast(Any, self._reasoning_config(settings)),
+            reasoning=cast("Any", self._reasoning_config(settings)),
         )
-        return getattr(response, "output_text", "") or ""
+        return safe_getattr(response, "output_text", "") or ""
 
-    def stream_response(self, messages: list[dict[str, Any]], settings: ResponseRuntimeSettings):
+    def stream_response(
+        self,
+        messages: list[dict[str, Any]],
+        settings: ResponseRuntimeSettings,
+    ) -> collections.abc.Generator[ResponseStreamChunk, None, None]:
         client = self._client(settings)
 
         try:
             with client.responses.stream(
                 model=settings.response_route.model,
-                input=cast(Any, self._serialize_response_input(messages)),
+                input=cast("ResponseInputParam", self._serialize_response_input(messages)),
                 max_output_tokens=DEFAULT_MAX_OUTPUT_TOKENS,
-                reasoning=cast(Any, self._reasoning_config(settings)),
+                reasoning=cast("Any", self._reasoning_config(settings)),
             ) as stream:
                 response_id: str | None = None
-                usage: dict[str, Any] | None = None
                 for event in stream:
-                    response_id = getattr(event, "response_id", response_id)
-                    event_type = getattr(event, "type", None)
+                    response_id = safe_getattr(event, "response_id", response_id)
+                    event_type = safe_getattr(event, "type")
                     if event_type == "response.output_text.delta":
                         yield ResponseStreamChunk(
                             type="text_delta",
-                            delta=getattr(event, "delta", ""),
+                            delta=safe_getattr(event, "delta", ""),
                             provider_response_id=response_id,
                         )
                     elif event_type == "response.completed":
-                        usage = getattr(getattr(event, "response", None), "usage", None)
-                        model_dump = getattr(usage, "model_dump", None)
-                        usage_payload = model_dump() if callable(model_dump) else usage
+                        response_obj = safe_getattr(event, "response")
+                        usage_obj = safe_getattr(response_obj, "usage") if response_obj else None
+                        model_dump = safe_getattr(usage_obj, "model_dump") if usage_obj else None
+                        usage_payload: dict[str, Any] | None = None
+                        if callable(model_dump):
+                            result = model_dump()
+                            usage_payload = result if isinstance(result, dict) else None
+                        elif isinstance(usage_obj, dict):
+                            usage_payload = usage_obj
                         yield ResponseStreamChunk(
                             type="completed",
                             provider_response_id=response_id,
-                            usage=cast(Any, usage_payload),
+                            usage=usage_payload,
                         )
-        except Exception as exc:  # noqa: BLE001
-            yield ResponseStreamChunk(type="error", error_message=str(exc))
+        except Exception as exc:
+            logger.warning("openai_stream_error", error_message=str(exc))
+            user_message = "Provider stream error."
+            if self._is_auth_error(exc):
+                user_message = "Authentication failed. Please check your API key."
+            elif self._is_not_found_error(exc):
+                user_message = "Requested model is not available."
+            yield ResponseStreamChunk(type="error", error_message=user_message)
 
     def health_check(self, settings: ResponseSettings) -> ProviderHealthResult:
         return self._run_health_check(settings, settings.response_route.model)
@@ -329,7 +314,7 @@ class OpenAIVisionAdapter(_OpenAIClientMixin, BaseVisionAdapter):
             ],
             max_output_tokens=DEFAULT_MAX_OUTPUT_TOKENS,
         )
-        return getattr(response, "output_text", "") or ""
+        return safe_getattr(response, "output_text", "") or ""
 
     def health_check(self, settings: VisionSettings) -> ProviderHealthResult:
         return self._run_health_check(settings, settings.vision_route.model)

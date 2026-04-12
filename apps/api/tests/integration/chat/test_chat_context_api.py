@@ -1,19 +1,25 @@
 from __future__ import annotations
 
-from fastapi.testclient import TestClient
+from typing import TYPE_CHECKING
+
+import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from knowledge_chatbox_api.models.auth import User
 from knowledge_chatbox_api.models.document import Document, DocumentRevision
 from knowledge_chatbox_api.models.space import Space
+from knowledge_chatbox_api.schemas.chat import ChatSourceRead
 from knowledge_chatbox_api.services.chat.workflow.output import ChatWorkflowResult
+
+if TYPE_CHECKING:
+    from fastapi.testclient import TestClient
 
 
 def login_as_admin(api_client: TestClient) -> None:
     response = api_client.post(
         "/api/auth/login",
-        json={"username": "admin", "password": "admin123456"},
+        json={"username": "admin", "password": "Admin123456"},
     )
 
     assert response.status_code == 200
@@ -103,7 +109,7 @@ def test_chat_context_api_returns_deduplicated_attachments_and_latest_assistant_
             if question == "第二条消息":
                 return ChatWorkflowResult(
                     answer="第二次回答",
-                    sources=[
+                    sources=[  # pyright: ignore[reportArgumentType]
                         {
                             "chunk_id": "doc-2:0",
                             "document_id": 2,
@@ -121,7 +127,7 @@ def test_chat_context_api_returns_deduplicated_attachments_and_latest_assistant_
 
             return ChatWorkflowResult(
                 answer="第一次回答",
-                sources=[
+                sources=[  # pyright: ignore[reportArgumentType]
                     {
                         "chunk_id": "doc-1:0",
                         "document_id": 1,
@@ -250,3 +256,69 @@ def test_chat_context_api_returns_deduplicated_attachments_and_latest_assistant_
             "snippet": "新片段 B",
         },
     ]
+
+
+@pytest.mark.integration
+@pytest.mark.requires_db
+def test_chat_context_latest_assistant_sources_conform_to_chat_source_read_schema(
+    api_client: TestClient,
+    monkeypatch,
+) -> None:
+    """测试 context 接口返回的 latest_assistant_sources 符合 ChatSourceRead 结构定义"""
+
+    class SourceSchemaWorkflowStub:
+        def run_sync(self, *, deps, session_id: int, question: str, attachments=None):
+            del deps, session_id, question, attachments
+            return ChatWorkflowResult(
+                answer="测试回答",
+                sources=[  # pyright: ignore[reportArgumentType]
+                    {
+                        "chunk_id": "test-chunk-1",
+                        "document_id": 42,
+                        "document_revision_id": 100,
+                        "document_name": "测试文档.pdf",
+                        "page_number": 5,
+                        "score": 0.95,
+                        "section_title": "测试章节",
+                        "snippet": "测试片段内容",
+                    }
+                ],
+            )
+
+    monkeypatch.setattr(
+        "knowledge_chatbox_api.services.chat.chat_application_service.ChatWorkflow",
+        SourceSchemaWorkflowStub,
+    )
+    from tests.fixtures.helpers import create_chat_session, login_as_admin
+
+    login_as_admin(api_client)
+    session_id = create_chat_session(api_client)
+
+    api_client.post(
+        f"/api/chat/sessions/{session_id}/messages",
+        json={
+            "content": "测试消息",
+            "client_request_id": "req-context-schema-1",
+        },
+    )
+
+    response = api_client.get(f"/api/chat/sessions/{session_id}/context")
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert payload["success"] is True
+
+    sources = payload["data"]["latest_assistant_sources"]
+    assert isinstance(sources, list)
+    assert len(sources) == 1
+
+    source: dict[str, Any] = sources[0]
+    validated = ChatSourceRead.model_validate(source)
+    assert validated.chunk_id == "test-chunk-1"
+    assert validated.document_id == 42
+    assert validated.document_revision_id == 100
+    assert validated.document_name == "测试文档.pdf"
+    assert validated.page_number == 5
+    assert validated.score == 0.95
+    assert validated.section_title == "测试章节"
+    assert validated.snippet == "测试片段内容"

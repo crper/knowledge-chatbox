@@ -1,5 +1,8 @@
 """聊天相关服务模块。"""
 
+from typing import Any
+
+from knowledge_chatbox_api.core.errors import AppError
 from knowledge_chatbox_api.models.enums import (
     ChatMessageRole,
     ChatMessageStatus,
@@ -7,12 +10,20 @@ from knowledge_chatbox_api.models.enums import (
 from knowledge_chatbox_api.repositories.chat_repository import ChatRepository
 
 
-class RetryTargetNotFoundError(Exception):
+class RetryTargetNotFoundError(AppError):
     """表示重试目标消息不存在或不可重试。"""
 
+    status_code = 404
+    code = "chat_message_not_found"
+    default_message = "Retry target not found."
 
-class DuplicateClientRequestConflictError(Exception):
+
+class DuplicateClientRequestConflictError(AppError):
     """表示幂等键已被不同请求载荷占用。"""
+
+    status_code = 409
+    code = "chat_message_conflict"
+    default_message = "client_request_id already exists for a different message payload."
 
 
 _ATTACHMENT_COMPARE_FIELDS = (
@@ -29,14 +40,13 @@ _ATTACHMENT_COMPARE_FIELDS = (
 class RetryService:
     """封装失败消息重试与去重逻辑。"""
 
-    def __init__(self, repository: ChatRepository, session) -> None:
+    def __init__(self, repository: ChatRepository) -> None:
         self.repository = repository
-        self.session = session
 
     def create_or_reuse_user_message(
         self,
         *,
-        attachments: list[dict] | None = None,
+        attachments: list[dict[str, Any]] | None = None,
         session_id: int,
         content: str,
         client_request_id: str,
@@ -70,7 +80,6 @@ class RetryService:
         self,
         *,
         session_id: int,
-        content: str,
         client_request_id: str,
         retry_of_message_id: int,
     ):
@@ -128,9 +137,9 @@ class RetryService:
     def _matches_existing_message(
         self,
         *,
-        existing_message,
+        existing_message: Any,
         content: str,
-        attachments: list[dict] | None,
+        attachments: list[dict[str, Any]] | None,
         retry_of_message_id: int | None = None,
     ) -> bool:
         if existing_message is None:
@@ -143,16 +152,17 @@ class RetryService:
             == self._normalize_attachments(self._serialize_attachments(existing_message.id))
         )
 
-    def _serialize_attachments(self, message_id: int) -> list[dict]:
+    def _serialize_attachments(self, message_id: int) -> list[dict[str, Any]]:
         return [
             {field: getattr(attachment, field) for field in _ATTACHMENT_COMPARE_FIELDS}
             for attachment in self.repository.list_attachments(message_id)
         ]
 
-    def _normalize_attachments(self, attachments: list[dict] | None) -> list[dict]:
-        normalized: list[dict] = []
-        for attachment in attachments or []:
-            normalized.append(
-                {field: attachment.get(field) for field in _ATTACHMENT_COMPARE_FIELDS}
-            )
-        return normalized
+    def _normalize_attachments(
+        self,
+        attachments: list[dict[str, Any]] | None,
+    ) -> list[dict[str, Any]]:
+        return [
+            {field: attachment.get(field) for field in _ATTACHMENT_COMPARE_FIELDS}
+            for attachment in attachments or []
+        ]

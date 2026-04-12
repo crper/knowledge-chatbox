@@ -9,23 +9,27 @@ import { SUPPORTED_UPLOAD_TYPES } from "../upload-file-types";
 
 const DOCUMENT_TEXT_PREVIEW_LIMIT_BYTES = 1024 * 1024;
 
-const IMAGE_FILE_TYPES = new Set(
-  SUPPORTED_UPLOAD_TYPES.filter(({ kind }) => kind === "image").flatMap(({ extensions }) =>
-    extensions.map((e: string) => e.slice(1)),
-  ),
-);
-const MARKDOWN_FILE_TYPES = new Set(
-  SUPPORTED_UPLOAD_TYPES.filter(({ mimeType }) => mimeType === "text/markdown").flatMap(
-    ({ extensions }) => extensions.map((e: string) => e.slice(1)),
-  ),
-);
-const TEXT_FILE_TYPES = new Set(
-  SUPPORTED_UPLOAD_TYPES.filter(({ mimeType }) => mimeType === "text/plain").flatMap(
-    ({ extensions }) => extensions.map((e: string) => e.slice(1)),
-  ),
-);
-
 export type DocumentPreviewKind = "image" | "markdown" | "text" | "pdf" | "docx" | "unsupported";
+
+const EXTENSION_TO_PREVIEW_KIND: Record<string, DocumentPreviewKind> = {};
+for (const { extensions, kind, mimeType } of SUPPORTED_UPLOAD_TYPES) {
+  for (const ext of extensions) {
+    const key = ext.slice(1);
+    if (kind === "image") {
+      EXTENSION_TO_PREVIEW_KIND[key] = "image";
+    } else if (mimeType === "text/markdown") {
+      EXTENSION_TO_PREVIEW_KIND[key] = "markdown";
+    } else if (mimeType === "text/plain") {
+      EXTENSION_TO_PREVIEW_KIND[key] = "text";
+    } else if (mimeType === "application/pdf") {
+      EXTENSION_TO_PREVIEW_KIND[key] = "pdf";
+    } else if (
+      mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    ) {
+      EXTENSION_TO_PREVIEW_KIND[key] = "docx";
+    }
+  }
+}
 
 type DocumentTextPreviewResult =
   | {
@@ -36,33 +40,8 @@ type DocumentTextPreviewResult =
       kind: "too-large";
     };
 
-/**
- * 根据文件类型推导预览模式。
- */
 export function getDocumentPreviewKind(fileType: string): DocumentPreviewKind {
-  const normalizedType = fileType.trim().toLowerCase();
-
-  if (IMAGE_FILE_TYPES.has(normalizedType)) {
-    return "image";
-  }
-
-  if (MARKDOWN_FILE_TYPES.has(normalizedType)) {
-    return "markdown";
-  }
-
-  if (TEXT_FILE_TYPES.has(normalizedType)) {
-    return "text";
-  }
-
-  if (normalizedType === "pdf") {
-    return "pdf";
-  }
-
-  if (normalizedType === "docx") {
-    return "docx";
-  }
-
-  return "unsupported";
+  return EXTENSION_TO_PREVIEW_KIND[fileType.trim().toLowerCase()] ?? "unsupported";
 }
 
 /**

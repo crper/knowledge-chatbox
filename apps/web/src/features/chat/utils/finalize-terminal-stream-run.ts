@@ -3,6 +3,7 @@ import { joinStreamingRunContent, type StreamingRun } from "./streaming-run";
 import { MessageRole, MessageStatus } from "../constants";
 
 type StreamRunTerminalStatus = "failed" | "succeeded";
+type StreamRunFinalizeReason = "failed" | "stopped" | "succeeded";
 
 type FinalizeTerminalStreamRunInput = {
   currentRun: StreamingRun | null;
@@ -16,7 +17,7 @@ type FinalizeTerminalStreamRunInput = {
       content?: string;
       error_message?: string | null;
       sources_json?: ChatSourceItem[] | null;
-      status?: string;
+      status?: MessageStatus;
     };
     sessionId: number;
   }) => boolean;
@@ -27,6 +28,7 @@ type FinalizeTerminalStreamRunInput = {
     latestAssistantSources?: ChatSessionContextItem["latest_assistant_sources"];
     sessionId: number;
   }) => void;
+  reason?: StreamRunFinalizeReason;
   sessionId: number;
   status: StreamRunTerminalStatus;
 };
@@ -47,7 +49,7 @@ function buildTerminalMessages({
     id: run.assistantMessageId,
     reply_to_message_id: run.retryOfMessageId ?? run.userMessageId ?? null,
     role: MessageRole.ASSISTANT,
-    sources_json: run.sources as ChatMessageItem["sources_json"],
+    sources_json: run.sources,
     status,
   };
 
@@ -76,9 +78,11 @@ export async function finalizeTerminalStreamRun({
   patchAssistantMessage,
   patchRetriedUserMessage,
   patchSessionContext,
+  reason,
   sessionId,
   status,
 }: FinalizeTerminalStreamRunInput) {
+  const finalizeReason = reason ?? status;
   const patched =
     currentRun == null
       ? false
@@ -92,7 +96,7 @@ export async function finalizeTerminalStreamRun({
           patch: {
             content: joinStreamingRunContent(currentRun.content),
             error_message: errorMessage,
-            sources_json: currentRun.sources as ChatSourceItem[] | null,
+            sources_json: currentRun.sources,
             status,
           },
           sessionId,
@@ -108,13 +112,12 @@ export async function finalizeTerminalStreamRun({
 
     patchSessionContext({
       latestAssistantMessageId: currentRun.assistantMessageId,
-      latestAssistantSources:
-        currentRun.sources as ChatSessionContextItem["latest_assistant_sources"],
+      latestAssistantSources: currentRun.sources,
       sessionId,
     });
   }
 
-  if (!patched) {
+  if (!patched && finalizeReason !== "stopped") {
     await invalidateMessagesWindow(sessionId);
   }
 
@@ -122,6 +125,8 @@ export async function finalizeTerminalStreamRun({
     patched,
     runId: currentRun?.runId ?? null,
     shouldPruneRun:
-      currentRun != null && (status === MessageStatus.FAILED || currentSessionId === sessionId),
+      currentRun != null &&
+      finalizeReason !== "stopped" &&
+      (status === MessageStatus.FAILED || currentSessionId === sessionId),
   };
 }

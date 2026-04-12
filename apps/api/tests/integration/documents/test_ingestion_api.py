@@ -3,32 +3,33 @@ from __future__ import annotations
 from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
+from typing import TYPE_CHECKING
 
 import pytest
-from fastapi.testclient import TestClient
 from PIL import Image
 from sqlalchemy import text
 from tests.fixtures.stubs import InMemoryChromaStore
 
 from knowledge_chatbox_api.core.config import get_settings
 from knowledge_chatbox_api.db.session import create_session_factory
+from knowledge_chatbox_api.models.enums import IndexRebuildStatus
 from knowledge_chatbox_api.repositories.document_repository import DocumentRepository
 from knowledge_chatbox_api.services.documents.chunking_service import ChunkingService
 from knowledge_chatbox_api.services.documents.indexing_service import IndexingService
 from knowledge_chatbox_api.services.documents.ingestion_service import IngestionService
-from knowledge_chatbox_api.services.settings.settings_service import (
-    INDEX_REBUILD_STATUS_RUNNING,
-    SettingsService,
-)
+from knowledge_chatbox_api.services.settings.settings_service import SettingsService
 from knowledge_chatbox_api.tasks import document_jobs
 from knowledge_chatbox_api.utils.chroma import get_chroma_store
 from knowledge_chatbox_api.utils.document_types import derive_section_title
+
+if TYPE_CHECKING:
+    from fastapi.testclient import TestClient
 
 
 def login_admin(api_client: TestClient) -> None:
     response = api_client.post(
         "/api/auth/login",
-        json={"username": "admin", "password": "admin123456"},
+        json={"username": "admin", "password": "Admin123456"},
     )
     assert response.status_code == 200
 
@@ -214,7 +215,7 @@ def test_upload_readiness_blocks_when_pending_embedding_is_not_configured(
             "provider": "voyage",
             "model": "voyage-3.5",
         }
-        settings_record.index_rebuild_status = INDEX_REBUILD_STATUS_RUNNING
+        settings_record.index_rebuild_status = IndexRebuildStatus.RUNNING
         settings_record.building_index_generation = settings_record.active_index_generation + 1
 
     update_provider_profiles(break_pending_voyage)
@@ -273,10 +274,12 @@ def test_upload_document_writes_to_building_generation_when_rebuild_running(
             "provider": "ollama",
             "model": "nomic-embed-text",
         }
-        settings_record.index_rebuild_status = INDEX_REBUILD_STATUS_RUNNING
+        settings_record.index_rebuild_status = IndexRebuildStatus.RUNNING
         settings_record.building_index_generation = settings_record.active_index_generation + 1
         active_generation = settings_record.active_index_generation
         building_generation = settings_record.building_index_generation
+        assert active_generation is not None
+        assert building_generation is not None
         session.commit()
 
     response = api_client.post(
@@ -298,7 +301,7 @@ def test_upload_document_returns_conflict_before_saving_file_when_embedding_is_n
 ) -> None:
     login_admin(api_client)
     upload_dir = get_settings().upload_dir
-    existing_uploads = (
+    existing_uploads: set[str] = (
         {path.name for path in upload_dir.iterdir()} if upload_dir.exists() else set()
     )
 
@@ -314,7 +317,9 @@ def test_upload_document_returns_conflict_before_saving_file_when_embedding_is_n
 
     assert response.status_code == 409
     assert response.json()["error"]["code"] == "embedding_not_configured"
-    current_uploads = {path.name for path in upload_dir.iterdir()} if upload_dir.exists() else set()
+    current_uploads: set[str] = (
+        {path.name for path in upload_dir.iterdir()} if upload_dir.exists() else set()
+    )
     assert current_uploads == existing_uploads
 
 
@@ -323,7 +328,7 @@ def test_upload_document_returns_existing_revision_for_duplicate_content(
 ) -> None:
     login_admin(api_client)
     upload_dir = get_settings().upload_dir
-    existing_uploads = (
+    existing_uploads: set[str] = (
         {path.name for path in upload_dir.iterdir()} if upload_dir.exists() else set()
     )
 
@@ -541,7 +546,7 @@ def test_reindex_document_restores_indexes_without_snapshot_reads(
         store = NoSnapshotChromaStore()
         seed_in_memory_store_for_revision(session, store, revision_id)
         service = IngestionService(session, get_settings())
-        service._chroma_store = store
+        service._chroma_store = store  # pyright: ignore[reportPrivateUsage,reportAttributeAccessIssue]
         store.fail_next_upsert = True
 
         with pytest.raises(RuntimeError, match="simulated chroma failure"):
@@ -571,7 +576,7 @@ def test_delete_document_restores_indexes_without_snapshot_reads(
         store = NoSnapshotChromaStore()
         seed_in_memory_store_for_revision(session, store, revision_id)
         service = IngestionService(session, get_settings())
-        service._chroma_store = store
+        service._chroma_store = store  # pyright: ignore[reportPrivateUsage,reportAttributeAccessIssue]
         repository = DocumentRepository(session)
         original_commit = session.commit
         commit_calls = 0
@@ -624,7 +629,7 @@ def test_upload_document_cleans_persisted_source_file_when_normalization_fails(
 ) -> None:
     login_admin(api_client)
     upload_dir = get_settings().upload_dir
-    existing_uploads = (
+    existing_uploads: set[str] = (
         {path.name for path in upload_dir.iterdir()} if upload_dir.exists() else set()
     )
 
@@ -665,7 +670,6 @@ def test_upload_image_returns_processing_and_schedules_background_ingestion(
     assert response.status_code == 202
     payload = response.json()["data"]
     assert payload["revision"]["ingest_status"] == "processing"
-    assert payload["revision"]["normalized_path"] is None
     assert completed_revision_ids == [payload["revision"]["id"]]
 
 

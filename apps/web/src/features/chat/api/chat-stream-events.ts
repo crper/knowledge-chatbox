@@ -1,3 +1,5 @@
+import type { ChatSourceItem } from "./chat";
+
 export const CHAT_STREAM_EVENT = {
   done: "done",
   messageCompleted: "message.completed",
@@ -14,7 +16,7 @@ export const CHAT_STREAM_EVENT = {
   usageFinal: "usage.final",
 } as const;
 
-type ChatStreamSourcePayload = Record<string, unknown>;
+type ChatStreamSourcePayload = ChatSourceItem;
 
 export type ChatStreamEventMap = {
   done: Record<string, unknown>;

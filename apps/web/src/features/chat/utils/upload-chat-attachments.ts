@@ -1,15 +1,23 @@
 import { runDocumentUpload } from "@/lib/document-upload";
-import { getErrorMessage } from "@/lib/utils";
+import { getErrorMessage, isAbortError } from "@/lib/utils";
 import { uploadDocument, type KnowledgeDocument } from "@/features/knowledge/api/documents";
-import type { ComposerAttachmentItem } from "../store/chat-attachment-store";
+import type { ComposerAttachmentItem } from "../store/chat-composer-store";
 import type { ReadyChatAttachment } from "./chat-submit-helpers";
+
+type UploadQueuedChatAttachmentOptions = {
+  signal?: AbortSignal;
+};
 
 type UploadQueuedChatAttachmentsInput = {
   attachments: ComposerAttachmentItem[];
   concurrency?: number;
   failedMessage?: string;
   onPatch: (attachmentId: string, patch: Partial<ComposerAttachmentItem>) => void;
-  uploadFile?: (attachment: ComposerAttachmentItem) => Promise<KnowledgeDocument>;
+  signal?: AbortSignal;
+  uploadFile?: (
+    attachment: ComposerAttachmentItem,
+    options?: UploadQueuedChatAttachmentOptions,
+  ) => Promise<KnowledgeDocument>;
 };
 
 function toReadyAttachment(attachment: ComposerAttachmentItem): ReadyChatAttachment | null {
@@ -33,7 +41,15 @@ function toReadyAttachment(attachment: ComposerAttachmentItem): ReadyChatAttachm
   };
 }
 
-function defaultUploadFile(attachment: ComposerAttachmentItem, failedMessage: string) {
+function createAbortError() {
+  return new DOMException("The operation was aborted.", "AbortError");
+}
+
+function defaultUploadFile(
+  attachment: ComposerAttachmentItem,
+  failedMessage: string,
+  options?: UploadQueuedChatAttachmentOptions,
+) {
   if (!(attachment.file instanceof File)) {
     throw new Error("missing attachment file");
   }
@@ -42,6 +58,7 @@ function defaultUploadFile(attachment: ComposerAttachmentItem, failedMessage: st
     failedMessage,
     file: attachment.file,
     onPatch: () => {},
+    signal: options?.signal,
     upload: uploadDocument,
   });
 }
@@ -51,6 +68,7 @@ export async function uploadQueuedChatAttachments({
   concurrency = 2,
   failedMessage = "上传失败",
   onPatch,
+  signal,
   uploadFile,
 }: UploadQueuedChatAttachmentsInput) {
   const uploadedAttachments = attachments.map(() => null as ReadyChatAttachment | null);
@@ -60,12 +78,20 @@ export async function uploadQueuedChatAttachments({
 
   const runUpload =
     uploadFile ??
-    ((attachment: ComposerAttachmentItem) => defaultUploadFile(attachment, failedMessage));
+    ((attachment: ComposerAttachmentItem, options?: UploadQueuedChatAttachmentOptions) =>
+      defaultUploadFile(attachment, failedMessage, options));
 
   const workers = Array.from(
     { length: Math.min(boundedConcurrency, attachments.length) },
     async () => {
       while (nextIndex < attachments.length && firstError === null) {
+        if (signal?.aborted) {
+          if (firstError === null) {
+            firstError = createAbortError();
+          }
+          break;
+        }
+
         const currentIndex = nextIndex;
         nextIndex += 1;
         const attachment = attachments[currentIndex]!;
@@ -81,7 +107,7 @@ export async function uploadQueuedChatAttachments({
         }
 
         try {
-          const document = await runUpload(attachment);
+          const document = await runUpload(attachment, { signal });
           const uploadedAttachment: ReadyChatAttachment = {
             ...attachment,
             file: attachment.file,
@@ -99,6 +125,18 @@ export async function uploadQueuedChatAttachments({
           });
           uploadedAttachments[currentIndex] = uploadedAttachment;
         } catch (error) {
+          if (isAbortError(error) || signal?.aborted) {
+            onPatch(attachment.id, {
+              errorMessage: undefined,
+              progress: 0,
+              status: "queued",
+            });
+            if (firstError === null) {
+              firstError = error;
+            }
+            continue;
+          }
+
           const errorMessage = getErrorMessage(error, failedMessage);
           onPatch(attachment.id, {
             errorMessage,

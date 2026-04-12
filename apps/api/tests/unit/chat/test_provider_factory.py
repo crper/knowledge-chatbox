@@ -12,6 +12,7 @@ from knowledge_chatbox_api.providers.factory import (
     build_vision_adapter,
 )
 from knowledge_chatbox_api.providers.ollama_provider import OllamaVisionAdapter
+from knowledge_chatbox_api.providers.openai_provider import OpenAIResponseAdapter
 from knowledge_chatbox_api.providers.voyage_provider import VoyageEmbeddingAdapter
 from knowledge_chatbox_api.schemas.settings import (
     EmbeddingRouteConfig,
@@ -67,3 +68,10 @@ def test_importing_provider_factory_succeeds_with_proxy_env() -> None:
     )
 
     assert result.returncode == 0, result.stderr
+
+
+def test_openai_response_adapter_preserves_existing_gateway_path() -> None:
+    assert (
+        OpenAIResponseAdapter()._normalize_base_url("https://gateway.example.com/openai")  # pyright: ignore[reportPrivateUsage]
+        == "https://gateway.example.com/openai"
+    )

@@ -3,22 +3,35 @@
  */
 
 import * as React from "react";
+import { cva, type VariantProps } from "class-variance-authority";
 
 import { cn } from "@/lib/utils";
+
+const cardVariants = cva(
+  "surface-elevated group/card flex flex-col gap-4 overflow-hidden rounded-2xl py-4 text-sm text-card-foreground has-[>img:first-child]:pt-0 *:[img:first-child]:rounded-t-2xl *:[img:last-child]:rounded-b-2xl",
+  {
+    variants: {
+      size: {
+        default: "",
+        sm: "gap-3 py-3",
+      },
+    },
+    defaultVariants: {
+      size: "default",
+    },
+  },
+);
 
 function Card({
   className,
   size = "default",
   ...props
-}: React.ComponentProps<"div"> & { size?: "default" | "sm" }) {
+}: React.ComponentProps<"div"> & VariantProps<typeof cardVariants>) {
   return (
     <div
       data-slot="card"
       data-size={size}
-      className={cn(
-        "surface-elevated group/card flex flex-col gap-4 overflow-hidden rounded-2xl py-4 text-sm text-card-foreground has-[>img:first-child]:pt-0 data-[size=sm]:gap-3 data-[size=sm]:py-3 *:[img:first-child]:rounded-t-2xl *:[img:last-child]:rounded-b-2xl",
-        className,
-      )}
+      className={cn(cardVariants({ size }), className)}
       {...props}
     />
   );
@@ -41,10 +54,7 @@ function CardTitle({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="card-title"
-      className={cn(
-        "text-base leading-snug font-medium group-data-[size=sm]/card:text-sm",
-        className,
-      )}
+      className={cn("text-ui-title leading-snug group-data-[size=sm]/card:text-ui-body", className)}
       {...props}
     />
   );
@@ -54,7 +64,7 @@ function CardDescription({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="card-description"
-      className={cn("text-sm text-muted-foreground", className)}
+      className={cn("text-ui-subtle text-muted-foreground", className)}
       {...props}
     />
   );
@@ -70,4 +80,4 @@ function CardContent({ className, ...props }: React.ComponentProps<"div">) {
   );
 }
 
-export { Card, CardHeader, CardTitle, CardDescription, CardContent };
+export { Card, CardHeader, CardTitle, CardDescription, CardContent, cardVariants };

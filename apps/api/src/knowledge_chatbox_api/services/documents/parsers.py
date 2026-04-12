@@ -18,23 +18,16 @@ from knowledge_chatbox_api.utils.image import prepare_image_bytes
 
 @dataclass(frozen=True)
 class ParsedDocument:
-    """封装Parsed文档。"""
-
     content: str
     media_type: str
 
 
 class DocumentParser(Protocol):
-    """封装文档解析器。"""
-
     def parse(self, file_path: Path) -> ParsedDocument: ...
 
 
 class TextDocumentParser:
-    """封装Text文档解析器。"""
-
     def parse(self, file_path: Path) -> ParsedDocument:
-        """处理Parse相关逻辑。"""
         return ParsedDocument(
             content=file_path.read_text(encoding="utf-8"),
             media_type="text/plain",
@@ -42,10 +35,7 @@ class TextDocumentParser:
 
 
 class MarkdownDocumentParser:
-    """封装Markdown文档解析器。"""
-
     def parse(self, file_path: Path) -> ParsedDocument:
-        """处理Parse相关逻辑。"""
         return ParsedDocument(
             content=file_path.read_text(encoding="utf-8").strip(),
             media_type="text/markdown",
@@ -53,18 +43,12 @@ class MarkdownDocumentParser:
 
 
 class PdfDocumentParser:
-    """封装Pdf文档解析器。"""
-
     def parse(self, file_path: Path) -> ParsedDocument:
-        """处理Parse相关逻辑。"""
-        document = pymupdf.open(str(file_path))
-        try:
-            parts = []
+        with pymupdf.open(file_path) as document:
+            parts: list[str] = []
             for page in document:
-                text = page.get_text("text")
+                text: str | list[Any] | dict[str, Any] = page.get_text("text")
                 parts.append(text.strip() if isinstance(text, str) else "")
-        finally:
-            document.close()
 
         return ParsedDocument(
             content="\n\n".join(part for part in parts if part).strip(),
@@ -73,10 +57,7 @@ class PdfDocumentParser:
 
 
 class DocxDocumentParser:
-    """封装Docx文档解析器。"""
-
     def parse(self, file_path: Path) -> ParsedDocument:
-        """处理Parse相关逻辑。"""
         try:
             document = WordDocument(str(file_path))
         except (BadZipFile, PackageNotFoundError) as exc:
@@ -85,12 +66,11 @@ class DocxDocumentParser:
         blocks: list[str] = []
 
         for block in document.iter_inner_content():
-            if isinstance(block, Paragraph):
-                normalized = self._normalize_paragraph(block)
-            elif isinstance(block, Table):
-                normalized = self._normalize_table(block)
+            block_content: Paragraph | Table = block  # type: ignore[assignment]
+            if isinstance(block_content, Paragraph):
+                normalized = self._normalize_paragraph(block_content)
             else:
-                normalized = ""
+                normalized = self._normalize_table(block_content)
 
             if normalized:
                 blocks.append(normalized)
@@ -137,7 +117,7 @@ class DocxDocumentParser:
         return "\n".join(lines)
 
     def _normalize_row(self, cells: Sequence[Any]) -> list[str]:
-        return [self._escape_table_cell(self._collapse_text(cell.text)) for cell in cells]
+        return [self._escape_table_cell(self._collapse_text(cell.text)) for cell in cells]  # type: ignore[attr-defined]
 
     def _to_markdown_row(self, cells: list[str]) -> str:
         return f"| {' | '.join(cells)} |"
@@ -148,19 +128,15 @@ class DocxDocumentParser:
     def _collapse_text(self, value: object) -> str:
         if not isinstance(value, str):
             return ""
-        parts = [part.strip() for part in value.replace("\xa0", " ").splitlines()]
-        return " ".join(part for part in parts if part)
+        return " ".join(value.replace("\xa0", " ").split())
 
 
 class ImageDocumentParser:
-    """封装图片文档解析器。"""
-
     def __init__(self, *, provider=None, provider_settings=None) -> None:
         self.provider = provider
         self.provider_settings = provider_settings
 
     def parse(self, file_path: Path) -> ParsedDocument:
-        """处理Parse相关逻辑。"""
         width, height, image_bytes = self._build_image_payload(file_path)
 
         if self.provider is None or not getattr(self.provider, "supports_vision", False):
@@ -177,7 +153,7 @@ class ImageDocumentParser:
                 [{"type": "image", "bytes": image_bytes, "mime_type": "image/jpeg"}],
                 self.provider_settings,
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             content = self._build_image_fallback_content(
                 file_path=file_path,
                 width=width,

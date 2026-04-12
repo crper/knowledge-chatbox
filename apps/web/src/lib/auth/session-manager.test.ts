@@ -3,9 +3,8 @@ import {
   LAST_VISITED_CHAT_SESSION_STORAGE_KEY,
   readLastVisitedChatSessionId,
 } from "@/features/chat/utils/chat-session-recovery";
-import { useChatAttachmentStore } from "@/features/chat/store/chat-attachment-store";
+import { useChatComposerStore } from "@/features/chat/store/chat-composer-store";
 import { useSessionStore } from "@/lib/auth/session-store";
-import { useChatUiStore } from "@/features/chat/store/chat-ui-store";
 import { getAccessToken, setAccessToken } from "@/lib/auth/token-store";
 import { http } from "msw";
 import { apiResponse, overrideHandler } from "@/test/msw";
@@ -31,7 +30,7 @@ function seedSessionScopedState(queryClient: ReturnType<typeof createQueryClient
     { id: 7, reasoning_mode: "default", title: "stale chat" },
   ]);
   queryClient.setQueryData(queryKeys.documents.list, [{ document_id: 99, name: "stale.txt" }]);
-  useChatAttachmentStore.setState({
+  useChatComposerStore.setState({
     attachmentsBySession: {
       "7": [
         {
@@ -42,8 +41,6 @@ function seedSessionScopedState(queryClient: ReturnType<typeof createQueryClient
         },
       ],
     },
-  });
-  useChatUiStore.setState({
     draftsBySession: { "7": "stale draft" },
     sendShortcut: "shift-enter",
   });
@@ -139,7 +136,7 @@ describe("session-manager", () => {
     });
     expect(queryClient.getQueryData(queryKeys.chat.sessions)).toBeUndefined();
     expect(queryClient.getQueryData(queryKeys.documents.list)).toBeUndefined();
-    expect(useChatAttachmentStore.getState()).toMatchObject({
+    expect(useChatComposerStore.getState()).toMatchObject({
       attachmentsBySession: {
         "7": [
           {
@@ -150,8 +147,6 @@ describe("session-manager", () => {
           },
         ],
       },
-    });
-    expect(useChatUiStore.getState()).toMatchObject({
       draftsBySession: { "7": "stale draft" },
       sendShortcut: "shift-enter",
     });

@@ -6,7 +6,8 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[4]
 MODULE_PATH = REPO_ROOT / "scripts" / "check_repo_surface.py"
 SPEC = importlib.util.spec_from_file_location("check_repo_surface", MODULE_PATH)
-assert SPEC and SPEC.loader
+assert SPEC
+assert SPEC.loader
 MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
 

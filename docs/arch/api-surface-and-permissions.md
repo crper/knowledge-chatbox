@@ -83,12 +83,14 @@
 - `DELETE /api/chat/messages/{message_id}`
 - `GET /api/chat/runs/active`
 - `GET /api/chat/runs/{run_id}`
+- `POST /api/chat/runs/{run_id}/cancel`
 
 关键语义：
 
 - SSE 协议与事件名保持不变
 - `client_request_id` 继续只属于 user message
 - 同会话相同 `client_request_id` 会复用既有 run 并回放事件
+- `POST /api/chat/runs/{run_id}/cancel` 只允许取消仍处于 `pending / running` 的 run；成功后 run 状态收口为 `cancelled`
 - 附件输入当前以 `document_revision_id` 为准
 - 图片附件不会在前端请求里直接携带 provider-ready 二进制；文档附件也不会直接携带正文
 - 服务端会在调用 provider 前按 `document_revision_id` 读取原图或标准化文本，并完成当前轮附件限域

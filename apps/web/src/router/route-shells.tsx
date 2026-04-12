@@ -4,7 +4,6 @@
 
 import { lazy, Suspense, useEffect, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useTranslation } from "react-i18next";
 
 import { currentUserQueryOptions } from "@/features/auth/api/auth-query";
 import type { AppUser } from "@/lib/api/client";
@@ -13,6 +12,7 @@ import { useLocation, useNavigate, Navigate } from "@/lib/app-router";
 import { markSessionExpired } from "@/lib/auth/session-manager";
 import { useSessionStore } from "@/lib/auth/session-store";
 import { AuthDegradedPage } from "@/pages/system/auth-degraded-page";
+import { LoadingState } from "@/components/shared/loading-state";
 
 const AppShellLayout = lazy(async () => ({
   default: (await import("@/layouts/app-shell-layout")).AppShellLayout,
@@ -37,12 +37,6 @@ const UsersPage = lazy(async () => ({
 }));
 
 let pendingAuthRedirectPath: string | null = null;
-
-export function LoadingState() {
-  const { t } = useTranslation("common");
-
-  return <div className="p-6 text-sm text-muted-foreground">{t("loading")}</div>;
-}
 
 export function RouteSuspense({ children }: { children: ReactNode }) {
   return <Suspense fallback={<LoadingState />}>{children}</Suspense>;

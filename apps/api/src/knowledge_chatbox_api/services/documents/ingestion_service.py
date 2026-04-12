@@ -1,16 +1,20 @@
 """Document ingestion workflow with one commit per user-facing use case."""
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from pathlib import Path
 from time import perf_counter
+from typing import Any
 
 from knowledge_chatbox_api.core.logging import get_logger
+from knowledge_chatbox_api.core.observation import (
+    OPERATION_KIND_DOCUMENT_BACKGROUND_INGESTION,
+    OPERATION_KIND_DOCUMENT_UPLOAD,
+)
 from knowledge_chatbox_api.models.document import Document, DocumentRevision
-from knowledge_chatbox_api.models.enums import IngestStatus
+from knowledge_chatbox_api.models.enums import IndexRebuildStatus, IngestStatus
 from knowledge_chatbox_api.providers.factory import (
     build_embedding_adapter,
-    build_vision_adapter_from_settings,
+    build_vision_adapter,
 )
 from knowledge_chatbox_api.repositories.document_repository import DocumentRepository
 from knowledge_chatbox_api.schemas.settings import (
@@ -31,17 +35,14 @@ from knowledge_chatbox_api.services.documents.normalization_service import Norma
 from knowledge_chatbox_api.services.documents.query_service import DocumentQueryService
 from knowledge_chatbox_api.services.documents.versioning_service import VersioningService
 from knowledge_chatbox_api.services.settings.runtime_settings import build_embedding_settings
-from knowledge_chatbox_api.services.settings.settings_service import (
-    INDEX_REBUILD_STATUS_RUNNING,
-    SettingsService,
-)
+from knowledge_chatbox_api.services.settings.settings_service import SettingsService
 from knowledge_chatbox_api.utils.chroma import get_chroma_store
 from knowledge_chatbox_api.utils.document_types import (
     CONTENT_TYPE_TO_FILE_TYPE,
     derive_section_title,
 )
 from knowledge_chatbox_api.utils.files import PersistedUpload
-from knowledge_chatbox_api.utils.timing import elapsed_ms
+from knowledge_chatbox_api.utils.timing import elapsed_ms, utc_now
 
 
 @dataclass
@@ -126,6 +127,7 @@ class IngestionService:
                     document_revision_id=document_version.id,
                     deduplicated=True,
                     background_processing=False,
+                    operation_kind=OPERATION_KIND_DOCUMENT_UPLOAD,
                 )
                 return UploadDocumentResult(
                     background_processing=False,
@@ -148,6 +150,7 @@ class IngestionService:
                     document_revision_id=document_version.id,
                     deduplicated=False,
                     background_processing=True,
+                    operation_kind=OPERATION_KIND_DOCUMENT_UPLOAD,
                 )
                 return UploadDocumentResult(
                     background_processing=True,
@@ -176,6 +179,7 @@ class IngestionService:
                 normalize_latency_ms=(
                     ingestion_metrics.normalize_latency_ms if ingestion_metrics else 0
                 ),
+                operation_kind=OPERATION_KIND_DOCUMENT_UPLOAD,
             )
             return UploadDocumentResult(
                 background_processing=False,
@@ -183,20 +187,14 @@ class IngestionService:
                 document=document_entity,
                 revision=document_version,
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             self.session.rollback()
-            if document_version is not None:
-                if indexing_targets:
-                    self._delete_document_chunks_for_targets(
-                        document_version,
-                        indexing_targets,
-                        indexing_service=self._build_indexing_service(indexing_targets[0].settings),
-                    )
-                self._remove_file(document_version.origin_path)
-            else:
-                self._remove_file(str(upload_artifact.path))
-            if normalized_path:
-                self._remove_file(normalized_path)
+            self._cleanup_on_failure(
+                document_version,
+                indexing_targets,
+                normalized_path,
+                upload_artifact.path,
+            )
             logger.exception(
                 "document_upload_failed",
                 filename=filename,
@@ -205,6 +203,7 @@ class IngestionService:
                 document_revision_id=document_version.id if document_version is not None else None,
                 failure_stage="upload_document",
                 exception_type=type(exc).__name__,
+                operation_kind=OPERATION_KIND_DOCUMENT_UPLOAD,
             )
             raise
 
@@ -242,9 +241,10 @@ class IngestionService:
                 normalize_latency_ms=(
                     ingestion_metrics.normalize_latency_ms if ingestion_metrics else 0
                 ),
+                operation_kind=OPERATION_KIND_DOCUMENT_BACKGROUND_INGESTION,
             )
             return document_version
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             self.session.rollback()
             failed_revision = self.document_repository.get_by_id(revision_id)
             if failed_revision is None:
@@ -255,6 +255,7 @@ class IngestionService:
                 file_type=document_version.file_type,
                 failure_stage="background_ingestion",
                 exception_type=type(exc).__name__,
+                operation_kind=OPERATION_KIND_DOCUMENT_BACKGROUND_INGESTION,
             )
             self._delete_document_chunks_if_needed(
                 failed_revision,
@@ -301,7 +302,7 @@ class IngestionService:
             )
             self._commit_revision_indexed(document_version)
             return document_version
-        except Exception:  # noqa: BLE001
+        except Exception:
             self.session.rollback()
             self._restore_document_indexes_from_storage(
                 revision_ids=[document_version.id],
@@ -324,9 +325,9 @@ class IngestionService:
                     indexing_targets,
                     indexing_service=indexing_service,
                 )
-            self.document_repository.delete(document)
+            self.document_repository.delete_entity(document)
             self.session.commit()
-        except Exception:  # noqa: BLE001
+        except Exception:
             self.session.rollback()
             self._restore_document_indexes_from_storage(
                 revision_ids=version_ids,
@@ -345,7 +346,7 @@ class IngestionService:
             self._normalization_service = NormalizationService(
                 normalized_dir=self.app_settings.normalized_dir,
                 provider=(
-                    build_vision_adapter_from_settings(settings_record) if use_vision else None
+                    build_vision_adapter(settings_record.vision_route) if use_vision else None
                 ),
                 provider_settings=settings_record,
             )
@@ -385,18 +386,11 @@ class IngestionService:
         indexing_targets = self._build_indexing_targets(settings_record)
 
         index_started_at = perf_counter()
-        section_title = derive_section_title(normalized.content)
-        indexing_services = {
-            id(target.settings): self._build_indexing_service(target.settings)
-            for target in indexing_targets
-        }
-        for target in indexing_targets:
-            indexing_services[id(target.settings)].index_document(
-                document_version,
-                normalized.content,
-                generation=target.generation,
-                section_title=section_title,
-            )
+        self._index_document_for_targets(
+            document_version,
+            normalized.content,
+            indexing_targets=indexing_targets,
+        )
         index_latency_ms = elapsed_ms(index_started_at)
         self._set_revision_indexed(document_version)
         return (
@@ -419,18 +413,18 @@ class IngestionService:
             settings=settings_with_embedding_route,
         )
 
-    def _build_indexing_targets(self, settings_record) -> list[IndexingTarget]:
-        targets = [
+    def _build_indexing_targets(self, settings_record: Any) -> list[IndexingTarget]:
+        targets: list[IndexingTarget] = [
             IndexingTarget(
                 generation=settings_record.active_index_generation,
                 settings=build_embedding_settings(settings_record, use_pending=False),
             )
         ]
-        building_generation = getattr(settings_record, "building_index_generation", None)
+        building_generation: int | None = settings_record.building_index_generation
         if (
-            getattr(settings_record, "index_rebuild_status", None) == INDEX_REBUILD_STATUS_RUNNING
+            settings_record.index_rebuild_status == IndexRebuildStatus.RUNNING
             and building_generation is not None
-            and getattr(settings_record, "pending_embedding_route", None) is not None
+            and settings_record.pending_embedding_route is not None
         ):
             targets.append(
                 IndexingTarget(
@@ -493,10 +487,30 @@ class IngestionService:
             indexing_service=self._build_indexing_service(targets[0].settings),
         )
 
+    def _cleanup_on_failure(
+        self,
+        document_version: DocumentRevision | None,
+        targets: list[IndexingTarget],
+        normalized_path: str | None,
+        upload_path: Path | str | None,
+    ) -> None:
+        if document_version is not None:
+            if targets:
+                self._delete_document_chunks_for_targets(
+                    document_version,
+                    targets,
+                    indexing_service=self._build_indexing_service(targets[0].settings),
+                )
+            self._remove_file(document_version.origin_path)
+        else:
+            self._remove_file(upload_path)
+        if normalized_path:
+            self._remove_file(normalized_path)
+
     def _set_revision_indexed(self, document_version: DocumentRevision) -> None:
         document_version.lifecycle_status = IngestStatus.INDEXED
         document_version.error_message = None
-        document_version.indexed_at = datetime.now(UTC)
+        document_version.indexed_at = utc_now()
 
     def _commit_revision_indexed(self, document_version: DocumentRevision) -> None:
         self._set_revision_indexed(document_version)
@@ -537,11 +551,12 @@ class IngestionService:
                     indexing_targets=indexing_targets,
                 )
             self.session.commit()
-        except Exception:  # noqa: BLE001
+        except Exception:
             self.session.rollback()
             logger.exception(
                 "document_index_restore_failed",
                 revision_ids=revision_ids,
+                operation_kind=OPERATION_KIND_DOCUMENT_BACKGROUND_INGESTION,
             )
 
     def _detect_file_type(self, filename: str, content_type: str) -> str:
@@ -553,10 +568,7 @@ class IngestionService:
             return detected
         raise UnsupportedFileTypeError(f"Unsupported file type for upload: {filename}")
 
-    def _remove_file(self, path: str | None) -> None:
+    def _remove_file(self, path: Path | str | None) -> None:
         if not path:
             return
-        try:
-            Path(path).unlink()
-        except FileNotFoundError:
-            return
+        Path(path).unlink(missing_ok=True)

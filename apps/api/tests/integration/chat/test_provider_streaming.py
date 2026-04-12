@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import json
 from types import SimpleNamespace
+from typing import TYPE_CHECKING, Any, cast
 
 import httpx
-from pytest_httpx import HTTPXMock
 
 from knowledge_chatbox_api.providers.anthropic_provider import AnthropicResponseAdapter
 from knowledge_chatbox_api.providers.ollama_provider import (
@@ -16,8 +16,11 @@ from knowledge_chatbox_api.providers.openai_provider import OpenAIResponseAdapte
 from knowledge_chatbox_api.providers.voyage_provider import VoyageEmbeddingAdapter
 from knowledge_chatbox_api.services.settings.runtime_settings import parse_runtime_settings
 
+if TYPE_CHECKING:
+    from pytest_httpx import HTTPXMock
 
-def make_runtime_settings(**overrides):
+
+def make_runtime_settings(**overrides: Any):
     payload = {
         "provider_profiles": {
             "openai": {
@@ -77,7 +80,11 @@ def test_openai_response_adapter_streams_response_events() -> None:
         def __init__(self) -> None:
             self.responses = FakeResponses()
 
-    adapter = OpenAIResponseAdapter(client_factory=lambda **kwargs: FakeClient())
+    def build_client(**kwargs: object) -> FakeClient:
+        del kwargs
+        return FakeClient()
+
+    adapter = OpenAIResponseAdapter(client_factory=build_client)
     settings = make_runtime_settings()
 
     events = list(adapter.stream_response([{"role": "user", "content": "hello"}], settings))
@@ -104,11 +111,16 @@ def test_anthropic_response_adapter_streams_messages_events() -> None:
     class FakeClient:
         def __init__(self, **kwargs):
             self.kwargs = kwargs
+
+            def stream_messages(**stream_kwargs: object) -> FakeStream:
+                del stream_kwargs
+                return FakeStream()
+
             self.messages = SimpleNamespace(
-                stream=lambda **kwargs: FakeStream(),
+                stream=stream_messages,
             )
 
-    adapter = AnthropicResponseAdapter(client_factory=FakeClient)
+    adapter = AnthropicResponseAdapter(client_factory=cast("Any", FakeClient))
     settings = make_runtime_settings(
         response_route={"provider": "anthropic", "model": "claude-sonnet-4-5"},
     )
@@ -124,7 +136,7 @@ def test_ollama_response_adapter_streams_json_lines() -> None:
         def __init__(self, **kwargs):
             self.kwargs = kwargs
 
-        def chat(self, **kwargs):
+        def chat(self, **_kwargs):
             return iter(
                 [
                     {"message": {"content": "hello "}, "done": False},
@@ -195,6 +207,7 @@ def test_openai_response_health_check_accepts_model_list_only_gateways() -> None
 
     class FakeModels:
         def retrieve(self, model: str):
+            del model
             raise GatewayNotFoundError("404 page not found")
 
         def list(self):
@@ -202,6 +215,7 @@ def test_openai_response_health_check_accepts_model_list_only_gateways() -> None
 
     class FakeResponses:
         def create(self, **kwargs):
+            del kwargs
             raise AssertionError("responses.create should not be used for quick health checks")
 
     class FakeClient:
@@ -209,7 +223,11 @@ def test_openai_response_health_check_accepts_model_list_only_gateways() -> None
             self.models = FakeModels()
             self.responses = FakeResponses()
 
-    adapter = OpenAIResponseAdapter(client_factory=lambda **kwargs: FakeClient())
+    def build_client(**kwargs: object) -> FakeClient:
+        del kwargs
+        return FakeClient()
+
+    adapter = OpenAIResponseAdapter(client_factory=build_client)
     settings = make_runtime_settings()
 
     result = adapter.health_check(settings)
@@ -224,6 +242,7 @@ def test_openai_response_health_check_rejects_invalid_api_key() -> None:
 
     class FakeModels:
         def retrieve(self, model: str):
+            del model
             raise GatewayAuthenticationError("Invalid API key")
 
         def list(self):
@@ -231,6 +250,7 @@ def test_openai_response_health_check_rejects_invalid_api_key() -> None:
 
     class FakeResponses:
         def create(self, **kwargs):
+            del kwargs
             raise AssertionError("responses.create should not be used for quick health checks")
 
     class FakeClient:
@@ -238,7 +258,11 @@ def test_openai_response_health_check_rejects_invalid_api_key() -> None:
             self.models = FakeModels()
             self.responses = FakeResponses()
 
-    adapter = OpenAIResponseAdapter(client_factory=lambda **kwargs: FakeClient())
+    def build_client(**kwargs: object) -> FakeClient:
+        del kwargs
+        return FakeClient()
+
+    adapter = OpenAIResponseAdapter(client_factory=build_client)
     settings = make_runtime_settings()
 
     result = adapter.health_check(settings)
@@ -254,6 +278,7 @@ def test_openai_response_health_check_rejects_missing_model_from_list() -> None:
 
     class FakeModels:
         def retrieve(self, model: str):
+            del model
             raise GatewayNotFoundError("404 page not found")
 
         def list(self):
@@ -261,6 +286,7 @@ def test_openai_response_health_check_rejects_missing_model_from_list() -> None:
 
     class FakeResponses:
         def create(self, **kwargs):
+            del kwargs
             raise AssertionError("responses.create should not be used for quick health checks")
 
     class FakeClient:
@@ -268,7 +294,11 @@ def test_openai_response_health_check_rejects_missing_model_from_list() -> None:
             self.models = FakeModels()
             self.responses = FakeResponses()
 
-    adapter = OpenAIResponseAdapter(client_factory=lambda **kwargs: FakeClient())
+    def build_client(**kwargs: object) -> FakeClient:
+        del kwargs
+        return FakeClient()
+
+    adapter = OpenAIResponseAdapter(client_factory=build_client)
     settings = make_runtime_settings()
 
     result = adapter.health_check(settings)
@@ -288,6 +318,7 @@ def test_ollama_response_health_check_prefers_show_over_chat() -> None:
             return {"model": model, "capabilities": ["completion"]}
 
         def chat(self, **kwargs):
+            del kwargs
             raise AssertionError("chat should not be used for quick Ollama response checks")
 
     adapter = OllamaResponseAdapter(client_factory=FakeClient)
@@ -335,6 +366,7 @@ def test_ollama_embedding_health_check_prefers_show_over_embed() -> None:
             return {"model": model, "capabilities": ["embedding"]}
 
         def embed(self, **kwargs):
+            del kwargs
             raise AssertionError("embed should not be used for quick Ollama embedding checks")
 
     adapter = OllamaEmbeddingAdapter(client_factory=FakeClient)
@@ -414,6 +446,7 @@ def test_ollama_vision_health_check_prefers_show_over_chat() -> None:
             return {"model": model, "capabilities": ["completion", "vision"]}
 
         def chat(self, **kwargs):
+            del kwargs
             raise AssertionError("chat should not be used for quick Ollama vision checks")
 
     adapter = OllamaVisionAdapter(client_factory=FakeClient)

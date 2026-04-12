@@ -6,7 +6,7 @@ import type {
   ChatSessionContextItem,
   ChatSourceItem,
 } from "@/features/chat/api/chat";
-import { useChatUiStore } from "@/features/chat/store/chat-ui-store";
+import { useChatComposerStore } from "@/features/chat/store/chat-composer-store";
 import { http } from "msw";
 import { apiResponse, overrideHandler } from "@/test/msw";
 import { createTestQueryClient } from "@/test/query-client";
@@ -86,14 +86,15 @@ function renderResourcePanel() {
 }
 
 describe("ChatResourcePanel", () => {
-  let originalState = useChatUiStore.getState();
+  let originalState = useChatComposerStore.getState();
 
   beforeEach(() => {
-    originalState = useChatUiStore.getState();
+    originalState = useChatComposerStore.getState();
+    useChatComposerStore.persist.clearStorage();
   });
 
   afterEach(() => {
-    useChatUiStore.setState(originalState);
+    useChatComposerStore.setState(originalState);
   });
 
   it("does not issue chat message requests when no session is active", () => {

@@ -39,7 +39,7 @@ class NormalizationService:
         self.parsers = self._build_parsers(provider=provider, provider_settings=provider_settings)
 
     def normalize(self, file_path: Path, file_type: str) -> NormalizationResult:
-        """处理Normalize相关逻辑。"""
+        """将指定文件类型转换为 Markdown 并持久化到标准化目录。"""
         normalized_type = file_type.lower()
         parser = self.parsers.get(normalized_type)
         if parser is None:
@@ -66,7 +66,7 @@ class NormalizationService:
             provider=provider,
             provider_settings=provider_settings,
         )
-        parsers.update({file_type: image_parser for file_type in IMAGE_DOCUMENT_FILE_TYPES})
+        parsers.update(dict.fromkeys(IMAGE_DOCUMENT_FILE_TYPES, image_parser))
         return parsers
 
     def _persist(self, source_path: Path, content: str, media_type: str) -> NormalizationResult:

@@ -22,6 +22,12 @@ import {
 export type { DocumentListSummary, DocumentUploadReadiness, KnowledgeDocument };
 
 const DOCUMENTS_POLL_INTERVAL_MS = 3000;
+const DOCUMENTS_POLL_MAX_INTERVAL_MS = 15000;
+
+function computePollInterval(pollCount: number): number {
+  const interval = DOCUMENTS_POLL_INTERVAL_MS * Math.pow(1.5, pollCount);
+  return Math.min(Math.round(interval), DOCUMENTS_POLL_MAX_INTERVAL_MS);
+}
 
 export async function invalidateDocuments(queryClient: QueryClient) {
   await Promise.all([
@@ -50,6 +56,7 @@ export function documentsListQueryOptions(
   options?: DocumentsListQueryOptionsInput,
 ) {
   const normalizedFilters = normalizeKnowledgeDocumentListFilters(filters);
+  let pollCount = 0;
   return queryOptions({
     queryKey: [
       ...queryKeys.documents.list,
@@ -59,11 +66,18 @@ export function documentsListQueryOptions(
     ] as const,
     queryFn: () => getDocuments(normalizedFilters),
     placeholderData: (previousData) => previousData,
-    refetchInterval: (query) =>
-      options?.keepPolling ||
-      hasPendingDocuments(query.state.data as KnowledgeDocument[] | undefined)
-        ? DOCUMENTS_POLL_INTERVAL_MS
-        : false,
+    refetchInterval: (query) => {
+      const shouldPoll =
+        options?.keepPolling ||
+        hasPendingDocuments(query.state.data as KnowledgeDocument[] | undefined);
+      if (!shouldPoll) {
+        pollCount = 0;
+        return false;
+      }
+      const interval = computePollInterval(pollCount);
+      pollCount += 1;
+      return interval;
+    },
   });
 }
 
@@ -91,13 +105,20 @@ export function documentUploadReadinessQueryOptions() {
  * 获取资源列表轻量摘要查询配置。
  */
 export function documentListSummaryQueryOptions() {
+  let pollCount = 0;
   return queryOptions({
     queryKey: queryKeys.documents.summary,
     queryFn: getDocumentListSummary,
-    refetchInterval: (query) =>
-      (query.state.data as DocumentListSummary | undefined)?.pending_count
-        ? DOCUMENTS_POLL_INTERVAL_MS
-        : false,
+    refetchInterval: (query) => {
+      const hasPending = (query.state.data as DocumentListSummary | undefined)?.pending_count;
+      if (!hasPending) {
+        pollCount = 0;
+        return false;
+      }
+      const interval = computePollInterval(pollCount);
+      pollCount += 1;
+      return interval;
+    },
   });
 }
 

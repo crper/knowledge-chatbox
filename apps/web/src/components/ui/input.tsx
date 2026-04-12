@@ -3,24 +3,21 @@
  */
 
 import * as React from "react";
+import { cva } from "class-variance-authority";
 import { Input as InputPrimitive } from "@base-ui/react/input";
 
 import { cn } from "@/lib/utils";
+import { inputBaseVariants } from "@/lib/styles/input-base";
 
-/**
- * 渲染输入控件。
- */
+const inputVariants = cva(
+  cn(
+    inputBaseVariants(),
+    "h-8 w-full min-w-0 px-2.5 py-1 text-ui-body file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-ui-body file:font-medium file:text-foreground placeholder:text-muted-foreground/70 disabled:pointer-events-none",
+  ),
+);
+
 function Input({ className, ...props }: React.ComponentProps<typeof InputPrimitive>) {
-  return (
-    <InputPrimitive
-      data-slot="input"
-      className={cn(
-        "h-8 w-full min-w-0 rounded-xl border border-border/72 bg-input/78 px-2.5 py-1 text-base shadow-[0_8px_20px_-22px_hsl(var(--shadow-color)/0.42)] transition-[background-color,border-color,box-shadow,color] outline-none file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:bg-input focus-visible:ring-3 focus-visible:ring-ring/42 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-input/54 disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 md:text-sm dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40",
-        className,
-      )}
-      {...props}
-    />
-  );
+  return <InputPrimitive data-slot="input" className={cn(inputVariants(), className)} {...props} />;
 }
 
-export { Input };
+export { Input, inputVariants };

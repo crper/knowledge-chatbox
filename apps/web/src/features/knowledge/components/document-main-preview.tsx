@@ -2,7 +2,7 @@
  * @file 资源主预览面板模块。
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 
@@ -10,16 +10,13 @@ import { Badge } from "@/components/ui/badge";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Button } from "@/components/ui/button";
 import { getDocumentFileUrl } from "@/features/chat/utils/document-file-url";
-import { fetchProtectedFileBlob } from "@/lib/api/protected-file";
 import type { KnowledgeDocument } from "../api/documents";
 import { DocumentImagePreview } from "./document-image-preview";
+import { DocumentPdfPreview } from "./document-pdf-preview";
 import { DocumentTextPreview } from "./document-text-preview";
 import { getDocumentPreviewKind, loadDocumentTextPreview } from "../api/document-preview";
-import {
-  formatKnowledgeDocumentDateTime,
-  formatFileSize,
-  getDocumentTypeLabel,
-} from "./resource-document-helpers";
+import { formatDateTime } from "@/lib/date-utils";
+import { formatFileSize, getDocumentTypeLabel } from "./resource-document-helpers";
 import { openProtectedFile } from "./protected-file-actions";
 
 type DocumentMainPreviewProps = {
@@ -32,8 +29,6 @@ export function DocumentMainPreview({
   emptyState = "no-match",
 }: DocumentMainPreviewProps) {
   const { i18n, t } = useTranslation("knowledge");
-  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
-  const [pdfLoadFailed, setPdfLoadFailed] = useState(false);
   const previewKind = useMemo(
     () => (document ? getDocumentPreviewKind(document.file_type) : "unsupported"),
     [document],
@@ -49,42 +44,6 @@ export function DocumentMainPreview({
       document.status !== "uploaded" &&
       document.status !== "failed",
   });
-
-  useEffect(() => {
-    if (!document || previewKind !== "pdf" || document.status === "failed") {
-      setPdfUrl(null);
-      setPdfLoadFailed(false);
-      return;
-    }
-
-    let disposed = false;
-    let objectUrl: string | null = null;
-
-    setPdfUrl(null);
-    setPdfLoadFailed(false);
-
-    void fetchProtectedFileBlob(getDocumentFileUrl(document.id))
-      .then((blob) => {
-        if (disposed) {
-          return;
-        }
-
-        objectUrl = URL.createObjectURL(blob);
-        setPdfUrl(objectUrl);
-      })
-      .catch(() => {
-        if (!disposed) {
-          setPdfLoadFailed(true);
-        }
-      });
-
-    return () => {
-      disposed = true;
-      if (objectUrl) {
-        URL.revokeObjectURL(objectUrl);
-      }
-    };
-  }, [document, previewKind]);
 
   if (!document) {
     const emptyTitleKey =
@@ -110,7 +69,7 @@ export function DocumentMainPreview({
   const shouldShowFailed = document.status === "failed";
   const metaItems = [
     formatFileSize(document.file_size),
-    formatKnowledgeDocumentDateTime(document.updated_at, i18n.resolvedLanguage ?? "zh-CN"),
+    formatDateTime(document.updated_at, i18n.resolvedLanguage ?? "zh-CN") || document.updated_at,
     typeof document.chunk_count === "number" ? `${document.chunk_count} chunks` : null,
   ].filter(Boolean);
 
@@ -173,21 +132,7 @@ export function DocumentMainPreview({
             />
           ) : null
         ) : previewKind === "pdf" ? (
-          pdfLoadFailed ? (
-            <div className="surface-light rounded-2xl p-4 text-sm text-muted-foreground">
-              {t("previewLoadFailed")}
-            </div>
-          ) : pdfUrl ? (
-            <iframe
-              className="min-h-[60vh] w-full rounded-2xl border border-border/60 bg-background"
-              src={pdfUrl}
-              title={document.name}
-            />
-          ) : (
-            <div className="surface-light rounded-2xl p-4 text-sm text-muted-foreground">
-              {t("previewLoading")}
-            </div>
-          )
+          <DocumentPdfPreview document={document} />
         ) : (
           <div className="surface-light space-y-3 rounded-2xl p-4">
             <p className="text-sm font-medium text-foreground">{t("previewUnsupportedTitle")}</p>

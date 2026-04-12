@@ -1,6 +1,7 @@
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from knowledge_chatbox_api.core.logging import get_logger
 from knowledge_chatbox_api.models.document import (
@@ -9,14 +10,22 @@ from knowledge_chatbox_api.models.document import (
     latest_revision_join_condition,
 )
 from knowledge_chatbox_api.models.enums import DocumentStatus, IngestStatus
+from knowledge_chatbox_api.providers.base import BaseEmbeddingAdapter
+from knowledge_chatbox_api.schemas.settings import ProviderRuntimeSettings
 from knowledge_chatbox_api.services.chat.retrieval.models import MIN_RETRIEVAL_SOURCE_SCORE
 from knowledge_chatbox_api.services.chat.retrieval.policy import (
     attachment_scoped_top_k,
     select_attachment_scoped_records,
 )
+from knowledge_chatbox_api.utils.chroma import ChunkStore
 from knowledge_chatbox_api.utils.text_matching import (
     has_text_overlap,
 )
+
+if TYPE_CHECKING:
+    from knowledge_chatbox_api.repositories.retrieval_chunk_repository import (
+        RetrievalChunkRepository,
+    )
 
 logger = get_logger(__name__)
 
@@ -25,11 +34,11 @@ class RetrievalQueryEngine:
     def __init__(
         self,
         *,
-        session,
-        chroma_store,
-        embedding_adapter,
-        settings,
-        retrieval_chunk_repository,
+        session: Session,
+        chroma_store: ChunkStore,
+        embedding_adapter: BaseEmbeddingAdapter,
+        settings: ProviderRuntimeSettings,
+        retrieval_chunk_repository: "RetrievalChunkRepository",
     ) -> None:
         self.session = session
         self.chroma_store = chroma_store
@@ -59,7 +68,7 @@ class RetrievalQueryEngine:
     def embed_query_or_none(self, query_text: str) -> list[float] | None:
         try:
             embeddings = self.embedding_adapter.embed([query_text], self.settings)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.warning(
                 "Retrieval degraded because query embedding generation failed",
                 exception_type=type(exc).__name__,
@@ -72,7 +81,6 @@ class RetrievalQueryEngine:
         self,
         query_text: str,
         *,
-        active_space_id: int | None,
         attachment_revision_ids: list[int],
         generation: int,
         query_embedding: list[float] | None,

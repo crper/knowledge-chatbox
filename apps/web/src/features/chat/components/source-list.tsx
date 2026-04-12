@@ -4,28 +4,52 @@ import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import { PreviewCard, PreviewCardContent, PreviewCardTrigger } from "@/components/ui/preview-card";
-
-type SourceItem = {
-  chunk_id: string;
-  document_name?: string;
-  section_title?: string;
-  page_number?: number;
-  snippet?: string;
-};
+import type { ChatSourceItem } from "@/features/chat/api/chat";
 
 type SourceItemProps = {
   index: number;
-  source: SourceItem;
-  t: ReturnType<typeof useTranslation>["t"];
+  source: ChatSourceItem;
 };
 
-const SourceItem = memo(function SourceItem({ index, source, t }: SourceItemProps) {
-  const title = source.document_name ?? source.section_title ?? source.chunk_id;
+function buildSourceItemKey(source: ChatSourceItem, index: number): string {
+  const normalizedChunkId = source.chunk_id?.trim() || undefined;
+  const normalizedSnippet = source.snippet?.trim() || "";
+
+  if (source.document_revision_id != null && normalizedChunkId) {
+    return `revision-chunk:${source.document_revision_id}:${normalizedChunkId}`;
+  }
+  if (source.document_id != null && normalizedChunkId) {
+    return `document-chunk:${source.document_id}:${normalizedChunkId}`;
+  }
+
+  return [
+    "fallback",
+    source.document_id ?? "",
+    source.document_revision_id ?? "",
+    source.document_name ?? "",
+    normalizedChunkId ?? "",
+    source.page_number ?? "",
+    source.section_title ?? "",
+    normalizedSnippet,
+    index,
+  ].join(":");
+}
+
+const SourceItem = memo(function SourceItem({ index, source }: SourceItemProps) {
+  const { t } = useTranslation("chat");
+  const title =
+    source.document_name ??
+    source.section_title ??
+    source.chunk_id ??
+    t("sourceReferenceAction", {
+      defaultValue: "查看引用 {{index}}",
+      index: index + 1,
+    });
   const pageLabel =
     source.page_number != null ? t("sourcePage", { page: source.page_number }) : null;
 
   return (
-    <PreviewCard key={source.chunk_id}>
+    <PreviewCard>
       <PreviewCardTrigger
         delay={200}
         render={
@@ -58,12 +82,10 @@ const SourceItem = memo(function SourceItem({ index, source, t }: SourceItemProp
 });
 
 type SourceListProps = {
-  sources: SourceItem[];
+  sources: ChatSourceItem[];
 };
 
 export const SourceList = memo(function SourceList({ sources }: SourceListProps) {
-  const { t } = useTranslation("chat");
-
   if (sources.length === 0) {
     return null;
   }
@@ -71,7 +93,7 @@ export const SourceList = memo(function SourceList({ sources }: SourceListProps)
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       {sources.map((source, index) => (
-        <SourceItem index={index} key={source.chunk_id} source={source} t={t} />
+        <SourceItem index={index} key={buildSourceItemKey(source, index)} source={source} />
       ))}
     </div>
   );

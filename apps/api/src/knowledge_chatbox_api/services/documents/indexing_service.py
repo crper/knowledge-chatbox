@@ -63,15 +63,15 @@ class IndexingService:
             section_title=section_title,
             page_number=page_number,
         )
-        document = self.session.get(Document, document_version.document_id)
-        logical_document_id = document.id if document is not None else None
-        space_id = document.space_id if document is not None else None
+        document: Document | None = self.session.get(Document, document_version.document_id)
+        logical_document_id: int | None = document.id if document is not None else None
+        space_id: int | None = document.space_id if document is not None else None
         try:
-            embeddings = self.embedding_provider.embed(
+            embeddings: list[list[float]] = self.embedding_provider.embed(
                 [chunk.text for chunk in chunks],
                 self.settings,
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.warning(
                 "document_indexing_embedding_failed",
                 document_version_id=document_version.id,
@@ -80,7 +80,7 @@ class IndexingService:
             )
             raise DocumentNotNormalizedError("Document embedding generation failed.") from exc
 
-        chunk_records = [
+        chunk_records: list[dict[str, Any]] = [
             {
                 "id": chunk.chunk_id,
                 "document_id": logical_document_id,

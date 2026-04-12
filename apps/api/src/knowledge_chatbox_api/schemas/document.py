@@ -16,8 +16,6 @@ class DocumentRevisionRead(BaseModel):
     file_type: str
     ingest_status: str
     content_hash: str
-    normalized_path: str | None
-    source_path: str
     file_size: int | None
     chunk_count: int | None
     error_message: str | None

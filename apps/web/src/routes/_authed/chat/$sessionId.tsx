@@ -5,7 +5,7 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 
 import { chatSessionsQueryOptions } from "@/features/chat/api/chat-query";
-import { buildChatSessionPath, parseChatSessionId } from "@/features/chat/utils/chat-session-route";
+import { buildChatSessionPath, parseChatSessionId } from "@/lib/routes";
 import {
   clearLastVisitedChatSessionId,
   resolveRestorableChatSessionId,

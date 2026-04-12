@@ -1,34 +1,35 @@
 """聊天流式事件名称常量。"""
 
-from typing import Any, Literal, TypedDict
+from enum import StrEnum
+from typing import TYPE_CHECKING, Any, TypedDict
 
-RUN_STARTED_EVENT = "run.started"
-MESSAGE_STARTED_EVENT = "message.started"
-TOOL_CALL_EVENT = "tool.call"
-TOOL_RESULT_EVENT = "tool.result"
-PART_SOURCE_EVENT = "part.source"
-PART_TEXT_START_EVENT = "part.text.start"
-PART_TEXT_DELTA_EVENT = "part.text.delta"
-PART_TEXT_END_EVENT = "part.text.end"
-USAGE_FINAL_EVENT = "usage.final"
-MESSAGE_COMPLETED_EVENT = "message.completed"
-RUN_COMPLETED_EVENT = "run.completed"
-RUN_FAILED_EVENT = "run.failed"
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
-type StreamEventName = Literal[
-    "run.started",
-    "message.started",
-    "tool.call",
-    "tool.result",
-    "part.source",
-    "part.text.start",
-    "part.text.delta",
-    "part.text.end",
-    "usage.final",
-    "message.completed",
-    "run.completed",
-    "run.failed",
-]
+    from knowledge_chatbox_api.repositories.chat_run_event_repository import (
+        ChatRunEventRepository,
+    )
+    from knowledge_chatbox_api.services.chat.chat_stream_presenter import (
+        ChatStreamPresenter,
+    )
+
+
+class StreamEvent(StrEnum):
+    RUN_STARTED = "run.started"
+    MESSAGE_STARTED = "message.started"
+    TOOL_CALL = "tool.call"
+    TOOL_RESULT = "tool.result"
+    PART_SOURCE = "part.source"
+    PART_TEXT_START = "part.text.start"
+    PART_TEXT_DELTA = "part.text.delta"
+    PART_TEXT_END = "part.text.end"
+    USAGE_FINAL = "usage.final"
+    MESSAGE_COMPLETED = "message.completed"
+    RUN_COMPLETED = "run.completed"
+    RUN_FAILED = "run.failed"
+
+
+type StreamEventName = StreamEvent
 
 type StreamEventPayload = dict[str, Any]
 type StreamEventBatchItem = tuple[StreamEventName, StreamEventPayload]
@@ -44,14 +45,14 @@ def append_event_batch(
     run_id: int,
     current_seq: int,
     events: list[StreamEventBatchItem],
-    event_repository,
-    presenter,
-    session,
+    event_repository: "ChatRunEventRepository",
+    presenter: "ChatStreamPresenter",
+    session: "Session",
 ) -> tuple[int, list[StreamEventEnvelope]]:
     if not events:
         return current_seq, []
 
-    next_seq = current_seq
+    next_seq: int = current_seq
     presented_events: list[StreamEventEnvelope] = []
     for event_name, data in events:
         next_seq += 1

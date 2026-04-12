@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from typing import Any
 
 from tests.fixtures.factories import UserFactory
 
@@ -22,7 +23,7 @@ def test_ingestion_service_builds_fresh_indexing_service_per_target_settings(
 ) -> None:
     build_calls: list[str] = []
 
-    def build_embedding_adapter_stub(route):
+    def build_embedding_adapter_stub(route: dict[str, Any] | Any) -> Any:
         model = route["model"] if isinstance(route, dict) else route.model
         build_calls.append(model)
         return SimpleNamespace(model=model)
@@ -40,8 +41,8 @@ def test_ingestion_service_builds_fresh_indexing_service_per_target_settings(
         embedding_route={"provider": "openai", "model": "text-embedding-3-large"}
     )
 
-    first_indexing_service = service._build_indexing_service(first_settings)
-    second_indexing_service = service._build_indexing_service(second_settings)
+    first_indexing_service = service._build_indexing_service(first_settings)  # pyright: ignore[reportPrivateUsage]
+    second_indexing_service = service._build_indexing_service(second_settings)  # pyright: ignore[reportPrivateUsage]
 
     assert first_indexing_service is not second_indexing_service
     assert first_indexing_service.settings is first_settings

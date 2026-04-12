@@ -1,18 +1,20 @@
 import base64
 import binascii
-from typing import cast
+from typing import Any, cast
 
 from pydantic_ai.messages import BinaryContent, ModelRequest, ModelResponse, TextPart
 from pydantic_ai.settings import ModelSettings
 
 from knowledge_chatbox_api.models.enums import ChatAttachmentType, ChatMessageRole
 from knowledge_chatbox_api.providers.base import build_reasoning_config
+from knowledge_chatbox_api.schemas.settings import ProviderRuntimeSettings
 from knowledge_chatbox_api.services.chat import PROMPT_HISTORY_MESSAGE_LIMIT
 from knowledge_chatbox_api.services.chat.workflow.agent import (
     build_chat_agent,
     build_chat_stream_agent,
     build_chat_usage_limits,
 )
+from knowledge_chatbox_api.services.chat.workflow.deps import ChatWorkflowDeps
 from knowledge_chatbox_api.services.chat.workflow.model_factory import build_chat_agent_model
 from knowledge_chatbox_api.services.chat.workflow.output import (
     ChatWorkflowResult,
@@ -32,25 +34,37 @@ class ChatWorkflow:
     构建真实 model 实例。
     """
 
-    def __init__(self, *, agent_model=None, stream_agent_model=None) -> None:
+    def __init__(
+        self,
+        *,
+        agent_model: Any | None = None,
+        stream_agent_model: Any | None = None,
+    ) -> None:
         self._agent_model = agent_model
         self._stream_agent_model = stream_agent_model
 
-    def _build_agent(self, runtime_settings):
-        model = self._agent_model or build_chat_agent_model(runtime_settings)
+    def _build_agent(
+        self,
+        runtime_settings: ProviderRuntimeSettings,
+        *,
+        stream: bool = False,
+    ):
+        model = (
+            self._stream_agent_model if stream and self._stream_agent_model is not None else None
+        )
+        if model is None:
+            model = self._agent_model or build_chat_agent_model(runtime_settings)
+        if stream:
+            return build_chat_stream_agent(model=model)
         return build_chat_agent(model=model)
-
-    def _build_stream_agent(self, runtime_settings):
-        model = self._stream_agent_model or build_chat_agent_model(runtime_settings)
-        return build_chat_stream_agent(model=model)
 
     def _build_user_prompt(
         self,
         *,
-        deps,
+        deps: ChatWorkflowDeps,
         session_id: int,
         question: str,
-        attachments: list[dict] | None,
+        attachments: list[dict[str, Any]] | None,
     ) -> str | list[str | BinaryContent]:
         chat_session = deps.chat_repository.get_session(session_id)
         active_space_id = chat_session.space_id if chat_session is not None else None
@@ -74,7 +88,7 @@ class ChatWorkflow:
 
     def _map_prompt_attachments(
         self,
-        prompt_attachments: list[dict],
+        prompt_attachments: list[dict[str, Any]],
     ) -> list[str | BinaryContent]:
         user_content: list[str | BinaryContent] = []
         for item in prompt_attachments:
@@ -83,7 +97,7 @@ class ChatWorkflow:
                 user_content.append(content)
         return user_content
 
-    def _convert_attachment_item(self, item: dict) -> str | BinaryContent | None:
+    def _convert_attachment_item(self, item: dict[str, Any]) -> str | BinaryContent | None:
         """将单个附件项转换为 Prompt 内容。"""
         item_type = item.get("type")
 
@@ -96,7 +110,7 @@ class ChatWorkflow:
 
         return None
 
-    def _convert_image_attachment(self, item: dict) -> BinaryContent | None:
+    def _convert_image_attachment(self, item: dict[str, Any]) -> BinaryContent | None:
         data_base64 = item.get("data_base64")
         if not isinstance(data_base64, str) or not data_base64:
             return None
@@ -114,7 +128,7 @@ class ChatWorkflow:
 
     def _build_message_history(
         self,
-        deps,
+        deps: ChatWorkflowDeps,
         *,
         session_id: int,
         question: str,
@@ -143,19 +157,19 @@ class ChatWorkflow:
                 message_history.append(ModelResponse(parts=[TextPart(message.content)]))
         return message_history
 
-    def _build_model_settings(self, runtime_settings) -> ModelSettings:
+    def _build_model_settings(self, runtime_settings: ProviderRuntimeSettings) -> ModelSettings:
         route = runtime_settings.response_route
         model_settings: dict[str, object] = {}
 
         timeout = runtime_settings.provider_timeout_seconds
         if timeout is not None:
-            model_settings["timeout"] = timeout
+            model_settings["timeout"] = timeout  # type: ignore[reportUnnecessaryComparison]
 
         model_settings.update(
             build_reasoning_config(route.provider, runtime_settings.reasoning_mode)
         )
 
-        return cast(ModelSettings, model_settings)
+        return cast("ModelSettings", model_settings)
 
     def _reset_workflow_state(self, deps) -> None:
         deps.retrieved_sources.clear()
@@ -170,30 +184,57 @@ class ChatWorkflow:
     ) -> list[WorkflowSource]:
         return merge_workflow_sources(retrieved_sources, output_sources)
 
+    def _prepare_workflow(
+        self,
+        deps,
+        *,
+        session_id: int,
+        question: str,
+        attachments: list[dict[str, Any]] | None,
+    ):
+        self._reset_workflow_state(deps)
+        prompt = self._build_user_prompt(
+            deps=deps,
+            session_id=session_id,
+            question=question,
+            attachments=attachments,
+        )
+        history = self._build_message_history(
+            deps,
+            session_id=session_id,
+            question=question,
+        )
+        settings = self._build_model_settings(deps.runtime_settings)
+        return prompt, history, settings
+
     def run_sync(
         self,
         *,
         deps,
         session_id: int,
         question: str,
-        attachments: list[dict] | None,
-    ):
+        attachments: list[dict[str, Any]] | None,
+    ) -> ChatWorkflowResult:
+        """Execute synchronous chat workflow.
+
+        Args:
+            deps: Workflow dependencies including repositories and services
+            session_id: Target chat session ID
+            question: User's question text
+            attachments: Optional list of attachment metadata
+
+        Returns:
+            ChatWorkflowResult containing the response and sources
+        """
         agent = self._build_agent(deps.runtime_settings)
-        self._reset_workflow_state(deps)
+        prompt, history, settings = self._prepare_workflow(
+            deps, session_id=session_id, question=question, attachments=attachments
+        )
         result = agent.run_sync(
-            self._build_user_prompt(
-                deps=deps,
-                session_id=session_id,
-                question=question,
-                attachments=attachments,
-            ),
+            prompt,
             deps=deps,
-            message_history=self._build_message_history(
-                deps,
-                session_id=session_id,
-                question=question,
-            ),
-            model_settings=self._build_model_settings(deps.runtime_settings),
+            message_history=history,
+            model_settings=settings,
             usage_limits=build_chat_usage_limits(),
         )
         output = ChatWorkflowResult.model_validate(result.output)
@@ -212,23 +253,27 @@ class ChatWorkflow:
         deps,
         session_id: int,
         question: str,
-        attachments: list[dict] | None,
+        attachments: list[dict[str, Any]] | None,
     ):
-        agent = self._build_stream_agent(deps.runtime_settings)
-        self._reset_workflow_state(deps)
+        """Execute streaming chat workflow with server-sent events.
+
+        Args:
+            deps: Workflow dependencies including repositories and services
+            session_id: Target chat session ID
+            question: User's question text
+            attachments: Optional list of attachment metadata
+
+        Returns:
+            Async iterator of stream events for SSE response
+        """
+        agent = self._build_agent(deps.runtime_settings, stream=True)
+        prompt, history, settings = self._prepare_workflow(
+            deps, session_id=session_id, question=question, attachments=attachments
+        )
         return agent.run_stream_events(
-            self._build_user_prompt(
-                deps=deps,
-                session_id=session_id,
-                question=question,
-                attachments=attachments,
-            ),
+            prompt,
             deps=deps,
-            message_history=self._build_message_history(
-                deps,
-                session_id=session_id,
-                question=question,
-            ),
-            model_settings=self._build_model_settings(deps.runtime_settings),
+            message_history=history,
+            model_settings=settings,
             usage_limits=build_chat_usage_limits(),
         )

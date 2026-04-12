@@ -17,13 +17,12 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 from uuid import uuid4
 
 from faker import Faker
 from polyfactory import Use
 from polyfactory.factories.sqlalchemy_factory import SQLAlchemyFactory
-from sqlalchemy.orm import Session
 
 from knowledge_chatbox_api.models.auth import AuthSession, User
 from knowledge_chatbox_api.models.chat import (
@@ -36,6 +35,9 @@ from knowledge_chatbox_api.models.chat import (
 from knowledge_chatbox_api.models.document import Document, DocumentRevision
 from knowledge_chatbox_api.models.settings import AppSettings
 from knowledge_chatbox_api.models.space import Space
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 _fake = Faker()
 
@@ -51,7 +53,8 @@ def _random_positive_int() -> int:
 class _PersistedFactoryMixin:
     @classmethod
     def persisted_create(cls, session: Session, **kwargs: Any) -> Any:
-        instance = cls.build(**kwargs)
+        factory_cls = cast("type[SQLAlchemyFactory[Any]]", cls)
+        instance = factory_cls.build(**kwargs)
         session.add(instance)
         session.commit()
         session.refresh(instance)
@@ -59,7 +62,8 @@ class _PersistedFactoryMixin:
 
     @classmethod
     def persisted_batch(cls, session: Session, size: int, **kwargs: Any) -> list[Any]:
-        instances = cls.batch(size, **kwargs)
+        factory_cls = cast("type[SQLAlchemyFactory[Any]]", cls)
+        instances = factory_cls.batch(size, **kwargs)
         for instance in instances:
             session.add(instance)
         session.commit()

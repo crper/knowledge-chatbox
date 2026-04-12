@@ -9,6 +9,7 @@ from knowledge_chatbox_api.api.deps import (
     CurrentUserDep,
     get_session_token,
 )
+from knowledge_chatbox_api.api.routes._common.transforms import model_to_read_simple
 from knowledge_chatbox_api.models.auth import User
 from knowledge_chatbox_api.schemas.auth import (
     AccessTokenRead,
@@ -28,7 +29,7 @@ SessionTokenDep = Annotated[str | None, Depends(get_session_token)]
 
 def to_auth_user_read(user: User) -> AuthUserRead:
     """把用户模型转换为认证响应结构。"""
-    return AuthUserRead.model_validate(user, from_attributes=True)
+    return model_to_read_simple(user, AuthUserRead)
 
 
 def set_session_cookie(
@@ -103,7 +104,7 @@ def refresh(
 
 @router.post("/bootstrap", response_model=Envelope[SessionBootstrapRead])
 def bootstrap(
-    request: Request,
+    _request: Request,
     response: Response,
     token: SessionTokenDep,
     auth_service: AuthServiceDep,

@@ -34,6 +34,7 @@ vi.mock("@/features/chat/hooks/use-chat-workspace", () => ({
     sessionsReady: true,
     sessions: [{ id: 1, title: "Session A", reasoning_mode: "on" }],
     setDraft: vi.fn(),
+    stopMessage: vi.fn(),
     submitMessage: vi.fn(),
     submitPending: false,
   }),

@@ -81,9 +81,9 @@ def test_event_bridge_extracts_final_output_and_usage() -> None:
         defer_model_check=True,
     )
     result = agent.run_sync("hello", deps=None)
-    event = AgentRunResultEvent(result=result)
+    event = AgentRunResultEvent(result=result)  # pyright: ignore[reportArgumentType]
 
-    output, usage = bridge.extract_result(event)
+    output, usage = bridge.extract_result(event)  # pyright: ignore[reportArgumentType]
 
     assert output.answer == "hi"
     assert usage is not None
