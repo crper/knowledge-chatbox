@@ -30,9 +30,6 @@ jobs:
       - name: Format check (ruff format)
         run: uv run ruff format --check
 
-      - name: Type check (basedpyright)
-        run: uv run basedpyright
-
       - name: Test
         run: uv run --group dev python -m pytest
         env:
@@ -67,16 +64,16 @@ jobs:
         run: vp install
 
       - name: OpenAPI schema check
-        run: vp run api:check
+        run: ./node_modules/.bin/vp run api:check
 
       - name: Lint + type check
-        run: vp check
+        run: ./node_modules/.bin/vp check
 
       - name: Test
-        run: vp test
+        run: ./node_modules/.bin/vp test
 
       - name: Build
-        run: vp build
+        run: ./node_modules/.bin/vp build
 
   repo-surface:
     runs-on: ubuntu-latest

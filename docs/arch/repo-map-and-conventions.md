@@ -265,6 +265,8 @@ just docker-health
 - `.github/workflows/ci.yml` 当前把仓库门禁收敛为 `api / web / repo-surface` 三个 job
 - `.github/workflows/dependabot-auto-merge.yml` 只会处理 Dependabot 发起的 `patch / minor` 更新；`major` 更新不会自动合并
 - `web` job 会注入一次性的 `JWT_SECRET_KEY / INITIAL_ADMIN_PASSWORD`，仅用于 OpenAPI 导出与契约校验，不作为运行时真相源
+- `web` job 在安装依赖后强制走项目本地 `./node_modules/.bin/vp`，避免 CI 误用全局 `vite-plus` 导致测试环境缺少 `jsdom`
+- `api` job 当前先阻塞 `ruff + pytest`；`basedpyright` 继续作为本地 `just api-check` 的一部分，等类型基线清理完成后再考虑恢复为 blocking step
 
 ### 6.2 前端
 

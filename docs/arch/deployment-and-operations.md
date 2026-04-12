@@ -62,8 +62,8 @@
 #### `CI`
 
 - `.github/workflows/ci.yml` 当前包含 `api`、`web`、`repo-surface` 三个 job
-- `api` job 负责后端 lint 与 pytest
-- `web` job 负责 OpenAPI snapshot 校验、前端检查、Vitest 与生产构建
+- `api` job 当前负责后端 `ruff` 与 `pytest`；`basedpyright` 仍保留在本地 `just api-check`
+- `web` job 负责 OpenAPI snapshot 校验、前端检查、Vitest 与生产构建，并在安装依赖后强制使用项目本地 `./node_modules/.bin/vp`
 - `web` job 会注入一次性的 `JWT_SECRET_KEY` 与 `INITIAL_ADMIN_PASSWORD`，仅用于导出 FastAPI OpenAPI schema 时满足运行时配置校验
 - `repo-surface` job 继续执行 `scripts/check_repo_surface.py`
 
