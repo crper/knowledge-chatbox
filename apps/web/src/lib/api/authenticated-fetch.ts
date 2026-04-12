@@ -21,6 +21,19 @@ type RequestExecutor = (request: Request) => Promise<Response>;
 
 let refreshInFlight: Promise<string> | null = null;
 
+function resolveRequestUrl(input: string) {
+  try {
+    return new URL(input).toString();
+  } catch {
+    const base =
+      env.apiBaseUrl ||
+      (typeof globalThis.location?.origin === "string" ? globalThis.location.origin : undefined) ||
+      "http://localhost";
+
+    return new URL(input, base).toString();
+  }
+}
+
 async function executeRequest(request: Request) {
   const contentType = request.headers.get("content-type") ?? "";
   const body =
@@ -133,7 +146,7 @@ async function retryWithAccessTokenRefresh(
 export async function requestAccessTokenRefresh() {
   if (!refreshInFlight) {
     refreshInFlight = globalThis
-      .fetch(`${env.apiBaseUrl}${AUTH_REFRESH_PATH}`, {
+      .fetch(resolveRequestUrl(`${env.apiBaseUrl}${AUTH_REFRESH_PATH}`), {
         credentials: "include",
         method: "POST",
       })
@@ -183,7 +196,7 @@ export async function requestAccessTokenRefresh() {
  * 发送带 access token 的请求，并在 401 时自动刷新后重放一次。
  */
 export async function authenticatedFetch(input: string, init: RequestInit = {}) {
-  const request = new Request(input, {
+  const request = new Request(resolveRequestUrl(input), {
     ...init,
     credentials: init.credentials ?? "include",
   });

@@ -19,6 +19,7 @@
 
 ```text
 knowledge-chatbox/
+  .github/
   apps/
     web/
     api/
@@ -51,6 +52,7 @@ knowledge-chatbox/
 | ------------------------- | --------------------------------------------------------------------- |
 | `apps/web`                | React + Vite+ 前端工作台                                              |
 | `apps/api`                | FastAPI 后端、SQLite（含 `FTS5` 词法候选兜底索引）、Chroma、provider 编排 |
+| `.github`                 | GitHub Actions CI、Dependabot 更新策略与自动合并工作流                |
 | `docs/arch`               | 当前实现的长期架构文档                                                |
 | `examples/upload-samples` | 手工验证上传与问答链路的样例文件                                      |
 | `data`                    | 本地运行时数据目录，不是代码目录                                      |
@@ -111,6 +113,7 @@ knowledge-chatbox/
 
 - `lib/api/generated` 只放 OpenAPI 生成产物和 typed client 入口
 - FastAPI app 导出的 OpenAPI 是唯一接口契约源；改了 `apps/api` 的 route / schema 后，必须执行 `vp run api:generate` 同步前端契约
+- `apps/web/openapi/schema.json` 与 `apps/web/src/lib/api/generated/schema.d.ts` 是受版本控制的契约 snapshot；它们参与 `vp run api:check`，但通过 `apps/web/.prettierignore` 排除在常规格式化之外
 - `vp run api:check` / `just web-check` 会校验 schema 和生成类型是否漂移
 - `lib/api/client.ts` 负责 envelope 解包与前端错误归一化；只统一处理网络失败和 `AbortError`，不要把业务错误或契约错误一律改写成通用 `503`
 - `lib/forms.ts` 统一承接轻量表单辅助，包括错误消息抽取和共享 submit event helper
@@ -259,6 +262,9 @@ just docker-health
 - `just --list` 保留完整命令面，适合排查或查找低频入口
 - `just init-env` 负责补齐空白的本地密钥，并提示你去 `.env` 查看 bootstrap 管理员密码
 - `scripts/dev-run.sh` 在 `just dev` / `just reset-dev` 启动时会打印 bootstrap 管理员账号和密码来源，避免重置数据后还沿用旧默认密码
+- `.github/workflows/ci.yml` 当前把仓库门禁收敛为 `api / web / repo-surface` 三个 job
+- `.github/workflows/dependabot-auto-merge.yml` 只会处理 Dependabot 发起的 `patch / minor` 更新；`major` 更新不会自动合并
+- `web` job 会注入一次性的 `JWT_SECRET_KEY / INITIAL_ADMIN_PASSWORD`，仅用于 OpenAPI 导出与契约校验，不作为运行时真相源
 
 ### 6.2 前端
 

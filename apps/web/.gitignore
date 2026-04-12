@@ -4,5 +4,3 @@ node_modules/
 .vite/
 .vite-temp/
 coverage/
-openapi/schema.json
-src/lib/api/generated/schema.d.ts

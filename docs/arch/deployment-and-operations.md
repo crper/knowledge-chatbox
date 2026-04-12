@@ -7,6 +7,11 @@
 
 仓库级首次启动主线以根 `README.md` 为准：`just init-env -> just setup -> just dev`。这份文档只解释这些入口背后的副作用和运行边界，不重复维护第二套 onboarding。
 
+仓库托管侧还维护两类 GitHub 自动化：
+
+- `CI`：固定执行 `api / web / repo-surface` 三条检查
+- `Dependabot Auto Merge`：只对通过 CI 的 `patch / minor` 更新自动审批并开启自动合并
+
 ## 1. 本地运行拓扑
 
 先把运行模式分清楚：
@@ -48,8 +53,25 @@
 
 - API 启动后默认暴露 `/docs`、`/redoc`、`/openapi.json`；它们与前端契约生成共用同一份 FastAPI OpenAPI 真相源
 - OpenAPI 契约校验当前是严格门禁：`just web-check` / `vp run api:check` 如果发现 `apps/web/openapi/schema.json` 或 `src/lib/api/generated/schema.d.ts` 漂移会直接失败
+- 这两个前端契约 snapshot 需要提交进仓库，但通过 `apps/web/.prettierignore` 排除在常规格式化之外，避免生成器输出和 formatter 互相覆盖
 - 校验失败时标准修复入口是 `cd apps/web && vp run api:generate`
 - 后端本地静态检查入口：仓库根目录 `just api-check`，内部会执行 `ruff check`、`ruff format --check` 和 `basedpyright`
+
+### GitHub 自动化
+
+#### `CI`
+
+- `.github/workflows/ci.yml` 当前包含 `api`、`web`、`repo-surface` 三个 job
+- `api` job 负责后端 lint 与 pytest
+- `web` job 负责 OpenAPI snapshot 校验、前端检查、Vitest 与生产构建
+- `web` job 会注入一次性的 `JWT_SECRET_KEY` 与 `INITIAL_ADMIN_PASSWORD`，仅用于导出 FastAPI OpenAPI schema 时满足运行时配置校验
+- `repo-surface` job 继续执行 `scripts/check_repo_surface.py`
+
+#### `Dependabot Auto Merge`
+
+- `.github/workflows/dependabot-auto-merge.yml` 只处理 Dependabot 发起、目标分支为 `main` 的 PR
+- 当前仅自动审批并开启自动合并 `version-update:semver-patch` 与 `version-update:semver-minor`
+- `major` 更新保持人工 review，避免高风险依赖升级在无人值守下直接进入主干
 
 **前端开发态行为**
 

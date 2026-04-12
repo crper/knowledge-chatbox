@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
 
@@ -36,7 +35,11 @@ from knowledge_chatbox_api.services.chat.retry_service import RetryService
 from knowledge_chatbox_api.services.settings.runtime_settings import parse_runtime_settings
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncIterator, Callable
+
+    from knowledge_chatbox_api.adapters.embedding.base import BaseEmbeddingAdapter
+
+    from knowledge_chatbox_api.services.settings.runtime_settings import ProviderRuntimeSettings
 
 
 def create_user_and_session(migrated_db_session):
@@ -71,8 +74,6 @@ def build_chat_run_service(
         response_adapter,
         retrieved_sources=retrieved_sources,
     )
-    from knowledge_chatbox_api.adapters.embedding.base import BaseEmbeddingAdapter
-    from knowledge_chatbox_api.services.settings.runtime_settings import ProviderRuntimeSettings
 
     service = ChatRunService(
         session=migrated_db_session,
@@ -81,13 +82,16 @@ def build_chat_run_service(
         chat_run_event_repository=active_event_repository,
         retry_service=RetryService(chat_repository),
         chroma_store=InMemoryChromaStore(),
-        embedding_adapter=cast(BaseEmbeddingAdapter, None),
-        settings=cast(ProviderRuntimeSettings, SimpleNamespace(
-            response_route={"provider": "openai", "model": "gpt-5.4"},
-            embedding_route={"provider": "openai", "model": "text-embedding-3-small"},
-            system_prompt=None,
-            active_index_generation=1,
-        )),
+        embedding_adapter=cast("BaseEmbeddingAdapter", None),
+        settings=cast(
+            "ProviderRuntimeSettings",
+            SimpleNamespace(
+                response_route={"provider": "openai", "model": "gpt-5.4"},
+                embedding_route={"provider": "openai", "model": "text-embedding-3-small"},
+                system_prompt=None,
+                active_index_generation=1,
+            ),
+        ),
         workflow_factory=active_workflow_factory,
         presenter=ChatStreamPresenter(),
     )

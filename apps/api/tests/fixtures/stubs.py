@@ -217,10 +217,14 @@ def make_adapter_backed_chat_workflow_class(
                 text_parts: list[str] = []
                 started_text = False
                 chat_session: Any = deps.chat_repository.get_session(session_id)
-                active_space_id: int | None = chat_session.space_id if chat_session is not None else None
-                prompt_attachments: list[Any] = deps.prompt_attachment_service.build_prompt_attachments(
-                    attachments,
-                    active_space_id,
+                active_space_id: int | None = (
+                    chat_session.space_id if chat_session is not None else None
+                )
+                prompt_attachments: list[Any] = (
+                    deps.prompt_attachment_service.build_prompt_attachments(
+                        attachments,
+                        active_space_id,
+                    )
                 )
                 prompt_text: str = deps.prompt_attachment_service.resolve_prompt_text(
                     question,

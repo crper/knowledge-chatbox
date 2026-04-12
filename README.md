@@ -223,6 +223,8 @@ knowledge-chatbox/
 - 修改基础设施、运行命令、目录结构或环境变量时，要同步更新根目录 README 和相关 `docs/arch/*` 文档
 - 前端统一使用 `vp`
 - 后端统一使用 `uv`
+- GitHub Actions 当前固定执行 `api / web / repo-surface` 三条检查；`web` 的 OpenAPI 校验依赖仓库内已提交的 `apps/web/openapi/schema.json` 与 `apps/web/src/lib/api/generated/schema.d.ts`
+- Dependabot 仅对通过 CI 的 `patch / minor` 更新自动审批并开启自动合并，`major` 更新继续人工 review
 - 小功能优先简单、稳定、可维护，不提前引入超出 V1 范围的大型抽象
 
 ## 参与贡献

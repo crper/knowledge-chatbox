@@ -1,1 +1,3 @@
 src/routeTree.gen.ts
+openapi/schema.json
+src/lib/api/generated/schema.d.ts

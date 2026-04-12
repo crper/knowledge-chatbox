@@ -17,9 +17,9 @@ jobs:
       run:
         working-directory: apps/api
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: astral-sh/setup-uv@v4
+      - uses: astral-sh/setup-uv@v7
 
       - name: Install dependencies
         run: uv sync --all-groups
@@ -41,17 +41,20 @@ jobs:
 
   web:
     runs-on: ubuntu-latest
+    env:
+      JWT_SECRET_KEY: "test-jwt-secret-key-for-ci-32chars"
+      INITIAL_ADMIN_PASSWORD: "CiTest123456"
     defaults:
       run:
         working-directory: apps/web
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: astral-sh/setup-uv@v4
+      - uses: astral-sh/setup-uv@v7
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version-file: apps/web/.node-version
           cache: pnpm
@@ -78,9 +81,9 @@ jobs:
   repo-surface:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: astral-sh/setup-uv@v4
+      - uses: astral-sh/setup-uv@v7
 
       - name: Repo surface check
         run: uv run --project apps/api python scripts/check_repo_surface.py

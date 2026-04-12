@@ -5,9 +5,8 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from types import SimpleNamespace
+from typing import Any
 
 
 class DummyRoute:
@@ -80,7 +79,9 @@ class DummyChatRepository:
 class DummyPromptAttachmentService:
     """模拟提示附件服务。"""
 
-    def build_prompt_attachments(self, attachments: list[Any], active_space_id: int | None) -> list[Any]:
+    def build_prompt_attachments(
+        self, attachments: list[Any], active_space_id: int | None
+    ) -> list[Any]:
         del attachments, active_space_id
         return []
 

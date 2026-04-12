@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 from tests.fixtures.dummies import DummyProfiles, DummyRoute
 
 from knowledge_chatbox_api.services.chat.workflow.model_factory import build_chat_agent_model
-from knowledge_chatbox_api.services.settings.runtime_settings import ProviderRuntimeSettings
+
+if TYPE_CHECKING:
+    from knowledge_chatbox_api.services.settings.runtime_settings import ProviderRuntimeSettings
 
 
 class DummySettings:

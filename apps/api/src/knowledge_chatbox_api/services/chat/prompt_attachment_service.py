@@ -93,9 +93,15 @@ class PromptAttachmentService:
         if not revision_ids:
             return {}, {}
 
-        revision_cache: dict[int, DocumentRevision] = self.document_repository.list_revisions_by_ids(revision_ids)
-        document_ids: list[int] = sorted({revision.document_id for revision in revision_cache.values()})
-        document_cache: dict[int, Document] = self.document_repository.list_documents_by_ids(document_ids)
+        revision_cache: dict[int, DocumentRevision] = (
+            self.document_repository.list_revisions_by_ids(revision_ids)
+        )
+        document_ids: list[int] = sorted(
+            {revision.document_id for revision in revision_cache.values()}
+        )
+        document_cache: dict[int, Document] = self.document_repository.list_documents_by_ids(
+            document_ids
+        )
         return revision_cache, document_cache
 
     def _build_prompt_document_attachment(

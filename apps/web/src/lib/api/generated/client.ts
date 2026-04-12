@@ -9,8 +9,20 @@ export type { components, paths } from "./schema";
 
 export type ApiComponents = components;
 
+function resolveApiClientBaseUrl(apiBaseUrl: string) {
+  if (apiBaseUrl) {
+    return apiBaseUrl;
+  }
+
+  if (typeof globalThis.location?.origin === "string" && globalThis.location.origin) {
+    return globalThis.location.origin;
+  }
+
+  return "http://localhost";
+}
+
 export const apiFetchClient = createFetchClient<paths>({
-  baseUrl: env.apiBaseUrl,
+  baseUrl: resolveApiClientBaseUrl(env.apiBaseUrl),
   credentials: "include",
   fetch: async (request) => {
     const contentType = request.headers.get("content-type") ?? "";
