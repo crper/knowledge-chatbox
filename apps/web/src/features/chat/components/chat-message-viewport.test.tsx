@@ -49,7 +49,7 @@ function buildMessages(count: number): ChatMessageItem[] {
     role: index % 2 === 0 ? "user" : "assistant",
     content: `message ${index + 1}`,
     status: "succeeded",
-    sources_json: [],
+    sources: [],
   }));
 }
 

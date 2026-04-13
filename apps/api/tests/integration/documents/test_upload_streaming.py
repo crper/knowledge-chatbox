@@ -3,8 +3,6 @@ from __future__ import annotations
 import hashlib
 from typing import TYPE_CHECKING
 
-import pytest
-
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -23,7 +21,6 @@ class FakeAsyncUpload:
         return self._chunks.pop(0)
 
 
-@pytest.mark.anyio
 async def test_save_upload_stream_persists_bytes_and_hashes_incrementally(tmp_path: Path) -> None:
     upload = FakeAsyncUpload([b"hello ", b"world"])
     result = await save_upload_stream(tmp_path, "note.txt", upload, chunk_size=4)

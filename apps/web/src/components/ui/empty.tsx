@@ -6,12 +6,11 @@ import { cva, type VariantProps } from "class-variance-authority";
 
 import { cn } from "@/lib/utils";
 
-const emptyVariants = cva(
-  "surface-light flex w-full min-w-0 flex-1 flex-col items-center justify-center gap-4 rounded-xl border-dashed p-6 text-center text-balance animate-fade-in",
-);
+const EMPTY_CLASS =
+  "surface-light flex w-full min-w-0 flex-1 flex-col items-center justify-center gap-4 rounded-xl border-dashed p-6 text-center text-balance animate-fade-in";
 
 function Empty({ className, ...props }: React.ComponentProps<"div">) {
-  return <div data-slot="empty" className={cn(emptyVariants(), className)} {...props} />;
+  return <div data-slot="empty" className={cn(EMPTY_CLASS, className)} {...props} />;
 }
 
 function EmptyHeader({ className, ...props }: React.ComponentProps<"div">) {
@@ -108,6 +107,6 @@ export {
   EmptyContent,
   EmptyMedia,
   EmptyActions,
-  emptyVariants,
+  EMPTY_CLASS,
   emptyMediaVariants,
 };

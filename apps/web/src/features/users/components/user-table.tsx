@@ -2,7 +2,7 @@
  * @file 用户相关界面组件模块。
  */
 
-import { useCallback, memo, useMemo } from "react";
+import { memo, useMemo } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { useTranslation } from "react-i18next";
 
@@ -25,27 +25,6 @@ export const UserTable = memo(function UserTable({
   onResetPassword,
 }: UserTableProps) {
   const { t } = useTranslation("users");
-
-  const handleToggleStatus = useCallback(
-    (user: UserItem) => {
-      onToggleStatus(user);
-    },
-    [onToggleStatus],
-  );
-
-  const handleResetPassword = useCallback(
-    (user: UserItem) => {
-      onResetPassword(user);
-    },
-    [onResetPassword],
-  );
-
-  const handleDelete = useCallback(
-    (user: UserItem) => {
-      onDelete(user);
-    },
-    [onDelete],
-  );
 
   const columns = useMemo<ColumnDef<UserItem>[]>(
     () => [
@@ -85,7 +64,7 @@ export const UserTable = memo(function UserTable({
             <div className="flex flex-wrap justify-end gap-2">
               {user.role === "user" ? (
                 <Button
-                  onClick={() => handleToggleStatus(user)}
+                  onClick={() => onToggleStatus(user)}
                   size="sm"
                   type="button"
                   variant="outline"
@@ -96,7 +75,7 @@ export const UserTable = memo(function UserTable({
                 </Button>
               ) : null}
               <Button
-                onClick={() => handleResetPassword(user)}
+                onClick={() => onResetPassword(user)}
                 size="sm"
                 type="button"
                 variant="secondary"
@@ -105,7 +84,7 @@ export const UserTable = memo(function UserTable({
               </Button>
               {user.role === "user" ? (
                 <Button
-                  onClick={() => handleDelete(user)}
+                  onClick={() => onDelete(user)}
                   size="sm"
                   type="button"
                   variant="destructive"
@@ -121,15 +100,15 @@ export const UserTable = memo(function UserTable({
         id: "actions",
       },
     ],
-    [t, handleToggleStatus, handleResetPassword, handleDelete],
+    [t, onToggleStatus, onResetPassword, onDelete],
   );
 
   return (
     <DataTable
-      columns={columns as unknown as ColumnDef<unknown, unknown>[]}
-      data={users as unknown as Record<string, unknown>[]}
+      columns={columns}
+      data={users}
       emptyMessage={t("emptyState")}
-      getRowId={(row: unknown) => String((row as Record<string, unknown>).id)}
+      getRowId={(row) => String(row.id)}
     />
   );
 });

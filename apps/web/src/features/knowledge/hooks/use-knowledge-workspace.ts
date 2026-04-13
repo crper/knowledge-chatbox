@@ -2,7 +2,7 @@
  * @file 资源相关 Hook 模块。
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -14,12 +14,10 @@ import {
   deleteDocumentMutationOptions,
   documentListSummaryQueryOptions,
   documentUploadReadinessQueryOptions,
-  documentVersionsQueryOptions,
   documentsListQueryOptions,
   hasPendingDocuments,
   invalidateDocuments,
   reindexDocumentMutationOptions,
-  type KnowledgeDocument,
 } from "../api/documents-query";
 import type { KnowledgeDocumentListFilters } from "../api/documents";
 import { useKnowledgeUpload } from "./use-knowledge-upload";
@@ -30,8 +28,6 @@ import { useKnowledgeUpload } from "./use-knowledge-upload";
 export function useKnowledgeWorkspace(filters?: KnowledgeDocumentListFilters) {
   const { t } = useTranslation("knowledge");
   const queryClient = useQueryClient();
-  const [versionDrawerOpen, setVersionDrawerOpen] = useState(false);
-  const [versions, setVersions] = useState<KnowledgeDocument[]>([]);
   const normalizedQuery = filters?.query?.trim();
   const hasActiveFilters =
     Boolean(normalizedQuery) || filters?.status !== undefined || filters?.type !== undefined;
@@ -71,17 +67,8 @@ export function useKnowledgeWorkspace(filters?: KnowledgeDocumentListFilters) {
     },
   });
 
-  const showVersions = useCallback(
-    async (documentId: number) => {
-      const result = await queryClient.fetchQuery(documentVersionsQueryOptions(documentId));
-      setVersions(result);
-      setVersionDrawerOpen(true);
-    },
-    [queryClient],
-  );
-
   const processingCount = useMemo(
-    () => documents.filter((document) => document.status === "processing").length,
+    () => documents.filter((document) => document.ingest_status === "processing").length,
     [documents],
   );
 
@@ -96,12 +83,8 @@ export function useKnowledgeWorkspace(filters?: KnowledgeDocumentListFilters) {
     processingCount,
     reindexDocument: (documentId: number) => reindexMutation.mutateAsync(documentId),
     reindexPending: reindexMutation.isPending,
-    showVersions,
     uploadReadiness: uploadReadinessQuery.data,
     uploadReadinessPending: uploadReadinessQuery.isPending,
-    versionDrawerOpen,
-    versions,
-    closeVersionDrawer: () => setVersionDrawerOpen(false),
     ...upload,
   };
 }

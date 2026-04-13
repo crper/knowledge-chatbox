@@ -1,17 +1,12 @@
-/**
- * @file 设置相关界面组件模块。
- */
-
 import { useEffect, useRef, useState } from "react";
-import type { FormEvent } from "react";
+import { useForm, revalidateLogic } from "@tanstack/react-form";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Form } from "@/components/ui/form";
-import { getFormErrorMessage } from "@/lib/form/form-feedback";
-import { useAppForm } from "@/lib/form/use-app-form";
-import { handleFormSubmitEvent } from "@/lib/forms";
+import { getFirstFormError } from "@/lib/forms";
+import { providerSettingsSchema } from "@/lib/validation/schemas";
 import type { AppSettings, ProviderConnectionResult } from "../api/settings";
 import {
   buildProviderSettingsView,
@@ -19,10 +14,7 @@ import {
   type ProviderSettingsView,
   toSettingsPayload,
 } from "./provider-form-state";
-import {
-  getFirstInvalidProviderField,
-  validateProviderSettingsForm,
-} from "./provider-form.validation";
+import { validateProviderSettings } from "./provider-form-validation";
 import { PrimaryProviderSection } from "./primary-provider-section";
 import { ProviderStatusSummary } from "./provider-status-summary";
 import { getCapabilityHealthMessage } from "./provider-form-shared";
@@ -51,9 +43,22 @@ const ADVANCED_FIELD_NAMES: ProviderSettingsFieldName[] = [
   "providerTimeoutSeconds",
 ];
 
-/**
- * 渲染 Provider 设置表单。
- */
+const PROVIDER_FIELD_ORDER: ProviderSettingsFieldName[] = [
+  "chatModel",
+  "embeddingModel",
+  "visionModel",
+  "primaryBaseUrl",
+  "retrievalEmbeddingModel",
+  "providerTimeoutSeconds",
+];
+
+function getFirstInvalidField(
+  fields?: Partial<Record<ProviderSettingsFieldName, unknown>>,
+): ProviderSettingsFieldName | null {
+  if (!fields) return null;
+  return PROVIDER_FIELD_ORDER.find((field) => fields[field] !== undefined) ?? null;
+}
+
 export function ProviderForm({
   initialValues,
   savePending = false,
@@ -67,23 +72,24 @@ export function ProviderForm({
   const [pendingScrollField, setPendingScrollField] = useState<ProviderSettingsFieldName | null>(
     null,
   );
-  const [validationResult, setValidationResult] = useState<ReturnType<
-    typeof validateProviderSettingsForm
-  > | null>(null);
   const fieldRefs = useRef<Partial<Record<ProviderSettingsFieldName, HTMLElement | null>>>({});
   const chatModelLabel = t("chatModelLabel");
   const embeddingModelLabel = t("embeddingModelLabel");
   const visionModelLabel = t("visionModelLabel");
   const retrievalEmbeddingModelLabel = t("retrievalEmbeddingModelLabel");
 
-  const form = useAppForm<ProviderSettingsView, ProviderSettingsFieldName>({
+  const form = useForm({
     defaultValues: buildProviderSettingsView(initialValues),
+    validators: {
+      onChange: ({ value }) => validateProviderSettings(value),
+    },
+    validationLogic: revalidateLogic({ mode: "submit", modeAfterSubmission: "blur" }),
     onSubmit: async ({ formApi, value }) => {
       try {
         const result = await onSave(toSettingsPayload(value));
         const nextDraft = buildProviderSettingsView(result);
         form.reset(nextDraft);
-        formApi.setErrorMap({ onDynamic: undefined, onSubmit: undefined });
+        formApi.setErrorMap({ onChange: undefined, onSubmit: undefined });
         setAdvancedOpen(false);
         setNotice({
           title: t("saveNoticeTitle"),
@@ -103,23 +109,20 @@ export function ProviderForm({
         throw error;
       }
     },
-    validator: validateProviderSettingsForm,
   });
 
   useEffect(() => {
     const nextDraft = buildProviderSettingsView(initialValues);
     form.reset(nextDraft);
-    form.setErrorMap({ onDynamic: undefined, onSubmit: undefined });
+    form.setErrorMap({ onChange: undefined, onSubmit: undefined });
     setAdvancedOpen(false);
     setNotice(null);
     setPendingScrollField(null);
-    setValidationResult(null);
   }, [form, initialValues]);
 
   const clearFeedback = () => {
     setNotice(null);
-    setValidationResult(null);
-    form.setErrorMap({ onDynamic: undefined, onSubmit: undefined });
+    form.setErrorMap({ onChange: undefined, onSubmit: undefined });
   };
 
   const scrollToField = (field: ProviderSettingsFieldName) => {
@@ -163,57 +166,61 @@ export function ProviderForm({
     form.setFieldValue("templateProvider", nextValues.templateProvider);
   };
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
     clearFeedback();
-    const currentValues = form.state.values;
-    const validation = validateProviderSettingsForm(currentValues);
-    if (validation) {
-      setValidationResult(validation);
-      const firstInvalidField = getFirstInvalidProviderField(currentValues);
-      if (firstInvalidField) {
-        scrollToField(firstInvalidField);
+    void form.handleSubmit().then(() => {
+      const onChangeError = form.state.errorMap.onChange;
+      if (onChangeError && typeof onChangeError === "object" && "fields" in onChangeError) {
+        const firstInvalid = getFirstInvalidField(
+          (onChangeError as { fields: Partial<Record<ProviderSettingsFieldName, unknown>> }).fields,
+        );
+        if (firstInvalid) {
+          scrollToField(firstInvalid);
+        }
       }
-      event.preventDefault();
-      return;
-    }
-
-    void handleFormSubmitEvent(event, () => form.handleSubmit());
+    });
   };
 
   const handleTest = async () => {
     clearFeedback();
 
     const currentValues = form.state.values;
-    const validation = validateProviderSettingsForm(currentValues);
-    if (validation) {
-      setValidationResult(validation);
-      const firstInvalidField = getFirstInvalidProviderField(currentValues);
-      if (firstInvalidField) {
-        scrollToField(firstInvalidField);
+    const result = providerSettingsSchema.safeParse(currentValues);
+    if (!result.success) {
+      const onChangeError = form.state.errorMap.onChange;
+      if (onChangeError && typeof onChangeError === "object" && "fields" in onChangeError) {
+        const firstInvalid = getFirstInvalidField(
+          (onChangeError as { fields: Partial<Record<ProviderSettingsFieldName, unknown>> }).fields,
+        );
+        if (firstInvalid) {
+          scrollToField(firstInvalid);
+        }
       }
       return;
     }
 
     try {
-      const result = await onTestProvider(toSettingsPayload(currentValues));
+      const testResult = await onTestProvider(toSettingsPayload(currentValues));
       const allHealthy =
-        result.response.healthy && result.embedding.healthy && result.vision.healthy;
+        testResult.response.healthy && testResult.embedding.healthy && testResult.vision.healthy;
       const ollamaBaseUrl = currentValues.providerProfiles.ollama.base_url;
       const items = [
         {
-          healthy: result.response.healthy,
+          healthy: testResult.response.healthy,
           label: t("statusChatLabel"),
-          message: getCapabilityHealthMessage(result.response, t, ollamaBaseUrl),
+          message: getCapabilityHealthMessage(testResult.response, t, ollamaBaseUrl),
         },
         {
-          healthy: result.embedding.healthy,
+          healthy: testResult.embedding.healthy,
           label: t("statusRetrievalLabel"),
-          message: getCapabilityHealthMessage(result.embedding, t, ollamaBaseUrl),
+          message: getCapabilityHealthMessage(testResult.embedding, t, ollamaBaseUrl),
         },
         {
-          healthy: result.vision.healthy,
+          healthy: testResult.vision.healthy,
           label: t("statusVisionLabel"),
-          message: getCapabilityHealthMessage(result.vision, t, ollamaBaseUrl),
+          message: getCapabilityHealthMessage(testResult.vision, t, ollamaBaseUrl),
         },
       ];
       setNotice({
@@ -238,19 +245,31 @@ export function ProviderForm({
     <Form className="flex flex-col gap-6" noValidate onSubmit={handleSubmit}>
       <form.Subscribe selector={(state) => ({ draft: state.values, errorMap: state.errorMap })}>
         {({ draft, errorMap }) => {
-          const fieldErrorMessages = {
-            chatModel: getFormErrorMessage([validationResult?.fields?.chatModel], t),
-            embeddingModel: getFormErrorMessage([validationResult?.fields?.embeddingModel], t),
-            primaryBaseUrl: getFormErrorMessage([validationResult?.fields?.primaryBaseUrl], t),
-            providerTimeoutSeconds: getFormErrorMessage(
-              [validationResult?.fields?.providerTimeoutSeconds],
-              t,
-            ),
-            retrievalEmbeddingModel: getFormErrorMessage(
-              [validationResult?.fields?.retrievalEmbeddingModel],
-              t,
-            ),
-            visionModel: getFormErrorMessage([validationResult?.fields?.visionModel], t),
+          const onChangeFields =
+            errorMap.onChange &&
+            typeof errorMap.onChange === "object" &&
+            "fields" in errorMap.onChange
+              ? (
+                  errorMap.onChange as {
+                    fields: Partial<Record<ProviderSettingsFieldName, string>>;
+                  }
+                ).fields
+              : undefined;
+          const fieldErrorMessages: Record<string, string | undefined> = {
+            chatModel: onChangeFields?.chatModel ? t(onChangeFields.chatModel) : undefined,
+            embeddingModel: onChangeFields?.embeddingModel
+              ? t(onChangeFields.embeddingModel)
+              : undefined,
+            visionModel: onChangeFields?.visionModel ? t(onChangeFields.visionModel) : undefined,
+            primaryBaseUrl: onChangeFields?.primaryBaseUrl
+              ? t(onChangeFields.primaryBaseUrl)
+              : undefined,
+            providerTimeoutSeconds: onChangeFields?.providerTimeoutSeconds
+              ? t(onChangeFields.providerTimeoutSeconds)
+              : undefined,
+            retrievalEmbeddingModel: onChangeFields?.retrievalEmbeddingModel
+              ? t(onChangeFields.retrievalEmbeddingModel)
+              : undefined,
           };
           const firstFieldErrorMessage =
             fieldErrorMessages.chatModel ??
@@ -259,10 +278,8 @@ export function ProviderForm({
             fieldErrorMessages.primaryBaseUrl ??
             fieldErrorMessages.retrievalEmbeddingModel ??
             fieldErrorMessages.providerTimeoutSeconds;
-          const errorMessage = getFormErrorMessage(
-            [validationResult?.form, errorMap.onSubmit, firstFieldErrorMessage],
-            t,
-          );
+          const errorMessage =
+            getFirstFormError(errorMap.onSubmit ?? errorMap.onChange, t) || firstFieldErrorMessage;
 
           return (
             <>
@@ -273,10 +290,10 @@ export function ProviderForm({
                 draft={draft}
                 embeddingModelLabel={embeddingModelLabel}
                 fieldErrorMessages={{
-                  chatModel: fieldErrorMessages.chatModel ?? undefined,
-                  embeddingModel: fieldErrorMessages.embeddingModel ?? undefined,
-                  primaryBaseUrl: fieldErrorMessages.primaryBaseUrl ?? undefined,
-                  visionModel: fieldErrorMessages.visionModel ?? undefined,
+                  chatModel: fieldErrorMessages.chatModel,
+                  embeddingModel: fieldErrorMessages.embeddingModel,
+                  primaryBaseUrl: fieldErrorMessages.primaryBaseUrl,
+                  visionModel: fieldErrorMessages.visionModel,
                 }}
                 fieldRefs={fieldRefs}
                 handleViewChange={handleViewChange}
@@ -310,8 +327,7 @@ export function ProviderForm({
                     <RetrievalOverrideSection
                       draft={draft}
                       fieldErrorMessages={{
-                        retrievalEmbeddingModel:
-                          fieldErrorMessages.retrievalEmbeddingModel ?? undefined,
+                        retrievalEmbeddingModel: fieldErrorMessages.retrievalEmbeddingModel,
                       }}
                       fieldRefs={fieldRefs}
                       handleViewChange={handleViewChange}
@@ -328,8 +344,7 @@ export function ProviderForm({
                     <ProviderTimeoutSection
                       draft={draft}
                       fieldErrorMessages={{
-                        providerTimeoutSeconds:
-                          fieldErrorMessages.providerTimeoutSeconds ?? undefined,
+                        providerTimeoutSeconds: fieldErrorMessages.providerTimeoutSeconds,
                       }}
                       fieldRefs={fieldRefs}
                       handleViewChange={handleViewChange}

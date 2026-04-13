@@ -13,6 +13,7 @@ import {
   Trash2Icon,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { clamp } from "es-toolkit";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -91,7 +92,7 @@ const UploadingQueueItem = memo(function UploadingQueueItem({
 }: UploadingQueueItemProps) {
   const { t } = useTranslation("knowledge");
   const isProcessing = item.progress >= 100;
-  const progressWidth = isProcessing ? 100 : Math.min(Math.max(item.progress, 0), 100);
+  const progressWidth = isProcessing ? 100 : clamp(item.progress, 0, 100);
 
   return (
     <div

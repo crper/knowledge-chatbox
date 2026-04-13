@@ -141,7 +141,12 @@ def test_ollama_response_adapter_streams_json_lines() -> None:
                 [
                     {"message": {"content": "hello "}, "done": False},
                     {"message": {"content": "world"}, "done": False},
-                    {"message": {"content": ""}, "done": True},
+                    {
+                        "message": {"content": ""},
+                        "done": True,
+                        "eval_count": 9,
+                        "prompt_eval_count": 4,
+                    },
                 ]
             )
 
@@ -154,6 +159,9 @@ def test_ollama_response_adapter_streams_json_lines() -> None:
 
     assert [event.type for event in events] == ["text_delta", "text_delta", "completed"]
     assert [event.delta for event in events[:-1]] == ["hello ", "world"]
+    assert events[-1].usage is not None
+    assert events[-1].usage.model_dump()["input_tokens"] == 4
+    assert events[-1].usage.model_dump()["output_tokens"] == 9
 
 
 def test_voyage_embedding_adapter_calls_embeddings_api(httpx_mock: HTTPXMock) -> None:

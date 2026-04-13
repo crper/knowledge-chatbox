@@ -1,13 +1,22 @@
 """Chunk indexing logic for document revisions."""
 
-from typing import Any
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 from knowledge_chatbox_api.core.logging import get_logger
 from knowledge_chatbox_api.models.document import Document
 from knowledge_chatbox_api.repositories.retrieval_chunk_repository import RetrievalChunkRepository
-from knowledge_chatbox_api.services.documents.chunking_service import Chunk, ChunkingService
+from knowledge_chatbox_api.schemas.chunk import ChunkRecordMetadata, ChunkStoreRecord
 from knowledge_chatbox_api.services.documents.errors import DocumentNotNormalizedError
-from knowledge_chatbox_api.utils.chroma import ChunkStore
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
+
+    from knowledge_chatbox_api.providers.base import EmbeddingAdapterProtocol
+    from knowledge_chatbox_api.schemas.settings import ProviderRuntimeSettings
+    from knowledge_chatbox_api.services.documents.chunking_service import Chunk, ChunkingService
+    from knowledge_chatbox_api.utils.chroma import ChunkStore
 
 logger = get_logger(__name__)
 
@@ -18,11 +27,11 @@ class IndexingService:
     def __init__(
         self,
         *,
-        session,
+        session: Session,
         chunking_service: ChunkingService,
         chroma_store: ChunkStore,
-        embedding_provider,
-        settings,
+        embedding_provider: EmbeddingAdapterProtocol,
+        settings: ProviderRuntimeSettings,
         default_generation: int | None = None,
     ) -> None:
         self.session = session
@@ -55,7 +64,7 @@ class IndexingService:
     ) -> list[Chunk]:
         """Replace a document version's chunks without owning the transaction."""
         target_generation = self._resolve_generation(generation)
-        self.chroma_store.delete_by_document_id(
+        self.chroma_store.delete_by_revision_id(
             document_version.id,
             generation=target_generation,
         )
@@ -82,15 +91,18 @@ class IndexingService:
             )
             raise DocumentNotNormalizedError("Document embedding generation failed.") from exc
 
-        chunk_records: list[dict[str, Any]] = [
-            {
-                "id": chunk.chunk_id,
-                "document_id": logical_document_id,
-                "document_revision_id": document_version.id,
-                "space_id": space_id,
-                "text": chunk.text,
-                "metadata": chunk.metadata,
-            }
+        chunk_records: list[ChunkStoreRecord] = [
+            ChunkStoreRecord(
+                id=chunk.chunk_id,
+                document_id=logical_document_id,
+                document_revision_id=document_version.id,
+                space_id=space_id,
+                text=chunk.text,
+                metadata=ChunkRecordMetadata(
+                    section_title=chunk.metadata.section_title,
+                    page_number=chunk.metadata.page_number,
+                ),
+            )
             for chunk in chunks
         ]
 
@@ -109,11 +121,11 @@ class IndexingService:
     def delete_document_chunks(self, document_version, *, generation: int | None = None) -> None:
         """Drop all indexed chunks for one document version without committing."""
         target_generation = self._resolve_generation(generation)
-        self.chroma_store.delete_by_document_id(
+        self.chroma_store.delete_by_revision_id(
             document_version.id,
             generation=target_generation,
         )
-        self.retrieval_chunk_repository.delete_by_document_id(
+        self.retrieval_chunk_repository.delete_by_revision_id(
             document_version.id,
             generation=target_generation,
         )

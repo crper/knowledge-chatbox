@@ -108,6 +108,52 @@ def my_function(param1: str, param2: int = 0) -> Result:
 - 新增模型、接口、约束时，优先补测试，再做最小实现。
 - 聊天检索当前以 `Chroma` 负责向量召回、以 SQLite `FTS5` 负责词法候选兜底；不要恢复为整代索引的全量词法扫描路径。
 
+## 前后端协作规范
+
+### 字段命名
+
+- **统一 snake_case**：前后端所有 API 字段使用 snake_case，前端不额外做 camelCase 转换。
+- **禁止字段重命名**：前端类型定义必须与后端 schema 字段名一致。如需 UI 友好名称，在组件层计算（如 `name = revision?.source_filename ?? document.title`）。
+- **后端 AliasChoices 收敛**：后端 schema 中的字段别名（如 `AliasChoices`）仅用于兼容期，前端应向主字段名对齐，兼容期结束后移除别名。
+
+### 类型使用
+
+- **枚举直接引用 schema**：使用 `components["schemas"]["XxxEnum"]`，禁止手动重复定义后端已有的枚举。
+- **视图模型最小化**：仅在以下场景允许定义前端视图模型：
+  - 多个后端模型扁平化合并（如 `KnowledgeDocument` = `DocumentSummaryRead` + `DocumentRevisionRead`）
+  - 渐进构建需要可选字段（如流式消息）
+  - 默认值填充（如 `fillProviderProfiles`）
+- **禁止无差异包装**：如果前端类型与 schema 类型字段完全一致，直接使用 schema 类型，不要手动重新定义。
+
+### API 层职责边界
+
+```
+API 请求层 (*.ts)：
+  ✅ 调用 openapi-fetch client
+  ✅ Envelope 解包（openapiRequestRequired / parseEnvelopeFromRawBody）
+  ✅ 必要的模型合并（如 document + revision 扁平化）
+  ✅ 必要的默认值填充
+  ❌ 字段重命名
+  ❌ 枚举窄化（应使用 schema 类型）
+  ❌ camelCase 转换
+
+Query 配置层 (*-query.ts)：
+  ✅ queryOptions / mutationOptions 工厂
+  ✅ 缓存策略（staleTime / refetchInterval）
+  ✅ 乐观更新 / 缓存失效
+  ❌ 数据转换（应在 API 请求层或组件层）
+
+组件层：
+  ✅ UI 展示计算（如 name = source_filename ?? title）
+  ✅ 格式化（日期、数字）
+  ❌ API 字段映射
+```
+
+### Schema 同步
+
+- 后端 schema 变更后，前端必须执行 `vp run api:generate` 同步类型。
+- 新增 API 函数时，类型必须从 `schema.d.ts` 引用，不要手写与后端重复的类型定义。
+
 ## 仓库结构
 
 - `apps/web` 下若存在更细粒度 `AGENTS.md`，进入该目录后优先遵守其约束。

@@ -4,7 +4,13 @@ import json
 from typing import TYPE_CHECKING, Any
 
 from pydantic_ai.messages import PartDeltaEvent, PartStartEvent, TextPart, TextPartDelta
-from tests.fixtures.stubs import make_adapter_backed_chat_workflow_class
+from tests.fixtures.helpers import create_chat_session, login_as_admin, upload_text_document
+from tests.fixtures.stubs import (
+    EmbeddingAdapterStub,
+    TextResponseAdapterStub,
+    make_adapter_backed_chat_workflow_class,
+    patch_document_index_embedding,
+)
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -12,56 +18,11 @@ if TYPE_CHECKING:
     from fastapi.testclient import TestClient
 
 
-class UnifiedResponseAdapterStub:
-    def response(self, messages, settings) -> str:
-        del messages, settings
-        return "统一回答"
-
-    def stream_response(self, messages, settings):
-        del messages, settings
-        yield {"type": "text_delta", "delta": "统一"}
-        yield {"type": "text_delta", "delta": "回答"}
-        yield {"type": "completed", "usage": {"output_tokens": 2}}
-
-
-class UnifiedFailingResponseAdapterStub:
-    def response(self, messages, settings) -> str:
-        del messages, settings
-        raise RuntimeError("provider backend unavailable")
-
-    def stream_response(self, messages, settings):
-        del messages, settings
-        yield {"type": "error", "error_message": "provider backend unavailable"}
-
-
-class EmbeddingAdapterStub:
-    def embed(self, texts: list[str], settings) -> list[list[float]]:
-        del texts, settings
-        return [[0.1] * 384]
-
-
 def stub_document_index_embedding(monkeypatch) -> None:
-    def _build_embedding_adapter(_route: object) -> EmbeddingAdapterStub:
-        return EmbeddingAdapterStub()
-
-    monkeypatch.setattr(
-        "knowledge_chatbox_api.services.documents.ingestion_service.build_embedding_adapter",
-        _build_embedding_adapter,
+    patch_document_index_embedding(
+        monkeypatch,
+        adapter=EmbeddingAdapterStub(vector_size=384),
     )
-
-
-def login_admin(api_client: TestClient) -> None:
-    response = api_client.post(
-        "/api/auth/login",
-        json={"username": "admin", "password": "Admin123456"},
-    )
-    assert response.status_code == 200
-
-
-def create_chat_session(api_client: TestClient, title: str) -> int:
-    response = api_client.post("/api/chat/sessions", json={"title": title})
-    assert response.status_code == 201
-    return response.json()["data"]["id"]
 
 
 def read_session_messages(api_client: TestClient, session_id: int) -> list[dict[str, Any]]:
@@ -103,14 +64,14 @@ def comparable_message_fields(message: dict[str, Any]) -> dict[str, Any]:
             "section_title": source.get("section_title"),
             "snippet": source.get("snippet"),
         }
-        for source in message["sources_json"] or []
+        for source in message["sources"] or []
     ]
     return {
-        "attachments_json": message["attachments_json"],
+        "attachments": message["attachments"],
         "content": message["content"],
         "error_message": message["error_message"],
         "role": message["role"],
-        "sources_json": sources,
+        "sources": sources,
         "status": message["status"],
     }
 
@@ -123,7 +84,10 @@ def test_sync_and_stream_chat_produce_equivalent_successful_messages_and_sources
     del configure_upload_provider
     stub_document_index_embedding(monkeypatch)
     workflow_cls = make_adapter_backed_chat_workflow_class(
-        response_adapter=UnifiedResponseAdapterStub(),
+        response_adapter=TextResponseAdapterStub(
+            sync_answer="统一回答",
+            stream_chunks=["统一", "回答"],
+        ),
         sync_answer="统一回答",
         sync_sources=[
             {
@@ -151,18 +115,12 @@ def test_sync_and_stream_chat_produce_equivalent_successful_messages_and_sources
         workflow_cls,
     )
 
-    login_admin(api_client)
-    upload_response = api_client.post(
-        "/api/documents/upload",
-        files={
-            "file": (
-                "guide.txt",
-                b"OpenAI provider setup guide.\nUse the API key and base URL for setup.",
-                "text/plain",
-            )
-        },
+    login_as_admin(api_client)
+    upload_text_document(
+        api_client,
+        filename="guide.txt",
+        content=(b"OpenAI provider setup guide.\nUse the API key and base URL for setup."),
     )
-    assert upload_response.status_code == 201
 
     sync_session_id = create_chat_session(api_client, "sync session")
     stream_session_id = create_chat_session(api_client, "stream session")
@@ -201,7 +159,7 @@ def test_sync_and_stream_chat_produce_equivalent_successful_messages_and_sources
     assert comparable_message_fields(sync_assistant_message) == comparable_message_fields(
         stream_assistant_message
     )
-    assert sync_assistant_message["sources_json"]
+    assert sync_assistant_message["sources"]
 
 
 def test_sync_and_stream_chat_produce_equivalent_failure_messages(
@@ -241,7 +199,7 @@ def test_sync_and_stream_chat_produce_equivalent_failure_messages(
         FailingChatWorkflow,
     )
 
-    login_admin(api_client)
+    login_as_admin(api_client)
     sync_session_id = create_chat_session(api_client, "sync failure session")
     stream_session_id = create_chat_session(api_client, "stream failure session")
     request_payload = {

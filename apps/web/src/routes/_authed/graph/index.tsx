@@ -1,11 +1,17 @@
-/**
- * @file TanStack Router graph 路由。
- */
-
 import { createFileRoute } from "@tanstack/react-router";
 
-import { GraphPageRoute } from "@/router/route-shells";
+import { lazy, Suspense } from "react";
+import { LoadingState } from "@/components/shared/loading-state";
+
+const GraphPage = lazy(async () => ({
+  default: (await import("@/pages/graph/graph-page")).GraphPage,
+}));
 
 export const Route = createFileRoute("/_authed/graph/")({
-  component: GraphPageRoute,
+  component: () => (
+    <Suspense fallback={<LoadingState />}>
+      <GraphPage />
+    </Suspense>
+  ),
+  pendingComponent: LoadingState,
 });

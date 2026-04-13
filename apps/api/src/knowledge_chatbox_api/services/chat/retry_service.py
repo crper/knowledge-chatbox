@@ -4,10 +4,12 @@ from typing import Any
 
 from knowledge_chatbox_api.core.errors import AppError
 from knowledge_chatbox_api.models.enums import (
+    ChatAttachmentType,
     ChatMessageRole,
     ChatMessageStatus,
 )
 from knowledge_chatbox_api.repositories.chat_repository import ChatRepository
+from knowledge_chatbox_api.schemas.chat import ChatAttachmentMetadata
 
 
 class RetryTargetNotFoundError(AppError):
@@ -24,17 +26,6 @@ class DuplicateClientRequestConflictError(AppError):
     status_code = 409
     code = "chat_message_conflict"
     default_message = "client_request_id already exists for a different message payload."
-
-
-_ATTACHMENT_COMPARE_FIELDS = (
-    "attachment_id",
-    "type",
-    "name",
-    "mime_type",
-    "size_bytes",
-    "document_revision_id",
-    "archived_at",
-)
 
 
 class RetryService:
@@ -109,7 +100,7 @@ class RetryService:
                 "client_request_id already exists for a different retry payload."
             )
         return self.repository.create_message(
-            attachments=original_attachments,
+            attachments=self._to_dicts(original_attachments),
             session_id=session_id,
             role=ChatMessageRole.USER,
             content=original_message.content,
@@ -139,30 +130,48 @@ class RetryService:
         *,
         existing_message: Any,
         content: str,
-        attachments: list[dict[str, Any]] | None,
+        attachments: list[ChatAttachmentMetadata] | list[dict[str, Any]] | None,
         retry_of_message_id: int | None = None,
     ) -> bool:
         if existing_message is None:
             return False
 
+        incoming = self._normalize_attachments(attachments)
+        existing = self._serialize_attachments(existing_message.id)
+
         return (
             content == existing_message.content
             and retry_of_message_id == existing_message.retry_of_message_id
-            and self._normalize_attachments(attachments)
-            == self._normalize_attachments(self._serialize_attachments(existing_message.id))
+            and incoming == existing
         )
 
-    def _serialize_attachments(self, message_id: int) -> list[dict[str, Any]]:
+    def _serialize_attachments(self, message_id: int) -> list[ChatAttachmentMetadata]:
+        """将 ORM 附件对象转换为 ChatAttachmentMetadata 列表。"""
         return [
-            {field: getattr(attachment, field) for field in _ATTACHMENT_COMPARE_FIELDS}
+            ChatAttachmentMetadata(
+                attachment_id=attachment.attachment_id,
+                type=ChatAttachmentType(attachment.type),
+                name=attachment.name,
+                mime_type=attachment.mime_type,
+                size_bytes=attachment.size_bytes,
+                document_revision_id=attachment.document_revision_id,
+                archived_at=attachment.archived_at,
+            )
             for attachment in self.repository.list_attachments(message_id)
         ]
 
     def _normalize_attachments(
         self,
-        attachments: list[dict[str, Any]] | None,
-    ) -> list[dict[str, Any]]:
-        return [
-            {field: attachment.get(field) for field in _ATTACHMENT_COMPARE_FIELDS}
-            for attachment in attachments or []
-        ]
+        attachments: list[ChatAttachmentMetadata] | list[dict[str, Any]] | None,
+    ) -> list[ChatAttachmentMetadata]:
+        """将各种附件输入格式统一为 ChatAttachmentMetadata 列表。"""
+        if not attachments:
+            return []
+        if isinstance(attachments[0], ChatAttachmentMetadata):
+            return attachments
+        return [ChatAttachmentMetadata.model_validate(a) for a in attachments]
+
+    @staticmethod
+    def _to_dicts(attachments: list[ChatAttachmentMetadata]) -> list[dict[str, Any]]:
+        """将 ChatAttachmentMetadata 列表转换为 dict 列表，用于 repository 接口。"""
+        return [a.model_dump() for a in attachments]

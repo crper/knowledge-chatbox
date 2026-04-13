@@ -3,32 +3,25 @@
  */
 
 import { useCallback } from "react";
+import type { QueryClient } from "@tanstack/react-query";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 
-import { queryKeys } from "@/lib/api/query-keys";
 import { invalidateDocuments } from "@/features/knowledge/api/documents-query";
-import type {
-  ChatAttachmentItem as PersistedChatAttachmentItem,
-  ChatMessageItem,
-  ChatSessionContextItem,
-} from "../api/chat";
+import type { ChatAttachmentItem, ChatMessageItem } from "../api/chat";
 import type { ChatStreamAttachmentInput } from "../api/chat-stream";
+import { MessageRole, MessageStatus } from "../constants";
+import type { ChatRuntime } from "../runtime/chat-runtime";
+import type { ChatCacheWriter } from "../utils/chat-cache-writer";
 import {
   serializeChatAttachments,
   shouldResetComposerSnapshotForRetry,
 } from "../utils/chat-submit-helpers";
 import { clearComposer, restoreComposer, snapshotComposer } from "../utils/composer-transaction";
 import { uploadQueuedChatAttachments } from "../utils/upload-chat-attachments";
-import { MessageRole, MessageStatus } from "../constants";
 
 type UseChatComposerSubmitParams = {
-  beginSessionSubmit: (
-    sessionId: number,
-    controller: AbortController,
-    clientRequestId?: string | null,
-  ) => boolean;
-  finishSessionSubmit: (sessionId: number) => void;
+  runtime: Pick<ChatRuntime, "beginSubmit" | "finishSubmit">;
   findRunByAssistantMessageId: (assistantMessageId: number) =>
     | {
         assistantMessageId: number;
@@ -42,17 +35,10 @@ type UseChatComposerSubmitParams = {
       }
     | undefined;
   messages: ChatMessageItem[];
-  patchSessionContext: (input: {
-    attachments?: ChatSessionContextItem["attachments"];
-    latestAssistantMessageId?: number;
-    latestAssistantSources?: ChatSessionContextItem["latest_assistant_sources"];
-    sessionId: number;
-  }) => void;
-  patchUserMessageAttachments: (input: {
-    attachments: PersistedChatAttachmentItem[];
-    sessionId: number;
-    userMessageId: number;
-  }) => boolean;
+  cacheWriter: Pick<
+    ChatCacheWriter,
+    "invalidateSessionArtifacts" | "patchSessionContext" | "patchUserMessageAttachments"
+  >;
   requestScrollToLatest: () => void;
   resolvedActiveSessionId: number | null;
   sendStreamMessage: (input: {
@@ -67,15 +53,15 @@ type UseChatComposerSubmitParams = {
 
 function toPersistedChatAttachments(
   attachments: ChatStreamAttachmentInput[],
-): PersistedChatAttachmentItem[] {
+): ChatAttachmentItem[] {
   return attachments.map(
     ({ attachment_id, name, mime_type, document_id, document_revision_id, size_bytes, type }) => ({
       attachment_id,
       archived_at: null,
       name,
       mime_type,
-      resource_document_id: document_id ?? null,
-      resource_document_version_id: document_revision_id,
+      document_id: document_id ?? null,
+      document_revision_id,
       size_bytes,
       type,
     }),
@@ -101,15 +87,111 @@ function buildRestoredComposerSnapshot({
   };
 }
 
+async function performAttachmentUploadAndSend(
+  deps: {
+    cacheWriter: Pick<
+      ChatCacheWriter,
+      "invalidateSessionArtifacts" | "patchSessionContext" | "patchUserMessageAttachments"
+    >;
+    clientRequestId: string;
+    composerSnapshot: ReturnType<typeof snapshotComposer>;
+    queryClient: QueryClient;
+    requestScrollToLatest: () => void;
+    sendStreamMessage: UseChatComposerSubmitParams["sendStreamMessage"];
+    sessionId: number;
+    signal: AbortSignal;
+    t: (key: string) => string;
+    workingAttachments: ReturnType<typeof snapshotComposer>["attachments"];
+  },
+  onAttachmentPatch: (attachmentId: string, patch: Record<string, unknown>) => void,
+) {
+  const {
+    cacheWriter,
+    clientRequestId,
+    composerSnapshot,
+    queryClient,
+    requestScrollToLatest,
+    sendStreamMessage,
+    sessionId,
+    signal,
+    t,
+    workingAttachments,
+  } = deps;
+
+  const { uploadedAttachments: persistedAttachments, uploadedCount } =
+    await uploadQueuedChatAttachments({
+      attachments: workingAttachments.filter((item) => item.status !== MessageStatus.FAILED),
+      failedMessage: t("attachmentUploadFailed"),
+      onPatch: onAttachmentPatch,
+      signal,
+    });
+
+  if (uploadedCount > 0) {
+    void invalidateDocuments(queryClient);
+  }
+
+  const serializedAttachments = serializeChatAttachments(persistedAttachments);
+  const persistedChatAttachments = toPersistedChatAttachments(serializedAttachments);
+  if (!composerSnapshot.draft.trim() && serializedAttachments.length === 0) {
+    return;
+  }
+
+  requestScrollToLatest();
+  const streamResult = await sendStreamMessage({
+    attachments: serializedAttachments,
+    clientRequestId,
+    sessionId,
+    content: composerSnapshot.draft,
+    signal,
+  });
+
+  if (streamResult.userMessageId && serializedAttachments.length > 0) {
+    const patched = cacheWriter.patchUserMessageAttachments({
+      attachments: persistedChatAttachments,
+      sessionId,
+      userMessageId: streamResult.userMessageId,
+    });
+    cacheWriter.patchSessionContext({
+      attachments: persistedChatAttachments,
+      sessionId,
+    });
+    if (!patched) {
+      await cacheWriter.invalidateSessionArtifacts(sessionId);
+    }
+    void invalidateDocuments(queryClient);
+  }
+}
+
+function resolveRetryContext(
+  message: ChatMessageItem,
+  messages: ChatMessageItem[],
+  findRunByAssistantMessageId: UseChatComposerSubmitParams["findRunByAssistantMessageId"],
+) {
+  const retryOfMessageId =
+    message.role === MessageRole.ASSISTANT ? (message.reply_to_message_id ?? null) : message.id;
+
+  const retryContent =
+    message.role === MessageRole.ASSISTANT
+      ? (messages.find((item) => item.id === retryOfMessageId)?.content ??
+        findRunByAssistantMessageId(message.id)?.userContent ??
+        message.content)
+      : message.content;
+
+  const retryAttachments =
+    message.role === MessageRole.ASSISTANT
+      ? (messages.find((item) => item.id === retryOfMessageId)?.attachments ?? null)
+      : (message.attachments ?? null);
+
+  return { retryAttachments, retryContent, retryOfMessageId };
+}
+
 export function useChatComposerSubmit({
-  beginSessionSubmit,
-  finishSessionSubmit,
+  cacheWriter,
   findRunByAssistantMessageId,
   messages,
-  patchSessionContext,
-  patchUserMessageAttachments,
   requestScrollToLatest,
   resolvedActiveSessionId,
+  runtime,
   sendStreamMessage,
 }: UseChatComposerSubmitParams) {
   const { t } = useTranslation(["chat", "common"]);
@@ -123,7 +205,7 @@ export function useChatComposerSubmit({
     const sessionId = resolvedActiveSessionId;
     const submitController = new AbortController();
     const clientRequestId = crypto.randomUUID();
-    if (!beginSessionSubmit(sessionId, submitController, clientRequestId)) {
+    if (!runtime.beginSubmit(sessionId, submitController, clientRequestId)) {
       return;
     }
 
@@ -133,7 +215,7 @@ export function useChatComposerSubmit({
     );
 
     if (!composerSnapshot.draft.trim() && sendableAttachments.length === 0) {
-      finishSessionSubmit(sessionId);
+      runtime.finishSubmit(sessionId);
       return;
     }
 
@@ -150,70 +232,39 @@ export function useChatComposerSubmit({
       );
 
     try {
-      const { uploadedAttachments: persistedAttachments, uploadedCount } =
-        await uploadQueuedChatAttachments({
-          attachments: workingAttachments.filter((item) => item.status !== MessageStatus.FAILED),
-          concurrency: 2,
-          failedMessage: t("attachmentUploadFailed"),
-          onPatch: (attachmentId, patch) => {
-            const targetAttachment = workingAttachments.find((item) => item.id === attachmentId);
-            if (!targetAttachment) {
-              return;
-            }
-            Object.assign(targetAttachment, patch);
-          },
+      await performAttachmentUploadAndSend(
+        {
+          cacheWriter,
+          clientRequestId,
+          composerSnapshot,
+          queryClient,
+          requestScrollToLatest,
+          sendStreamMessage,
+          sessionId,
           signal: submitController.signal,
-        });
-
-      if (uploadedCount > 0) {
-        void invalidateDocuments(queryClient);
-      }
-
-      const serializedAttachments = serializeChatAttachments(persistedAttachments);
-      const persistedChatAttachments = toPersistedChatAttachments(serializedAttachments);
-      if (!composerSnapshot.draft.trim() && serializedAttachments.length === 0) {
-        return;
-      }
-
-      requestScrollToLatest();
-      const streamResult = await sendStreamMessage({
-        attachments: serializedAttachments,
-        clientRequestId,
-        sessionId,
-        content: composerSnapshot.draft,
-        signal: submitController.signal,
-      });
-      if (streamResult.userMessageId && serializedAttachments.length > 0) {
-        const patched = patchUserMessageAttachments({
-          attachments: persistedChatAttachments,
-          sessionId,
-          userMessageId: streamResult.userMessageId,
-        });
-        patchSessionContext({
-          attachments: persistedChatAttachments,
-          sessionId,
-        });
-        if (!patched) {
-          await queryClient.invalidateQueries({
-            queryKey: queryKeys.chat.messagesWindow(sessionId),
-          });
-        }
-        void invalidateDocuments(queryClient);
-      }
+          t,
+          workingAttachments,
+        },
+        (attachmentId, patch) => {
+          const targetAttachment = workingAttachments.find((item) => item.id === attachmentId);
+          if (!targetAttachment) {
+            return;
+          }
+          Object.assign(targetAttachment, patch);
+        },
+      );
     } catch {
       restoreComposerSnapshot();
       return;
     } finally {
-      finishSessionSubmit(sessionId);
+      runtime.finishSubmit(sessionId);
     }
   }, [
-    beginSessionSubmit,
-    finishSessionSubmit,
-    patchSessionContext,
-    patchUserMessageAttachments,
+    cacheWriter,
     queryClient,
     requestScrollToLatest,
     resolvedActiveSessionId,
+    runtime,
     sendStreamMessage,
     t,
   ]);
@@ -227,27 +278,21 @@ export function useChatComposerSubmit({
       const sessionId = resolvedActiveSessionId;
       const submitController = new AbortController();
       const clientRequestId = crypto.randomUUID();
-      if (!beginSessionSubmit(sessionId, submitController, clientRequestId)) {
+      if (!runtime.beginSubmit(sessionId, submitController, clientRequestId)) {
         return;
       }
 
-      const retryOfMessageId =
-        message.role === MessageRole.ASSISTANT ? (message.reply_to_message_id ?? null) : message.id;
+      const { retryAttachments, retryContent, retryOfMessageId } = resolveRetryContext(
+        message,
+        messages,
+        findRunByAssistantMessageId,
+      );
+
       if (retryOfMessageId === null) {
-        finishSessionSubmit(sessionId);
+        runtime.finishSubmit(sessionId);
         return;
       }
 
-      const retryContent =
-        message.role === MessageRole.ASSISTANT
-          ? (messages.find((item) => item.id === retryOfMessageId)?.content ??
-            findRunByAssistantMessageId(message.id)?.userContent ??
-            message.content)
-          : message.content;
-      const retryAttachments =
-        message.role === MessageRole.ASSISTANT
-          ? (messages.find((item) => item.id === retryOfMessageId)?.attachments_json ?? null)
-          : (message.attachments_json ?? null);
       const composerSnapshot = snapshotComposer(sessionId);
       const shouldResetComposerSnapshot = shouldResetComposerSnapshotForRetry({
         composerAttachments: composerSnapshot.attachments,
@@ -275,16 +320,15 @@ export function useChatComposerSubmit({
         }
         return;
       } finally {
-        finishSessionSubmit(sessionId);
+        runtime.finishSubmit(sessionId);
       }
     },
     [
-      beginSessionSubmit,
-      finishSessionSubmit,
       findRunByAssistantMessageId,
       messages,
       requestScrollToLatest,
       resolvedActiveSessionId,
+      runtime,
       sendStreamMessage,
     ],
   );

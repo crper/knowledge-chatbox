@@ -1,6 +1,6 @@
-import { useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
+import { useCallback, useDeferredValue, useMemo } from "react";
 
-import { useNavigate, useSearch } from "@/lib/app-router";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import { normalizeKnowledgeRouteSearch, type KnowledgeRouteSearch } from "../route-search";
 
 type UseKnowledgeSearchResult = {
@@ -16,10 +16,9 @@ type UseKnowledgeSearchResult = {
 
 export function useKnowledgeSearch(): UseKnowledgeSearchResult {
   const navigate = useNavigate();
-  const search = useSearch<Record<string, unknown>>();
+  const search = useSearch({ strict: false }) as Record<string, unknown>;
   const routeSearch = useMemo(() => normalizeKnowledgeRouteSearch(search), [search]);
-  const routeQuery = routeSearch.query ?? "";
-  const [searchValue, setSearchValue] = useState(routeQuery);
+  const searchValue = routeSearch.query ?? "";
   const deferredSearchValue = useDeferredValue(searchValue);
 
   const updateRouteSearch = useCallback(
@@ -36,18 +35,12 @@ export function useKnowledgeSearch(): UseKnowledgeSearchResult {
     [navigate, routeSearch],
   );
 
-  useEffect(() => {
-    setSearchValue((currentValue) => (currentValue === routeQuery ? currentValue : routeQuery));
-  }, [routeQuery]);
-
-  useEffect(() => {
-    const nextQuery = deferredSearchValue.trim() || undefined;
-    if ((routeSearch.query ?? undefined) === nextQuery) {
-      return;
-    }
-
-    updateRouteSearch({ query: nextQuery }, { replace: true });
-  }, [deferredSearchValue, routeSearch.query, updateRouteSearch]);
+  const setSearchValue = useCallback(
+    (value: string) => {
+      updateRouteSearch({ query: value || undefined }, { replace: true });
+    },
+    [updateRouteSearch],
+  );
 
   return {
     deferredSearchValue,

@@ -1,24 +1,16 @@
-/**
- * @file 设置表单通用分区模块。
- */
-
+import type { AnyFormApi } from "@/lib/form/types";
 import type { FormNotice } from "@/features/settings/components/provider-form";
-
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Field, FieldDescription, FieldError } from "@/components/ui/field";
 import { Spinner } from "@/components/ui/spinner";
-import { Textarea } from "@/components/ui/textarea";
-import { getFieldErrorItems } from "@/lib/form/form-feedback";
+import { FormTextareaField } from "@/lib/form/form-fields";
 
 export function SystemPromptSection({
   form,
-  manualFieldErrors,
   onValueChange,
   t,
 }: {
-  form: any;
-  manualFieldErrors?: Partial<Record<string, string>>;
+  form: AnyFormApi;
   onValueChange?: () => void;
   t: (key: string, params?: Record<string, unknown>) => string;
 }) {
@@ -27,31 +19,18 @@ export function SystemPromptSection({
       <div className="mb-5">
         <h2 className="text-sm font-medium">{t("systemPromptSectionTitle")}</h2>
       </div>
-      <form.Field name="system_prompt">
-        {(field: any) => (
-          <Field>
-            <Textarea
-              aria-label={t("systemPromptSectionTitle")}
-              className="min-h-32 rounded-2xl border-border/80 bg-background/68"
-              id="settings-system-prompt"
-              onChange={(event) => {
-                onValueChange?.();
-                field.handleChange(event.target.value);
-              }}
-              placeholder={t("systemPromptPlaceholder")}
-              value={(field.state.value as string | undefined) ?? ""}
-            />
-            <FieldDescription>{t("systemPromptHint")}</FieldDescription>
-            <FieldError
-              errors={getFieldErrorItems(
-                field.state.meta.errors,
-                t,
-                manualFieldErrors?.system_prompt,
-              )}
-            />
-          </Field>
-        )}
-      </form.Field>
+      <FormTextareaField
+        aria-label={t("systemPromptSectionTitle")}
+        className="min-h-32 rounded-2xl border-border/80 bg-background/68"
+        description={t("systemPromptHint")}
+        form={form}
+        id="settings-system-prompt"
+        label={t("systemPromptSectionTitle")}
+        name="system_prompt"
+        onChange={onValueChange}
+        placeholder={t("systemPromptPlaceholder")}
+        t={t}
+      />
     </section>
   );
 }

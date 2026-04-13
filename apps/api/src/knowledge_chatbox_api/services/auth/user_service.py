@@ -71,7 +71,7 @@ class UserService:
             created_by_user_id=actor.id,
             theme_preference=ThemePreference.SYSTEM,
         )
-        self.user_repository.add_user(user)
+        self.user_repository.add(user)
         self.space_repository.ensure_personal_space(user_id=user.id)
         self.session.commit()
         self.session.refresh(user)

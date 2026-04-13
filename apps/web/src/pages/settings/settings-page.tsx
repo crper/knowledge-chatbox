@@ -9,7 +9,7 @@ import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Link, useParams } from "@/lib/app-router";
+import { Link, useParams } from "@tanstack/react-router";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { WorkspacePage } from "@/components/shared/workspace-page";
@@ -36,7 +36,6 @@ import type { AppUser } from "@/lib/api/client";
 import { getApiErrorMessage } from "@/lib/api/client";
 import { expireSession } from "@/lib/auth/session-manager";
 import { useIsMobile } from "@/lib/hooks/use-mobile";
-import { ADMIN_USERS_PATH, buildSettingsPath } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 
 /**
@@ -47,7 +46,7 @@ export function SettingsPage({ user }: { user: AppUser }) {
   const { t: tCommon } = useTranslation("common");
   const queryClient = useQueryClient();
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
-  const { section: sectionParam } = useParams<{ section?: string }>();
+  const { section: sectionParam } = useParams({ strict: false }) as { section?: string };
   const isAdmin = user.role === "admin";
   const isMobile = useIsMobile();
   const activeSection = resolveSettingsSection(sectionParam ?? null, user);
@@ -198,7 +197,8 @@ export function SettingsPage({ user }: { user: AppUser }) {
                 buttonVariants({ size: "sm", variant: isActive ? "secondary" : "outline" }),
                 "shrink-0",
               )}
-              to={buildSettingsPath(section.id)}
+              to="/settings/$section"
+              params={{ section: section.id }}
             >
               {t(section.titleKey)}
             </Link>
@@ -277,7 +277,7 @@ export function SettingsPage({ user }: { user: AppUser }) {
         </CardDescription>
       </CardHeader>
       <CardContent className="pt-4">
-        <Link className={cn(buttonVariants(), "h-9 w-full sm:w-auto")} to={ADMIN_USERS_PATH}>
+        <Link className={cn(buttonVariants(), "h-9 w-full sm:w-auto")} to="/admin/users">
           {t("managementEntryAction")}
         </Link>
       </CardContent>

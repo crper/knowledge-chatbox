@@ -8,95 +8,165 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 import { isAbortError } from "@/lib/utils";
-import type { ChatMessageItem, ChatSessionContextItem, ChatSourceItem } from "../api/chat";
 import { startChatStream, type ChatStreamAttachmentInput } from "../api/chat-stream";
-import { CHAT_STREAM_EVENT } from "../api/chat-stream-events";
-import type { MessageStatus } from "../constants";
-import type { useChatStreamRun } from "../hooks/use-chat-stream-run";
+import { CHAT_STREAM_EVENT, type ChatStreamEvent } from "../api/chat-stream-events";
+import type { ChatRuntime } from "../runtime/chat-runtime";
+import type { ChatCacheWriter } from "../utils/chat-cache-writer";
 import { finalizeTerminalStreamRun } from "../utils/finalize-terminal-stream-run";
 import { parseChatSourceItem } from "../utils/chat-source";
 import { resolveSubmitErrorMessage } from "../utils/chat-submit-helpers";
+
 type StreamRunTerminalStatus = "failed" | "succeeded";
 
+type FinalizeStreamRunParams = {
+  errorMessage: string | null;
+  reason?: "failed" | "stopped" | "succeeded";
+  runId: number;
+  sessionId: number;
+  status: StreamRunTerminalStatus;
+};
+
+export type StreamLifecycleState = {
+  activeRunId: number | null;
+  receivedTerminalRunEvent: boolean;
+};
+
+type StreamEventHandlerDeps = {
+  cacheWriter: Pick<ChatCacheWriter, "appendStartedUserMessage">;
+  content: string;
+  finalizeStreamRun: (params: FinalizeStreamRunParams) => void;
+  retryOfMessageId?: number;
+  runtime: Pick<ChatRuntime, "addSource" | "appendDelta" | "completeRun" | "failRun" | "startRun">;
+  sessionId: number;
+  t: (key: string) => string;
+};
+
+/**
+ * 处理单个 SSE 流式事件，更新运行时状态并触发缓存写入。
+ * @param event - SSE 事件
+ * @param deps - 事件处理依赖（runtime、cacheWriter、翻译函数等）
+ * @param state - 可变的流生命周期状态，函数会就地修改此对象
+ */
+export function handleStreamEvent(
+  event: ChatStreamEvent,
+  deps: StreamEventHandlerDeps,
+  state: StreamLifecycleState,
+): void {
+  const runId = Number(event.data.run_id ?? 0);
+
+  if (event.event === CHAT_STREAM_EVENT.runStarted) {
+    state.activeRunId = runId;
+    const userMessageId =
+      typeof event.data.user_message_id === "number" ? event.data.user_message_id : null;
+    deps.runtime.startRun({
+      runId,
+      sessionId: Number(event.data.session_id ?? deps.sessionId),
+      assistantMessageId: Number(event.data.assistant_message_id ?? 0),
+      retryOfMessageId: deps.retryOfMessageId ?? null,
+      userMessageId,
+      userContent: deps.content,
+    });
+
+    if (userMessageId !== null && deps.retryOfMessageId == null) {
+      deps.cacheWriter.appendStartedUserMessage({
+        content: deps.content,
+        sessionId: deps.sessionId,
+        userMessageId,
+      });
+    }
+    return;
+  }
+
+  if (event.event === CHAT_STREAM_EVENT.partTextDelta) {
+    deps.runtime.appendDelta(runId, typeof event.data.delta === "string" ? event.data.delta : "");
+    return;
+  }
+
+  if (event.event === CHAT_STREAM_EVENT.partSource && event.data.source) {
+    const source = parseChatSourceItem(event.data.source);
+    if (source !== null) {
+      deps.runtime.addSource(runId, source);
+    }
+    return;
+  }
+
+  if (event.event === CHAT_STREAM_EVENT.runCompleted) {
+    state.receivedTerminalRunEvent = true;
+    deps.runtime.completeRun(runId);
+    deps.finalizeStreamRun({
+      errorMessage: null,
+      reason: "succeeded",
+      runId,
+      sessionId: deps.sessionId,
+      status: "succeeded",
+    });
+    return;
+  }
+
+  if (event.event === CHAT_STREAM_EVENT.runFailed) {
+    state.receivedTerminalRunEvent = true;
+    const errorMessage =
+      typeof event.data.error_message === "string"
+        ? event.data.error_message
+        : deps.t("assistantStreamingInterruptedError");
+    deps.runtime.failRun(runId, errorMessage);
+    deps.finalizeStreamRun({
+      errorMessage,
+      reason: "failed",
+      runId,
+      sessionId: deps.sessionId,
+      status: "failed",
+    });
+  }
+}
+
 type UseChatStreamLifecycleParams = {
-  appendStartedUserMessage: (input: {
-    content: string;
-    sessionId: number;
-    userMessageId: number;
-  }) => void;
+  cacheWriter: Pick<
+    ChatCacheWriter,
+    | "appendStartedUserMessage"
+    | "invalidateSessionArtifacts"
+    | "patchAssistantMessage"
+    | "patchRetriedUserMessage"
+    | "patchSessionContext"
+  >;
   currentSessionIdRef: React.RefObject<number | null>;
-  invalidateMessagesWindow: (sessionId: number) => Promise<void>;
-  patchAssistantMessage: (input: {
-    appendIfMissing?: ChatMessageItem[];
-    assistantMessageId: number;
-    patch: {
-      content?: string;
-      error_message?: string | null;
-      sources_json?: ChatSourceItem[] | null;
-      status?: MessageStatus;
-    };
-    sessionId: number;
-  }) => boolean;
-  patchRetriedUserMessage: (input: { sessionId: number; userMessageId: number }) => void;
-  patchSessionContext: (input: {
-    attachments?: ChatSessionContextItem["attachments"];
-    latestAssistantMessageId?: number;
-    latestAssistantSources?: ChatSessionContextItem["latest_assistant_sources"];
-    sessionId: number;
-  }) => void;
-  streamRun: ReturnType<typeof useChatStreamRun>;
+  runtime: Pick<
+    ChatRuntime,
+    | "addSource"
+    | "appendDelta"
+    | "completeRun"
+    | "failRun"
+    | "getRun"
+    | "pruneRuns"
+    | "startRun"
+    | "stopRun"
+  >;
 };
 
 export function useChatStreamLifecycle({
-  appendStartedUserMessage,
+  cacheWriter,
   currentSessionIdRef,
-  invalidateMessagesWindow,
-  patchAssistantMessage,
-  patchRetriedUserMessage,
-  patchSessionContext,
-  streamRun,
+  runtime,
 }: UseChatStreamLifecycleParams) {
   const { t } = useTranslation(["chat", "common"]);
 
   const finalizeStreamRun = useCallback(
-    ({
-      errorMessage,
-      reason,
-      runId,
-      sessionId,
-      status,
-    }: {
-      errorMessage: string | null;
-      reason?: "failed" | "stopped" | "succeeded";
-      runId: number;
-      sessionId: number;
-      status: StreamRunTerminalStatus;
-    }) => {
+    ({ errorMessage, reason, runId, sessionId, status }: FinalizeStreamRunParams) => {
       void finalizeTerminalStreamRun({
-        currentRun: streamRun.getRun(runId) ?? null,
+        cacheWriter,
+        currentRun: runtime.getRun(runId) ?? null,
         currentSessionId: currentSessionIdRef.current,
         errorMessage,
-        invalidateMessagesWindow,
-        patchAssistantMessage,
-        patchRetriedUserMessage,
-        patchSessionContext,
         reason,
         sessionId,
         status,
       }).then((result) => {
         if (result.shouldPruneRun && result.runId !== null) {
-          streamRun.pruneRuns([result.runId]);
+          runtime.pruneRuns([result.runId]);
         }
       });
     },
-    [
-      currentSessionIdRef,
-      invalidateMessagesWindow,
-      patchAssistantMessage,
-      patchRetriedUserMessage,
-      patchSessionContext,
-      streamRun,
-    ],
+    [cacheWriter, currentSessionIdRef, runtime],
   );
 
   const sendMutation = useMutation({
@@ -115,8 +185,10 @@ export function useChatStreamLifecycle({
       sessionId: number;
       signal?: AbortSignal;
     }) => {
-      let activeRunId: number | null = null;
-      let receivedTerminalRunEvent = false;
+      const streamState: StreamLifecycleState = {
+        activeRunId: null,
+        receivedTerminalRunEvent: false,
+      };
       const stoppedErrorMessage = t("assistantStreamingStoppedError");
 
       try {
@@ -133,87 +205,30 @@ export function useChatStreamLifecycle({
             if (signal?.aborted) {
               return;
             }
-
-            const runId = Number(event.data.run_id ?? 0);
-
-            if (event.event === CHAT_STREAM_EVENT.runStarted) {
-              activeRunId = runId;
-              const userMessageId =
-                typeof event.data.user_message_id === "number" ? event.data.user_message_id : null;
-              streamRun.startRun({
-                runId,
-                sessionId: Number(event.data.session_id ?? sessionId),
-                assistantMessageId: Number(event.data.assistant_message_id ?? 0),
-                retryOfMessageId: retryOfMessageId ?? null,
-                userMessageId,
-                userContent: content,
-              });
-
-              if (userMessageId !== null && retryOfMessageId == null) {
-                appendStartedUserMessage({
-                  content,
-                  sessionId,
-                  userMessageId,
-                });
-              }
-              return;
-            }
-
-            if (event.event === CHAT_STREAM_EVENT.partTextDelta) {
-              streamRun.appendDelta(
-                runId,
-                typeof event.data.delta === "string" ? event.data.delta : "",
-              );
-              return;
-            }
-
-            if (event.event === CHAT_STREAM_EVENT.partSource && event.data.source) {
-              const source = parseChatSourceItem(event.data.source);
-              if (source !== null) {
-                streamRun.addSource(runId, source);
-              }
-              return;
-            }
-
-            if (event.event === CHAT_STREAM_EVENT.runCompleted) {
-              receivedTerminalRunEvent = true;
-              streamRun.completeRun(runId);
-              finalizeStreamRun({
-                errorMessage: null,
-                reason: "succeeded",
-                runId,
+            handleStreamEvent(
+              event,
+              {
+                cacheWriter,
+                content,
+                finalizeStreamRun,
+                retryOfMessageId,
+                runtime,
                 sessionId,
-                status: "succeeded",
-              });
-              return;
-            }
-
-            if (event.event === CHAT_STREAM_EVENT.runFailed) {
-              receivedTerminalRunEvent = true;
-              const errorMessage =
-                typeof event.data.error_message === "string"
-                  ? event.data.error_message
-                  : t("assistantStreamingInterruptedError");
-              streamRun.failRun(runId, errorMessage);
-              finalizeStreamRun({
-                errorMessage,
-                reason: "failed",
-                runId,
-                sessionId,
-                status: "failed",
-              });
-            }
+                t,
+              },
+              streamState,
+            );
           },
         });
       } catch (error) {
         const resolvedErrorMessage = resolveSubmitErrorMessage(error, t("messageSendFailedToast"));
         if (isAbortError(error)) {
-          if (activeRunId !== null && !receivedTerminalRunEvent) {
-            streamRun.stopRun(activeRunId, stoppedErrorMessage);
+          if (streamState.activeRunId !== null && !streamState.receivedTerminalRunEvent) {
+            runtime.stopRun(streamState.activeRunId, stoppedErrorMessage);
             finalizeStreamRun({
               errorMessage: stoppedErrorMessage,
               reason: "stopped",
-              runId: activeRunId,
+              runId: streamState.activeRunId,
               sessionId,
               status: "failed",
             });
@@ -222,8 +237,8 @@ export function useChatStreamLifecycle({
           throw error;
         }
 
-        if (activeRunId !== null && !receivedTerminalRunEvent) {
-          streamRun.failRun(activeRunId, t("assistantStreamingInterruptedError"));
+        if (streamState.activeRunId !== null && !streamState.receivedTerminalRunEvent) {
+          runtime.failRun(streamState.activeRunId, t("assistantStreamingInterruptedError"));
         } else if (resolvedErrorMessage !== stoppedErrorMessage) {
           toast.error(resolvedErrorMessage);
         }

@@ -21,18 +21,21 @@ export function getErrorMessage(error: unknown, fallback: string): string {
 
 /**
  * 判断未知错误是否为主动中断导致的 AbortError。
+ * 优先使用 DOMException 精确匹配，兼容非浏览器运行时。
  */
-export function isAbortError(error: unknown): error is Error {
-  return (
-    typeof error === "object" && error !== null && "name" in error && error.name === "AbortError"
-  );
+export function isAbortError(error: unknown): error is DOMException {
+  return error instanceof DOMException && error.name === "AbortError";
 }
 
 const FILE_SIZE_UNITS = ["B", "KB", "MB", "GB"] as const;
 
 export function formatFileSize(bytes: number | null | undefined) {
-  if (typeof bytes !== "number" || Number.isNaN(bytes) || bytes <= 0) {
+  if (typeof bytes !== "number" || Number.isNaN(bytes) || bytes < 0) {
     return null;
+  }
+
+  if (bytes === 0) {
+    return "0 B";
   }
 
   let value = bytes;

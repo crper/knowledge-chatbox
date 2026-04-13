@@ -3,7 +3,6 @@
  */
 
 import * as React from "react";
-import { cva } from "class-variance-authority";
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 
 import { cn } from "@/lib/utils";
@@ -26,9 +25,8 @@ function DialogClose({ ...props }: React.ComponentProps<typeof DialogPrimitive.C
   return <DialogPrimitive.Close data-slot="dialog-close" {...props} />;
 }
 
-const dialogOverlayVariants = cva(
-  "fixed inset-0 isolate z-50 min-h-dvh bg-background/52 transition-opacity duration-100 supports-[-webkit-touch-callout:none]:absolute supports-backdrop-filter:backdrop-blur-sm data-[ending-style]:opacity-0 data-[starting-style]:opacity-0",
-);
+const DIALOG_OVERLAY_CLASS =
+  "fixed inset-0 isolate z-50 min-h-dvh bg-background/52 transition-opacity duration-100 supports-[-webkit-touch-callout:none]:absolute supports-backdrop-filter:backdrop-blur-sm data-[ending-style]:opacity-0 data-[starting-style]:opacity-0";
 
 function DialogOverlay({
   className,
@@ -37,15 +35,14 @@ function DialogOverlay({
   return (
     <DialogPrimitive.Backdrop
       data-slot="dialog-overlay"
-      className={cn(dialogOverlayVariants(), className)}
+      className={cn(DIALOG_OVERLAY_CLASS, className)}
       {...props}
     />
   );
 }
 
-const dialogContentVariants = cva(
-  "surface-floating fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-2xl p-4 text-sm outline-none transition-[opacity,transform] duration-100 sm:max-w-sm data-[ending-style]:scale-95 data-[ending-style]:opacity-0 data-[starting-style]:scale-95 data-[starting-style]:opacity-0",
-);
+const DIALOG_CONTENT_CLASS =
+  "surface-floating fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-2xl p-4 text-sm outline-none transition-[opacity,transform] duration-100 sm:max-w-sm data-[ending-style]:scale-95 data-[ending-style]:opacity-0 data-[starting-style]:scale-95 data-[starting-style]:opacity-0";
 
 function DialogContent({
   className,
@@ -63,7 +60,7 @@ function DialogContent({
       <DialogPrimitive.Viewport className="fixed inset-0 z-50 overflow-y-auto p-4">
         <DialogPrimitive.Popup
           data-slot="dialog-content"
-          className={cn(dialogContentVariants(), className)}
+          className={cn(DIALOG_CONTENT_CLASS, className)}
           {...props}
         >
           {children}
@@ -161,6 +158,6 @@ export {
   DialogPortal,
   DialogTitle,
   DialogTrigger,
-  dialogOverlayVariants,
-  dialogContentVariants,
+  DIALOG_OVERLAY_CLASS,
+  DIALOG_CONTENT_CLASS,
 };

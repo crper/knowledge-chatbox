@@ -3,8 +3,8 @@
 import orjson
 
 from knowledge_chatbox_api.services.chat.stream_events import (
+    StreamEvent,
     StreamEventEnvelope,
-    StreamEventName,
     StreamEventPayload,
 )
 
@@ -14,13 +14,17 @@ class ChatStreamPresenter:
 
     def event(
         self,
-        name: StreamEventName,
-        data: StreamEventPayload,
+        name: StreamEvent,
+        data: StreamEventPayload | dict[str, object],
     ) -> StreamEventEnvelope:
-        return {"event": name, "data": data}
+        if isinstance(data, StreamEventPayload):
+            payload = data
+        else:
+            payload = StreamEventPayload.model_validate(data)
+        return StreamEventEnvelope(event=name, data=payload)
 
     def to_sse(self, event: StreamEventEnvelope) -> dict[str, str]:
         return {
-            "event": event["event"],
-            "data": orjson.dumps(event["data"]).decode("utf-8"),
+            "event": event.event,
+            "data": orjson.dumps(event.data.model_dump(exclude_none=True)).decode("utf-8"),
         }

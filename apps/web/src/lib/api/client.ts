@@ -2,6 +2,7 @@
  * @file 全局 API 能力模块。
  */
 
+import { isAbortError } from "@/lib/utils";
 import {
   classifyApiError,
   extractErrorDetail,
@@ -11,23 +12,14 @@ import {
 import { ApiRequestError } from "./api-request-error";
 import { expireSessionIfStaleAccessToken } from "@/lib/auth/session-manager";
 import { getAccessToken } from "@/lib/auth/token-store";
-import { env } from "@/lib/config/env";
 
 const responseAuthTokenSnapshots = new WeakMap<Response, string | null>();
-
-export function buildApiUrl(path: string, apiBaseUrl: string = env.apiBaseUrl) {
-  const normalizedBaseUrl = apiBaseUrl.endsWith("/") ? apiBaseUrl.slice(0, -1) : apiBaseUrl;
-  if (!normalizedBaseUrl) {
-    return path;
-  }
-  return `${normalizedBaseUrl}${path}`;
-}
 
 export function setResponseAuthTokenSnapshot(response: Response, accessToken: string | null) {
   responseAuthTokenSnapshots.set(response, accessToken);
 }
 
-export function getResponseAuthTokenSnapshot(response: Response) {
+export function getResponseAuthTokenSnapshot(response: Response): string | null {
   return responseAuthTokenSnapshots.get(response) ?? null;
 }
 
@@ -40,38 +32,50 @@ type ApiEnvelope<T> = {
   error: { code?: string; message?: string } | null;
 };
 
-/**
- * 描述当前登录用户的数据结构。
- */
-export type AppUser = {
-  id: number;
-  username: string;
-  role: "admin" | "user";
-  status: "active" | "disabled";
-  theme_preference: "light" | "dark" | "system";
-};
+import type { components } from "@/lib/api/generated/schema";
+
+type AuthUserRead = components["schemas"]["AuthUserRead"];
+
+export type AppUser = Pick<
+  AuthUserRead,
+  "id" | "username" | "role" | "status" | "theme_preference"
+>;
 
 export { ApiRequestError } from "./api-request-error";
 
+/**
+ * 从原始响应体解析 Envelope 结构，成功时返回 data，失败时抛出 ApiRequestError。
+ */
+export function parseEnvelopeFromRawBody<T>(rawBody: string, response: Response): T {
+  let parsedBody: unknown = null;
+
+  if (rawBody.trim()) {
+    try {
+      parsedBody = JSON.parse(rawBody) as unknown;
+    } catch {
+      const detail = extractErrorDetail(rawBody, null, response);
+      throw new ApiRequestError(getUserFacingErrorMessage(detail, response), {
+        code: detail.code,
+        status: response.status,
+      });
+    }
+  }
+
+  const payload = parsedBody as ApiEnvelope<T> | undefined;
+
+  if (response.ok && payload?.success && payload.data !== null && payload.data !== undefined) {
+    return payload.data;
+  }
+
+  const detail = extractErrorDetail(rawBody, parsedBody, response);
+  throw new ApiRequestError(getUserFacingErrorMessage(detail, response), {
+    code: detail.code,
+    status: response.status,
+  });
+}
+
 export function getApiErrorMessage(error: unknown) {
   if (error instanceof ApiRequestError) {
-    const detail =
-      error.code !== undefined
-        ? {
-            code: error.code,
-            message: error.message,
-            source: "status" as const,
-          }
-        : null;
-    if (detail) {
-      return getUserFacingErrorMessage(
-        detail,
-        new Response(null, {
-          status: error.status,
-        }),
-      );
-    }
-
     if (error.message.trim()) {
       return error.message.trim();
     }
@@ -82,16 +86,6 @@ export function getApiErrorMessage(error: unknown) {
   }
 
   return translateCommonErrorMessage("apiErrorGeneric");
-}
-
-function isAbortError(error: unknown): error is Error {
-  return (
-    typeof error === "object" && error !== null && "name" in error && error.name === "AbortError"
-  );
-}
-
-function isNetworkError(error: unknown): error is TypeError {
-  return error instanceof TypeError;
 }
 
 type OpenApiEnvelopeResult = Promise<{
@@ -118,7 +112,7 @@ export async function openapiRequestRequired<T>(request: OpenApiEnvelopeResult):
       });
     }
 
-    if (isNetworkError(error)) {
+    if (error instanceof TypeError) {
       throw new ApiRequestError(translateCommonErrorMessage("apiErrorServiceUnavailable"), {
         kind: "network",
         retryable: true,

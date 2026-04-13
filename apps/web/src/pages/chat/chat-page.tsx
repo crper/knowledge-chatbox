@@ -29,22 +29,20 @@ import { useChatWorkspace } from "@/features/chat/hooks/use-chat-workspace";
 import type { ChatMessageItem } from "@/features/chat/api/chat";
 import { parseChatSessionId } from "@/lib/routes";
 import { resolveSessionTitle } from "@/features/chat/utils/session-title";
-import { getProviderLabel } from "@/lib/provider-display";
+import { getProviderLabel, formatProviderProfile } from "@/lib/provider-display";
 import { queryKeys } from "@/lib/api/query-keys";
-import { useNavigate, useParams } from "@/lib/app-router";
-import { buildSettingsPath, KNOWLEDGE_INDEX_PATH } from "@/lib/routes";
+import { useNavigate, useParams } from "@tanstack/react-router";
 
 function formatActiveModelLabel(profile: ChatProfileItem | undefined, tSettings: TFunction) {
   if (!profile || !profile.configured) {
     return null;
   }
 
-  const providerLabel = getProviderLabel(profile.provider, tSettings);
   if (!profile.model) {
-    return providerLabel;
+    return getProviderLabel(profile.provider, tSettings);
   }
 
-  return `${providerLabel} / ${profile.model}`;
+  return formatProviderProfile(profile.provider, profile.model, tSettings);
 }
 
 /**
@@ -55,7 +53,7 @@ export function ChatPage() {
   const { t: tSettings } = useTranslation("settings");
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { sessionId: sessionIdParam } = useParams<{ sessionId?: string }>();
+  const { sessionId: sessionIdParam } = useParams({ strict: false }) as { sessionId?: string };
   const routeSessionId = parseChatSessionId(sessionIdParam);
   const chatProfileQuery = useQuery(chatProfileQueryOptions());
   const updateSessionMutation = useMutation({
@@ -108,11 +106,11 @@ export function ChatPage() {
   );
 
   const handleNavigateToSettings = useCallback(() => {
-    void navigate(buildSettingsPath("providers"));
+    void navigate({ to: "/settings/$section", params: { section: "providers" } });
   }, [navigate]);
 
   const handleNavigateToKnowledge = useCallback(() => {
-    void navigate(KNOWLEDGE_INDEX_PATH);
+    void navigate({ to: "/knowledge" });
   }, [navigate]);
 
   const handleDraftChange = useCallback(
@@ -209,17 +207,27 @@ export function ChatPage() {
 
       <div className="flex min-h-0 flex-1 flex-col px-5 pb-3 sm:px-6 sm:pb-4">
         {hasMessages ? (
-          <ChatMessageViewport
-            key={activeSessionId ?? "empty"}
-            hasOlderMessages={hasOlderMessages}
-            isLoadingOlderMessages={isLoadingOlderMessages}
-            messages={displayMessages}
-            onDeleteFailed={handleDeleteFailed}
-            onEditFailed={editFailedMessage}
-            onLoadOlderMessages={loadOlderMessages}
-            onRetry={retryMessage}
-            scrollToLatestRequestKey={scrollToLatestRequestKey}
-          />
+          <div className="flex min-h-0 flex-1 flex-col">
+            <ChatMessageViewport
+              key={activeSessionId ?? "empty"}
+              hasOlderMessages={hasOlderMessages}
+              isLoadingOlderMessages={isLoadingOlderMessages}
+              messages={displayMessages}
+              onDeleteFailed={handleDeleteFailed}
+              onEditFailed={editFailedMessage}
+              onLoadOlderMessages={loadOlderMessages}
+              onRetry={retryMessage}
+              scrollToLatestRequestKey={scrollToLatestRequestKey}
+            />
+            {submitPending ? (
+              <div
+                className="page-content-rail mx-auto mt-3 w-full px-2 pb-1 text-ui-subtle text-muted-foreground/72 sm:px-3"
+                data-testid="chat-streaming-footer-hint"
+              >
+                {t("sendingInteractiveHint")}
+              </div>
+            ) : null}
+          </div>
         ) : shouldShowPendingEmptyState ? (
           <div className="flex min-h-0 flex-1 items-center">
             <div className="page-content-rail workspace-surface mx-auto rounded-3xl p-5 sm:p-6">

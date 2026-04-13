@@ -3,6 +3,7 @@
  */
 
 import { create } from "zustand";
+import { devtools } from "zustand/middleware";
 
 type SessionStatus = "bootstrapping" | "authenticated" | "anonymous" | "expired" | "degraded";
 
@@ -15,11 +16,13 @@ type SessionState = {
 /**
  * 集中管理前端会话状态。
  */
-export const useSessionStore = create<SessionState>((set) => ({
-  status: "bootstrapping",
-  reset: () =>
-    set({
+export const useSessionStore = create<SessionState>()(
+  devtools(
+    (set) => ({
       status: "bootstrapping",
+      reset: () => set({ status: "bootstrapping" }, false, "reset"),
+      setStatus: (status) => set({ status }, false, `setStatus/${status}`),
     }),
-  setStatus: (status) => set({ status }),
-}));
+    { name: "SessionStore" },
+  ),
+);

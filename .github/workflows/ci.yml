@@ -17,9 +17,13 @@ jobs:
       run:
         working-directory: apps/api
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
-      - uses: astral-sh/setup-uv@v7
+      - uses: astral-sh/setup-uv@v5
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: apps/api/.python-version
 
       - name: Install dependencies
         run: uv sync --all-groups
@@ -30,6 +34,12 @@ jobs:
       - name: Format check (ruff format)
         run: uv run ruff format --check
 
+      - name: Type check (basedpyright)
+        run: uv run basedpyright
+
+      - name: Type check tests (basedpyright)
+        run: uv run basedpyright --project pyproject.test.toml
+
       - name: Test
         run: uv run --group dev python -m pytest
         env:
@@ -38,49 +48,42 @@ jobs:
 
   web:
     runs-on: ubuntu-latest
-    env:
-      JWT_SECRET_KEY: "test-jwt-secret-key-for-ci-32chars"
-      INITIAL_ADMIN_PASSWORD: "CiTest123456"
     defaults:
       run:
         working-directory: apps/web
     steps:
       - uses: actions/checkout@v6
-
-      - uses: astral-sh/setup-uv@v7
-
-      - uses: pnpm/action-setup@v6
-
-      - uses: actions/setup-node@v6
+      - uses: astral-sh/setup-uv@v5
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
         with:
-          node-version-file: apps/web/.node-version
-          cache: pnpm
-          cache-dependency-path: apps/web/pnpm-lock.yaml
-
-      - name: Install Vite+
-        run: npm install -g vite-plus@0.1.16
-
-      - name: Install dependencies
-        run: vp install
+          node-version-file: .node-version
+          working-directory: apps/web
+          cache: true
+          run-install: true
 
       - name: OpenAPI schema check
-        run: ./node_modules/.bin/vp run api:check
+        run: vp run api:check
 
       - name: Lint + type check
-        run: ./node_modules/.bin/vp check
+        run: vp check --fix
 
       - name: Test
-        run: ./node_modules/.bin/vp test
+        run: vp test
 
       - name: Build
-        run: ./node_modules/.bin/vp build
+        run: vp build
 
   repo-surface:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
-      - uses: astral-sh/setup-uv@v7
+      - uses: astral-sh/setup-uv@v5
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: apps/api/.python-version
 
       - name: Repo surface check
         run: uv run --project apps/api python scripts/check_repo_surface.py

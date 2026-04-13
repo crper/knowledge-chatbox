@@ -5,6 +5,7 @@
 import { infiniteQueryOptions, queryOptions, skipToken } from "@tanstack/react-query";
 
 import { queryKeys } from "@/lib/api/query-keys";
+import { fetchProtectedFile } from "@/lib/api/protected-file";
 import {
   getChatMessagesWindow,
   getChatProfile,
@@ -77,5 +78,18 @@ export function chatMessagesWindowInfiniteQueryOptions(sessionId: number | null)
       return lastPage[0]?.id ?? undefined;
     },
     staleTime: CHAT_MESSAGES_STALE_TIME_MS,
+  });
+}
+
+export function imageViewerRemoteQueryOptions(url: string | null | undefined, enabled: boolean) {
+  return queryOptions({
+    queryKey: queryKeys.chat.imageViewerRemote(url),
+    queryFn: async () => {
+      const blob = await (await fetchProtectedFile(url!)).blob();
+      return URL.createObjectURL(blob);
+    },
+    enabled: enabled && url != null,
+    staleTime: Infinity,
+    gcTime: 0,
   });
 }

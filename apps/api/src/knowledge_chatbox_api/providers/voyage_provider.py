@@ -1,9 +1,10 @@
 """Voyage embedding adapter."""
 
+from __future__ import annotations
+
 import httpx
 
 from knowledge_chatbox_api.providers.base import (
-    BaseEmbeddingAdapter,
     ClientCacheMixin,
     EmbeddingSettings,
     ProviderHealthResult,
@@ -15,20 +16,21 @@ from knowledge_chatbox_api.providers.ollama_url import normalize_provider_base_u
 DEFAULT_VOYAGE_BASE_URL = "https://api.voyageai.com/v1"
 
 
-class VoyageEmbeddingAdapter(ClientCacheMixin, BaseEmbeddingAdapter):
+class VoyageEmbeddingAdapter(ClientCacheMixin):
     """Voyage embedding 适配器。"""
 
-    def __init__(self, client_factory=None) -> None:
+    def __init__(self, client_factory: type | None = None) -> None:
         super().__init__()
         self.client_factory = client_factory or httpx.Client
 
-    def _client(self, settings: ProviderSettings):
+    def _client(self, settings: ProviderSettings) -> httpx.Client:
         profile = settings.provider_profiles.voyage
-        base_url = normalize_provider_base_url(
-            profile.base_url, default=DEFAULT_VOYAGE_BASE_URL, ensure_v1_suffix=True
+        normalized_base_url = normalize_provider_base_url(
+            profile.base_url,
+            default=DEFAULT_VOYAGE_BASE_URL,
+            ensure_v1_suffix=True,
         )
-        if base_url is None:
-            base_url = DEFAULT_VOYAGE_BASE_URL
+        base_url = normalized_base_url or DEFAULT_VOYAGE_BASE_URL
         api_key = profile.api_key or ""
         key = (base_url, api_key)
 
@@ -49,7 +51,7 @@ class VoyageEmbeddingAdapter(ClientCacheMixin, BaseEmbeddingAdapter):
         response = self._client(settings).post(
             "/embeddings",
             json={"input": texts, "model": settings.embedding_route.model},
-            timeout=self._request_timeout(settings),
+            timeout=float(settings.provider_timeout_seconds),
         )
         response.raise_for_status()
         payload = response.json()

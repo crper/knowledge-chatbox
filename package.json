@@ -1,7 +1,0 @@
-{
-  "type": "module",
-  "dependencies": {
-    "zod": "^4.3.6"
-  },
-  "packageManager": "pnpm@10.33.0"
-}

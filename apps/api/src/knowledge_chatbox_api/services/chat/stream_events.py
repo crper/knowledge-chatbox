@@ -1,7 +1,12 @@
 """聊天流式事件名称常量。"""
 
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any, TypedDict
+from typing import TYPE_CHECKING, Any
+
+from pydantic import BaseModel, ConfigDict
+
+from knowledge_chatbox_api.schemas.chat import UsageData
+from knowledge_chatbox_api.services.chat.workflow.output import WorkflowSource
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -29,14 +34,39 @@ class StreamEvent(StrEnum):
     RUN_FAILED = "run.failed"
 
 
-type StreamEventName = StreamEvent
+class StreamEventPayload(BaseModel):
+    """流式事件载荷。"""
 
-type StreamEventPayload = dict[str, Any]
-type StreamEventBatchItem = tuple[StreamEventName, StreamEventPayload]
+    model_config = ConfigDict(extra="allow")
+
+    run_id: int | None = None
+    assistant_message_id: int | None = None
+    delta: str | None = None
+    error_message: str | None = None
+    usage: UsageData | None = None
+    status: str | None = None
+    session_id: int | None = None
+    user_message_id: int | None = None
+    role: str | None = None
+    tool_name: str | None = None
+    input: Any = None
+    sources_count: int | None = None
+    source: WorkflowSource | None = None
 
 
-class StreamEventEnvelope(TypedDict):
-    event: StreamEventName
+class StreamEventBatchItem(BaseModel):
+    """流式事件批次项。"""
+
+    model_config = ConfigDict(frozen=True)
+
+    event_name: StreamEvent
+    payload: StreamEventPayload
+
+
+class StreamEventEnvelope(BaseModel):
+    """流式事件信封。"""
+
+    event: StreamEvent
     data: StreamEventPayload
 
 
@@ -54,16 +84,21 @@ def append_event_batch(
 
     next_seq: int = current_seq
     presented_events: list[StreamEventEnvelope] = []
-    for event_name, data in events:
+    for batch_item in events:
         next_seq += 1
         event_repository.append_event(
             run_id=run_id,
             seq=next_seq,
-            event_type=event_name,
-            payload_json=data,
+            event_type=batch_item.event_name,
+            payload_json=batch_item.payload.model_dump(exclude_none=True),
             flush=False,
         )
-        presented_events.append(presenter.event(event_name, data))
+        presented_events.append(
+            presenter.event(
+                batch_item.event_name,
+                batch_item.payload.model_dump(exclude_none=True),
+            )
+        )
 
     session.commit()
     return next_seq, presented_events

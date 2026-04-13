@@ -2,7 +2,9 @@
  * @file 资源相关界面组件模块。
  */
 
+import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
+import { capitalize } from "es-toolkit";
 
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -13,11 +15,11 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import type { KnowledgeDocument } from "../api/documents";
+import { documentVersionsQueryOptions, type KnowledgeDocument } from "../api/documents-query";
 
 type VersionDrawerProps = {
+  documentId: number | null;
   open: boolean;
-  versions: KnowledgeDocument[];
   onClose: () => void;
 };
 
@@ -37,9 +39,9 @@ export function DocumentVersionList({ versions }: { versions: KnowledgeDocument[
         ) : (
           versions.map((version) => (
             <div key={version.id} className="surface-light rounded-2xl px-4 py-3">
-              <p className="font-medium">{t("versionValue", { version: version.version })}</p>
+              <p className="font-medium">{t("versionValue", { version: version.revision_no })}</p>
               <p className="mt-1 text-sm text-muted-foreground">
-                {t(`status${version.status.charAt(0).toUpperCase()}${version.status.slice(1)}`)}
+                {t(`status${capitalize(version.ingest_status)}`)}
               </p>
             </div>
           ))
@@ -52,8 +54,13 @@ export function DocumentVersionList({ versions }: { versions: KnowledgeDocument[
 /**
  * 渲染版本抽屉。
  */
-export function VersionDrawer({ open, versions, onClose }: VersionDrawerProps) {
+export function VersionDrawer({ documentId, open, onClose }: VersionDrawerProps) {
   const { t } = useTranslation("knowledge");
+  const versionsQuery = useQuery(
+    documentVersionsQueryOptions(documentId ?? -1, open && documentId !== null),
+  );
+
+  const versions = versionsQuery.data ?? [];
 
   return (
     <Sheet onOpenChange={(nextOpen) => !nextOpen && onClose()} open={open}>
@@ -68,7 +75,13 @@ export function VersionDrawer({ open, versions, onClose }: VersionDrawerProps) {
           <SheetDescription>{t("versionHistoryDescription")}</SheetDescription>
         </SheetHeader>
 
-        <DocumentVersionList versions={versions} />
+        {versionsQuery.isPending ? (
+          <div className="p-4 text-sm text-muted-foreground">{t("loading")}</div>
+        ) : versionsQuery.isError ? (
+          <div className="p-4 text-sm text-muted-foreground">{t("previewLoadFailed")}</div>
+        ) : (
+          <DocumentVersionList versions={versions} />
+        )}
       </SheetContent>
     </Sheet>
   );

@@ -1,39 +1,21 @@
-/**
- * @file 日期处理工具模块。
- */
-
-import { isValid, parseISO } from "date-fns";
+import { format, isValid, toDate } from "date-fns";
+import type { Locale } from "date-fns/locale";
+import { zhCN } from "date-fns/locale";
+import { useTranslation } from "react-i18next";
 
 type DateInput = Date | string | number;
 
-function toDate(date: DateInput): Date | null {
-  if (date instanceof Date) {
-    return date;
-  }
-
-  if (typeof date === "number") {
-    return new Date(date);
-  }
-
-  if (typeof date === "string") {
-    const parsed = parseISO(date);
-    return isValid(parsed) ? parsed : null;
-  }
-
-  return null;
+export function resolveDateLocale(language: string | undefined): Locale | undefined {
+  return language === "zh-CN" ? zhCN : undefined;
 }
 
-export function formatDateTime(date: DateInput, locale?: string): string {
-  const dateObj = toDate(date);
-  if (!dateObj || !isValid(dateObj)) {
-    return "";
-  }
+export function useDateLocale(): Locale | undefined {
+  const { i18n } = useTranslation();
+  return resolveDateLocale(i18n.resolvedLanguage);
+}
 
-  return new Intl.DateTimeFormat(locale, {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(dateObj);
+export function formatDateTime(date: DateInput, locale?: Locale): string {
+  const d = toDate(date);
+  if (!isValid(d)) return "";
+  return format(d, "yyyy/MM/dd HH:mm", { locale });
 }

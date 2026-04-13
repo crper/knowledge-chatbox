@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any
 import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
+from tests.fixtures.helpers import create_chat_session, login_as_admin
 
 from knowledge_chatbox_api.models.auth import User
 from knowledge_chatbox_api.models.document import Document, DocumentRevision
@@ -14,22 +15,6 @@ from knowledge_chatbox_api.services.chat.workflow.output import ChatWorkflowResu
 
 if TYPE_CHECKING:
     from fastapi.testclient import TestClient
-
-
-def login_as_admin(api_client: TestClient) -> None:
-    response = api_client.post(
-        "/api/auth/login",
-        json={"username": "admin", "password": "Admin123456"},
-    )
-
-    assert response.status_code == 200
-
-
-def create_chat_session(api_client: TestClient, title: str = "上下文会话") -> int:
-    response = api_client.post("/api/chat/sessions", json={"title": title})
-
-    assert response.status_code == 201
-    return response.json()["data"]["id"]
 
 
 def seed_document_revision(

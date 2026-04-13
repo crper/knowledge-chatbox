@@ -8,50 +8,79 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any
 
+from pydantic import BaseModel, ConfigDict, Field
 
-class DummyRoute:
+from knowledge_chatbox_api.models.enums import (
+    EmbeddingProvider,
+    ReasoningMode,
+    ResponseProvider,
+    VisionProvider,
+)
+from knowledge_chatbox_api.schemas.settings import (
+    AnthropicProfile,
+    EmbeddingRouteConfig,
+    OllamaProfile,
+    OpenAIProfile,
+    ProviderProfiles,
+    ProviderRuntimeSettings,
+    ResponseRouteConfig,
+    VisionRouteConfig,
+)
+
+
+class DummyRoute(BaseModel):
     """模拟路由配置。"""
 
-    def __init__(self, provider: str, model: str) -> None:
-        self.provider = provider
-        self.model = model
+    provider: str
+    model: str
 
 
-class DummyProfiles:
-    """模拟 Provider 配置。"""
-
-    class OpenAI:
-        api_key = "sk-openai"
-        base_url = "https://api.openai.com/v1"
-
-    class Anthropic:
-        api_key = "sk-ant"
-        base_url = "https://api.anthropic.com"
-
-    class Ollama:
-        base_url = "http://localhost:11434"
-
-    openai = OpenAI()
-    anthropic = Anthropic()
-    ollama = Ollama()
-
-
-class DummyRuntimeSettings:
+class DummyRuntimeSettings(ProviderRuntimeSettings):
     """模拟运行时设置。"""
 
-    provider_profiles = DummyProfiles()
-    response_route = DummyRoute("openai", "gpt-5.4")
-    reasoning_mode = "default"
-    provider_timeout_seconds = 60
-    system_prompt = None
+    model_config = ConfigDict(frozen=False)
+
+    provider_profiles: ProviderProfiles = Field(
+        default_factory=lambda: ProviderProfiles(
+            openai=OpenAIProfile(
+                api_key="sk-openai",
+                base_url="https://api.openai.com/v1",
+            ),
+            anthropic=AnthropicProfile(
+                api_key="sk-ant",
+                base_url="https://api.anthropic.com",
+            ),
+            ollama=OllamaProfile(base_url="http://localhost:11434"),
+        ),
+    )
+    response_route: ResponseRouteConfig = Field(
+        default_factory=lambda: ResponseRouteConfig(
+            provider=ResponseProvider.OPENAI,
+            model="gpt-5.4",
+        ),
+    )
+    embedding_route: EmbeddingRouteConfig = Field(
+        default_factory=lambda: EmbeddingRouteConfig(
+            provider=EmbeddingProvider.OPENAI,
+            model="text-embedding-3-small",
+        ),
+    )
+    vision_route: VisionRouteConfig = Field(
+        default_factory=lambda: VisionRouteConfig(
+            provider=VisionProvider.OPENAI,
+            model="gpt-4o",
+        ),
+    )
+    reasoning_mode: ReasoningMode = ReasoningMode.DEFAULT
+    provider_timeout_seconds: int = 60
+    system_prompt: str | None = None
 
 
-class DummyMessage:
+class DummyMessage(BaseModel):
     """模拟聊天消息。"""
 
-    def __init__(self, role: str, content: str) -> None:
-        self.role = role
-        self.content = content
+    role: str
+    content: str
 
 
 class DummyChatRepository:

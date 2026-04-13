@@ -97,3 +97,30 @@ class ProviderName(StrEnum):
     ANTHROPIC = "anthropic"
     VOYAGE = "voyage"
     OLLAMA = "ollama"
+
+
+class ResponseProvider(StrEnum):
+    OPENAI = "openai"
+    ANTHROPIC = "anthropic"
+    OLLAMA = "ollama"
+
+
+class EmbeddingProvider(StrEnum):
+    OPENAI = "openai"
+    VOYAGE = "voyage"
+    OLLAMA = "ollama"
+
+
+class VisionProvider(StrEnum):
+    OPENAI = "openai"
+    ANTHROPIC = "anthropic"
+    OLLAMA = "ollama"
+
+
+class OperationKind(StrEnum):
+    CHAT_STREAM = "chat_stream"
+    CHAT_SYNC = "chat_sync"
+    DOCUMENT_UPLOAD = "document_upload"
+    DOCUMENT_BACKGROUND_INGESTION = "document_background_ingestion"
+    INDEX_REBUILD = "index_rebuild"
+    COMPENSATION = "compensation"

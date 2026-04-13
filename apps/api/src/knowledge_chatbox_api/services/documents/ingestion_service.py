@@ -1,17 +1,21 @@
 """Document ingestion workflow with one commit per user-facing use case."""
 
-from dataclasses import dataclass
 from pathlib import Path
 from time import perf_counter
-from typing import Any
 
+from pydantic import BaseModel, ConfigDict
+from sqlalchemy.orm import Session
+
+from knowledge_chatbox_api.core.config import Settings
 from knowledge_chatbox_api.core.logging import get_logger
 from knowledge_chatbox_api.core.observation import (
     OPERATION_KIND_DOCUMENT_BACKGROUND_INGESTION,
     OPERATION_KIND_DOCUMENT_UPLOAD,
 )
+from knowledge_chatbox_api.models.auth import User
 from knowledge_chatbox_api.models.document import Document, DocumentRevision
 from knowledge_chatbox_api.models.enums import IndexRebuildStatus, IngestStatus
+from knowledge_chatbox_api.models.settings import AppSettings
 from knowledge_chatbox_api.providers.factory import (
     build_embedding_adapter,
     build_vision_adapter,
@@ -34,20 +38,21 @@ from knowledge_chatbox_api.services.documents.indexing_service import IndexingSe
 from knowledge_chatbox_api.services.documents.normalization_service import NormalizationService
 from knowledge_chatbox_api.services.documents.query_service import DocumentQueryService
 from knowledge_chatbox_api.services.documents.versioning_service import VersioningService
-from knowledge_chatbox_api.services.settings.runtime_settings import build_embedding_settings
+from knowledge_chatbox_api.services.settings.runtime_settings import build_runtime_settings
 from knowledge_chatbox_api.services.settings.settings_service import SettingsService
 from knowledge_chatbox_api.utils.chroma import get_chroma_store
 from knowledge_chatbox_api.utils.document_types import (
-    CONTENT_TYPE_TO_FILE_TYPE,
     derive_section_title,
+    guess_file_type_from_content_type,
 )
 from knowledge_chatbox_api.utils.files import PersistedUpload
 from knowledge_chatbox_api.utils.timing import elapsed_ms, utc_now
 
 
-@dataclass
-class UploadDocumentResult:
-    """Describe one upload outcome for the API layer."""
+class UploadDocumentResult(BaseModel):
+    """描述一次上传结果。"""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     background_processing: bool
     deduplicated: bool
@@ -55,17 +60,19 @@ class UploadDocumentResult:
     revision: DocumentRevision
 
 
-@dataclass(frozen=True)
-class IndexingTarget:
+class IndexingTarget(BaseModel):
     """描述一次索引写入的目标 generation。"""
+
+    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
 
     generation: int
     settings: ProviderRuntimeSettings
 
 
-@dataclass(frozen=True)
-class IngestionMetrics:
+class IngestionMetrics(BaseModel):
     """描述一次 ingestion 的阶段耗时。"""
+
+    model_config = ConfigDict(frozen=True)
 
     index_latency_ms: int
     normalize_latency_ms: int
@@ -81,7 +88,7 @@ logger = get_logger(__name__)
 class IngestionService:
     """Coordinate file save, normalization, indexing, and cleanup for documents."""
 
-    def __init__(self, session, app_settings) -> None:
+    def __init__(self, session: Session, app_settings: Settings) -> None:
         self.session = session
         self.app_settings = app_settings
         self.document_repository = DocumentRepository(session)
@@ -94,7 +101,7 @@ class IngestionService:
 
     def upload_document(
         self,
-        actor,
+        actor: User,
         filename: str,
         upload_artifact: PersistedUpload,
         content_type: str,
@@ -116,48 +123,18 @@ class IngestionService:
             )
             document_entity = versioning_result.document
             document_version = versioning_result.version
+
             if versioning_result.duplicate_content:
-                self._remove_file(str(upload_artifact.path))
-                self.session.refresh(document_version)
-                logger.info(
-                    "document_upload_completed",
-                    filename=filename,
-                    file_type=file_type,
-                    document_id=document_entity.id,
-                    document_revision_id=document_version.id,
-                    deduplicated=True,
-                    background_processing=False,
-                    operation_kind=OPERATION_KIND_DOCUMENT_UPLOAD,
+                return self._upload_duplicate(
+                    filename, file_type, upload_artifact, document_entity, document_version
                 )
-                return UploadDocumentResult(
-                    background_processing=False,
-                    deduplicated=True,
-                    document=document_entity,
-                    revision=document_version,
-                )
+
             document_version.lifecycle_status = IngestStatus.PROCESSING
             document_version.error_message = None
             document_version.indexed_at = None
 
             if file_type in IMAGE_DOCUMENT_FILE_TYPES:
-                self.session.commit()
-                self.session.refresh(document_version)
-                logger.info(
-                    "document_upload_completed",
-                    filename=filename,
-                    file_type=file_type,
-                    document_id=document_entity.id,
-                    document_revision_id=document_version.id,
-                    deduplicated=False,
-                    background_processing=True,
-                    operation_kind=OPERATION_KIND_DOCUMENT_UPLOAD,
-                )
-                return UploadDocumentResult(
-                    background_processing=True,
-                    deduplicated=False,
-                    document=document_entity,
-                    revision=document_version,
-                )
+                return self._upload_image(filename, file_type, document_entity, document_version)
 
             normalized_path, indexing_targets, ingestion_metrics = self._ingest_revision(
                 document_version=document_version,
@@ -206,6 +183,61 @@ class IngestionService:
                 operation_kind=OPERATION_KIND_DOCUMENT_UPLOAD,
             )
             raise
+
+    def _upload_duplicate(
+        self,
+        filename: str,
+        file_type: str,
+        upload_artifact: PersistedUpload,
+        document_entity: Document,
+        document_version: DocumentRevision,
+    ) -> UploadDocumentResult:
+        """处理重复内容上传：移除临时文件，返回去重结果。"""
+        self._remove_file(str(upload_artifact.path))
+        self.session.refresh(document_version)
+        logger.info(
+            "document_upload_completed",
+            filename=filename,
+            file_type=file_type,
+            document_id=document_entity.id,
+            document_revision_id=document_version.id,
+            deduplicated=True,
+            background_processing=False,
+            operation_kind=OPERATION_KIND_DOCUMENT_UPLOAD,
+        )
+        return UploadDocumentResult(
+            background_processing=False,
+            deduplicated=True,
+            document=document_entity,
+            revision=document_version,
+        )
+
+    def _upload_image(
+        self,
+        filename: str,
+        file_type: str,
+        document_entity: Document,
+        document_version: DocumentRevision,
+    ) -> UploadDocumentResult:
+        """处理图片上传：标记为 PROCESSING 并返回后台处理结果。"""
+        self.session.commit()
+        self.session.refresh(document_version)
+        logger.info(
+            "document_upload_completed",
+            filename=filename,
+            file_type=file_type,
+            document_id=document_entity.id,
+            document_revision_id=document_version.id,
+            deduplicated=False,
+            background_processing=True,
+            operation_kind=OPERATION_KIND_DOCUMENT_UPLOAD,
+        )
+        return UploadDocumentResult(
+            background_processing=True,
+            deduplicated=False,
+            document=document_entity,
+            revision=document_version,
+        )
 
     def complete_document_ingestion(self, revision_id: int) -> DocumentRevision:
         document_version = self.document_repository.get_by_id(revision_id)
@@ -263,26 +295,30 @@ class IngestionService:
             )
             self._commit_revision_failed(
                 failed_revision,
-                error_message=self._background_ingestion_error_message(failed_revision.file_type),
+                error_message=(
+                    "Image processing failed."
+                    if failed_revision.file_type in IMAGE_DOCUMENT_FILE_TYPES
+                    else "Document processing failed."
+                ),
             )
             if normalized_path:
                 self._remove_file(normalized_path)
             self.session.refresh(failed_revision)
             return failed_revision
 
-    def list_documents(self, actor) -> list[tuple[Document, DocumentRevision]]:
+    def list_documents(self, actor: User) -> list[tuple[Document, DocumentRevision]]:
         return self.query_service.list_documents(actor)
 
-    def get_document(self, actor, document_id: int) -> Document | None:
+    def get_document(self, actor: User, document_id: int) -> Document | None:
         return self.query_service.get_document(actor, document_id)
 
-    def get_document_revision(self, actor, revision_id: int) -> DocumentRevision | None:
+    def get_document_revision(self, actor: User, revision_id: int) -> DocumentRevision | None:
         return self.query_service.get_document_revision(actor, revision_id)
 
-    def list_versions(self, actor, document_id: int) -> list[DocumentRevision]:
+    def list_versions(self, actor: User, document_id: int) -> list[DocumentRevision]:
         return self.query_service.list_versions(actor, document_id)
 
-    def reindex_document(self, actor, document_id: int) -> DocumentRevision:
+    def reindex_document(self, actor: User, document_id: int) -> DocumentRevision:
         document = self.query_service.require_document(actor, document_id)
         document_version = self.document_repository.get_latest_revision(document)
         if document_version is None:
@@ -310,13 +346,13 @@ class IngestionService:
             )
             raise
 
-    def delete_document(self, actor, document_id: int) -> None:
+    def delete_document(self, actor: User, document_id: int) -> None:
         document = self.query_service.require_document(actor, document_id)
         versions = self.document_repository.list_versions(document.id)
         version_ids = [version.id for version in versions]
         settings_record = self.settings_service.get_or_create_settings_record()
         indexing_targets = self._build_indexing_targets(settings_record)
-        indexing_service = self._build_indexing_service(settings_record)
+        indexing_service = self._build_indexing_service(indexing_targets[0].settings)
         file_paths = [(version.normalized_path, version.origin_path) for version in versions]
         try:
             for version in versions:
@@ -325,7 +361,7 @@ class IngestionService:
                     indexing_targets,
                     indexing_service=indexing_service,
                 )
-            self.document_repository.delete_entity(document)
+            self.session.delete(document)
             self.session.commit()
         except Exception:
             self.session.rollback()
@@ -362,11 +398,6 @@ class IngestionService:
         service = self._get_normalization_service(use_vision=use_vision)
         return service.normalize(Path(origin_path), file_type)
 
-    def _background_ingestion_error_message(self, file_type: str) -> str:
-        if file_type in IMAGE_DOCUMENT_FILE_TYPES:
-            return "Image processing failed."
-        return "Document processing failed."
-
     def _ingest_revision(
         self,
         *,
@@ -392,7 +423,6 @@ class IngestionService:
             indexing_targets=indexing_targets,
         )
         index_latency_ms = elapsed_ms(index_started_at)
-        self._set_revision_indexed(document_version)
         return (
             normalized.normalized_path,
             indexing_targets,
@@ -402,22 +432,20 @@ class IngestionService:
             ),
         )
 
-    def _build_indexing_service(self, settings_with_embedding_route) -> IndexingService:
+    def _build_indexing_service(self, settings: ProviderRuntimeSettings) -> IndexingService:
         return IndexingService(
             session=self.session,
             chunking_service=self._chunking_service,
             chroma_store=self._chroma_store,
-            embedding_provider=build_embedding_adapter(
-                settings_with_embedding_route.embedding_route
-            ),
-            settings=settings_with_embedding_route,
+            embedding_provider=build_embedding_adapter(settings.embedding_route),
+            settings=settings,
         )
 
-    def _build_indexing_targets(self, settings_record: Any) -> list[IndexingTarget]:
+    def _build_indexing_targets(self, settings_record: AppSettings) -> list[IndexingTarget]:
         targets: list[IndexingTarget] = [
             IndexingTarget(
                 generation=settings_record.active_index_generation,
-                settings=build_embedding_settings(settings_record, use_pending=False),
+                settings=build_runtime_settings(settings_record),
             )
         ]
         building_generation: int | None = settings_record.building_index_generation
@@ -429,7 +457,10 @@ class IngestionService:
             targets.append(
                 IndexingTarget(
                     generation=building_generation,
-                    settings=build_embedding_settings(settings_record, use_pending=True),
+                    settings=build_runtime_settings(
+                        settings_record,
+                        embedding_route=settings_record.pending_embedding_route,
+                    ),
                 )
             )
         return targets
@@ -507,13 +538,10 @@ class IngestionService:
         if normalized_path:
             self._remove_file(normalized_path)
 
-    def _set_revision_indexed(self, document_version: DocumentRevision) -> None:
+    def _commit_revision_indexed(self, document_version: DocumentRevision) -> None:
         document_version.lifecycle_status = IngestStatus.INDEXED
         document_version.error_message = None
         document_version.indexed_at = utc_now()
-
-    def _commit_revision_indexed(self, document_version: DocumentRevision) -> None:
-        self._set_revision_indexed(document_version)
         self.session.commit()
         self.session.refresh(document_version)
 
@@ -563,7 +591,7 @@ class IngestionService:
         suffix = Path(filename).suffix.lower().lstrip(".")
         if suffix in SUPPORTED_DOCUMENT_FILE_TYPES:
             return suffix
-        detected = CONTENT_TYPE_TO_FILE_TYPE.get(content_type)
+        detected = guess_file_type_from_content_type(content_type)
         if detected is not None:
             return detected
         raise UnsupportedFileTypeError(f"Unsupported file type for upload: {filename}")

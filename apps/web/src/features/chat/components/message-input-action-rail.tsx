@@ -52,10 +52,8 @@ type MessageInputActionRailProps = {
   reasoningMode: ChatReasoningMode;
   reasoningModeVisible: boolean;
   sendLabel: string;
-  sendingLabel: string;
   stopSubmitLabel: string;
   submitPending: boolean;
-  submitPendingHint: string;
 };
 
 /**
@@ -74,10 +72,8 @@ export function MessageInputActionRail({
   reasoningMode,
   reasoningModeVisible,
   sendLabel,
-  sendingLabel,
   stopSubmitLabel,
   submitPending,
-  submitPendingHint,
 }: MessageInputActionRailProps) {
   const hasContextControls = Boolean(
     activeModelActionLabel || activeModelLabel || reasoningModeVisible,
@@ -187,23 +183,6 @@ export function MessageInputActionRail({
           <SendHorizontalIcon aria-hidden="true" className="size-4" />
         )}
       </Button>
-
-      {submitPending ? (
-        <>
-          <p className="col-start-2 row-start-2 min-w-0 px-1 text-[11px] text-muted-foreground/72 sm:text-ui-caption">
-            {submitPendingHint}
-          </p>
-          <span
-            aria-atomic="true"
-            aria-label={sendingLabel}
-            aria-live="polite"
-            className="sr-only"
-            role="status"
-          >
-            {sendingLabel}
-          </span>
-        </>
-      ) : null}
     </div>
   );
 }

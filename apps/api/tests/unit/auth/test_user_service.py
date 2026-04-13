@@ -5,13 +5,16 @@ from sqlalchemy import select
 from tests.fixtures.factories import ChatSessionFactory, UserFactory
 
 from knowledge_chatbox_api.core.config import get_settings
-from knowledge_chatbox_api.core.security import PasswordManager
+from knowledge_chatbox_api.core.service_builders import (
+    build_auth_service,
+    build_user_service,
+    get_password_manager,
+)
 from knowledge_chatbox_api.models.auth import AuthSession
 from knowledge_chatbox_api.models.chat import ChatSession
 from knowledge_chatbox_api.models.space import Space
 from knowledge_chatbox_api.repositories.space_repository import SpaceRepository
 from knowledge_chatbox_api.services.auth.auth_service import AuthService, ValidationError
-from knowledge_chatbox_api.services.auth.rate_limit_service import RateLimitService
 from knowledge_chatbox_api.services.auth.user_service import (
     AuthorizationError,
     UserService,
@@ -19,15 +22,16 @@ from knowledge_chatbox_api.services.auth.user_service import (
 
 
 def create_service_pair(migrated_db_session) -> tuple[AuthService, UserService]:
-    password_manager = PasswordManager()
-    auth_service = AuthService(
-        session=migrated_db_session,
-        settings=get_settings(),
+    settings = get_settings()
+    password_manager = get_password_manager()
+    auth_service = build_auth_service(
+        migrated_db_session,
+        settings,
         password_manager=password_manager,
-        rate_limit_service=RateLimitService(),
     )
-    user_service = UserService(
-        session=migrated_db_session,
+    user_service = build_user_service(
+        migrated_db_session,
+        settings,
         password_manager=password_manager,
         auth_service=auth_service,
     )
@@ -38,7 +42,7 @@ def seed_admin(migrated_db_session):
     return UserFactory.persisted_create(
         migrated_db_session,
         username="admin",
-        password_hash=PasswordManager().hash_password("admin-123"),
+        password_hash=get_password_manager().hash_password("admin-123"),
         role="admin",
     )
 
@@ -47,7 +51,7 @@ def seed_user(migrated_db_session, username: str = "alice"):
     return UserFactory.persisted_create(
         migrated_db_session,
         username=username,
-        password_hash=PasswordManager().hash_password("secret-123"),
+        password_hash=get_password_manager().hash_password("secret-123"),
     )
 
 

@@ -30,21 +30,23 @@ export function classifyApiError(status: number): Pick<ApiRequestError, "kind" |
   return { kind: "unknown", retryable: false };
 }
 
-const ERROR_CODE_MESSAGE_KEYS = {
+const ERROR_CODE_MESSAGE_KEYS: Record<string, string> = {
   conflict: "apiErrorConflict",
   document_file_not_found: "apiErrorFileNotFound",
   document_not_found: "apiErrorNotFound",
+  embedding_not_configured: "apiErrorEmbeddingNotConfigured",
   forbidden: "apiErrorForbidden",
   invalid_credentials: "apiErrorInvalidCredentials",
   invalid_document: "apiErrorInvalidDocument",
+  pending_embedding_not_configured: "apiErrorPendingEmbeddingNotConfigured",
   provider_timeout: "apiErrorGatewayTimeout",
   rate_limited: "apiErrorRateLimited",
   unauthorized: "apiErrorUnauthorized",
   unsupported_file_type: "apiErrorUnsupportedMediaType",
   validation_error: "apiErrorValidation",
-} as const;
+};
 
-const STATUS_MESSAGE_KEYS = {
+export const STATUS_MESSAGE_KEYS = {
   400: "apiErrorBadRequest",
   401: "apiErrorUnauthorized",
   403: "apiErrorForbidden",
@@ -70,35 +72,35 @@ export function translateCommonErrorMessage(key: string) {
   return i18n.t(key, { ns: "common" });
 }
 
+const PRIORITY_I18N_CODES = new Set([
+  "embedding_not_configured",
+  "forbidden",
+  "invalid_credentials",
+  "pending_embedding_not_configured",
+  "unauthorized",
+]);
+
 export function getUserFacingErrorMessage(detail: ErrorDetail, response: Response) {
-  if (detail.code === "invalid_credentials") {
-    return translateCommonErrorMessage("apiErrorInvalidCredentials");
+  if (detail.code && PRIORITY_I18N_CODES.has(detail.code)) {
+    const mappedKey = ERROR_CODE_MESSAGE_KEYS[detail.code];
+    if (mappedKey) {
+      return translateCommonErrorMessage(mappedKey);
+    }
   }
 
-  if (detail.code === "embedding_not_configured") {
-    return translateCommonErrorMessage("apiErrorEmbeddingNotConfigured");
-  }
-
-  if (detail.code === "pending_embedding_not_configured") {
-    return translateCommonErrorMessage("apiErrorPendingEmbeddingNotConfigured");
-  }
-
-  if (detail.code === "unauthorized" || response.status === 401) {
-    return translateCommonErrorMessage("apiErrorUnauthorized");
-  }
-
-  if (detail.code === "forbidden" || response.status === 403) {
-    return translateCommonErrorMessage("apiErrorForbidden");
+  if (response.status === 401 || response.status === 403) {
+    const mappedStatusKey =
+      STATUS_MESSAGE_KEYS[response.status as keyof typeof STATUS_MESSAGE_KEYS];
+    if (mappedStatusKey) {
+      return translateCommonErrorMessage(mappedStatusKey);
+    }
   }
 
   if (detail.source === "payload" && detail.message.trim()) {
     return detail.message.trim();
   }
 
-  const mappedCodeKey =
-    detail.code && detail.code in ERROR_CODE_MESSAGE_KEYS
-      ? ERROR_CODE_MESSAGE_KEYS[detail.code as keyof typeof ERROR_CODE_MESSAGE_KEYS]
-      : undefined;
+  const mappedCodeKey = detail.code ? ERROR_CODE_MESSAGE_KEYS[detail.code] : undefined;
   if (mappedCodeKey) {
     return translateCommonErrorMessage(mappedCodeKey);
   }

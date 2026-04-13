@@ -35,7 +35,7 @@ def get_settings_route(
     _current_user: AdminUserDep,
 ) -> Envelope[SettingsRead]:
     result = SettingsService(session, settings).get_or_create_settings()
-    return Envelope(success=True, data=result, error=None)
+    return Envelope.ok(result)
 
 
 @router.put(
@@ -58,7 +58,7 @@ def update_settings_route(
             settings,
             result.building_index_generation,
         )
-    return Envelope(success=True, data=result, error=None)
+    return Envelope.ok(result)
 
 
 @router.post(
@@ -88,9 +88,8 @@ def test_routes(
             ),
         }
     )
-    return Envelope(
-        success=True,
-        data=ProviderConnectionTestRead(
+    return Envelope.ok(
+        ProviderConnectionTestRead(
             response=CapabilityHealthRead(
                 provider=draft_runtime_settings.response_route.provider,
                 model=draft_runtime_settings.response_route.model,
@@ -113,5 +112,4 @@ def test_routes(
                 latency_ms=results["vision"].latency_ms,
             ),
         ),
-        error=None,
     )

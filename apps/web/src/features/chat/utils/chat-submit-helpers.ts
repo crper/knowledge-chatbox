@@ -1,5 +1,3 @@
-import { trim } from "es-toolkit";
-
 import { ApiRequestError } from "@/lib/api/api-request-error";
 import { getErrorMessage } from "@/lib/utils";
 import type { ChatMessageItem } from "../api/chat";
@@ -9,8 +7,8 @@ export type ReadyChatAttachment = ComposerAttachmentItem & {
   file: File;
   kind: "image" | "document";
   mimeType: string;
-  resourceDocumentId: number;
-  resourceDocumentVersionId: number;
+  documentId: number;
+  documentRevisionId: number;
   status: "uploaded";
 };
 
@@ -29,13 +27,9 @@ export function serializeChatAttachments(attachments: ReadyChatAttachment[]): Ar
     name: attachment.name,
     mime_type: attachment.mimeType,
     size_bytes: attachment.sizeBytes ?? attachment.file.size,
-    document_id: attachment.resourceDocumentId,
-    document_revision_id: attachment.resourceDocumentVersionId,
+    document_id: attachment.documentId,
+    document_revision_id: attachment.documentRevisionId,
   }));
-}
-
-export function cloneChatAttachments(attachments: ComposerAttachmentItem[]) {
-  return attachments.map((attachment) => ({ ...attachment }));
 }
 
 export function buildLocalAttachmentFingerprint(file: File) {
@@ -62,7 +56,7 @@ function isGenericErrorMessage(normalizedMessage: string): boolean {
 }
 
 export function resolveSubmitErrorMessage(error: unknown, fallback: string) {
-  const message = trim(getErrorMessage(error, ""));
+  const message = getErrorMessage(error, "").trim();
   const normalizedMessage = normalizeErrorMessage(message);
 
   if (error instanceof ApiRequestError && error.status >= 500) {
@@ -91,8 +85,8 @@ function toAttachmentSignature(input: AttachmentSignatureInput): string {
 function toComposerAttachmentSignature(attachment: ComposerAttachmentItem): string {
   return toAttachmentSignature({
     attachmentId: attachment.id,
-    documentId: attachment.resourceDocumentId ?? null,
-    documentRevisionId: attachment.resourceDocumentVersionId ?? null,
+    documentId: attachment.documentId ?? null,
+    documentRevisionId: attachment.documentRevisionId ?? null,
     kind: attachment.kind,
     mimeType: attachment.mimeType ?? null,
     name: attachment.name,
@@ -101,12 +95,12 @@ function toComposerAttachmentSignature(attachment: ComposerAttachmentItem): stri
 }
 
 function toMessageAttachmentSignature(
-  attachment: NonNullable<ChatMessageItem["attachments_json"]>[number],
+  attachment: NonNullable<ChatMessageItem["attachments"]>[number],
 ): string {
   return toAttachmentSignature({
     attachmentId: attachment.attachment_id,
-    documentId: attachment.resource_document_id ?? null,
-    documentRevisionId: attachment.resource_document_version_id ?? null,
+    documentId: attachment.document_id ?? null,
+    documentRevisionId: attachment.document_revision_id ?? null,
     kind: attachment.type,
     mimeType: attachment.mime_type,
     name: attachment.name,
@@ -122,7 +116,7 @@ export function shouldResetComposerSnapshotForRetry({
 }: {
   composerAttachments: ComposerAttachmentItem[];
   composerDraft: string;
-  retryAttachments: ChatMessageItem["attachments_json"];
+  retryAttachments: ChatMessageItem["attachments"];
   retryContent: string;
 }) {
   if (composerDraft.trim() !== retryContent.trim()) {

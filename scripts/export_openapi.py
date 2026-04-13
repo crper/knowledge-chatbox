@@ -2,12 +2,18 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 API_SRC = REPO_ROOT / "apps" / "api" / "src"
+
+# export_openapi 不需要真实密钥，在导入 app 前注入最小环境变量，
+# 避免 Settings 校验在非运行环境下失败。
+os.environ.setdefault("JWT_SECRET_KEY", "knowledge-chatbox-dev-secret-key-32")
+os.environ.setdefault("INITIAL_ADMIN_PASSWORD", "dev-only-not-for-production")
 
 
 def build_openapi_payload() -> str:

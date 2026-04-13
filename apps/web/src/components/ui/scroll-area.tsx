@@ -3,7 +3,6 @@
  */
 
 import * as React from "react";
-import { cva, type VariantProps } from "class-variance-authority";
 import { ScrollArea as ScrollAreaPrimitive } from "@base-ui/react/scroll-area";
 
 import { cn } from "@/lib/utils";
@@ -15,8 +14,6 @@ type ScrollAreaProps = React.ComponentProps<typeof ScrollAreaPrimitive.Root> & {
   viewportClassName?: string;
   viewportStyle?: React.CSSProperties;
 };
-
-const scrollAreaVariants = cva("relative");
 
 function ScrollArea({
   className,
@@ -31,7 +28,7 @@ function ScrollArea({
   return (
     <ScrollAreaPrimitive.Root
       data-slot="scroll-area"
-      className={cn(scrollAreaVariants(), className)}
+      className={cn("relative", className)}
       {...props}
     >
       <ScrollAreaPrimitive.Viewport
@@ -52,30 +49,23 @@ function ScrollArea({
   );
 }
 
-const scrollBarVariants = cva("flex touch-none p-px transition-colors select-none", {
-  variants: {
-    orientation: {
-      horizontal: "h-2.5 flex-col border-t border-t-transparent",
-      vertical: "h-full w-2.5 border-l border-l-transparent",
-    },
-  },
-  defaultVariants: {
-    orientation: "vertical",
-  },
-});
-
 function ScrollBar({
   className,
   orientation = "vertical",
   ...props
-}: React.ComponentProps<typeof ScrollAreaPrimitive.Scrollbar> &
-  VariantProps<typeof scrollBarVariants>) {
+}: React.ComponentProps<typeof ScrollAreaPrimitive.Scrollbar>) {
   return (
     <ScrollAreaPrimitive.Scrollbar
       data-slot="scroll-area-scrollbar"
       data-orientation={orientation}
       orientation={orientation}
-      className={cn(scrollBarVariants({ orientation }), className)}
+      className={cn(
+        "flex touch-none p-px transition-colors select-none",
+        orientation === "vertical"
+          ? "h-full w-2.5 border-l border-l-transparent"
+          : "h-2.5 flex-col border-t border-t-transparent",
+        className,
+      )}
       {...props}
     >
       <ScrollAreaPrimitive.Thumb
@@ -86,4 +76,4 @@ function ScrollBar({
   );
 }
 
-export { ScrollArea, ScrollBar, scrollAreaVariants, scrollBarVariants };
+export { ScrollArea, ScrollBar };

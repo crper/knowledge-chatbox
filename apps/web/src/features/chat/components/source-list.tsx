@@ -42,7 +42,6 @@ const SourceItem = memo(function SourceItem({ index, source }: SourceItemProps) 
     source.section_title ??
     source.chunk_id ??
     t("sourceReferenceAction", {
-      defaultValue: "查看引用 {{index}}",
       index: index + 1,
     });
   const pageLabel =
@@ -55,7 +54,6 @@ const SourceItem = memo(function SourceItem({ index, source }: SourceItemProps) 
         render={
           <Button
             aria-label={t("sourceReferenceAction", {
-              defaultValue: "查看引用 {{index}}",
               index: index + 1,
             })}
             className="h-7 rounded-full border border-border/70 bg-muted/24 px-2.5 text-ui-caption text-muted-foreground hover:bg-muted/40"

@@ -2,26 +2,28 @@
  * @file 聊天功能常量定义。
  */
 
-/** 消息角色 */
+import type { ChatMessageRole, ChatMessageStatus } from "./api/chat";
+
 export const MessageRole = {
   USER: "user",
   ASSISTANT: "assistant",
   SYSTEM: "system",
-} as const;
+} as const satisfies Record<string, ChatMessageRole>;
 
-export type MessageRole = (typeof MessageRole)[keyof typeof MessageRole];
+export type MessageRole = ChatMessageRole;
 
-/** 消息状态 */
 export const MessageStatus = {
   PENDING: "pending",
   STREAMING: "streaming",
   SUCCEEDED: "succeeded",
   FAILED: "failed",
-} as const;
+  CANCELLED: "cancelled",
+} as const satisfies Record<string, ChatMessageStatus>;
 
-export type MessageStatus = (typeof MessageStatus)[keyof typeof MessageStatus];
+export type MessageStatus = ChatMessageStatus;
 
-/** 检查是否为流式状态 */
-export function isStreamingStatus(status: string): boolean {
+export type StreamingStatus = "pending" | "streaming";
+
+export function isStreamingStatus(status: string): status is StreamingStatus {
   return status === MessageStatus.PENDING || status === MessageStatus.STREAMING;
 }

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import asyncio
 from types import SimpleNamespace
 from typing import Any, cast
 
+import pytest
 from pydantic_ai import AgentRunResultEvent
 from pydantic_ai.messages import BinaryContent, ModelRequest, ModelResponse, TextPart
 from pydantic_ai.models.test import TestModel
@@ -11,10 +11,11 @@ from tests.fixtures.dummies import (
     DummyChatRepository,
     DummyMessage,
     DummyPromptAttachmentService,
-    DummyRoute,
     DummyRuntimeSettings,
 )
 
+from knowledge_chatbox_api.models.enums import ChatAttachmentType, ReasoningMode
+from knowledge_chatbox_api.schemas.chat import ChatAttachmentMetadata, PromptAttachmentItem
 from knowledge_chatbox_api.services.chat.workflow.chat_workflow import ChatWorkflow
 from knowledge_chatbox_api.services.chat.workflow.deps import ChatWorkflowDeps
 from knowledge_chatbox_api.services.chat.workflow.instructions import build_runtime_instructions
@@ -30,19 +31,15 @@ def build_deps(
 ) -> ChatWorkflowDeps:
     return ChatWorkflowDeps(
         session_id=1,
-        session=cast("Any", object()),
-        chat_repository=cast("Any", DummyChatRepository(recent_messages, space_id=space_id)),
-        chat_run_repository=cast("Any", object()),
-        chat_run_event_repository=cast("Any", object()),
-        retrieval_service=cast("Any", object()),
-        prompt_attachment_service=cast(
-            "Any", prompt_attachment_service or DummyPromptAttachmentService()
-        ),
-        runtime_settings=cast("Any", runtime_settings or DummyRuntimeSettings()),
+        chat_repository=DummyChatRepository(recent_messages, space_id=space_id),
+        retrieval_service=SimpleNamespace(),
+        prompt_attachment_service=prompt_attachment_service or DummyPromptAttachmentService(),
+        runtime_settings=runtime_settings or DummyRuntimeSettings(),
         request_metadata={"path": "sync"},
     )
 
 
+@pytest.mark.filterwarnings("ignore:There is no current event loop:DeprecationWarning")
 def test_chat_workflow_run_sync_returns_structured_result() -> None:
     workflow = ChatWorkflow(
         agent_model=TestModel(
@@ -62,7 +59,7 @@ def test_chat_workflow_run_sync_returns_structured_result() -> None:
     assert result.sources == []
 
 
-def test_chat_workflow_run_stream_events_yields_text_and_result_event() -> None:
+async def test_chat_workflow_run_stream_events_yields_text_and_result_event() -> None:
     workflow = ChatWorkflow(
         stream_agent_model=TestModel(
             call_tools=[],
@@ -70,31 +67,28 @@ def test_chat_workflow_run_stream_events_yields_text_and_result_event() -> None:
         )
     )
 
-    async def collect_events():
-        return [
-            event
-            async for event in workflow.run_stream_events(
-                deps=build_deps(),
-                session_id=1,
-                question="帮我总结一下",
-                attachments=None,
-            )
-        ]
-
-    events = asyncio.run(collect_events())
+    events = [
+        event
+        async for event in workflow.run_stream_events(
+            deps=build_deps(),
+            session_id=1,
+            question="帮我总结一下",
+            attachments=None,
+        )
+    ]
 
     assert any(type(event).__name__ == "PartDeltaEvent" for event in events)
     assert isinstance(events[-1], AgentRunResultEvent)
 
 
 def test_chat_workflow_run_sync_passes_history_and_model_settings(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     captured: dict[str, object] = {}
 
     class RuntimeSettings(DummyRuntimeSettings):
-        reasoning_mode = "on"
-        provider_timeout_seconds = 12
+        reasoning_mode: ReasoningMode = ReasoningMode.ON
+        provider_timeout_seconds: int = 12
 
     class CapturingAgent:
         def run_sync(self, user_prompt, **kwargs):
@@ -104,10 +98,10 @@ def test_chat_workflow_run_sync_passes_history_and_model_settings(
             return SimpleNamespace(output=ChatWorkflowResult(answer="捕获成功", sources=[]))
 
     recent_messages = [
-        DummyMessage("user", "第一轮问题"),
-        DummyMessage("assistant", "第一轮回答"),
-        DummyMessage("user", "继续刚才的话题"),
-        DummyMessage("assistant", ""),
+        DummyMessage(role="user", content="第一轮问题"),
+        DummyMessage(role="assistant", content="第一轮回答"),
+        DummyMessage(role="user", content="继续刚才的话题"),
+        DummyMessage(role="assistant", content=""),
     ]
     workflow = ChatWorkflow()
     monkeypatch.setattr(workflow, "_build_agent", lambda _runtime_settings: CapturingAgent())
@@ -140,25 +134,29 @@ def test_chat_workflow_run_sync_passes_history_and_model_settings(
 
 
 def test_chat_workflow_passes_multimodal_user_prompt_when_image_attachments_exist(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     captured: dict[str, object] = {}
 
     class ImagePromptAttachmentService(DummyPromptAttachmentService):
         def build_prompt_attachments(self, attachments, active_space_id: int | None):
-            assert attachments == [{"type": "image", "document_revision_id": 9}]
+            assert len(attachments) == 1
+            assert attachments[0].type == ChatAttachmentType.IMAGE
+            assert attachments[0].document_revision_id == 9
             assert active_space_id == 77
             return [
-                {
-                    "type": "image",
-                    "mime_type": "image/jpeg",
-                    "data_base64": "aGVsbG8=",
-                }
+                PromptAttachmentItem(
+                    type="image",
+                    mime_type="image/jpeg",
+                    data_base64="aGVsbG8=",
+                )
             ]
 
         def resolve_prompt_text(self, question: str, attachments):
             assert question == ""
-            assert attachments == [{"type": "image", "document_revision_id": 9}]
+            assert len(attachments) == 1
+            assert attachments[0].type == ChatAttachmentType.IMAGE
+            assert attachments[0].document_revision_id == 9
             return "Analyze the attached image."
 
     class CapturingAgent:
@@ -176,7 +174,16 @@ def test_chat_workflow_passes_multimodal_user_prompt_when_image_attachments_exis
         ),
         session_id=1,
         question="",
-        attachments=[{"type": "image", "document_revision_id": 9}],
+        attachments=[
+            ChatAttachmentMetadata(
+                attachment_id="test-1",
+                type=ChatAttachmentType.IMAGE,
+                name="test.png",
+                mime_type="image/png",
+                size_bytes=100,
+                document_revision_id=9,
+            )
+        ],
     )
 
     assert result.answer == "已捕获"
@@ -189,10 +196,7 @@ def test_chat_workflow_passes_multimodal_user_prompt_when_image_attachments_exis
 
 
 def test_runtime_instructions_include_configured_system_prompt() -> None:
-    runtime_settings = SimpleNamespace(
-        response_route=DummyRoute("openai", "gpt-5.4"),
-        system_prompt="请优先输出结论。",
-    )
+    runtime_settings = DummyRuntimeSettings(system_prompt="请优先输出结论。")
 
     instructions = build_runtime_instructions(
         cast(

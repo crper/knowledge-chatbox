@@ -1,14 +1,26 @@
 """Schema 共享校验类型。"""
 
-import re
-from typing import Annotated, Literal
+from typing import Annotated
 
 from pydantic import BeforeValidator, Field, StringConstraints
 
-ResponseProviderLiteral = Literal["openai", "anthropic", "ollama"]
-EmbeddingProviderLiteral = Literal["openai", "voyage", "ollama"]
-VisionProviderLiteral = Literal["openai", "anthropic", "ollama"]
-ReasoningModeLiteral = Literal["default", "off", "on"]
+from knowledge_chatbox_api.models.enums import (
+    EmbeddingProvider,
+    ReasoningMode,
+    ResponseProvider,
+    VisionProvider,
+)
+
+__all__ = [
+    "CredentialPasswordStr",
+    "EmbeddingProvider",
+    "PasswordStr",
+    "PositiveInt",
+    "ReasoningMode",
+    "ResponseProvider",
+    "UsernameStr",
+    "VisionProvider",
+]
 
 UsernameStr = Annotated[
     str,
@@ -18,11 +30,14 @@ UsernameStr = Annotated[
 
 def validate_password_complexity(password: str) -> str:
     if len(password) < 8:
-        return password  # 短密码由 min_length 约束处理，此处仅跳过复杂度检查
+        raise ValueError("Password must be at least 8 characters long.")
     categories = sum(
-        1
-        for pattern in (r"[a-z]", r"[A-Z]", r"\d", r"[^a-zA-Z0-9]")
-        if re.search(pattern, password)
+        [
+            any(c.islower() for c in password),
+            any(c.isupper() for c in password),
+            any(c.isdigit() for c in password),
+            any(not c.isalnum() for c in password),
+        ]
     )
     if categories < 3:
         raise ValueError(

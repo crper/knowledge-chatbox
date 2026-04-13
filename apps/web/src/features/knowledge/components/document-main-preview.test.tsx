@@ -8,7 +8,7 @@ import type { KnowledgeDocument } from "../api/documents";
 import { DocumentMainPreview } from "./document-main-preview";
 
 const protectedFileMocks = vi.hoisted(() => ({
-  fetchProtectedFileBlob: vi.fn(async () => new Blob(["preview"])),
+  fetchProtectedFile: vi.fn(async () => new Response(null, { status: 200 })),
   openProtectedFile: vi.fn(async () => {}),
   downloadProtectedFile: vi.fn(async () => {}),
 }));
@@ -27,7 +27,7 @@ vi.mock("@embedpdf/react-pdf-viewer", () => ({
 }));
 
 vi.mock("@/lib/api/protected-file", () => ({
-  fetchProtectedFileBlob: protectedFileMocks.fetchProtectedFileBlob,
+  fetchProtectedFile: protectedFileMocks.fetchProtectedFile,
 }));
 
 vi.mock("@/features/knowledge/components/protected-file-actions", () => ({
@@ -41,9 +41,9 @@ function buildDocument(overrides: Partial<KnowledgeDocument>): KnowledgeDocument
     document_id: 20,
     name: "spec.md",
     logical_name: "spec",
-    version: 2,
+    revision_no: 2,
     file_type: "md",
-    status: "indexed",
+    ingest_status: "indexed",
     is_latest: true,
     file_size: 256,
     chunk_count: 12,
@@ -66,7 +66,7 @@ function renderPreview(document: KnowledgeDocument | null) {
 
 describe("DocumentMainPreview", () => {
   beforeEach(() => {
-    protectedFileMocks.fetchProtectedFileBlob.mockClear();
+    protectedFileMocks.fetchProtectedFile.mockClear();
     vi.spyOn(window, "open").mockImplementation(() => null);
     vi.stubGlobal(
       "URL",
@@ -95,7 +95,7 @@ describe("DocumentMainPreview", () => {
     renderPreview(
       buildDocument({
         id: 5,
-        status: "processing",
+        ingest_status: "processing",
       }),
     );
 
@@ -104,14 +104,14 @@ describe("DocumentMainPreview", () => {
     renderPreview(
       buildDocument({
         id: 6,
-        status: "failed",
+        ingest_status: "failed",
         error_message: "解析失败",
       }),
     );
 
     expect(screen.getByText("资源预览失败")).toBeInTheDocument();
     expect(screen.getByText("解析失败")).toBeInTheDocument();
-    expect(protectedFileMocks.fetchProtectedFileBlob).not.toHaveBeenCalled();
+    expect(protectedFileMocks.fetchProtectedFile).not.toHaveBeenCalled();
   });
 
   it("renders pdf previews inline with embedpdf", async () => {
@@ -127,7 +127,7 @@ describe("DocumentMainPreview", () => {
       "data-src",
       expect.stringContaining("/api/documents/revisions/10/file"),
     );
-    expect(protectedFileMocks.fetchProtectedFileBlob).not.toHaveBeenCalled();
+    expect(protectedFileMocks.fetchProtectedFile).not.toHaveBeenCalled();
   });
 
   it("renders unsupported fallback content and opens the original file", async () => {

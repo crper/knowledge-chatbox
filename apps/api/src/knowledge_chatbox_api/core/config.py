@@ -10,12 +10,12 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
-from knowledge_chatbox_api.schemas._validators import (
-    EmbeddingProviderLiteral,
-    PositiveInt,
-    ResponseProviderLiteral,
-    VisionProviderLiteral,
+from knowledge_chatbox_api.models.enums import (
+    EmbeddingProvider,
+    ResponseProvider,
+    VisionProvider,
 )
+from knowledge_chatbox_api.schemas._validators import PositiveInt
 
 
 def _find_project_root() -> Path:
@@ -98,11 +98,11 @@ class ProviderBootstrapSettings(BaseModel):
     initial_ollama_chat_model: str
     initial_ollama_embedding_model: str
     initial_ollama_vision_model: str
-    initial_response_provider: ResponseProviderLiteral
+    initial_response_provider: ResponseProvider
     initial_response_model: str
-    initial_embedding_provider: EmbeddingProviderLiteral
+    initial_embedding_provider: EmbeddingProvider
     initial_embedding_model: str
-    initial_vision_provider: VisionProviderLiteral
+    initial_vision_provider: VisionProvider
     initial_vision_model: str
     initial_provider_timeout_seconds: PositiveInt
 
@@ -153,11 +153,11 @@ class Settings(BaseSettings):
     initial_ollama_chat_model: str = "qwen3.5:4b"
     initial_ollama_embedding_model: str = "nomic-embed-text"
     initial_ollama_vision_model: str = "qwen3.5:4b"
-    initial_response_provider: ResponseProviderLiteral = "ollama"
+    initial_response_provider: ResponseProvider = ResponseProvider.OLLAMA
     initial_response_model: str = "qwen3.5:4b"
-    initial_embedding_provider: EmbeddingProviderLiteral = "ollama"
+    initial_embedding_provider: EmbeddingProvider = EmbeddingProvider.OLLAMA
     initial_embedding_model: str = "nomic-embed-text"
-    initial_vision_provider: VisionProviderLiteral = "ollama"
+    initial_vision_provider: VisionProvider = VisionProvider.OLLAMA
     initial_vision_model: str = "qwen3.5:4b"
     initial_provider_timeout_seconds: PositiveInt = 60
     max_upload_size_mb: PositiveInt = 100
@@ -284,9 +284,8 @@ class Settings(BaseSettings):
 
     @property
     def provider_bootstrap(self) -> ProviderBootstrapSettings:
-        bootstrap_fields = ProviderBootstrapSettings.model_fields.keys()
-        kwargs = {f: getattr(self, f) for f in bootstrap_fields}
-        return ProviderBootstrapSettings.model_validate(kwargs)
+        include = set(ProviderBootstrapSettings.model_fields.keys())
+        return ProviderBootstrapSettings.model_validate(self.model_dump(include=include))
 
 
 @lru_cache

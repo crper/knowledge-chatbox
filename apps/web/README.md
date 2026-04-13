@@ -178,19 +178,18 @@ apps/web/
 ```text
 [ChatPage]
   -> [useChatWorkspace]
-     -> [useChatSessionSubmitController]  # 会话级提交锁
-     -> [useChatStreamRun]               # streamRun action
-     -> [useChatRuntimeState]            # streamRun 读取面
+     -> [useChatRuntime]                 # 提交锁 + 运行态缓存读写 owner
      -> [useChatSessionData]             # 只读模型：sessions/messagesWindow/displayMessages
-     -> [useChatSessionCacheActions]     # messagesWindow/context patch + targeted invalidate
+     -> [useChatCacheWriter]             # messagesWindow/context 唯一写出口
 ```
 
 规则：
 
-- `streamRun` 的临时状态当前仍在 TanStack Query Cache，但读取面已经收口到 `useChatRuntimeState`
-- `messagesWindow / context` 的 patch、started user message 预插入和 targeted invalidate 当前统一走 `useChatSessionCacheActions`
-- `useChatWorkspace` 当前只负责装配 read model / runtime controller / cache actions / submit-stream 生命周期
+- 运行态缓存条目当前仍在 TanStack Query Cache，但读写 owner 已经收口到 `useChatRuntime`
+- `messagesWindow / context` 的 patch、started user message 预插入和 targeted invalidate 当前统一走 `useChatCacheWriter`
+- `useChatWorkspace` 当前只负责装配 read model / runtime / cache writer / submit-stream 生命周期
 - 聊天 composer 当前统一收口到 `useChatComposerStore`：`draftsBySession + sendShortcut` 通过 persist middleware 落到 `localStorage`，`attachmentsBySession` 保持内存态，避免把 `File` 对象写进持久化存储
+- `openapi/schema.json` 与 `src/lib/api/generated/schema.d.ts` 当前是本地生成产物，不再纳入版本控制；官方入口会在缺失时自动生成、存在时再校验漂移
 - 详细聊天运行时边界见 [frontend-workspace.md](../../docs/arch/frontend-workspace.md)
 
 ### 认证与偏好

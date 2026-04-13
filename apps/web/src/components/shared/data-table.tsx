@@ -1,8 +1,4 @@
-/**
- * @file 数据表格共享组件模块。
- */
-
-import { useCallback, memo, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   flexRender,
   getCoreRowModel,
@@ -16,8 +12,8 @@ import { Button } from "@/components/ui/button";
 import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
-type DataTableProps<TData extends RowData> = {
-  columns: ColumnDef<TData, unknown>[];
+type DataTableProps<TData extends RowData, TValue = unknown> = {
+  columns: ColumnDef<TData, TValue>[];
   data: TData[];
   emptyMessage: string;
   getRowId?: TableOptions<TData>["getRowId"];
@@ -55,10 +51,7 @@ function getSortIndicator(direction: false | "asc" | "desc") {
   return null;
 }
 
-/**
- * 渲染数据表格。
- */
-export const DataTable = memo(function DataTable<TData extends RowData>({
+export function DataTable<TData extends RowData, TValue = unknown>({
   columns,
   data,
   emptyMessage,
@@ -66,7 +59,7 @@ export const DataTable = memo(function DataTable<TData extends RowData>({
   onRowClick,
   selectedRowId,
   virtualized = false,
-}: DataTableProps<TData>) {
+}: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const table = useReactTable({
     columns,
@@ -257,4 +250,4 @@ export const DataTable = memo(function DataTable<TData extends RowData>({
       )}
     </div>
   );
-});
+}

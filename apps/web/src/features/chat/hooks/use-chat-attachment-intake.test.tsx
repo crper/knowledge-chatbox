@@ -58,6 +58,10 @@ function AttachmentIntakeHost({
 }
 
 describe("useChatAttachmentIntake", () => {
+  beforeEach(() => {
+    vi.useRealTimers();
+  });
+
   it("deduplicates accepted files within the active session", async () => {
     const queryClient = createTestQueryClient();
 

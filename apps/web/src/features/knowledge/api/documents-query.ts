@@ -2,9 +2,11 @@
  * @file 资源查询配置模块。
  */
 
-import { mutationOptions, queryOptions, type QueryClient } from "@tanstack/react-query";
+import { mutationOptions, queryOptions, skipToken, type QueryClient } from "@tanstack/react-query";
 
 import { queryKeys } from "@/lib/api/query-keys";
+import { fetchProtectedFile } from "@/lib/api/protected-file";
+import { getDocumentFileUrl } from "@/lib/api/document-file-url";
 import {
   deleteDocument,
   getDocumentListSummary,
@@ -18,6 +20,7 @@ import {
   type KnowledgeDocumentListFilters,
   type DocumentUploadReadiness,
 } from "./documents";
+import { loadDocumentTextPreview } from "./document-preview";
 
 export type { DocumentListSummary, DocumentUploadReadiness, KnowledgeDocument };
 
@@ -39,7 +42,8 @@ export async function invalidateDocuments(queryClient: QueryClient) {
 export function hasPendingDocuments(documents: KnowledgeDocument[] | undefined) {
   return (
     documents?.some(
-      (document) => document.status === "processing" || document.status === "uploaded",
+      (document) =>
+        document.ingest_status === "processing" || document.ingest_status === "uploaded",
     ) ?? false
   );
 }
@@ -66,10 +70,9 @@ export function documentsListQueryOptions(
     ] as const,
     queryFn: () => getDocuments(normalizedFilters),
     placeholderData: (previousData) => previousData,
+    staleTime: 15_000,
     refetchInterval: (query) => {
-      const shouldPoll =
-        options?.keepPolling ||
-        hasPendingDocuments(query.state.data as KnowledgeDocument[] | undefined);
+      const shouldPoll = options?.keepPolling || hasPendingDocuments(query.state.data);
       if (!shouldPoll) {
         pollCount = 0;
         return false;
@@ -84,10 +87,12 @@ export function documentsListQueryOptions(
 /**
  * 获取资源版本查询配置。
  */
-export function documentVersionsQueryOptions(documentId: number) {
+export function documentVersionsQueryOptions(documentId: number, enabled = true) {
   return queryOptions({
     queryKey: queryKeys.documents.versions(documentId),
     queryFn: () => getDocumentVersions(documentId),
+    enabled,
+    staleTime: 30_000,
   });
 }
 
@@ -98,6 +103,7 @@ export function documentUploadReadinessQueryOptions() {
   return queryOptions({
     queryKey: queryKeys.documents.uploadReadiness,
     queryFn: getDocumentUploadReadiness,
+    staleTime: 30_000,
   });
 }
 
@@ -109,8 +115,9 @@ export function documentListSummaryQueryOptions() {
   return queryOptions({
     queryKey: queryKeys.documents.summary,
     queryFn: getDocumentListSummary,
+    staleTime: 15_000,
     refetchInterval: (query) => {
-      const hasPending = (query.state.data as DocumentListSummary | undefined)?.pending_count;
+      const hasPending = query.state.data?.pending_count;
       if (!hasPending) {
         pollCount = 0;
         return false;
@@ -143,5 +150,27 @@ export function reindexDocumentMutationOptions(queryClient: QueryClient) {
     onSuccess: async () => {
       await invalidateDocuments(queryClient);
     },
+  });
+}
+
+export function documentTextPreviewQueryOptions(
+  document: KnowledgeDocument | null,
+  enabled: boolean,
+) {
+  return queryOptions({
+    queryKey: queryKeys.documents.textPreview(document?.id, document?.updated_at),
+    queryFn: document === null || !enabled ? skipToken : () => loadDocumentTextPreview(document),
+  });
+}
+
+export function documentImagePreviewQueryOptions(documentId: number) {
+  return queryOptions({
+    queryKey: queryKeys.documents.imagePreview(documentId),
+    queryFn: async () => {
+      const blob = await (await fetchProtectedFile(getDocumentFileUrl(documentId))).blob();
+      return URL.createObjectURL(blob);
+    },
+    staleTime: Infinity,
+    gcTime: 0,
   });
 }

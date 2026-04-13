@@ -1,55 +1,69 @@
-import { formError, getFormErrorMessages, handleFormSubmitEvent } from "./forms";
+import { fieldError, getFirstFormError, translateFieldErrors } from "./forms";
 
 describe("forms helpers", () => {
-  it("prevents the native submit and awaits successful form handlers", async () => {
-    const preventDefault = vi.fn();
-    const submit = vi.fn().mockResolvedValue(undefined);
+  describe("translateFieldErrors", () => {
+    it("translates object errors with message property", () => {
+      const errors = [{ message: "required" }, { message: "tooShort" }];
+      expect(
+        translateFieldErrors(errors, (key) => ({ required: "必填", tooShort: "太短" })[key] ?? key),
+      ).toEqual([{ message: "必填" }, { message: "太短" }]);
+    });
 
-    await handleFormSubmitEvent({ preventDefault } as Pick<Event, "preventDefault">, submit);
+    it("handles string errors directly", () => {
+      const errors = ["required", "tooShort"];
+      expect(
+        translateFieldErrors(errors, (key) => ({ required: "必填", tooShort: "太短" })[key] ?? key),
+      ).toEqual([{ message: "必填" }, { message: "太短" }]);
+    });
 
-    expect(preventDefault).toHaveBeenCalledTimes(1);
-    expect(submit).toHaveBeenCalledTimes(1);
+    it("filters out null entries", () => {
+      const errors = [{ message: "required" }, null, "tooShort"];
+      expect(translateFieldErrors(errors)).toEqual([
+        { message: "required" },
+        { message: "tooShort" },
+      ]);
+    });
+
+    it("returns messages as-is when no translator provided", () => {
+      const errors = [{ message: "required" }];
+      expect(translateFieldErrors(errors)).toEqual([{ message: "required" }]);
+    });
   });
 
-  it("suppresses rejected submit promises so form components can surface their own errors", async () => {
-    const preventDefault = vi.fn();
-    const submit = vi.fn().mockRejectedValue(new Error("bad request"));
+  describe("getFirstFormError", () => {
+    it("extracts message from string error", () => {
+      expect(getFirstFormError("some error")).toBe("some error");
+    });
 
-    await expect(
-      handleFormSubmitEvent({ preventDefault } as Pick<Event, "preventDefault">, submit),
-    ).resolves.toBeUndefined();
+    it("extracts message from object with message property", () => {
+      expect(getFirstFormError({ message: "some error" })).toBe("some error");
+    });
 
-    expect(preventDefault).toHaveBeenCalledTimes(1);
-    expect(submit).toHaveBeenCalledTimes(1);
+    it("recursively extracts message from nested form error", () => {
+      expect(getFirstFormError({ form: { message: "nested error" } })).toBe("nested error");
+    });
+
+    it("translates message when translator provided", () => {
+      expect(getFirstFormError("required", (_key) => "必填")).toBe("必填");
+    });
+
+    it("returns null for null/undefined", () => {
+      expect(getFirstFormError(null)).toBeNull();
+      expect(getFirstFormError(undefined)).toBeNull();
+    });
   });
 
-  it("translates structured errors when extracting display messages", () => {
-    expect(
-      getFormErrorMessages(
-        [
-          formError("usernameRequiredError"),
-          { form: formError("passwordRequiredError") },
-          "raw message",
-        ],
-        (key) =>
-          ({
-            passwordRequiredError: "请输入密码。",
-            usernameRequiredError: "请输入用户名。",
-          })[key] ?? key,
-      ),
-    ).toEqual(["请输入用户名。", "请输入密码。", "raw message"]);
-  });
+  describe("fieldError", () => {
+    it("returns single-item array when message is provided", () => {
+      expect(fieldError("some error")).toEqual([{ message: "some error" }]);
+    });
 
-  it("translates namespaced string keys with inline params when extracting display messages", () => {
-    expect(
-      getFormErrorMessages(["auth:passwordLengthValidationError:12"], (key, values) => {
-        if (key === "auth:passwordLengthValidationError") {
-          const min =
-            typeof values?.min === "number" || typeof values?.min === "string" ? values.min : "";
-          return `密码至少需要 ${min} 位。`;
-        }
-        return key;
-      }),
-    ).toEqual(["密码至少需要 12 位。"]);
+    it("returns empty array when message is undefined", () => {
+      expect(fieldError(undefined)).toEqual([]);
+    });
+
+    it("returns empty array when message is empty string", () => {
+      expect(fieldError("")).toEqual([]);
+    });
   });
 });

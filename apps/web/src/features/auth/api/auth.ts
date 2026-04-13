@@ -2,6 +2,7 @@
  * @file 认证相关接口请求模块。
  */
 
+import { i18n } from "@/i18n";
 import { ApiRequestError, openapiRequestRequired } from "@/lib/api/client";
 import { requestAccessTokenRefresh } from "@/lib/api/authenticated-fetch";
 import type { AppUser } from "@/lib/api/client";
@@ -47,6 +48,19 @@ export async function getCurrentUser() {
       apiFetchClient.GET("/api/auth/me", { signal: controller.signal }),
     );
   } catch (error) {
+    // AbortError 或超时转换为超时错误
+    const isAbort =
+      (error instanceof DOMException && error.name === "AbortError") ||
+      (error instanceof ApiRequestError && error.status === 504);
+
+    if (isAbort) {
+      throw new ApiRequestError(i18n.t("apiErrorGatewayTimeout", { ns: "common" }), {
+        kind: "timeout",
+        retryable: true,
+        status: 504,
+      });
+    }
+
     if (error instanceof ApiRequestError && (error.status === 401 || error.status === 403)) {
       return null;
     }
@@ -59,14 +73,7 @@ export async function getCurrentUser() {
 
 export async function login(input: { username: string; password: string }) {
   const body: LoginRequest = input;
-  const result = await openapiRequestRequired<LoginEnvelope>(
-    apiFetchClient.POST("/api/auth/login", { body }),
-  );
-  return {
-    accessToken: result.access_token,
-    expiresIn: result.expires_in,
-    user: result.user,
-  };
+  return openapiRequestRequired<LoginEnvelope>(apiFetchClient.POST("/api/auth/login", { body }));
 }
 
 /**
@@ -88,11 +95,7 @@ export async function bootstrapAuthSession() {
     return null;
   }
 
-  return {
-    accessToken: result.access_token,
-    expiresIn: result.expires_in ?? 0,
-    user: result.user,
-  };
+  return result;
 }
 
 export async function logout() {

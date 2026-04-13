@@ -4,3 +4,5 @@ node_modules/
 .vite/
 .vite-temp/
 coverage/
+.dual-graph/
+.dual-graph-context/

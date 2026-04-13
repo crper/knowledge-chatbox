@@ -2,8 +2,7 @@
  * @file 登录页面模块。
  */
 
-import { useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
   BracesIcon,
@@ -16,7 +15,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { useLocation, useNavigate } from "@/lib/app-router";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import {
   Dialog,
   DialogContent,
@@ -27,9 +26,10 @@ import {
 } from "@/components/ui/dialog";
 import { queryKeys } from "@/lib/api/query-keys";
 import { getApiErrorMessage } from "@/lib/api/client";
-import { login, updatePreferences } from "@/features/auth/api/auth";
+import { loginMutationOptions } from "@/features/auth/api/auth-query";
+import { updatePreferences } from "@/features/auth/api/auth";
 import { LoginForm } from "@/features/auth/components/login-form";
-import { resolvePostLoginPath } from "@/lib/auth/auth-redirect";
+import { sanitizeAuthRedirectPath } from "@/lib/auth/auth-redirect";
 import { applyAuthenticatedAccessToken, setAuthenticatedSession } from "@/lib/auth/session-manager";
 import { BrandMark } from "@/components/shared/brand-mark";
 import { LanguageToggle } from "@/features/settings/components/language-toggle";
@@ -45,10 +45,10 @@ import {
  */
 export function LoginPage() {
   const { t } = useTranslation(["auth", "common"]);
-  const location = useLocation();
   const navigate = useNavigate();
+  const search = useSearch({ strict: false }) as { redirect?: string };
   const queryClient = useQueryClient();
-  const [loginError, setLoginError] = useState<unknown>(null);
+  const loginMutation = useMutation(loginMutationOptions());
   const workbenchSteps: Array<{
     icon: LucideIcon;
     title: string;
@@ -86,10 +86,9 @@ export function LoginPage() {
   ];
 
   const handleSubmit = async (input: { username: string; password: string }) => {
-    setLoginError(null);
     try {
-      const authenticatedUser = await login(input);
-      applyAuthenticatedAccessToken(authenticatedUser.accessToken);
+      const authenticatedUser = await loginMutation.mutateAsync(input);
+      applyAuthenticatedAccessToken(authenticatedUser.access_token);
       const pendingThemeSync = resolvePendingThemeSync(authenticatedUser.user.theme_preference);
       const nextUser = pendingThemeSync.shouldClearPendingTheme
         ? authenticatedUser.user
@@ -113,14 +112,16 @@ export function LoginPage() {
           });
       }
       await setAuthenticatedSession(queryClient, nextUser);
-      const nextPath = resolvePostLoginPath(location.search);
-      void navigate(nextPath, { replace: true });
-    } catch (error) {
-      setLoginError(error);
+      const nextPath = sanitizeAuthRedirectPath(search.redirect) ?? "/chat";
+      void navigate({ to: nextPath, replace: true });
+    } catch {
+      // Error is captured in loginMutation.error
     }
   };
 
-  const errorMessage = loginError ? getApiErrorMessage(loginError) || t("loginFailed") : null;
+  const errorMessage = loginMutation.error
+    ? getApiErrorMessage(loginMutation.error) || t("loginFailed")
+    : null;
 
   return (
     <main className="relative min-h-[100dvh] overflow-x-hidden bg-background px-5 py-6 text-foreground md:px-6 md:py-8">
@@ -265,8 +266,8 @@ export function LoginPage() {
                 <LoginForm
                   errorMessage={errorMessage}
                   onFieldChange={() => {
-                    if (loginError) {
-                      setLoginError(null);
+                    if (loginMutation.error) {
+                      loginMutation.reset();
                     }
                   }}
                   onSubmit={handleSubmit}

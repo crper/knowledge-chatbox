@@ -4,23 +4,24 @@
 
 import { openapiRequestRequired } from "@/lib/api/client";
 import { apiFetchClient } from "@/lib/api/generated/client";
-import type { components } from "@/lib/api/generated/client";
 
-/**
- * 描述用户项的数据结构。
- */
-export type UserItem = {
-  id: number;
-  username: string;
-  role: "admin" | "user";
-  status: "active" | "disabled";
-  theme_preference?: "light" | "dark" | "system";
-  created_at?: string;
-  created_by_user_id?: number | null;
-  updated_at?: string;
-  last_login_at?: string | null;
-  password_changed_at?: string | null;
-};
+import type { components } from "@/lib/api/generated/schema";
+
+type UserRead = components["schemas"]["UserRead"];
+
+export type UserItem = Pick<
+  UserRead,
+  | "id"
+  | "username"
+  | "role"
+  | "status"
+  | "theme_preference"
+  | "created_at"
+  | "created_by_user_id"
+  | "updated_at"
+  | "last_login_at"
+  | "password_changed_at"
+>;
 type CreateUserRequest = components["schemas"]["CreateUserRequest"];
 type ResetPasswordRequest = components["schemas"]["ResetPasswordRequest"];
 type UpdateUserRequest = components["schemas"]["UpdateUserRequest"];
@@ -44,10 +45,13 @@ export function createUser(input: { username: string; password: string; role: "a
  * 更新用户。
  */
 export function updateUser(userId: number, input: Partial<Pick<UserItem, "status" | "role">>) {
+  const body: UpdateUserRequest = {};
+  if (input.status !== undefined) body.status = input.status;
+  if (input.role !== undefined) body.role = input.role;
   return openapiRequestRequired<UserItem>(
     apiFetchClient.PATCH("/api/users/{user_id}", {
       params: { path: { user_id: userId } },
-      body: input as UpdateUserRequest,
+      body,
     }),
   );
 }

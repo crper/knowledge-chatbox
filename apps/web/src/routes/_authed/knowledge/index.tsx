@@ -1,7 +1,3 @@
-/**
- * @file TanStack Router knowledge 路由。
- */
-
 import { createFileRoute } from "@tanstack/react-router";
 
 import {
@@ -9,7 +5,12 @@ import {
   documentUploadReadinessQueryOptions,
 } from "@/features/knowledge/api/documents-query";
 import { normalizeKnowledgeRouteSearch } from "@/features/knowledge/route-search";
-import { KnowledgePageRoute } from "@/router/route-shells";
+import { lazy, Suspense } from "react";
+import { LoadingState } from "@/components/shared/loading-state";
+
+const KnowledgePage = lazy(async () => ({
+  default: (await import("@/pages/knowledge/knowledge-page")).KnowledgePage,
+}));
 
 export const Route = createFileRoute("/_authed/knowledge/")({
   validateSearch: (search: Record<string, unknown>) => normalizeKnowledgeRouteSearch(search),
@@ -20,5 +21,10 @@ export const Route = createFileRoute("/_authed/knowledge/")({
       context.queryClient.ensureQueryData(documentsListQueryOptions(deps)),
     ]);
   },
-  component: KnowledgePageRoute,
+  component: () => (
+    <Suspense fallback={<LoadingState />}>
+      <KnowledgePage />
+    </Suspense>
+  ),
+  pendingComponent: LoadingState,
 });

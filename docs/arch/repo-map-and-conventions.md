@@ -113,7 +113,7 @@ knowledge-chatbox/
 
 - `lib/api/generated` 只放 OpenAPI 生成产物和 typed client 入口
 - FastAPI app 导出的 OpenAPI 是唯一接口契约源；改了 `apps/api` 的 route / schema 后，必须执行 `vp run api:generate` 同步前端契约
-- `apps/web/openapi/schema.json` 与 `apps/web/src/lib/api/generated/schema.d.ts` 是受版本控制的契约 snapshot；它们参与 `vp run api:check`，但通过 `apps/web/.prettierignore` 排除在常规格式化之外
+- `apps/web/openapi/schema.json` 与 `apps/web/src/lib/api/generated/schema.d.ts` 当前是本地生成产物，不再纳入版本控制；官方入口会在缺失时自动生成、存在时再校验漂移
 - `vp run api:check` / `just web-check` 会校验 schema 和生成类型是否漂移
 - `lib/api/client.ts` 负责 envelope 解包与前端错误归一化；只统一处理网络失败和 `AbortError`，不要把业务错误或契约错误一律改写成通用 `503`
 - `lib/forms.ts` 统一承接轻量表单辅助，包括错误消息抽取和共享 submit event helper
@@ -145,8 +145,8 @@ knowledge-chatbox/
 | 目录                                         | 责任                                                       |
 | -------------------------------------------- | ---------------------------------------------------------- |
 | `api/routes`                                 | HTTP 入口                                                  |
-| `api/deps.py`                                | 路由共享依赖                                               |
-| `core`                                       | 配置、日志、安全基础能力                                   |
+| `api/deps.py`                                | 路由共享依赖，复用 `core/service_builders.py` 装配 service |
+| `core`                                       | 配置、日志、安全基础能力，以及共享 service builder         |
 | `db`                                         | 引擎和会话工厂                                             |
 | `models`                                     | SQLAlchemy 模型                                            |
 | `schemas`                                    | 请求/响应模型                                              |
@@ -172,7 +172,7 @@ knowledge-chatbox/
 | 上传、内容哈希去重、标准化、切块、索引 | `services/documents/*`                                                                                       |
 | 聊天、SSE、失败恢复、活跃 run 补偿     | `services/chat/*`、`tasks/document_jobs.py`、`main.py`                                                       |
 | `ChatWorkflow` / `PydanticAI` 聊天执行 | `services/chat/workflow/*`、`services/chat/chat_application_service.py`、`services/chat/chat_run_service.py` |
-| 认证、会话、用户管理                   | `services/auth/*`、`repositories/rate_limit_repository.py`、`api/routes/auth.py`、`api/routes/users.py`     |
+| 认证、会话、用户管理                   | `services/auth/*`、`core/service_builders.py`、`repositories/rate_limit_repository.py`、`api/routes/auth.py`、`api/routes/users.py`     |
 | personal space bootstrap               | `repositories/space_repository.py`、`main.py`                                                                |
 
 ## 5. 修改时的基本规则
@@ -202,7 +202,7 @@ knowledge-chatbox/
 | 聊天 UI          | [frontend-workspace.md](./frontend-workspace.md)                       | 附件展示、消息视口、失败恢复、会话恢复、默认标题等页面级交互                                                    |
 | 聊天数据读取     | [frontend-workspace.md](./frontend-workspace.md)                       | 主区走 `/messages?limit=80`、右栏走 `/context`；不要让 UI 组件依赖整段消息列表反推摘要                          |
 | 流式问答收尾     | [frontend-workspace.md](./frontend-workspace.md)                       | 优先 patch `messagesWindow` 和 `context`，patch miss 时才回退到 query 失效刷新                                  |
-| 聊天前端运行时   | [frontend-workspace.md](./frontend-workspace.md)                       | `useChatRuntimeState` 读 `streamRun`、`useChatSessionSubmitController` 管提交锁、`useChatStreamRun` 管流式运行、`useChatSessionCacheActions` 负责 cache 写入 |
+| 聊天前端运行时   | [frontend-workspace.md](./frontend-workspace.md)                       | `useChatRuntime` 是运行态读写 owner，`useChatCacheWriter` 是 Query cache 唯一写出口，`useChatComposerStore` 是 composer 唯一 owner |
 | 聊天 composer    | [frontend-workspace.md](./frontend-workspace.md)                       | `useChatComposerStore` 是唯一 owner；只持久化草稿和快捷键，附件继续保留内存态；不要把 `File` 对象塞回 persist store |
 | 设置页交互       | [provider-and-settings.md](./provider-and-settings.md)                 | 纯 helper 返回 i18n key，主区承载当前生效配置，高级区承载检索覆盖和备用模板                                     |
 | API 文档 / 契约  | —                                                                      | FastAPI OpenAPI 为唯一接口契约源；不要维护平行手写接口文档                                                      |
@@ -261,6 +261,7 @@ just docker-health
 - `just` / `just help` 只展示精简过的高频入口，降低日常记忆负担
 - `just --list` 保留完整命令面，适合排查或查找低频入口
 - `just init-env` 负责补齐空白的本地密钥，并提示你去 `.env` 查看 bootstrap 管理员密码
+- `scripts/dev-run.sh` 在 `just dev` / `just reset-dev` 启动时会先预检 `API_PORT / WEB_PORT` 是否空闲；若端口已占用，会直接失败并提示改端口或停掉旧进程
 - `scripts/dev-run.sh` 在 `just dev` / `just reset-dev` 启动时会打印 bootstrap 管理员账号和密码来源，避免重置数据后还沿用旧默认密码
 - `.github/workflows/ci.yml` 当前把仓库门禁收敛为 `api / web / repo-surface` 三个 job
 - `.github/workflows/dependabot-auto-merge.yml` 只会处理 Dependabot 发起的 `patch / minor` 更新；`major` 更新不会自动合并
@@ -289,18 +290,21 @@ cd apps/api
 uv run ruff check
 uv run ruff format --check
 uv run basedpyright
+uv run basedpyright --project pyproject.test.toml
 uv run --group dev python -m pytest
 ```
 
+- 后端解释器真相源是 `apps/api/.python-version`，当前固定 `3.13.13`；本地补环境或 CI 配置时，不要再手写一套独立 Python 版本
 - 后端单测优先保护公共契约、边界条件和业务行为；如果同一行为已经被更高层覆盖，不再补简单映射表或静态默认值的重复测试
-- `just api-check` 当前等价于 `ruff check + ruff format --check + basedpyright`
+- `just api-check` 当前等价于 `ruff check + ruff format --check + basedpyright（src） + basedpyright --project pyproject.test.toml（tests）`
 - 后端测试目录分层：
   - `tests/integration`: API 路由、provider 集成、文档上传问答全链路测试
   - `tests/unit`: 纯服务、仓储、工具类的单元测试，不依赖外部服务
   - `tests/runtime`: just 命令、脚本、仓库入口的运行时约束测试
   - `tests/migrations`: 数据库迁移的 smoke test
   - `tests/fixtures`: 测试工厂、复用 helper、mock 数据生成器
-- 后端 API 集成测试统一通过 `apps/api/tests/conftest.py` 的 helper 准备 TestClient、临时 SQLite/Chroma 路径
+- 后端 API 集成测试统一通过 `apps/api/tests/conftest.py` 暴露 fixture；运行时环境拼装、临时 SQLite/Chroma 路径准备和 `TestClient` 构造收口在 `apps/api/tests/fixtures/runtime.py`
+- 原生异步测试统一使用 `pytest-asyncio`，`apps/api/pyproject.toml` 开启 `asyncio_mode = "auto"`；不要再在新测试里手写 `asyncio.run(...)` 包装异步断言
 
 ### 6.4 涉及启动、环境变量或 Docker
 
@@ -324,7 +328,7 @@ scripts/docker-deploy.sh build
 
 ### 6.5 涉及本地数据目录
 
-`just reset-dev` 会先执行 `scripts/reset-local-data.sh`，再同步依赖并拉起前后端开发态脚本。
+`just reset-dev` 会先执行开发端口预检；只有预检通过后，才会执行 `scripts/reset-local-data.sh`、同步依赖并拉起前后端开发态脚本。
 
 如果你只想补齐依赖、不想清空本地数据，使用 `just setup`。
 

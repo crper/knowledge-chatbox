@@ -4,17 +4,15 @@
 
 import type { IndexRebuildStatus } from "../api/settings";
 
+const INDEX_STATUS_LABEL_KEYS: Record<IndexRebuildStatus | "idle", string> = {
+  running: "indexStatusRunning",
+  failed: "indexStatusFailed",
+  idle: "indexStatusIdle",
+};
+
 export function getIndexStatusLabel(
   status: IndexRebuildStatus | undefined,
   t: (key: string, params?: Record<string, unknown>) => string,
 ) {
-  if (status === "running") {
-    return t("indexStatusRunning");
-  }
-
-  if (status === "failed") {
-    return t("indexStatusFailed");
-  }
-
-  return t("indexStatusIdle");
+  return t(INDEX_STATUS_LABEL_KEYS[status ?? "idle"]);
 }

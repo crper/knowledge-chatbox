@@ -5,8 +5,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { FilesIcon, ScanSearchIcon, UploadIcon } from "lucide-react";
+import { capitalize } from "es-toolkit";
 
-import { useNavigate } from "@/lib/app-router";
+import { useNavigate } from "@tanstack/react-router";
 import { WorkspaceMetricCard, WorkspacePage } from "@/components/shared/workspace-page";
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
@@ -37,7 +38,6 @@ import { VersionDrawer } from "@/features/knowledge/components/version-drawer";
 import { KnowledgeEmptyState } from "@/features/knowledge/components/knowledge-empty-state";
 import { KnowledgeResourceSection } from "@/features/knowledge/components/knowledge-resource-section";
 import { useIsMobile } from "@/lib/hooks/use-mobile";
-import { buildSettingsPath } from "@/lib/routes";
 
 type ResourceTypeFilter = "all" | (typeof KNOWLEDGE_TYPE_FILTER_VALUES)[number];
 
@@ -48,21 +48,15 @@ const STATUS_FILTER_VALUES: Array<"all" | KnowledgeDocumentStatus> = [
 ];
 
 function getTypeFilterLabel(value: ResourceTypeFilter, t: (key: string) => string) {
-  return t(`typeFilter${value.charAt(0).toUpperCase()}${value.slice(1)}`);
+  return t(`typeFilter${capitalize(value)}`);
 }
 
 function getStatusFilterLabel(value: "all" | KnowledgeDocumentStatus, t: (key: string) => string) {
-  return value === "all"
-    ? t("statusFilterAll")
-    : t(`status${value.charAt(0).toUpperCase()}${value.slice(1)}`);
+  return value === "all" ? t("statusFilterAll") : t(`status${capitalize(value)}`);
 }
 
 function resolveSelectedResourceEmptyState(hasDocuments: boolean, hasActiveFilters: boolean) {
-  if (hasDocuments) {
-    return "selection-required" as const;
-  }
-
-  if (hasActiveFilters) {
+  if (!hasDocuments && hasActiveFilters) {
     return "no-match" as const;
   }
 
@@ -84,13 +78,14 @@ export function KnowledgePage() {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [selectedDocumentId, setSelectedDocumentId] = useState<number | null>(null);
   const [inspectorTab, setInspectorTab] = useState<DocumentInspectorTabValue>("details");
+  const [versionDrawerDocumentId, setVersionDrawerDocumentId] = useState<number | null>(null);
+  const [versionDrawerOpen, setVersionDrawerOpen] = useState(false);
   const typeFilter = (routeSearch.type ?? "all") as ResourceTypeFilter;
   const statusFilter = (routeSearch.status ?? "all") as "all" | KnowledgeDocumentStatus;
   const {
     canManageDocuments,
     canManageProviderSettings,
     cancelUpload,
-    closeVersionDrawer,
     deleteDocument,
     documents,
     documentsPlaceholder,
@@ -101,15 +96,12 @@ export function KnowledgePage() {
     removeUpload,
     reindexDocument,
     retryUpload,
-    showVersions,
     uploadReadiness,
     uploadReadinessPending,
     uploadItems,
-    versionDrawerOpen,
-    versions,
   } = useKnowledgeWorkspace(routeSearch);
   const indexedCount = useMemo(
-    () => documents.filter((document) => document.status === "indexed").length,
+    () => documents.filter((document) => document.ingest_status === "indexed").length,
     [documents],
   );
   const hasDocuments = documents.length > 0;
@@ -150,6 +142,22 @@ export function KnowledgePage() {
   }, [documents, selectedDocumentId]);
 
   useEffect(() => {
+    if (versionDrawerDocumentId === null) {
+      return;
+    }
+
+    const hasTargetDocument = documents.some(
+      (document) => document.document_id === versionDrawerDocumentId,
+    );
+    if (hasTargetDocument) {
+      return;
+    }
+
+    setVersionDrawerOpen(false);
+    setVersionDrawerDocumentId(null);
+  }, [documents, versionDrawerDocumentId]);
+
+  useEffect(() => {
     if (isMobile || selectedDocumentId !== null || documents.length === 0) {
       return;
     }
@@ -166,14 +174,6 @@ export function KnowledgePage() {
     }
   };
 
-  const handleSelectDocument = (document: KnowledgeDocument) => {
-    setInspectorTab("details");
-    setSelectedDocumentId(document.id);
-    if (isMobile) {
-      setPreviewOpen(true);
-    }
-  };
-
   const handleShowVersions = (documentId: number) => {
     const targetDocument =
       documents.find((document) => document.document_id === documentId) ?? null;
@@ -182,7 +182,8 @@ export function KnowledgePage() {
     }
 
     if (isMobile) {
-      void showVersions(documentId);
+      setVersionDrawerDocumentId(documentId);
+      setVersionDrawerOpen(true);
       return;
     }
 
@@ -221,7 +222,9 @@ export function KnowledgePage() {
           {canManageProviderSettings ? (
             <AlertAction>
               <Button
-                onClick={() => navigate(buildSettingsPath("providers"))}
+                onClick={() =>
+                  navigate({ to: "/settings/$section", params: { section: "providers" } })
+                }
                 size="sm"
                 type="button"
                 variant="outline"
@@ -246,29 +249,37 @@ export function KnowledgePage() {
     return null;
   };
 
-  const desktopTypeFilterButtons = TYPE_FILTER_VALUES.map((value) => (
-    <Button
-      key={value}
-      onClick={() => updateRouteSearch({ type: value === "all" ? undefined : value })}
-      size="sm"
-      type="button"
-      variant={typeFilter === value ? "default" : "outline"}
-    >
-      {getTypeFilterLabel(value, t)}
-    </Button>
-  ));
+  const desktopTypeFilterButtons = useMemo(
+    () =>
+      TYPE_FILTER_VALUES.map((value) => (
+        <Button
+          key={value}
+          onClick={() => updateRouteSearch({ type: value === "all" ? undefined : value })}
+          size="sm"
+          type="button"
+          variant={typeFilter === value ? "default" : "outline"}
+        >
+          {getTypeFilterLabel(value, t)}
+        </Button>
+      )),
+    [t, typeFilter, updateRouteSearch],
+  );
 
-  const desktopStatusFilterButtons = STATUS_FILTER_VALUES.map((value) => (
-    <Button
-      key={value}
-      onClick={() => updateRouteSearch({ status: value === "all" ? undefined : value })}
-      size="sm"
-      type="button"
-      variant={statusFilter === value ? "secondary" : "outline"}
-    >
-      {getStatusFilterLabel(value, t)}
-    </Button>
-  ));
+  const desktopStatusFilterButtons = useMemo(
+    () =>
+      STATUS_FILTER_VALUES.map((value) => (
+        <Button
+          key={value}
+          onClick={() => updateRouteSearch({ status: value === "all" ? undefined : value })}
+          size="sm"
+          type="button"
+          variant={statusFilter === value ? "secondary" : "outline"}
+        >
+          {getStatusFilterLabel(value, t)}
+        </Button>
+      )),
+    [t, statusFilter, updateRouteSearch],
+  );
 
   const resourcesSectionPane = (
     <KnowledgeResourceSection
@@ -288,7 +299,7 @@ export function KnowledgePage() {
       onRemoveUpload={removeUpload}
       onReindexDocument={(documentId) => void reindexDocument(documentId)}
       onRetryUpload={retryUpload}
-      onSelectDocument={handleSelectDocument}
+      onSelectDocument={openPreviewForDocument}
       onSetSearchValue={setSearchValue}
       onShowVersions={handleShowVersions}
       processingCount={processingCount}
@@ -394,9 +405,12 @@ export function KnowledgePage() {
           />
 
           <VersionDrawer
-            onClose={closeVersionDrawer}
+            documentId={versionDrawerDocumentId}
+            onClose={() => {
+              setVersionDrawerOpen(false);
+              setVersionDrawerDocumentId(null);
+            }}
             open={versionDrawerOpen}
-            versions={versions}
           />
         </>
       ) : null}

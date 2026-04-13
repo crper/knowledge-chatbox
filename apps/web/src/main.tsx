@@ -6,7 +6,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { AppShell } from "./app";
-import { applyNoTranslateAttributes } from "@/lib/dom/no-translate";
+import { applyNoTranslateAttributes } from "@/lib/dom";
 import "./styles/globals.css";
 
 const rootElement = document.getElementById("root");

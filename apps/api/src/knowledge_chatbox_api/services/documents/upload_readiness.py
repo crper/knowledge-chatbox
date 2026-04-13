@@ -1,14 +1,15 @@
 """Document upload readiness checks."""
 
-from dataclasses import dataclass
+from pydantic import BaseModel, ConfigDict
 
 from knowledge_chatbox_api.models.enums import IndexRebuildStatus, ProviderName
 from knowledge_chatbox_api.utils.helpers import strip_or_none
 
 
-@dataclass(frozen=True)
-class DocumentUploadReadiness:
-    """Describe whether the current settings can accept new uploads."""
+class DocumentUploadReadiness(BaseModel):
+    """描述当前设置是否可以接受新上传。"""
+
+    model_config = ConfigDict(frozen=True)
 
     can_upload: bool
     image_fallback: bool

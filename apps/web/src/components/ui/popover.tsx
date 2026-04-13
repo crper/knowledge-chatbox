@@ -2,19 +2,17 @@
  * @file Popover 基础 UI 组件模块。
  */
 
-"use client";
-
 import * as React from "react";
 import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
 
 import { cn } from "@/lib/utils";
 
 function Popover({ ...props }: React.ComponentProps<typeof PopoverPrimitive.Root>) {
-  return <PopoverPrimitive.Root {...props} />;
+  return <PopoverPrimitive.Root data-slot="popover" {...props} />;
 }
 
 function PopoverTrigger({ ...props }: React.ComponentProps<typeof PopoverPrimitive.Trigger>) {
-  return <PopoverPrimitive.Trigger {...props} />;
+  return <PopoverPrimitive.Trigger data-slot="popover-trigger" {...props} />;
 }
 
 function PopoverContent({
@@ -23,9 +21,7 @@ function PopoverContent({
   children,
   sideOffset = 8,
   ...props
-}: React.ComponentProps<typeof PopoverPrimitive.Positioner> & {
-  className?: string;
-}) {
+}: React.ComponentProps<typeof PopoverPrimitive.Positioner>) {
   return (
     <PopoverPrimitive.Portal>
       <PopoverPrimitive.Positioner align={align} sideOffset={sideOffset} {...props}>

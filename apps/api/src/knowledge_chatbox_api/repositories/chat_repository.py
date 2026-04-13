@@ -59,9 +59,11 @@ class ChatRepository(BaseRepository[ChatSession]):
         if chat_session is None:
             return None
         if title is not UNSET:
-            chat_session.title = title  # type: ignore[assignment]  # UNSET sentinel 允许传入 None 清空字段
+            chat_session.title = title if isinstance(title, str) else None
         if reasoning_mode is not UNSET:
-            chat_session.reasoning_mode = reasoning_mode  # type: ignore[assignment]
+            chat_session.reasoning_mode = (
+                reasoning_mode if isinstance(reasoning_mode, str) else ReasoningMode.DEFAULT
+            )
         self.session.flush()
         return chat_session
 
@@ -156,7 +158,7 @@ class ChatRepository(BaseRepository[ChatSession]):
         attachments = list(self.session.scalars(statement).all())
         self._attach_document_ids(attachments)
         for attachment in attachments:
-            attachments_by_message_id.setdefault(attachment.message_id, []).append(attachment)
+            attachments_by_message_id[attachment.message_id].append(attachment)
         return attachments_by_message_id
 
     def list_session_attachments(self, session_id: int) -> list[ChatMessageAttachment]:
@@ -185,7 +187,8 @@ class ChatRepository(BaseRepository[ChatSession]):
             ).all()
         }
         for attachment in attachments:
-            revision = revisions.get(attachment.document_revision_id or -1)
+            revision_id = attachment.document_revision_id
+            revision = revisions.get(revision_id) if revision_id is not None else None
             attachment.document_id = revision.document_id if revision is not None else None
 
     def list_messages(self, session_id: int, *, limit: int = 500) -> list[ChatMessage]:
@@ -226,15 +229,7 @@ class ChatRepository(BaseRepository[ChatSession]):
     def list_recent_messages(self, session_id: int, *, limit: int) -> list[ChatMessage]:
         if limit <= 0:
             return []
-        statement = (
-            select(ChatMessage)
-            .where(ChatMessage.session_id == session_id)
-            .order_by(ChatMessage.id.desc())
-            .limit(limit)
-        )
-        messages = list(self.session.scalars(statement).all())
-        messages.reverse()
-        return messages
+        return self.list_messages_window(session_id, before_id=None, limit=limit)
 
     def get_assistant_reply(self, reply_to_message_id: int) -> ChatMessage | None:
         statement = (

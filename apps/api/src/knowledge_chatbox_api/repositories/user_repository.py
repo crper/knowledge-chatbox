@@ -18,8 +18,5 @@ class UserRepository(BaseRepository[User]):
     def list_users(self) -> list[User]:
         return self.list(order_by=(User.id, True))
 
-    def add_user(self, user: User) -> User:
-        return self.add(user)
-
     def delete_user(self, user: User) -> None:
         self.session.delete(user)

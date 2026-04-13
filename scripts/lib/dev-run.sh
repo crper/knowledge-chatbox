@@ -12,10 +12,25 @@ ENV_FILE="${ENV_FILE:-${ROOT_DIR}/.env}"
 API_PORT="${API_PORT:-8000}"
 WEB_PORT="${WEB_PORT:-3000}"
 API_HEALTH_URL="http://127.0.0.1:${API_PORT}/api/health"
+CHECK_ONLY=false
 
 pids=()
 api_pid=""
 web_pid=""
+
+parse_args() {
+  while (($# > 0)); do
+    case "$1" in
+    --check-only)
+      CHECK_ONLY=true
+      ;;
+    *)
+      die "未知参数：$1"
+      ;;
+    esac
+    shift
+  done
+}
 
 read_env_value() {
   local target_key="$1"
@@ -25,6 +40,45 @@ read_env_value() {
   raw_line="$(grep -E "^${target_key}=" "$ENV_FILE" 2>/dev/null | tail -n 1 || true)"
   [[ -n "$raw_line" ]] || return 0
   printf '%s\n' "${raw_line#*=}"
+}
+
+port_available() {
+  local port="$1"
+
+  if command -v lsof >/dev/null 2>&1; then
+    ! lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1
+    return
+  fi
+
+  require_command python3
+  python3 - "$port" <<'PY'
+from __future__ import annotations
+
+import socket
+import sys
+
+port = int(sys.argv[1])
+
+with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+    sock.settimeout(0.2)
+    raise SystemExit(0 if sock.connect_ex(("127.0.0.1", port)) != 0 else 1)
+PY
+}
+
+ensure_port_available() {
+  local port="$1"
+  local env_name="$2"
+
+  if ! port_available "$port"; then
+    die "端口 ${port} 已被占用。请先停止现有进程，或通过 ${env_name} 指定其他端口。"
+  fi
+}
+
+validate_dev_environment() {
+  require_command uv
+  require_command vp
+  ensure_port_available "$API_PORT" "API_PORT"
+  ensure_port_available "$WEB_PORT" "WEB_PORT"
 }
 
 print_urls() {
@@ -117,6 +171,8 @@ wait_for_exit() {
 }
 
 dev_run_main() {
+  parse_args "$@"
+
   API_DIR="$(resolve_fs_path "$ROOT_DIR" "$API_DIR")"
   WEB_DIR="$(resolve_fs_path "$ROOT_DIR" "$WEB_DIR")"
   ENV_FILE="$(resolve_fs_path "$ROOT_DIR" "$ENV_FILE")"
@@ -124,8 +180,12 @@ dev_run_main() {
   [[ -d "$API_DIR" ]] || die "API_DIR 不存在：$API_DIR"
   [[ -d "$WEB_DIR" ]] || die "WEB_DIR 不存在：$WEB_DIR"
 
-  require_command uv
-  require_command vp
+  validate_dev_environment
+
+  if $CHECK_ONLY; then
+    log "开发环境预检通过"
+    return 0
+  fi
 
   trap cleanup EXIT
   trap on_int INT
@@ -149,6 +209,7 @@ dev_run_main() {
   log "启动 Web：$WEB_DIR"
   (
     cd "$WEB_DIR" &&
+      vp run api:check &&
       exec vp dev --host 0.0.0.0 --port "$WEB_PORT"
   ) &
   web_pid=$!

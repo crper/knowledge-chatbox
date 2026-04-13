@@ -30,7 +30,7 @@ type CreateTestServerOptions = {
     error_message: string | null;
     retry_of_message_id: number | null;
     reply_to_message_id: number | null;
-    sources_json: unknown[] | null;
+    sources: unknown[] | null;
     created_at: string;
   }>;
   documents?: Array<{

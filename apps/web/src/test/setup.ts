@@ -93,6 +93,8 @@ Object.defineProperty(globalThis, "localStorage", {
 const { useChatComposerStore } = await import("../features/chat/store/chat-composer-store");
 const { useUiStore } = await import("../lib/store/ui-store");
 const { server } = await import("./msw/server");
+const { clearPendingBootstrapPromise } = await import("../lib/auth/session-manager");
+const { useSessionStore } = await import("../lib/auth/session-store");
 
 Object.defineProperty(globalThis, "CustomEvent", {
   configurable: true,
@@ -202,28 +204,14 @@ beforeAll(() => {
 beforeEach(() => {
   vi.stubGlobal("ResizeObserver", ResizeObserverMock);
   vi.stubGlobal("fetchMockCalls", [] as Array<[string, RequestInit?]>);
-  const originalFetch = globalThis.fetch.bind(globalThis);
-
-  vi.stubGlobal(
-    "fetch",
-    vi.fn().mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url =
-        input instanceof Request ? input.url : input instanceof URL ? input.href : String(input);
-      (globalThis as Record<string, unknown>).fetchMockCalls =
-        ((globalThis as Record<string, unknown>).fetchMockCalls as Array<[string, RequestInit?]>) ||
-        [];
-      (
-        (globalThis as Record<string, unknown>).fetchMockCalls as Array<[string, RequestInit?]>
-      ).push([url, init]);
-      return originalFetch(input, init);
-    }),
-  );
   window.localStorage.removeItem(LANGUAGE_STORAGE_KEY);
   window.localStorage.removeItem(THEME_STORAGE_KEY);
   window.localStorage.removeItem(LAST_VISITED_CHAT_SESSION_STORAGE_KEY);
   window.sessionStorage?.removeItem(THEME_SYNC_ON_LOGIN_STORAGE_KEY);
   document.documentElement.className = "";
   document.documentElement.style.colorScheme = "light";
+  useSessionStore.getState().reset();
+  clearPendingBootstrapPromise();
   useUiStore.setState({ language: DEFAULT_LANGUAGE, theme: DEFAULT_THEME });
   useChatComposerStore.setState({
     attachmentsBySession: {},

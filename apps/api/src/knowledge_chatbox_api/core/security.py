@@ -56,8 +56,8 @@ def create_access_token(
     """生成 access token。"""
     now = issued_at or datetime.now(UTC)
     payload = {
-        "exp": int((now + timedelta(minutes=expires_in_minutes)).timestamp()),
-        "iat": int(now.timestamp()),
+        "exp": now + timedelta(minutes=expires_in_minutes),
+        "iat": now,
         "role": role,
         "sub": str(user_id),
         "typ": "access",

@@ -1,25 +1,34 @@
-/**
- * @file TanStack Router settings section 路由。
- */
+import { createFileRoute, redirect, useRouteContext } from "@tanstack/react-router";
 
-import { createFileRoute, redirect } from "@tanstack/react-router";
-
-import { fetchCurrentUserIfAuthenticated } from "@/features/auth/api/auth-query";
 import { resolveSettingsSection } from "@/features/settings/settings-sections";
-import { buildSettingsPath } from "@/lib/routes";
-import { SettingsPageRoute } from "@/router/route-shells";
+import { lazy, Suspense } from "react";
+import { LoadingState } from "@/components/shared/loading-state";
+
+const SettingsPage = lazy(async () => ({
+  default: (await import("@/pages/settings/settings-page")).SettingsPage,
+}));
+
+function SettingsPageWithUser() {
+  const { user } = useRouteContext({ from: "/_authed/settings/$section" });
+  return (
+    <Suspense fallback={<LoadingState />}>
+      <SettingsPage user={user!} />
+    </Suspense>
+  );
+}
 
 export const Route = createFileRoute("/_authed/settings/$section")({
-  beforeLoad: async ({ context, params }) => {
-    const user = await fetchCurrentUserIfAuthenticated(context.queryClient);
+  beforeLoad: ({ context, params }) => {
+    const user = context.user;
     if (!user) {
       return;
     }
 
     const nextSection = resolveSettingsSection(params.section, user);
     if (nextSection !== params.section) {
-      throw redirect({ to: buildSettingsPath(nextSection) });
+      throw redirect({ to: "/settings/$section", params: { section: nextSection } });
     }
   },
-  component: SettingsPageRoute,
+  component: SettingsPageWithUser,
+  pendingComponent: LoadingState,
 });

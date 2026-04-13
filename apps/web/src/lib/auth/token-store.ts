@@ -17,10 +17,3 @@ export function getAccessToken() {
 export function setAccessToken(token: string | null) {
   accessToken = token;
 }
-
-/**
- * 清空当前 access token。
- */
-export function clearAccessToken() {
-  accessToken = null;
-}

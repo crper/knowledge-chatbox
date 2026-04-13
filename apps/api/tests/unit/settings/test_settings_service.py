@@ -10,6 +10,7 @@ from tests.fixtures.factories import UserFactory
 from knowledge_chatbox_api.core.config import Settings, get_settings
 from knowledge_chatbox_api.core.security import PasswordManager
 from knowledge_chatbox_api.db import session as db_session
+from knowledge_chatbox_api.models.enums import EmbeddingProvider
 from knowledge_chatbox_api.schemas.settings import (
     EmbeddingRouteConfig,
     UpdateSettingsRequest,
@@ -163,6 +164,28 @@ def test_parse_runtime_settings_accepts_attribute_and_mapping_inputs(migrated_db
     assert from_mapping.reasoning_mode == "on"
 
 
+def test_parse_runtime_settings_accepts_legacy_attribute_objects() -> None:
+    class LegacyRuntimeSettings:
+        provider_profiles = {
+            "openai": {"api_key": "key", "base_url": "https://api.openai.com/v1"},
+            "anthropic": {"api_key": "key", "base_url": "https://api.anthropic.com"},
+            "voyage": {"api_key": "voyage-key", "base_url": "https://api.voyageai.com/v1"},
+            "ollama": {"base_url": "http://localhost:11434"},
+        }
+        response_route = {"provider": "ollama", "model": "qwen3.5:4b"}
+        embedding_route = {"provider": "ollama", "model": "nomic-embed-text"}
+        vision_route = {"provider": "ollama", "model": "qwen3.5:4b"}
+        provider_timeout_seconds = 45
+        system_prompt = "hello"
+        active_index_generation = 2
+
+    runtime_settings = parse_runtime_settings(LegacyRuntimeSettings())
+
+    assert runtime_settings.response_route.provider == "ollama"
+    assert runtime_settings.provider_timeout_seconds == 45
+    assert runtime_settings.reasoning_mode == "default"
+
+
 def test_settings_service_builds_test_settings_bundle(migrated_db_session) -> None:
     admin = seed_admin(migrated_db_session)
     service = create_settings_service(migrated_db_session)
@@ -170,7 +193,9 @@ def test_settings_service_builds_test_settings_bundle(migrated_db_session) -> No
     draft, runtime_settings = service.build_test_settings_bundle(
         admin,
         UpdateSettingsRequest(
-            embedding_route=EmbeddingRouteConfig(provider="voyage", model="voyage-3.5")
+            embedding_route=EmbeddingRouteConfig(
+                provider=EmbeddingProvider.VOYAGE, model="voyage-3.5"
+            )
         ),
     )
 

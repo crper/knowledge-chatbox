@@ -3,10 +3,14 @@
  */
 
 import * as React from "react";
-import { cva, type VariantProps } from "class-variance-authority";
 import { Menu as DropdownMenuPrimitive } from "@base-ui/react/menu";
 
 import { cn } from "@/lib/utils";
+import {
+  MENU_CONTENT_CLASS,
+  menuItemVariants,
+  type MenuItemVariantProps,
+} from "@/lib/styles/menu-styles";
 import { CheckIcon, ChevronRightIcon } from "lucide-react";
 
 function DropdownMenu({ ...props }: React.ComponentProps<typeof DropdownMenuPrimitive.Root>) {
@@ -25,13 +29,7 @@ function DropdownMenuTrigger({
   return <DropdownMenuPrimitive.Trigger data-slot="dropdown-menu-trigger" {...props} />;
 }
 
-const dropdownMenuContentVariants = cva(
-  "surface-floating z-[60] min-w-32 origin-[var(--transform-origin)] overflow-x-hidden overflow-y-auto rounded-xl p-1 text-popover-foreground shadow-lg transition-[opacity,transform] duration-100 data-[ending-style]:scale-95 data-[ending-style]:opacity-0 data-[starting-style]:scale-95 data-[starting-style]:opacity-0",
-);
-
 type DropdownMenuContentProps = React.ComponentProps<typeof DropdownMenuPrimitive.Positioner> & {
-  children?: React.ReactNode;
-  className?: string;
   portalled?: boolean;
   portalContainer?: React.ComponentProps<typeof DropdownMenuPrimitive.Portal>["container"];
 };
@@ -54,7 +52,7 @@ function DropdownMenuContent({
     >
       <DropdownMenuPrimitive.Popup
         data-slot="dropdown-menu-content"
-        className={dropdownMenuContentVariants()}
+        className={cn(MENU_CONTENT_CLASS, "z-[60]")}
       >
         {children}
       </DropdownMenuPrimitive.Popup>
@@ -72,35 +70,19 @@ function DropdownMenuGroup({ ...props }: React.ComponentProps<typeof DropdownMen
   return <DropdownMenuPrimitive.Group data-slot="dropdown-menu-group" {...props} />;
 }
 
-const dropdownMenuItemVariants = cva(
-  "group/dropdown-menu-item relative flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm outline-hidden select-none data-[highlighted]:bg-accent/72 data-[highlighted]:text-accent-foreground data-[highlighted]:*:text-accent-foreground data-inset:pl-7 data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
-  {
-    variants: {
-      variant: {
-        default: "",
-        destructive:
-          "text-destructive data-[highlighted]:bg-destructive/12 data-[highlighted]:text-destructive dark:data-[highlighted]:bg-destructive/18 *:[svg]:text-destructive",
-      },
-    },
-    defaultVariants: {
-      variant: "default",
-    },
-  },
-);
-
 function DropdownMenuItem({
   className,
   inset,
   variant = "default",
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.Item> &
-  VariantProps<typeof dropdownMenuItemVariants> & { inset?: boolean }) {
+  MenuItemVariantProps & { inset?: boolean }) {
   return (
     <DropdownMenuPrimitive.Item
       data-inset={inset}
       data-slot="dropdown-menu-item"
       data-variant={variant}
-      className={cn(dropdownMenuItemVariants({ variant }), className)}
+      className={cn(menuItemVariants({ variant }), className)}
       {...props}
     />
   );
@@ -113,7 +95,7 @@ function DropdownMenuLinkItem({
   variant = "default",
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.LinkItem> &
-  VariantProps<typeof dropdownMenuItemVariants> & { inset?: boolean }) {
+  MenuItemVariantProps & { inset?: boolean }) {
   return (
     <DropdownMenuPrimitive.LinkItem
       closeOnClick={closeOnClick}
@@ -121,11 +103,14 @@ function DropdownMenuLinkItem({
       data-slot="dropdown-menu-link-item"
       data-variant={variant}
       role="menuitem"
-      className={cn(dropdownMenuItemVariants({ variant }), className)}
+      className={cn(menuItemVariants({ variant }), className)}
       {...props}
     />
   );
 }
+
+const DROPDOWN_MENU_CHECK_ITEM_CLASS =
+  "relative flex items-center gap-1.5 rounded-md py-1 pr-8 pl-1.5 text-sm outline-hidden select-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground data-[highlighted]:*:text-accent-foreground data-inset:pl-7 data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4";
 
 function DropdownMenuCheckboxItem({
   className,
@@ -139,10 +124,7 @@ function DropdownMenuCheckboxItem({
     <DropdownMenuPrimitive.CheckboxItem
       data-inset={inset}
       data-slot="dropdown-menu-checkbox-item"
-      className={cn(
-        "relative flex items-center gap-1.5 rounded-md py-1 pr-8 pl-1.5 text-sm outline-hidden select-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground data-[highlighted]:*:text-accent-foreground data-inset:pl-7 data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
-        className,
-      )}
+      className={cn(DROPDOWN_MENU_CHECK_ITEM_CLASS, className)}
       {...props}
     >
       <span
@@ -178,10 +160,7 @@ function DropdownMenuRadioItem({
       closeOnClick={closeOnClick}
       data-inset={inset}
       data-slot="dropdown-menu-radio-item"
-      className={cn(
-        "relative flex items-center gap-1.5 rounded-md py-1 pr-8 pl-1.5 text-sm outline-hidden select-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground data-[highlighted]:*:text-accent-foreground data-inset:pl-7 data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
-        className,
-      )}
+      className={cn(DROPDOWN_MENU_CHECK_ITEM_CLASS, className)}
       {...props}
     >
       <span
@@ -277,16 +256,13 @@ function DropdownMenuSubContent({
   className,
   children,
   ...props
-}: React.ComponentProps<typeof DropdownMenuPrimitive.Positioner> & {
-  children?: React.ReactNode;
-  className?: string;
-}) {
+}: Omit<DropdownMenuContentProps, "portalled" | "portalContainer">) {
   return (
     <DropdownMenuPrimitive.Portal>
       <DropdownMenuPrimitive.Positioner className={className} sideOffset={4} {...props}>
         <DropdownMenuPrimitive.Popup
           data-slot="dropdown-menu-sub-content"
-          className={dropdownMenuContentVariants()}
+          className={cn(MENU_CONTENT_CLASS, "z-[60]")}
         >
           {children}
         </DropdownMenuPrimitive.Popup>
@@ -312,6 +288,6 @@ export {
   DropdownMenuSub,
   DropdownMenuSubTrigger,
   DropdownMenuSubContent,
-  dropdownMenuItemVariants,
-  dropdownMenuContentVariants,
+  menuItemVariants as dropdownMenuItemVariants,
+  MENU_CONTENT_CLASS as DROPDOWN_MENU_CONTENT_CLASS,
 };

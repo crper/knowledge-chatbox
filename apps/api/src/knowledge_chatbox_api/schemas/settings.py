@@ -3,39 +3,41 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
+from pydantic import ConfigDict, Field, TypeAdapter
 
-from knowledge_chatbox_api.models.enums import IndexRebuildStatus, ReasoningMode
-from knowledge_chatbox_api.schemas._validators import (
-    EmbeddingProviderLiteral,
-    PositiveInt,
-    ResponseProviderLiteral,
-    VisionProviderLiteral,
+from knowledge_chatbox_api.models.enums import (
+    EmbeddingProvider,
+    IndexRebuildStatus,
+    ReasoningMode,
+    ResponseProvider,
+    VisionProvider,
 )
+from knowledge_chatbox_api.schemas import BaseSchema, InputSchema, ReadOnlySchema
+from knowledge_chatbox_api.schemas._validators import PositiveInt
 
 
-class ResponseRouteConfig(BaseModel):
+class ResponseRouteConfig(BaseSchema):
     """描述 response capability route。"""
 
-    provider: ResponseProviderLiteral
-    model: str
+    provider: ResponseProvider
+    model: str = Field(min_length=1, max_length=256)
 
 
-class EmbeddingRouteConfig(BaseModel):
+class EmbeddingRouteConfig(BaseSchema):
     """描述 embedding capability route。"""
 
-    provider: EmbeddingProviderLiteral
-    model: str
+    provider: EmbeddingProvider
+    model: str = Field(min_length=1, max_length=256)
 
 
-class VisionRouteConfig(BaseModel):
+class VisionRouteConfig(BaseSchema):
     """描述 vision capability route。"""
 
-    provider: VisionProviderLiteral
-    model: str
+    provider: VisionProvider
+    model: str = Field(min_length=1, max_length=256)
 
 
-class OpenAIProfile(BaseModel):
+class OpenAIProfile(BaseSchema):
     api_key: str | None = None
     base_url: str | None = None
     chat_model: str | None = None
@@ -43,27 +45,27 @@ class OpenAIProfile(BaseModel):
     vision_model: str | None = None
 
 
-class AnthropicProfile(BaseModel):
+class AnthropicProfile(BaseSchema):
     api_key: str | None = None
     base_url: str | None = None
     chat_model: str | None = None
     vision_model: str | None = None
 
 
-class VoyageProfile(BaseModel):
+class VoyageProfile(BaseSchema):
     api_key: str | None = None
     base_url: str | None = None
     embedding_model: str | None = None
 
 
-class OllamaProfile(BaseModel):
+class OllamaProfile(BaseSchema):
     base_url: str | None = None
     chat_model: str | None = None
     embedding_model: str | None = None
     vision_model: str | None = None
 
 
-class ProviderProfiles(BaseModel):
+class ProviderProfiles(BaseSchema):
     """描述全部 provider profile。"""
 
     openai: OpenAIProfile = Field(default_factory=OpenAIProfile)
@@ -72,7 +74,7 @@ class ProviderProfiles(BaseModel):
     ollama: OllamaProfile = Field(default_factory=OllamaProfile)
 
 
-class CapabilityHealthRead(BaseModel):
+class CapabilityHealthRead(ReadOnlySchema):
     """描述单个 capability 健康结果。"""
 
     provider: str
@@ -82,7 +84,7 @@ class CapabilityHealthRead(BaseModel):
     latency_ms: int | None = None
 
 
-class ProviderConnectionTestRead(BaseModel):
+class ProviderConnectionTestRead(ReadOnlySchema):
     """描述 capability 健康检查响应。"""
 
     response: CapabilityHealthRead
@@ -90,7 +92,7 @@ class ProviderConnectionTestRead(BaseModel):
     vision: CapabilityHealthRead
 
 
-class SettingsRead(BaseModel):
+class SettingsRead(ReadOnlySchema):
     """描述设置响应体。"""
 
     id: int
@@ -110,7 +112,7 @@ class SettingsRead(BaseModel):
     reindex_required: bool = False
 
 
-class UpdateSettingsRequest(BaseModel):
+class UpdateSettingsRequest(InputSchema):
     """描述更新设置请求。"""
 
     provider_profiles: ProviderProfiles | None = None
@@ -121,10 +123,10 @@ class UpdateSettingsRequest(BaseModel):
     provider_timeout_seconds: PositiveInt | None = None
 
 
-class ProviderRuntimeSettings(BaseModel):
+class ProviderRuntimeSettings(BaseSchema):
     """Provider 适配器运行时所需的最小强类型设置。"""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     provider_profiles: ProviderProfiles
     response_route: ResponseRouteConfig
@@ -134,6 +136,27 @@ class ProviderRuntimeSettings(BaseModel):
     provider_timeout_seconds: PositiveInt
     active_index_generation: PositiveInt | None = None
     reasoning_mode: ReasoningMode = ReasoningMode.DEFAULT
+
+
+class SettingsVersionSnapshot(BaseSchema):
+    """设置版本快照，用于变更检测和历史记录。
+
+    嵌套的 route/profile 字段存储为 dict 而非强类型模型，
+    因为历史快照需要兼容旧版 schema，不应被当前验证规则拒绝。
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    provider_profiles: dict[str, Any]
+    response_route: dict[str, Any]
+    embedding_route: dict[str, Any]
+    pending_embedding_route: dict[str, Any] | None = None
+    vision_route: dict[str, Any]
+    system_prompt: str | None = None
+    provider_timeout_seconds: int
+    active_index_generation: int
+    building_index_generation: int | None = None
+    index_rebuild_status: str
 
 
 _PROVIDER_PROFILES_ADAPTER = TypeAdapter(ProviderProfiles)

@@ -1,7 +1,5 @@
 import { type ComposerAttachmentItem, useChatComposerStore } from "../store/chat-composer-store";
 
-import { cloneChatAttachments } from "./chat-submit-helpers";
-
 export type ComposerSnapshot = {
   attachments: ComposerAttachmentItem[];
   draft: string;
@@ -9,9 +7,9 @@ export type ComposerSnapshot = {
 
 export function snapshotComposer(sessionId: number): ComposerSnapshot {
   const draft = useChatComposerStore.getState().draftsBySession[String(sessionId)] ?? "";
-  const attachments = cloneChatAttachments(
-    useChatComposerStore.getState().attachmentsBySession[String(sessionId)] ?? [],
-  );
+  const attachments = (
+    useChatComposerStore.getState().attachmentsBySession[String(sessionId)] ?? []
+  ).map((a) => ({ ...a }));
 
   return { attachments, draft };
 }

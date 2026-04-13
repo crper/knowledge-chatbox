@@ -1,18 +1,18 @@
 import { render, screen } from "@testing-library/react";
 
-import { useLocation, useParams, useSearchParams } from "@/lib/app-router";
+import { useLocation, useParams, useSearch } from "@tanstack/react-router";
 import { TestRouter } from "./test-router";
 
 function RouteProbe() {
   const location = useLocation();
-  const { sessionId } = useParams<{ sessionId?: string }>();
-  const [searchParams] = useSearchParams();
+  const { sessionId } = useParams({ strict: false }) as { sessionId?: string };
+  const search = useSearch({ strict: false }) as { tab?: string };
 
   return (
     <div>
       <span data-testid="pathname">{location.pathname}</span>
       <span data-testid="session-id">{sessionId ?? "missing"}</span>
-      <span data-testid="tab">{searchParams.get("tab") ?? "missing"}</span>
+      <span data-testid="tab">{search.tab ?? "missing"}</span>
     </div>
   );
 }

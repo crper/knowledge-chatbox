@@ -37,9 +37,9 @@ function buildDocument(overrides: Partial<KnowledgeDocument> = {}): KnowledgeDoc
     is_latest: true,
     logical_name: "季度知识库",
     name: "spec.pdf",
-    status: "indexed",
+    ingest_status: "indexed",
     updated_at: "2026-03-19T09:00:00Z",
-    version: 2,
+    revision_no: 2,
     ...overrides,
   };
 }

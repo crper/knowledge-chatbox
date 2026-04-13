@@ -2,49 +2,18 @@
  * @file 资源图片预览组件模块。
  */
 
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 
 import type { KnowledgeDocument } from "../api/documents";
-import { getDocumentFileUrl } from "@/features/chat/utils/document-file-url";
-import { fetchProtectedFileBlob } from "@/lib/api/protected-file";
+import { documentImagePreviewQueryOptions } from "../api/documents-query";
 
-/**
- * 渲染资源图片预览。
- */
 export function DocumentImagePreview({ document }: { document: KnowledgeDocument }) {
   const { t } = useTranslation("knowledge");
-  const [resolvedUrl, setResolvedUrl] = useState<string | null>(null);
-  const [loadFailed, setLoadFailed] = useState(false);
 
-  useEffect(() => {
-    let disposed = false;
-    let objectUrl: string | null = null;
-
-    setResolvedUrl(null);
-    setLoadFailed(false);
-
-    void fetchProtectedFileBlob(getDocumentFileUrl(document.id))
-      .then((blob) => {
-        if (disposed) {
-          return;
-        }
-        objectUrl = URL.createObjectURL(blob);
-        setResolvedUrl(objectUrl);
-      })
-      .catch(() => {
-        if (!disposed) {
-          setLoadFailed(true);
-        }
-      });
-
-    return () => {
-      disposed = true;
-      if (objectUrl) {
-        URL.revokeObjectURL(objectUrl);
-      }
-    };
-  }, [document.id]);
+  const { data: resolvedUrl, isError: loadFailed } = useQuery(
+    documentImagePreviewQueryOptions(document.id),
+  );
 
   return (
     <div className="surface-light flex min-h-[16rem] items-center justify-center rounded-xl p-3">

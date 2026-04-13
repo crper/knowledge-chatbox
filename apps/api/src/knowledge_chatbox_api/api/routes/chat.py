@@ -1,7 +1,7 @@
 """聊天路由定义。"""
 
 from collections.abc import Iterable
-from typing import Any, cast
+from typing import Any
 
 from fastapi import APIRouter, Query, status
 from sse_starlette.sse import EventSourceResponse
@@ -12,8 +12,6 @@ from knowledge_chatbox_api.api.routes._common.transforms import model_to_read_si
 from knowledge_chatbox_api.models.chat import (
     ChatMessage,
     ChatMessageAttachment,
-    ChatRun,
-    ChatSession,
 )
 from knowledge_chatbox_api.models.enums import ChatMessageRole, ChatMessageStatus, ProviderName
 from knowledge_chatbox_api.models.settings import AppSettings
@@ -37,6 +35,7 @@ from knowledge_chatbox_api.schemas.chat import (
     DeleteChatMessageResult,
     DeleteChatSessionResult,
     UpdateChatSessionRequest,
+    serialize_chat_attachments,
 )
 from knowledge_chatbox_api.schemas.common import Envelope
 from knowledge_chatbox_api.services.chat.chat_application_service import (
@@ -62,11 +61,6 @@ def stream_presented_events(
             close()
 
 
-def to_chat_session_read(chat_session: ChatSession) -> ChatSessionRead:
-    """把会话模型转换为会话响应结构。"""
-    return model_to_read_simple(chat_session, ChatSessionRead)
-
-
 def _build_chat_attachment_payloads(
     attachments: Iterable[ChatMessageAttachment] | None,
 ) -> list[ChatAttachmentMetadata] | None:
@@ -76,7 +70,7 @@ def _build_chat_attachment_payloads(
     return [
         ChatAttachmentMetadata(
             attachment_id=attachment.attachment_id,
-            type=cast("ChatAttachmentType", attachment.type),
+            type=ChatAttachmentType(attachment.type),
             name=attachment.name,
             mime_type=attachment.mime_type,
             size_bytes=attachment.size_bytes,
@@ -101,7 +95,7 @@ def to_chat_message_read(
 ) -> ChatMessageRead:
     """把消息模型转换为消息响应结构。"""
     return ChatMessageRead(
-        attachments_json=_build_chat_attachment_payloads(attachments),
+        attachments=_build_chat_attachment_payloads(attachments),
         id=message.id,
         session_id=message.session_id,
         role=ChatMessageRole(message.role),
@@ -111,7 +105,7 @@ def to_chat_message_read(
         error_message=message.error_message,
         retry_of_message_id=message.retry_of_message_id,
         reply_to_message_id=message.reply_to_message_id,
-        sources_json=_parse_sources_json(message.sources_json),
+        sources=_parse_sources_json(message.sources_json),
         created_at=message.created_at,
     )
 
@@ -127,23 +121,28 @@ def to_chat_session_context_read(input: dict[str, Any]) -> ChatSessionContextRea
     )
 
 
-def to_chat_run_read(chat_run: ChatRun) -> ChatRunRead:
-    """把运行记录模型转换为运行响应结构。"""
-    return model_to_read_simple(chat_run, ChatRunRead)
-
-
-def to_active_chat_run_read(chat_run: ChatRun) -> ActiveChatRunRead:
-    """把运行记录模型转换为活动运行响应结构。"""
-    return model_to_read_simple(chat_run, ActiveChatRunRead)
-
-
 def to_chat_profile_read(settings_record: AppSettings) -> ChatProfileRead:
     """把设置记录转换为当前聊天配置结构。"""
     return ChatProfileRead(
-        provider=settings_record.response_provider,  # type: ignore[arg-type]
+        provider=settings_record.response_provider,
         model=settings_record.response_model,
         configured=_is_response_provider_configured(settings_record),
     )
+
+
+def to_chat_session_read(chat_session) -> ChatSessionRead:
+    """把会话模型转换为响应结构。"""
+    return model_to_read_simple(chat_session, ChatSessionRead)
+
+
+def to_active_chat_run_read(chat_run) -> ActiveChatRunRead:
+    """把活跃运行模型转换为响应结构。"""
+    return model_to_read_simple(chat_run, ActiveChatRunRead)
+
+
+def to_chat_run_read(chat_run) -> ChatRunRead:
+    """把运行模型转换为响应结构。"""
+    return model_to_read_simple(chat_run, ChatRunRead)
 
 
 def _is_response_provider_configured(settings_record: AppSettings) -> bool:
@@ -167,7 +166,7 @@ def get_chat_profile(
 ) -> Envelope[ChatProfileRead]:
     """返回当前聊天 provider 与模型。"""
     settings_record = SettingsService(session, settings).get_or_create_settings_record()
-    return Envelope(success=True, data=to_chat_profile_read(settings_record), error=None)
+    return Envelope.ok(to_chat_profile_read(settings_record))
 
 
 @router.post(
@@ -189,7 +188,7 @@ def create_session(
         payload.title,
         reasoning_mode=payload.reasoning_mode,
     )
-    return Envelope(success=True, data=to_chat_session_read(chat_session), error=None)
+    return Envelope.ok(ChatSessionRead.model_validate(chat_session))
 
 
 @router.delete("/sessions/{session_id}", response_model=Envelope[DeleteChatSessionResult])
@@ -201,7 +200,7 @@ def delete_session(
     """删除会话。"""
     service = ChatApplicationService(session, settings=None)
     service.delete_session(current_user, session_id)
-    return Envelope(success=True, data=DeleteChatSessionResult(deleted=True), error=None)
+    return Envelope.ok(DeleteChatSessionResult(deleted=True))
 
 
 @router.get("/sessions", response_model=Envelope[list[ChatSessionRead]])
@@ -216,7 +215,7 @@ def list_sessions(
     ).list_sessions(current_user)
     return Envelope(
         success=True,
-        data=[to_chat_session_read(item) for item in chat_sessions],
+        data=[ChatSessionRead.model_validate(item) for item in chat_sessions],
         error=None,
     )
 
@@ -233,9 +232,9 @@ def update_session(
     chat_session = service.update_session(
         current_user,
         session_id,
-        payload.model_dump(exclude_unset=True),
+        payload,
     )
-    return Envelope(success=True, data=to_chat_session_read(chat_session), error=None)
+    return Envelope.ok(ChatSessionRead.model_validate(chat_session))
 
 
 @router.get("/sessions/{session_id}/messages", response_model=Envelope[list[ChatMessageRead]])
@@ -279,7 +278,7 @@ def get_session_context(
     """返回聊天右栏所需的紧凑上下文。"""
     service = ChatApplicationService(session, settings=None)
     context = service.get_session_context(current_user, session_id)
-    return Envelope(success=True, data=to_chat_session_context_read(context), error=None)
+    return Envelope.ok(context)
 
 
 @router.delete("/messages/{message_id}", response_model=Envelope[DeleteChatMessageResult])
@@ -291,7 +290,7 @@ def delete_message(
     """删除消息。"""
     service = ChatApplicationService(session, settings=None)
     service.delete_failed_message(current_user, message_id)
-    return Envelope(success=True, data=DeleteChatMessageResult(deleted=True), error=None)
+    return Envelope.ok(DeleteChatMessageResult(deleted=True))
 
 
 @router.post(
@@ -371,11 +370,7 @@ def create_message_stream(
             chat_run_service.stream_run(
                 session_id=session_id,
                 content=payload.content,
-                attachments=(
-                    [attachment.model_dump() for attachment in payload.attachments]
-                    if payload.attachments
-                    else None
-                ),
+                attachments=serialize_chat_attachments(payload.attachments),
                 client_request_id=payload.client_request_id,
                 retry_of_message_id=payload.retry_of_message_id,
             ),
@@ -419,7 +414,7 @@ def list_active_runs(
     runs = ChatApplicationService(session, settings=None).list_active_runs(current_user)
     return Envelope(
         success=True,
-        data=[to_active_chat_run_read(run) for run in runs],
+        data=[ActiveChatRunRead.model_validate(run) for run in runs],
         error=None,
     )
 
@@ -433,7 +428,7 @@ def get_run(
     """获取运行。"""
     service = ChatApplicationService(session, settings=None)
     run = service.get_run(current_user, run_id)
-    return Envelope(success=True, data=to_chat_run_read(run), error=None)
+    return Envelope.ok(to_chat_run_read(run))
 
 
 @router.post("/runs/{run_id}/cancel", response_model=Envelope[CancelChatRunResult])

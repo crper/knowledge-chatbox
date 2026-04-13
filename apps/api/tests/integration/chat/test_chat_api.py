@@ -37,10 +37,10 @@ def test_create_message_api_returns_chat_message_pair(
     assert payload["success"] is True
     assert payload["data"]["user_message"]["content"] == "请直接回答"
     assert payload["data"]["assistant_message"]["content"] == "workflow sync answer"
-    assert payload["data"]["assistant_message"]["sources_json"][0]["document_id"] == 7
-    assert payload["data"]["assistant_message"]["sources_json"][0]["snippet"] == "workflow source"
-    assert payload["data"]["user_message"]["attachments_json"] is None
-    assert payload["data"]["assistant_message"]["attachments_json"] is None
+    assert payload["data"]["assistant_message"]["sources"][0]["document_id"] == 7
+    assert payload["data"]["assistant_message"]["sources"][0]["snippet"] == "workflow source"
+    assert payload["data"]["user_message"]["attachments"] is None
+    assert payload["data"]["assistant_message"]["attachments"] is None
 
 
 @pytest.mark.integration
@@ -75,7 +75,7 @@ def test_list_messages_api_keeps_full_history_behavior_without_pagination_params
     assert [message["id"] for message in messages] == [user_message_id, assistant_message_id]
     assert messages[0]["role"] == "user"
     assert messages[1]["role"] == "assistant"
-    assert messages[0]["attachments_json"] is None
+    assert messages[0]["attachments"] is None
 
 
 @pytest.mark.integration
@@ -171,7 +171,7 @@ def test_message_sources_conform_to_chat_source_read_schema(
     payload = response.json()
     assert response.status_code == 200
 
-    sources = payload["data"]["assistant_message"]["sources_json"]
+    sources = payload["data"]["assistant_message"]["sources"]
     assert isinstance(sources, list)
     assert len(sources) > 0
 

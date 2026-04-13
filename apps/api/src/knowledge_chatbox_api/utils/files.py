@@ -1,19 +1,21 @@
 """Files工具模块。"""
 
 import hashlib
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 from uuid import uuid4
+
+from pydantic import BaseModel, ConfigDict
 
 from knowledge_chatbox_api.core.logging import get_logger
 
 logger = get_logger(__name__)
 
 
-@dataclass(frozen=True)
-class PersistedUpload:
+class PersistedUpload(BaseModel):
     """描述一次已落盘上传工件。"""
+
+    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
 
     path: Path
     content_hash: str
@@ -26,18 +28,6 @@ class AsyncReadableUpload(Protocol):
     async def read(self, size: int = -1) -> bytes: ...
 
 
-def ensure_directory(path: Path) -> Path:
-    """确保目录存在。"""
-    path.mkdir(parents=True, exist_ok=True)
-    return path
-
-
-def build_storage_filename(original_name: str) -> str:
-    """构建存储文件名。"""
-    suffix = Path(original_name).suffix
-    return f"{uuid4().hex}{suffix}"
-
-
 async def save_upload_stream(
     base_dir: Path,
     original_name: str,
@@ -47,8 +37,8 @@ async def save_upload_stream(
     size_limit: int | None = None,
 ) -> PersistedUpload:
     """按块把上传流落盘，并增量计算 hash 与大小。"""
-    ensure_directory(base_dir)
-    output_path = base_dir / build_storage_filename(original_name)
+    base_dir.mkdir(parents=True, exist_ok=True)
+    output_path = base_dir / f"{uuid4().hex}{Path(original_name).suffix}"
     hasher = hashlib.sha256()
     file_size = 0
 
@@ -70,7 +60,7 @@ async def save_upload_stream(
             original_name=original_name,
             output_path=str(output_path),
             bytes_written=file_size,
-        )  # type: ignore[call-arg]
+        )
         output_path.unlink(missing_ok=True)
         raise
 

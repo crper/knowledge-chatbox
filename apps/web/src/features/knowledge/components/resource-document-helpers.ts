@@ -2,13 +2,10 @@
  * @file 资源展示辅助函数模块。
  */
 
-import { formatFileSize } from "@/lib/utils";
 import { getDocumentPreviewKind, type DocumentPreviewKind } from "../api/document-preview";
 import type { KnowledgeDocumentStatus } from "../api/documents";
 
 type TranslationFn = (key: string) => string;
-
-export { formatFileSize };
 
 export function getDocumentTypeLabel(previewKind: DocumentPreviewKind, t: TranslationFn) {
   switch (previewKind) {

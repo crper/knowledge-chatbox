@@ -22,7 +22,7 @@ describe("pickStopTargetRun", () => {
     const result = pickStopTargetRun({
       resolvedActiveSessionId: 1,
       sessionRunsById: {},
-      streamRun: {
+      runtime: {
         getAllRunsForSession: () => [activeRun],
       },
     });
@@ -68,7 +68,7 @@ describe("pickStopTargetRun", () => {
           toastShown: false,
         },
       },
-      streamRun: {
+      runtime: {
         getAllRunsForSession: () => [],
       },
     });

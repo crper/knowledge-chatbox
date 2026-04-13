@@ -4,7 +4,7 @@
 
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { getFieldErrorItems } from "@/lib/form/form-feedback";
+import { fieldError } from "@/lib/forms";
 import { formatProviderProfile } from "@/lib/provider-display";
 import type { AppSettings, CapabilityHealthResult } from "../api/settings";
 import {
@@ -18,7 +18,7 @@ import {
 type ProfileFieldDefinition = {
   hint?: string;
   key: "api_key" | "base_url" | "chat_model" | "embedding_model" | "vision_model";
-  label: string;
+  labelKey: string;
   type?: "password" | "text";
 };
 
@@ -27,30 +27,49 @@ export const providerFormControlClassName =
 export const providerFormInsetSectionClassName =
   "rounded-xl border border-border/60 bg-background/58 p-4";
 
+const FORM_LABEL_KEY_MAP: Record<ProfileFieldDefinition["key"], string> = {
+  api_key: "formApiKeyLabel",
+  base_url: "formBaseUrlLabel",
+  chat_model: "formChatModelLabel",
+  embedding_model: "formEmbeddingModelLabel",
+  vision_model: "formVisionModelLabel",
+};
+
+export const PROVIDER_DISPLAY_NAMES: Record<TemplateProviderName, string> = {
+  openai: "OpenAI",
+  anthropic: "Anthropic",
+  voyage: "Voyage",
+  ollama: "Ollama",
+};
+
 export const PROFILE_FIELDS: Record<TemplateProviderName, ProfileFieldDefinition[]> = {
   openai: [
-    { key: "api_key", label: "OpenAI API Key", type: "password" },
-    { hint: "openAiBaseUrlHint", key: "base_url", label: "OpenAI Base URL" },
-    { key: "chat_model", label: "OpenAI Chat Model" },
-    { key: "embedding_model", label: "OpenAI Embedding Model" },
-    { key: "vision_model", label: "OpenAI Vision Model" },
+    { key: "api_key", labelKey: FORM_LABEL_KEY_MAP.api_key, type: "password" },
+    { hint: "openAiBaseUrlHint", key: "base_url", labelKey: FORM_LABEL_KEY_MAP.base_url },
+    { key: "chat_model", labelKey: FORM_LABEL_KEY_MAP.chat_model },
+    { key: "embedding_model", labelKey: FORM_LABEL_KEY_MAP.embedding_model },
+    { key: "vision_model", labelKey: FORM_LABEL_KEY_MAP.vision_model },
   ],
   anthropic: [
-    { key: "api_key", label: "Anthropic API Key", type: "password" },
-    { hint: "claudeBaseUrlHint", key: "base_url", label: "Anthropic Base URL" },
-    { key: "chat_model", label: "Anthropic Chat Model" },
-    { key: "vision_model", label: "Anthropic Vision Model" },
+    { key: "api_key", labelKey: FORM_LABEL_KEY_MAP.api_key, type: "password" },
+    { hint: "claudeBaseUrlHint", key: "base_url", labelKey: FORM_LABEL_KEY_MAP.base_url },
+    { key: "chat_model", labelKey: FORM_LABEL_KEY_MAP.chat_model },
+    { key: "vision_model", labelKey: FORM_LABEL_KEY_MAP.vision_model },
   ],
   voyage: [
-    { key: "api_key", label: "Voyage API Key", type: "password" },
-    { hint: "voyageBaseUrlHint", key: "base_url", label: "Voyage Base URL" },
-    { hint: "voyageEmbeddingHint", key: "embedding_model", label: "Voyage Embedding Model" },
+    { key: "api_key", labelKey: FORM_LABEL_KEY_MAP.api_key, type: "password" },
+    { hint: "voyageBaseUrlHint", key: "base_url", labelKey: FORM_LABEL_KEY_MAP.base_url },
+    {
+      hint: "voyageEmbeddingHint",
+      key: "embedding_model",
+      labelKey: FORM_LABEL_KEY_MAP.embedding_model,
+    },
   ],
   ollama: [
-    { hint: "ollamaBaseUrlHint", key: "base_url", label: "Ollama Base URL" },
-    { key: "chat_model", label: "Ollama Chat Model" },
-    { key: "embedding_model", label: "Ollama Embedding Model" },
-    { key: "vision_model", label: "Ollama Vision Model" },
+    { hint: "ollamaBaseUrlHint", key: "base_url", labelKey: FORM_LABEL_KEY_MAP.base_url },
+    { key: "chat_model", labelKey: FORM_LABEL_KEY_MAP.chat_model },
+    { key: "embedding_model", labelKey: FORM_LABEL_KEY_MAP.embedding_model },
+    { key: "vision_model", labelKey: FORM_LABEL_KEY_MAP.vision_model },
   ],
 };
 
@@ -118,22 +137,25 @@ export function renderProfileFields({
 
   return (
     <FieldGroup className="grid gap-5 md:grid-cols-2">
-      {visibleFields.map((field) => (
-        <Field key={`${provider}-${field.key}`}>
-          <FieldLabel>{field.label}</FieldLabel>
-          <Input
-            aria-label={field.label}
-            aria-invalid={Boolean(manualFieldErrors?.[field.key])}
-            className={providerFormControlClassName}
-            onChange={(event) => onChange(field.key, event.target.value)}
-            ref={(node) => inputRef?.(field.key, node)}
-            type={field.type ?? "text"}
-            value={getProfileFieldValue(profile, field.key)}
-          />
-          {field.hint ? <FieldDescription>{t(field.hint)}</FieldDescription> : null}
-          <FieldError errors={getFieldErrorItems([], undefined, manualFieldErrors?.[field.key])} />
-        </Field>
-      ))}
+      {visibleFields.map((field) => {
+        const label = t(field.labelKey, { provider: PROVIDER_DISPLAY_NAMES[provider] });
+        return (
+          <Field key={`${provider}-${field.key}`}>
+            <FieldLabel>{label}</FieldLabel>
+            <Input
+              aria-label={label}
+              aria-invalid={Boolean(manualFieldErrors?.[field.key])}
+              className={providerFormControlClassName}
+              onChange={(event) => onChange(field.key, event.target.value)}
+              ref={(node) => inputRef?.(field.key, node)}
+              type={field.type ?? "text"}
+              value={getProfileFieldValue(profile, field.key)}
+            />
+            {field.hint ? <FieldDescription>{t(field.hint)}</FieldDescription> : null}
+            <FieldError errors={fieldError(manualFieldErrors?.[field.key])} />
+          </Field>
+        );
+      })}
     </FieldGroup>
   );
 }

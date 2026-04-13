@@ -22,7 +22,7 @@ class RateLimitRepository(BaseRepository[RateLimitAttempt]):
                 RateLimitAttempt.attempted_at >= threshold,
             )
         )
-        return result or 0
+        return result if result is not None else 0
 
     def record_attempt(self, key: str) -> None:
         self.add(RateLimitAttempt(key=key))

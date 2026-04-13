@@ -9,10 +9,12 @@ import {
   DEFAULT_LANGUAGE,
   DEFAULT_THEME,
   LANGUAGE_STORAGE_KEY,
+  THEME_MODES,
   THEME_STORAGE_KEY,
   type AppLanguage,
   type ThemeMode,
 } from "@/lib/config/constants";
+import { isValidLanguage } from "@/i18n";
 
 const UI_STORE_STORAGE_KEY = "knowledge-chatbox-ui-store";
 
@@ -31,7 +33,7 @@ function readPersistedLanguage(): AppLanguage {
   }
 
   const value = window.localStorage.getItem(LANGUAGE_STORAGE_KEY);
-  return value === "en" || value === "zh-CN" ? value : DEFAULT_LANGUAGE;
+  return value && isValidLanguage(value) ? value : DEFAULT_LANGUAGE;
 }
 
 function readPersistedTheme(): ThemeMode {
@@ -40,7 +42,9 @@ function readPersistedTheme(): ThemeMode {
   }
 
   const value = window.localStorage.getItem(THEME_STORAGE_KEY);
-  return value === "light" || value === "dark" || value === "system" ? value : DEFAULT_THEME;
+  return value && (THEME_MODES as readonly string[]).includes(value)
+    ? (value as ThemeMode)
+    : DEFAULT_THEME;
 }
 
 const uiStoreStorage: PersistStorage<PersistedUiState> = {

@@ -5,6 +5,7 @@ import { getSettings, testProviderConnection, updateSettings } from "./settings"
 
 vi.mock("@/lib/config/env", () => ({
   env: { apiBaseUrl: "http://localhost:8000" },
+  resolveApiBaseUrl: () => "http://localhost:8000",
 }));
 
 describe("settings api", () => {

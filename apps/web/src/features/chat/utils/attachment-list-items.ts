@@ -6,7 +6,7 @@ import { i18n } from "@/i18n";
 import type { ImageViewerItem } from "../components/image-viewer-dialog";
 import type { ChatAttachmentItem as ChatMessageAttachmentItem } from "../api/chat";
 import type { ComposerAttachmentItem as ChatComposerAttachmentItem } from "../store/chat-composer-store";
-import { getDocumentFileUrl } from "./document-file-url";
+import { getDocumentFileUrl } from "@/lib/api/document-file-url";
 
 const OPAQUE_IMAGE_NAME_RE =
   /^[a-f0-9]{24,}(?:[-_.][a-z0-9]+)*\.(png|jpe?g|webp)(?:[~._-][a-z0-9-]+)*$/;
@@ -113,7 +113,7 @@ export function buildChatAttachmentDescriptors(
       displayName: display.displayName,
       id: attachment.attachment_id,
       kind,
-      previewable: kind === "image" && typeof attachment.resource_document_version_id === "number",
+      previewable: kind === "image" && typeof attachment.document_revision_id === "number",
       rawName: display.rawName,
     };
   });
@@ -148,8 +148,8 @@ export function buildChatImageViewerItems(
         displayName: descriptor.displayName,
         name: descriptor.attachment.name,
         mimeType: descriptor.attachment.mime_type,
-        originalUrl: getDocumentFileUrl(descriptor.attachment.resource_document_version_id ?? 0),
-        resourceDocumentVersionId: descriptor.attachment.resource_document_version_id ?? 0,
+        originalUrl: getDocumentFileUrl(descriptor.attachment.document_revision_id ?? 0),
+        documentRevisionId: descriptor.attachment.document_revision_id ?? 0,
       },
     ];
   });

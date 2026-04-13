@@ -34,7 +34,7 @@ class DocumentQueryService:
         )
 
     def get_document(self, actor, document_id: int) -> Document | None:
-        document = self.document_repository.get_document_entity(document_id)
+        document = self.document_repository.get_one_or_none(id=document_id)
         if document is None:
             return None
         if not self._can_access_document(actor.id, document):
@@ -45,7 +45,7 @@ class DocumentQueryService:
         document_revision = self.document_repository.get_by_id(revision_id)
         if document_revision is None:
             return None
-        document = self.document_repository.get_document_entity(document_revision.document_id)
+        document = self.document_repository.get_one_or_none(id=document_revision.document_id)
         if document is None or not self._can_access_document(actor.id, document):
             return None
         return document_revision

@@ -6,14 +6,7 @@ from pydantic_ai.providers.openai import OpenAIProvider
 from knowledge_chatbox_api.models.enums import ProviderName
 from knowledge_chatbox_api.providers.ollama_url import build_ollama_openai_base_url
 from knowledge_chatbox_api.schemas.settings import ProviderRuntimeSettings
-
-
-def _strip_or_none(value: str | None) -> str | None:
-    """去除字符串两端空白,如果为空则返回 None。"""
-    if value is None:
-        return None
-    stripped: str = value.strip()
-    return stripped or None
+from knowledge_chatbox_api.utils.helpers import strip_or_none
 
 
 def build_chat_agent_model(
@@ -37,8 +30,8 @@ def build_chat_agent_model(
         return AnthropicModel(
             route.model,
             provider=AnthropicProvider(
-                api_key=_strip_or_none(profiles.anthropic.api_key),
-                base_url=_strip_or_none(profiles.anthropic.base_url),
+                api_key=strip_or_none(profiles.anthropic.api_key),
+                base_url=strip_or_none(profiles.anthropic.base_url),
             ),
         )
 
@@ -54,7 +47,7 @@ def build_chat_agent_model(
     return OpenAIChatModel(
         route.model,
         provider=OpenAIProvider(
-            base_url=_strip_or_none(profiles.openai.base_url),
-            api_key=_strip_or_none(profiles.openai.api_key),
+            base_url=strip_or_none(profiles.openai.base_url),
+            api_key=strip_or_none(profiles.openai.api_key),
         ),
     )

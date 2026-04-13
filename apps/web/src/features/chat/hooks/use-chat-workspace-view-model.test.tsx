@@ -27,7 +27,7 @@ const sessionDataState: MockSessionDataState = {
       role: "assistant",
       content: "hello",
       status: "succeeded",
-      sources_json: [],
+      sources: [],
     },
   ],
   hasOlderMessages: false,
@@ -80,7 +80,7 @@ describe("useChatWorkspaceViewModel", () => {
         role: "assistant",
         content: "hello",
         status: "succeeded",
-        sources_json: [],
+        sources: [],
       },
     ];
     sessionDataState.resolvedActiveSessionId = 7;

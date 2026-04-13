@@ -2,7 +2,7 @@
  * @file TanStack Router Provider 模块。
  */
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { RouterProvider } from "@tanstack/react-router";
 
@@ -18,8 +18,12 @@ export function TanStackRouterProvider() {
   const status = useSessionStore((state) => state.status);
   const router = useMemo(() => createAppRouter(queryClient), [queryClient]);
 
+  const prevStatusRef = useRef(status);
   useEffect(() => {
-    void router.invalidate();
+    if (prevStatusRef.current !== status) {
+      prevStatusRef.current = status;
+      void router.invalidate();
+    }
   }, [router, status]);
 
   return (

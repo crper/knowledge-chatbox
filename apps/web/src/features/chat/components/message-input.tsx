@@ -123,21 +123,15 @@ export function MessageInput({
 
   const reasoningLabels = useMemo(
     () => ({
-      label: t("reasoningModeLabel", { defaultValue: "思考模式" }),
-      default: t("reasoningModeDefaultOption", { defaultValue: "默认" }),
-      off: t("reasoningModeOffOption", { defaultValue: "关闭" }),
-      on: t("reasoningModeOnOption", { defaultValue: "开启" }),
+      label: t("reasoningModeLabel"),
+      default: t("reasoningModeDefaultOption"),
+      off: t("reasoningModeOffOption"),
+      on: t("reasoningModeOnOption"),
     }),
     [t],
   );
-  const submitPendingHint = t("sendingInteractiveHint", {
-    defaultValue: "正在生成，可随时停止",
-  });
-  const stopSubmitLabel = t("stopStreamingAction", {
-    defaultValue: "停止生成",
-  });
+  const stopSubmitLabel = t("stopStreamingAction");
   const sendLabel = t("sendAction");
-  const sendingLabel = t("sendingAction");
 
   const hasSendableAttachment = attachments.some((attachment) => attachment.status !== "failed");
   const canSubmit = (draft.trim().length > 0 || hasSendableAttachment) && !submitPending;
@@ -322,10 +316,8 @@ export function MessageInput({
               reasoningMode={reasoningMode}
               reasoningModeVisible={reasoningModeVisible}
               sendLabel={sendLabel}
-              sendingLabel={sendingLabel}
               stopSubmitLabel={stopSubmitLabel}
               submitPending={submitPending}
-              submitPendingHint={submitPendingHint}
             />
           </div>
 

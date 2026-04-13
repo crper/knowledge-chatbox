@@ -3,8 +3,8 @@
  */
 
 import type { KnowledgeDocument } from "./documents";
-import { getDocumentFileUrl } from "@/features/chat/utils/document-file-url";
-import { fetchProtectedFileText } from "@/lib/api/protected-file";
+import { getDocumentFileUrl } from "@/lib/api/document-file-url";
+import { fetchProtectedFile } from "@/lib/api/protected-file";
 import { SUPPORTED_UPLOAD_TYPES } from "../upload-file-types";
 
 const DOCUMENT_TEXT_PREVIEW_LIMIT_BYTES = 1024 * 1024;
@@ -56,6 +56,6 @@ export async function loadDocumentTextPreview(
 
   return {
     kind: "text",
-    content: await fetchProtectedFileText(getDocumentFileUrl(document.id)),
+    content: await (await fetchProtectedFile(getDocumentFileUrl(document.id))).text(),
   };
 }

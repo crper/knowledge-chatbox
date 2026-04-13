@@ -2,7 +2,7 @@
  * @file 聊天 composer 状态模块。
  */
 
-import { create, type Mutate, type StoreApi, type UseBoundStore } from "zustand";
+import { create } from "zustand";
 import { persist, type PersistStorage, type StorageValue } from "zustand/middleware";
 import { immer } from "zustand/middleware/immer";
 
@@ -24,8 +24,8 @@ export type ComposerAttachmentItem = {
   mimeType?: string;
   name: string;
   progress?: number;
-  resourceDocumentId?: number;
-  resourceDocumentVersionId?: number;
+  documentId?: number;
+  documentRevisionId?: number;
   sizeBytes?: number;
   status: "queued" | "uploading" | "uploaded" | "failed";
 };
@@ -48,9 +48,6 @@ type ChatComposerState = {
 };
 
 type PersistedChatComposerState = Pick<ChatComposerState, "draftsBySession" | "sendShortcut">;
-type ChatComposerStore = UseBoundStore<
-  Mutate<StoreApi<ChatComposerState>, [["zustand/persist", PersistedChatComposerState]]>
->;
 
 function loadDrafts(): Record<string, string> {
   if (typeof window === "undefined") {
@@ -155,7 +152,7 @@ const chatComposerStoreStorage: PersistStorage<PersistedChatComposerState> = {
  * 仅 `draftsBySession` / `sendShortcut` 会被持久化；`attachmentsBySession`
  * 保持内存态，避免把 `File` 对象写入 localStorage。
  */
-export const useChatComposerStore: ChatComposerStore = create<ChatComposerState>()(
+export const useChatComposerStore = create<ChatComposerState>()(
   persist(
     immer((set) => ({
       attachmentsBySession: {},

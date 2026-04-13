@@ -24,20 +24,6 @@ const CHAT_ROUTE_PREFIX = `${CHAT_INDEX_PATH}/`;
 const SETTINGS_ROUTE_PREFIX = `${SETTINGS_INDEX_PATH}/`;
 
 /**
- * 构建设置分区路径。
- */
-export function buildSettingsPath(section: SettingsRouteSection) {
-  return `${SETTINGS_ROUTE_PREFIX}${section}`;
-}
-
-/**
- * 构建聊天会话路径。
- */
-export function buildChatSessionPath(sessionId: number) {
-  return `${CHAT_ROUTE_PREFIX}${sessionId}`;
-}
-
-/**
  * 解析聊天会话 ID。
  */
 export function parseChatSessionId(value: string | null | undefined) {

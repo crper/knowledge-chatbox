@@ -1,3 +1,7 @@
+/**
+ * @file NavigationMenu 基础 UI 组件模块。
+ */
+
 import * as React from "react";
 import { NavigationMenu as NavigationMenuPrimitive } from "@base-ui/react/navigation-menu";
 
@@ -35,7 +39,7 @@ function NavigationMenuItem({
 }: React.ComponentProps<typeof NavigationMenuPrimitive.Item>) {
   return (
     <NavigationMenuPrimitive.Item
-      className={cn("", className)}
+      className={cn(className)}
       data-slot="navigation-menu-item"
       {...props}
     />
@@ -48,19 +52,14 @@ function NavigationMenuLink({
 }: React.ComponentProps<typeof NavigationMenuPrimitive.Link>) {
   return (
     <NavigationMenuPrimitive.Link
-      className={cn("", className)}
+      className={cn(className)}
       data-slot="navigation-menu-link"
       {...props}
     />
   );
 }
 
-type NavigationMenuContentProps = React.ComponentProps<
-  typeof NavigationMenuPrimitive.Positioner
-> & {
-  children?: React.ReactNode;
-  className?: string;
-};
+type NavigationMenuContentProps = React.ComponentProps<typeof NavigationMenuPrimitive.Positioner>;
 
 function NavigationMenuContent({ className, children, ...props }: NavigationMenuContentProps) {
   return (

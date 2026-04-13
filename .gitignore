@@ -34,6 +34,9 @@ data/sqlite/*
 !data/chroma/.gitkeep
 !data/sqlite/.gitkeep
 
+# Stale directories
+apps/data/
+
 # Logs / coverage
 *.log
 .coverage
@@ -81,3 +84,13 @@ docs/superpowers/
 .tanstack/
 # Added by code-review-graph
 .code-review-graph/
+
+
+.sc
+.dual-graph/
+.dual-graph-context/
+
+.codebuddy/
+
+# Qwen CLI
+.qwen/

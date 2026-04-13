@@ -14,12 +14,8 @@ def prepare_image_bytes(
 ) -> tuple[int, int, bytes]:
     with Image.open(source_path) as source_image:
         prepared_image = ImageOps.exif_transpose(source_image).convert("RGB")
-
-    try:
         width, height = prepared_image.size
         prepared_image.thumbnail((max_dimension, max_dimension))
         buffer = BytesIO()
         prepared_image.save(buffer, format="JPEG", quality=quality)
         return width, height, buffer.getvalue()
-    finally:
-        prepared_image.close()

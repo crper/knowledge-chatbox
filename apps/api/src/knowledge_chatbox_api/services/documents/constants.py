@@ -23,3 +23,11 @@ SUPPORTED_DOCUMENT_FILE_TYPES = frozenset(
         *IMAGE_DOCUMENT_FILE_TYPES,
     }
 )
+
+DOCUMENT_TYPE_FILTERS = {
+    "document": tuple(DOCX_DOCUMENT_FILE_TYPES),
+    "image": tuple(IMAGE_DOCUMENT_FILE_TYPES),
+    "markdown": tuple(MARKDOWN_DOCUMENT_FILE_TYPES),
+    "pdf": ("pdf",),
+    "text": tuple(TEXT_DOCUMENT_FILE_TYPES),
+}

@@ -5,7 +5,7 @@
 import { useTranslation } from "react-i18next";
 import { useRef } from "react";
 import { BrandMark } from "@/components/shared/brand-mark";
-import { Link, NavLink } from "@/lib/app-router";
+import { Link } from "@tanstack/react-router";
 import {
   Sidebar,
   SidebarContent,
@@ -19,7 +19,7 @@ import {
   SidebarSeparator,
 } from "@/components/ui/sidebar";
 import type { AppUser } from "@/lib/api/client";
-import { buildSettingsPath, normalizeSettingsSectionPath } from "@/lib/routes";
+import { normalizeSettingsSectionPath } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import { getSettingsSections, resolveSettingsSection } from "@/features/settings/settings-sections";
 import { WorkspaceAccountMenu } from "./workspace-account-menu";
@@ -58,7 +58,7 @@ export function WorkspaceModeSwitcher({
                   "data-[active=false]:border-transparent data-[active=false]:bg-transparent data-[active=false]:text-foreground/68 data-[active=false]:hover:border-border/50 data-[active=false]:hover:bg-background/56 data-[active=false]:hover:text-foreground data-[active=false]:active:scale-[0.97]",
                 )}
                 isActive={isActive}
-                render={<NavLink className="w-full" onClick={onNavigate} to={link.to} />}
+                render={<Link className="w-full" onClick={onNavigate} to={link.to} />}
                 size="lg"
               >
                 <Icon aria-hidden="true" className="size-[1.15rem] shrink-0 stroke-[2.05]" />
@@ -109,7 +109,13 @@ function SettingsSidebarNav({
                   "data-[active=false]:text-muted-foreground/82 data-[active=false]:hover:bg-sidebar-accent/36 data-[active=false]:hover:text-foreground",
                 )}
                 isActive={isActive}
-                render={<Link onClick={onNavigate} to={buildSettingsPath(section.id)} />}
+                render={
+                  <Link
+                    onClick={onNavigate}
+                    to="/settings/$section"
+                    params={{ section: section.id }}
+                  />
+                }
               >
                 {t(section.titleKey)}
               </SidebarMenuButton>

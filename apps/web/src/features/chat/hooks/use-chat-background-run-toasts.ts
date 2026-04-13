@@ -2,24 +2,24 @@ import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
+import type { ChatRuntime } from "../runtime/chat-runtime";
 import { resolveSessionTitle } from "../utils/session-title";
 import type { StreamingRun } from "../utils/streaming-run";
-import type { useChatStreamRun } from "./use-chat-stream-run";
 
 type UseChatBackgroundRunToastsParams = {
   allRuns: StreamingRun[];
   resolvedActiveSessionId: number | null;
   sessions: Array<{ id: number; title: string | null }>;
   sessionsPending: boolean;
-  streamRun: ReturnType<typeof useChatStreamRun>;
+  runtime: Pick<ChatRuntime, "markToastShown" | "removeRun">;
 };
 
 export function useChatBackgroundRunToasts({
   allRuns,
   resolvedActiveSessionId,
+  runtime,
   sessions,
   sessionsPending,
-  streamRun,
 }: UseChatBackgroundRunToastsParams) {
   const { t } = useTranslation(["chat", "common"]);
 
@@ -40,8 +40,8 @@ export function useChatBackgroundRunToasts({
       const session = sessions.find((item) => item.id === run.sessionId);
       const title = resolveSessionTitle(session?.title, t("sessionTitleFallback"));
       toast.success(t("backgroundSessionCompletedToast", { title }));
-      streamRun.markToastShown(run.runId);
-      streamRun.removeRun(run.runId);
+      runtime.markToastShown(run.runId);
+      runtime.removeRun(run.runId);
     });
-  }, [allRuns, resolvedActiveSessionId, sessions, sessionsPending, streamRun, t]);
+  }, [allRuns, resolvedActiveSessionId, runtime, sessions, sessionsPending, t]);
 }

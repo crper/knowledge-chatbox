@@ -54,9 +54,8 @@ function SheetPortal({ ...props }: React.ComponentProps<typeof SheetPrimitive.Po
   return <SheetPrimitive.Portal data-slot="sheet-portal" {...props} />;
 }
 
-const sheetOverlayVariants = cva(
-  "fixed inset-0 z-50 min-h-dvh bg-background/38 transition-opacity duration-100 supports-[-webkit-touch-callout:none]:absolute supports-backdrop-filter:backdrop-blur-md data-[ending-style]:opacity-0 data-[starting-style]:opacity-0",
-);
+const SHEET_OVERLAY_CLASS =
+  "fixed inset-0 z-50 min-h-dvh bg-background/38 transition-opacity duration-100 supports-[-webkit-touch-callout:none]:absolute supports-backdrop-filter:backdrop-blur-md data-[ending-style]:opacity-0 data-[starting-style]:opacity-0";
 
 function SheetOverlay({
   className,
@@ -65,7 +64,7 @@ function SheetOverlay({
   return (
     <SheetPrimitive.Backdrop
       data-slot="sheet-overlay"
-      className={cn(sheetOverlayVariants(), className)}
+      className={cn(SHEET_OVERLAY_CLASS, className)}
       {...props}
     />
   );
@@ -198,6 +197,6 @@ export {
   SheetFooter,
   SheetTitle,
   SheetDescription,
-  sheetOverlayVariants,
+  SHEET_OVERLAY_CLASS,
   sheetContentVariants,
 };

@@ -5,6 +5,8 @@
 import { useCallback, memo, useDeferredValue, useMemo, useRef, useState } from "react";
 import type { FormEvent, KeyboardEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useForm, revalidateLogic } from "@tanstack/react-form";
+import type { ReactFormExtendedApi } from "@tanstack/react-form";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { MoreHorizontalIcon, PencilLineIcon, PlusIcon, SearchIcon, Trash2Icon } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -12,7 +14,7 @@ import { toast } from "sonner";
 import { z } from "zod";
 
 import { BrandMark } from "@/components/shared/brand-mark";
-import { NavLink, useNavigate } from "@/lib/app-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { isInputComposing } from "@/lib/dom";
 import { Button } from "@/components/ui/button";
 import {
@@ -36,11 +38,10 @@ import {
 } from "@/components/ui/sidebar";
 import { chatSessionsQueryOptions } from "@/features/chat/api/chat-query";
 import { deleteChatSession, renameChatSession } from "@/features/chat/api/chat";
-import { buildChatSessionPath, parseChatSessionPathname } from "@/lib/routes";
+import { parseChatSessionPathname } from "@/lib/routes";
 import type { AppUser } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/query-keys";
-import { useAppForm } from "@/lib/form/use-app-form";
-import { handleFormSubmitEvent } from "@/lib/forms";
+import { zodFieldErrors } from "@/lib/forms";
 import { useIsMobile } from "@/lib/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 import { resolveSessionTitle } from "@/features/chat/utils/session-title";
@@ -65,7 +66,20 @@ type SessionRowProps = {
   onRenameInputKeyDown: (event: KeyboardEvent<HTMLInputElement>) => void;
   onRenameSubmit: (sessionId: number) => (event: FormEvent<HTMLFormElement>) => void;
   onSelectSession?: () => void;
-  renameForm: any;
+  renameForm: ReactFormExtendedApi<
+    { title: string },
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any,
+    any
+  >;
   session: { id: number; title: string | null };
   sessionTitleFallback: string;
   t: ReturnType<typeof useTranslation>["t"];
@@ -99,7 +113,11 @@ const SessionRow = memo(function SessionRow({
           onSubmit={onRenameSubmit(session.id)}
         >
           <renameForm.Field name="title">
-            {(field: any) => (
+            {(field: {
+              handleChange: (value: string) => void;
+              name: string;
+              state: { meta: { errors: unknown[] }; value: string };
+            }) => (
               <SidebarInput
                 aria-label={t("sessionRenameLabel", { ns: "chat" })}
                 className="h-8 rounded-lg border-border/50 bg-background/88 text-xs"
@@ -136,7 +154,11 @@ const SessionRow = memo(function SessionRow({
             )}
             isActive={session.id === activeSessionId}
             render={
-              <NavLink onClick={() => onSelectSession?.()} to={buildChatSessionPath(session.id)} />
+              <Link
+                onClick={() => onSelectSession?.()}
+                to="/chat/$sessionId"
+                params={{ sessionId: String(session.id) }}
+              />
             }
             size="sm"
           >
@@ -258,12 +280,15 @@ export function ChatSidebar({
   const activeSessionId = parseChatSessionPathname(pathname);
   const deferredSearchValue = useDeferredValue(searchValue);
   const sessionTitleFallback = t("sessionTitleFallback", { ns: "chat" });
-  const renameForm = useAppForm({
+  const renameForm = useForm({
     defaultValues: {
       title: "",
     },
+    validators: {
+      onChange: ({ value }) => zodFieldErrors(sessionRenameSchema, value),
+    },
+    validationLogic: revalidateLogic({ mode: "submit", modeAfterSubmission: "blur" }),
     onSubmit: async () => {},
-    schema: sessionRenameSchema,
   });
 
   const sessionsQuery = useQuery(chatSessionsQueryOptions());
@@ -283,7 +308,11 @@ export function ChatSidebar({
       await queryClient.invalidateQueries({ queryKey: queryKeys.chat.sessions });
       if (activeSessionId === sessionId) {
         const nextSession = sessions.find((session) => session.id !== sessionId) ?? null;
-        void navigate(nextSession ? buildChatSessionPath(nextSession.id) : "/chat");
+        void navigate(
+          nextSession
+            ? { to: "/chat/$sessionId", params: { sessionId: String(nextSession.id) } }
+            : { to: "/chat" },
+        );
       }
     },
   });
@@ -344,9 +373,10 @@ export function ChatSidebar({
 
   const handleRenameSubmit = useCallback(
     (sessionId: number) => (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
       const titleInput = event.currentTarget.querySelector("input");
       const title = titleInput?.value ?? "";
-      void handleFormSubmitEvent(event, () => submitRename(sessionId, title));
+      void submitRename(sessionId, title);
     },
     [submitRename],
   );

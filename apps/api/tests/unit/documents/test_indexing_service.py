@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 from sqlalchemy import text
@@ -19,6 +20,9 @@ from knowledge_chatbox_api.services.documents.errors import DocumentNotNormalize
 from knowledge_chatbox_api.services.documents.indexing_service import IndexingService
 from knowledge_chatbox_api.services.documents.rebuild_service import RebuildService
 from knowledge_chatbox_api.services.settings.settings_service import SettingsService
+
+if TYPE_CHECKING:
+    from knowledge_chatbox_api.schemas.settings import ProviderRuntimeSettings
 
 
 def create_document(migrated_db_session):
@@ -148,6 +152,12 @@ def test_indexing_service_raises_when_embedding_generation_fails(
             del texts, settings
             raise RuntimeError("embedding backend unavailable")
 
+        def health_check(self, settings) -> Any:
+            del settings
+            from knowledge_chatbox_api.providers.base import ProviderHealthResult
+
+            return ProviderHealthResult(healthy=True, message="ok")
+
     settings = get_settings()
     service = SettingsService(migrated_db_session, settings)
     settings_record = service.get_or_create_settings_record()
@@ -157,7 +167,7 @@ def test_indexing_service_raises_when_embedding_generation_fails(
         chunking_service=ChunkingService(),
         chroma_store=InMemoryChromaStore(),
         embedding_provider=FailingEmbeddingAdapter(),
-        settings=settings_record,
+        settings=cast("ProviderRuntimeSettings", settings_record),
     )
 
     with pytest.raises(DocumentNotNormalizedError, match="embedding generation failed"):
@@ -172,6 +182,12 @@ def test_indexing_service_persists_and_deletes_lexical_chunks_by_generation(
             del settings
             return [[0.1, 0.2, 0.3] for _ in texts]
 
+        def health_check(self, settings) -> Any:
+            del settings
+            from knowledge_chatbox_api.providers.base import ProviderHealthResult
+
+            return ProviderHealthResult(healthy=True, message="ok")
+
     settings = get_settings()
     service = SettingsService(migrated_db_session, settings)
     settings_record = service.get_or_create_settings_record()
@@ -181,7 +197,7 @@ def test_indexing_service_persists_and_deletes_lexical_chunks_by_generation(
         chunking_service=ChunkingService(),
         chroma_store=InMemoryChromaStore(),
         embedding_provider=EmbeddingAdapterStub(),
-        settings=settings_record,
+        settings=cast("ProviderRuntimeSettings", settings_record),
     )
 
     indexing_service.index_document(

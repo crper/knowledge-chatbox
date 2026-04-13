@@ -123,7 +123,7 @@ describe("chat api", () => {
             error_message: null,
             retry_of_message_id: null,
             reply_to_message_id: null,
-            sources_json: null,
+            sources: null,
             created_at: "2026-01-15T10:00:00Z",
           },
         ]);

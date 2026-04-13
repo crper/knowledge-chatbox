@@ -109,7 +109,7 @@ class AuthService:
             theme_preference=ThemePreference.SYSTEM,
         )
         try:
-            self.user_repository.add_user(admin)
+            self.user_repository.add(admin)
             self.session.commit()
         except IntegrityError:
             self.session.rollback()
@@ -137,7 +137,7 @@ class AuthService:
             expires_at=now + timedelta(hours=self.settings.session_ttl_hours),
             last_seen_at=now,
         )
-        self.auth_session_repository.create(auth_session)
+        self.auth_session_repository.add(auth_session)
         return token
 
     def login(self, username: str, password: str) -> tuple[str, str, User]:
@@ -244,6 +244,7 @@ class AuthService:
         verified, _ = self.password_manager.verify_password(user.password_hash, current_password)
         if not verified:
             raise InvalidCredentialsError("Current password is incorrect.")
+        validate_password_complexity(new_password)
         user.password_hash = self.password_manager.hash_password(new_password)
         user.password_changed_at = utc_now()
         self.auth_session_repository.revoke_by_user_id(user.id)

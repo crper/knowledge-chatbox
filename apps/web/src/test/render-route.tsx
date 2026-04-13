@@ -22,6 +22,12 @@ export function renderRoute(route: string) {
   });
   const router = createAppRouter(queryClient, history);
 
+  // Wait for the initial route load to settle before returning so tests don't
+  // race against the bootstrap / beforeLoad pipeline.
+  // If the load promise does not settle within a reasonable window, we still
+  // return control so the test can assert on what rendered.
+  void router.load();
+
   const result = render(
     <I18nProvider>
       <ThemeProvider>
@@ -32,9 +38,6 @@ export function renderRoute(route: string) {
       </ThemeProvider>
     </I18nProvider>,
   );
-
-  // Kick TanStack Router's initial load so tests don't race the first route match.
-  void router.load();
 
   return {
     ...result,

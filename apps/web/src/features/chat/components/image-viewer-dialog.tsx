@@ -3,12 +3,14 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { ChevronLeftIcon, ChevronRightIcon, DownloadIcon, ExternalLinkIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { clamp } from "es-toolkit";
 
 import { Button } from "@/components/ui/button";
-import { fetchProtectedFileBlob } from "@/lib/api/protected-file";
 import { triggerDownload } from "@/lib/dom";
+import { imageViewerRemoteQueryOptions } from "../api/chat-query";
 import {
   Dialog,
   DialogContent,
@@ -33,7 +35,7 @@ export type ImageViewerItem =
       name: string;
       mimeType: string;
       originalUrl: string;
-      resourceDocumentVersionId: number;
+      documentRevisionId: number;
     };
 
 type ImageViewerDialogProps = {
@@ -47,7 +49,7 @@ function clampIndex(index: number, length: number) {
   if (length === 0) {
     return 0;
   }
-  return Math.min(Math.max(index, 0), length - 1);
+  return clamp(index, 0, length - 1);
 }
 
 export function ImageViewerDialog({
@@ -58,8 +60,6 @@ export function ImageViewerDialog({
 }: ImageViewerDialogProps) {
   const { t } = useTranslation(["chat", "common"]);
   const [activeIndex, setActiveIndex] = useState(() => clampIndex(initialIndex, items.length));
-  const [resolvedUrl, setResolvedUrl] = useState<string | null>(null);
-  const [loadFailed, setLoadFailed] = useState(false);
 
   useEffect(() => {
     if (!open) {
@@ -73,54 +73,32 @@ export function ImageViewerDialog({
   const countLabel = t("imageViewerCountLabel", {
     current: activeIndex + 1,
     total: items.length,
-    defaultValue: "{{current}} / {{total}}",
   });
 
+  const isLocalItem = currentItem?.kind === "local";
+  const localObjectUrl = useMemo(() => {
+    if (!isLocalItem || !currentItem || !open) return null;
+    if (currentItem.kind !== "local") return null;
+    return URL.createObjectURL(currentItem.file);
+  }, [isLocalItem, currentItem, open]);
+
   useEffect(() => {
-    if (!open || currentItem === null) {
-      setResolvedUrl(null);
-      setLoadFailed(false);
-      return;
-    }
-
-    let disposed = false;
-    let objectUrl: string | null = null;
-
-    setResolvedUrl(null);
-    setLoadFailed(false);
-
-    if (currentItem.kind === "local") {
-      objectUrl = URL.createObjectURL(currentItem.file);
-      setResolvedUrl(objectUrl);
-
-      return () => {
-        if (objectUrl) {
-          URL.revokeObjectURL(objectUrl);
-        }
-      };
-    }
-
-    void fetchProtectedFileBlob(currentItem.originalUrl)
-      .then((blob) => {
-        if (disposed) {
-          return;
-        }
-        objectUrl = URL.createObjectURL(blob);
-        setResolvedUrl(objectUrl);
-      })
-      .catch(() => {
-        if (!disposed) {
-          setLoadFailed(true);
-        }
-      });
-
     return () => {
-      disposed = true;
-      if (objectUrl) {
-        URL.revokeObjectURL(objectUrl);
+      if (localObjectUrl) {
+        URL.revokeObjectURL(localObjectUrl);
       }
     };
-  }, [currentItem, open]);
+  }, [localObjectUrl]);
+
+  const { data: remoteObjectUrl, isError: remoteLoadFailed } = useQuery(
+    imageViewerRemoteQueryOptions(
+      currentItem?.kind === "remote" ? currentItem.originalUrl : null,
+      open && currentItem?.kind === "remote",
+    ),
+  );
+
+  const resolvedUrl = isLocalItem ? localObjectUrl : (remoteObjectUrl ?? null);
+  const loadFailed = !isLocalItem && remoteLoadFailed;
 
   if (!currentItem) {
     return null;
@@ -144,9 +122,7 @@ export function ImageViewerDialog({
                 {currentItemLabel}
               </DialogTitle>
               <DialogDescription className="text-xs sm:text-sm">
-                {items.length > 1
-                  ? countLabel
-                  : t("imageViewerSingleLabel", { defaultValue: "1 / 1" })}
+                {items.length > 1 ? countLabel : t("imageViewerSingleLabel")}
               </DialogDescription>
             </div>
             <div className="flex shrink-0 flex-wrap items-center gap-2">
@@ -167,7 +143,7 @@ export function ImageViewerDialog({
                   >
                     <ExternalLinkIcon data-icon="inline-start" />
                     <span className="sr-only sm:not-sr-only sm:inline">
-                      {t("imageViewerOpenOriginalAction", { defaultValue: "查看原图" })}
+                      {t("imageViewerOpenOriginalAction")}
                     </span>
                   </Button>
                   <Button
@@ -185,13 +161,13 @@ export function ImageViewerDialog({
                   >
                     <DownloadIcon data-icon="inline-start" />
                     <span className="sr-only sm:not-sr-only sm:inline">
-                      {t("imageViewerDownloadAction", { defaultValue: "下载图片" })}
+                      {t("imageViewerDownloadAction")}
                     </span>
                   </Button>
                 </>
               ) : (
                 <span className="rounded-full border border-border/70 px-2.5 py-1 text-xs text-muted-foreground">
-                  {t("imageViewerLocalImageBadge", { defaultValue: "本地图片" })}
+                  {t("imageViewerLocalImageBadge")}
                 </span>
               )}
             </div>
@@ -202,7 +178,7 @@ export function ImageViewerDialog({
           {showNavigation ? (
             <div className="pointer-events-none absolute inset-x-0 bottom-3 z-10 flex justify-between px-3 sm:inset-x-auto sm:inset-y-0 sm:left-0 sm:right-0 sm:top-1/2 sm:-translate-y-1/2 sm:px-3">
               <Button
-                aria-label={t("imageViewerPreviousAction", { defaultValue: "上一张" })}
+                aria-label={t("imageViewerPreviousAction")}
                 className="pointer-events-auto shadow-lg"
                 disabled={!canGoPrevious}
                 onClick={() => setActiveIndex((current) => Math.max(current - 1, 0))}
@@ -213,7 +189,7 @@ export function ImageViewerDialog({
                 <ChevronLeftIcon />
               </Button>
               <Button
-                aria-label={t("imageViewerNextAction", { defaultValue: "下一张" })}
+                aria-label={t("imageViewerNextAction")}
                 className="pointer-events-auto shadow-lg"
                 disabled={!canGoNext}
                 onClick={() => setActiveIndex((current) => Math.min(current + 1, items.length - 1))}
@@ -227,9 +203,7 @@ export function ImageViewerDialog({
           ) : null}
 
           {loadFailed ? (
-            <p className="text-sm text-muted-foreground">
-              {t("markdown.imageNotAvailable", { defaultValue: "图片暂不可用" })}
-            </p>
+            <p className="text-sm text-muted-foreground">{t("markdown.imageNotAvailable")}</p>
           ) : resolvedUrl ? (
             <img
               alt={currentItemLabel}
@@ -237,9 +211,7 @@ export function ImageViewerDialog({
               src={resolvedUrl}
             />
           ) : (
-            <p className="text-sm text-muted-foreground">
-              {t("imageViewerLoadingLabel", { defaultValue: "加载图片中..." })}
-            </p>
+            <p className="text-sm text-muted-foreground">{t("imageViewerLoadingLabel")}</p>
           )}
         </div>
       </DialogContent>

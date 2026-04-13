@@ -10,17 +10,17 @@ import {
   OctagonXIcon,
   Loader2Icon,
 } from "lucide-react";
-import { useTheme } from "@/providers/theme-provider";
+import { useResolvedTheme } from "@/providers/theme-provider";
 
 /**
  * 定义提示器。
  */
-const Toaster = ({ ...props }: ToasterProps) => {
-  const { resolvedTheme } = useTheme();
+function Toaster({ ...props }: ToasterProps) {
+  const resolvedTheme = useResolvedTheme();
 
   return (
     <Sonner
-      theme={resolvedTheme as ToasterProps["theme"]}
+      theme={resolvedTheme === "light" || resolvedTheme === "dark" ? resolvedTheme : "system"}
       className="toaster group"
       icons={{
         success: <CircleCheckIcon className="size-4" />,
@@ -45,6 +45,6 @@ const Toaster = ({ ...props }: ToasterProps) => {
       {...props}
     />
   );
-};
+}
 
 export { Toaster };
