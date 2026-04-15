@@ -13,7 +13,7 @@
     "test": "vp check --fix && vp test"
   },
   "dependencies": {
-    "@base-ui/react": "^1.3.0",
+    "@base-ui/react": "^1.4.0",
     "@embedpdf/react-pdf-viewer": "^2.14.0",
     "@fontsource-variable/geist": "^5.2.8",
     "@streamdown/cjk": "^1.0.3",
