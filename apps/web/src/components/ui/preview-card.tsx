@@ -13,10 +13,7 @@ function PreviewCardTrigger({
   return <PreviewCardPrimitive.Trigger data-slot="preview-card-trigger" {...props} />;
 }
 
-type PreviewCardContentProps = React.ComponentProps<typeof PreviewCardPrimitive.Positioner> & {
-  children?: React.ReactNode;
-  className?: string;
-};
+type PreviewCardContentProps = React.ComponentProps<typeof PreviewCardPrimitive.Positioner>;
 
 function PreviewCardContent({
   className,

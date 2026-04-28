@@ -8,7 +8,7 @@ import { Loader2Icon } from "lucide-react";
 /**
  * 定义加载指示器。
  */
-function Spinner({ className, ...props }: React.ComponentProps<"svg">) {
+function Spinner({ className, ...props }: React.ComponentProps<typeof Loader2Icon>) {
   return (
     <Loader2Icon
       role="status"

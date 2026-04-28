@@ -5,6 +5,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from knowledge_chatbox_api.models.enums import EmbeddingProvider, ResponseProvider, VisionProvider
 from knowledge_chatbox_api.providers.anthropic_provider import AnthropicResponseAdapter
 from knowledge_chatbox_api.providers.factory import (
     build_embedding_adapter,
@@ -47,16 +48,18 @@ def run_module_import(
 def test_build_provider_adapters_accept_typed_route_models() -> None:
     assert isinstance(
         build_response_adapter(
-            ResponseRouteConfig(provider="anthropic", model="claude-sonnet-4-5")
+            ResponseRouteConfig(provider=ResponseProvider.ANTHROPIC, model="claude-sonnet-4-5")
         ),
         AnthropicResponseAdapter,
     )
     assert isinstance(
-        build_embedding_adapter(EmbeddingRouteConfig(provider="voyage", model="voyage-3.5")),
+        build_embedding_adapter(
+            EmbeddingRouteConfig(provider=EmbeddingProvider.VOYAGE, model="voyage-3.5")
+        ),
         VoyageEmbeddingAdapter,
     )
     assert isinstance(
-        build_vision_adapter(VisionRouteConfig(provider="ollama", model="qwen3.5:4b")),
+        build_vision_adapter(VisionRouteConfig(provider=VisionProvider.OLLAMA, model="qwen3.5:4b")),
         OllamaVisionAdapter,
     )
 

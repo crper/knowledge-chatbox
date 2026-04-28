@@ -9,8 +9,11 @@ from asgi_correlation_id import correlation_id
 from structlog.contextvars import merge_contextvars
 
 
-def _add_request_id(_logger: Any, _method_name: str, event_dict: dict[str, Any]) -> dict[str, Any]:
-    del _logger, _method_name
+def _add_request_id(
+    _logger: Any,
+    _method_name: str,
+    event_dict: structlog.types.EventDict,
+) -> structlog.types.EventDict:
     request_id = correlation_id.get()
     if request_id:
         event_dict["request_id"] = request_id
@@ -24,7 +27,7 @@ def _build_renderer(environment: str) -> structlog.types.Processor:
 
 
 def setup_logging(level: str = "INFO", environment: str = "local") -> None:
-    shared_processors: list[Any] = [
+    shared_processors: list[structlog.types.Processor] = [
         merge_contextvars,
         structlog.stdlib.add_log_level,
         structlog.stdlib.add_logger_name,

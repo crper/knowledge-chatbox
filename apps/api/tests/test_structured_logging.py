@@ -9,7 +9,18 @@ from knowledge_chatbox_api.services.documents.ingestion_service import (
     IngestionMetrics,
     IngestionService,
 )
-from tests.fixtures.stubs import make_adapter_backed_chat_workflow_class
+from tests.fixtures.helpers import (
+    create_logged_in_chat_session,
+    login_as_admin,
+    upload_image_document,
+    upload_text_document,
+)
+from tests.fixtures.stubs import (
+    EmbeddingAdapterStub,
+    TextResponseAdapterStub,
+    make_adapter_backed_chat_workflow_class,
+    patch_document_index_embedding,
+)
 
 if TYPE_CHECKING:
     from fastapi.testclient import TestClient
@@ -37,48 +48,10 @@ class LoggerSpy:
         self.records.append({"event": event, "level": "exception", **self.bound_context, **kwargs})
 
 
-class UnifiedResponseAdapterStub:
-    def response(self, messages, settings) -> str:
-        del messages, settings
-        return "统一回答"
-
-    def stream_response(self, messages, settings):
-        del messages, settings
-        yield {"type": "text_delta", "delta": "统一"}
-        yield {"type": "text_delta", "delta": "回答"}
-        yield {"type": "completed", "usage": {"output_tokens": 2}}
-
-
-class EmbeddingAdapterStub:
-    def embed(self, texts: list[str], settings) -> list[list[float]]:
-        del settings
-        return [[0.1] * 384 for _ in texts]
-
-
-class FailingEmbeddingAdapterStub:
-    def embed(self, texts: list[str], settings) -> list[list[float]]:
-        del texts, settings
-        raise RuntimeError("embedding backend unavailable")
-
-
-class FailingResponseAdapterStub:
-    def response(self, messages, settings) -> str:
-        del messages, settings
-        raise RuntimeError("provider backend unavailable")
-
-
-def login_admin(api_client: TestClient) -> None:
-    response = api_client.post(
-        "/api/auth/login",
-        json={"username": "admin", "password": "Admin123456"},
-    )
-    assert response.status_code == 200
-
-
 def stub_document_index_embedding(monkeypatch) -> None:
-    monkeypatch.setattr(
-        "knowledge_chatbox_api.services.documents.ingestion_service.build_embedding_adapter",
-        lambda _route: EmbeddingAdapterStub(),
+    patch_document_index_embedding(
+        monkeypatch,
+        adapter=EmbeddingAdapterStub(vector_size=384),
     )
 
 
@@ -88,7 +61,10 @@ def test_stream_chat_logs_run_lifecycle(
 ) -> None:
     run_logger = LoggerSpy()
     workflow_cls = make_adapter_backed_chat_workflow_class(
-        response_adapter=UnifiedResponseAdapterStub(),
+        response_adapter=TextResponseAdapterStub(
+            sync_answer="统一回答",
+            stream_chunks=["统一", "回答"],
+        ),
     )
     monkeypatch.setattr(
         "knowledge_chatbox_api.services.chat.chat_application_service.ChatWorkflow",
@@ -104,9 +80,7 @@ def test_stream_chat_logs_run_lifecycle(
         run_logger,
     )
 
-    login_admin(api_client)
-    session_response = api_client.post("/api/chat/sessions", json={"title": "stream log session"})
-    session_id = session_response.json()["data"]["id"]
+    session_id = create_logged_in_chat_session(api_client, title="stream log session")
 
     with api_client.stream(
         "POST",
@@ -164,7 +138,7 @@ def test_sync_chat_logs_failure_summary(
         sync_logger,
     )
 
-    login_admin(api_client)
+    login_as_admin(api_client)
     session_response = api_client.post(
         "/api/chat/sessions",
         json={"title": "sync failure log session"},
@@ -206,14 +180,8 @@ def test_document_upload_logs_completed_sync_ingestion(
         ingestion_logger,
     )
 
-    login_admin(api_client)
-    response = api_client.post(
-        "/api/documents/upload",
-        files={"file": ("note.txt", b"hello world", "text/plain")},
-    )
-
-    assert response.status_code == 201
-    payload = response.json()["data"]
+    login_as_admin(api_client)
+    payload = upload_text_document(api_client)
     assert ingestion_logger.records == [
         {
             "event": "document_upload_completed",
@@ -249,13 +217,12 @@ def test_document_background_ingestion_logs_structured_failure(
         lambda *_args: True,
     )
 
-    login_admin(api_client)
-    upload_response = api_client.post(
-        "/api/documents/upload",
-        files={"file": ("image.png", b"\x89PNG\r\n\x1a\n", "image/png")},
+    login_as_admin(api_client)
+    image_payload = upload_image_document(
+        api_client,
+        content=b"\x89PNG\r\n\x1a\n",
     )
-    assert upload_response.status_code == 202
-    revision_id = upload_response.json()["data"]["revision"]["id"]
+    revision_id = image_payload["revision"]["id"]
 
     def _explode_normalize(self, origin_path: str, file_type: str, *, use_vision: bool = True):
         del self, origin_path, file_type, use_vision
@@ -299,13 +266,11 @@ def test_document_background_ingestion_logs_structured_success(
         lambda *_args: True,
     )
 
-    login_admin(api_client)
-    upload_response = api_client.post(
-        "/api/documents/upload",
-        files={"file": ("image.png", b"\x89PNG\r\n\x1a\n", "image/png")},
+    login_as_admin(api_client)
+    payload = upload_image_document(
+        api_client,
+        content=b"\x89PNG\r\n\x1a\n",
     )
-    assert upload_response.status_code == 202
-    payload = upload_response.json()["data"]
     revision_id = payload["revision"]["id"]
     document_id = payload["document"]["id"]
     normalized_path = tmp_path / "normalized" / "image.md"

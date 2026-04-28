@@ -32,6 +32,10 @@ import { CreateUserDialog } from "@/features/users/components/create-user-dialog
 import { ResetPasswordDialog } from "@/features/users/components/reset-password-dialog";
 import { UserTable } from "@/features/users/components/user-table";
 
+function summaryValue(value: number) {
+  return String(value);
+}
+
 /**
  * 渲染用户页面。
  */
@@ -73,7 +77,6 @@ export function UsersPage() {
   const adminCount = users.filter((user) => user.role === "admin").length;
   const standardUserCount = users.filter((user) => user.role === "user").length;
   const disabledCount = users.filter((user) => user.status === "disabled").length;
-  const summaryValue = (count: number) => String(count);
 
   return (
     <>

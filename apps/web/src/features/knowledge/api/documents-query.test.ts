@@ -3,7 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import type { KnowledgeDocument } from "./documents";
 import { documentListSummaryQueryOptions, documentsListQueryOptions } from "./documents-query";
 
-function buildDocument(status: KnowledgeDocument["status"]): KnowledgeDocument {
+function buildDocument(ingest_status: KnowledgeDocument["ingest_status"]): KnowledgeDocument {
   return {
     created_at: "2026-03-31T00:00:00Z",
     document_id: 1,
@@ -11,9 +11,9 @@ function buildDocument(status: KnowledgeDocument["status"]): KnowledgeDocument {
     id: 1,
     is_latest: true,
     name: "spec.md",
-    status,
+    ingest_status,
     updated_at: "2026-03-31T00:00:00Z",
-    version: 1,
+    revision_no: 1,
   };
 }
 

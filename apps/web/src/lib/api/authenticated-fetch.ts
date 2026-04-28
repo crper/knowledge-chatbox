@@ -9,7 +9,7 @@ import {
 } from "@/lib/auth/session-manager";
 import { useSessionStore } from "@/lib/auth/session-store";
 import { getAccessToken } from "@/lib/auth/token-store";
-import { env } from "@/lib/config/env";
+import { resolveApiBaseUrl } from "@/lib/config/env";
 import { extractErrorDetail, getUserFacingErrorMessage } from "./error-response";
 
 const AUTH_ROUTE_PREFIX = "/api/auth/";
@@ -25,46 +25,15 @@ function resolveRequestUrl(input: string) {
   try {
     return new URL(input).toString();
   } catch {
-    const base =
-      env.apiBaseUrl ||
-      (typeof globalThis.location?.origin === "string" ? globalThis.location.origin : undefined) ||
-      "http://localhost";
-
-    return new URL(input, base).toString();
+    return new URL(input, resolveApiBaseUrl()).toString();
   }
-}
-
-async function executeRequest(request: Request) {
-  const contentType = request.headers.get("content-type") ?? "";
-  const body =
-    request.method === "GET" || request.method === "HEAD"
-      ? undefined
-      : contentType.includes("application/json")
-        ? await request.clone().text()
-        : request.body;
-
-  return globalThis.fetch(request.url, {
-    body,
-    credentials: request.credentials,
-    headers: request.headers,
-    method: request.method,
-    signal: request.signal,
-  });
 }
 
 function resolveRequestPathname(url: string) {
   try {
     return new URL(url).pathname;
   } catch {
-    try {
-      const fallbackBase =
-        env.apiBaseUrl ||
-        (typeof globalThis.location?.origin === "string" ? globalThis.location.origin : undefined);
-
-      return fallbackBase ? new URL(url, fallbackBase).pathname : url;
-    } catch {
-      return url;
-    }
+    return new URL(url, resolveApiBaseUrl()).pathname;
   }
 }
 
@@ -146,7 +115,7 @@ async function retryWithAccessTokenRefresh(
 export async function requestAccessTokenRefresh() {
   if (!refreshInFlight) {
     refreshInFlight = globalThis
-      .fetch(resolveRequestUrl(`${env.apiBaseUrl}${AUTH_REFRESH_PATH}`), {
+      .fetch(resolveRequestUrl(`${resolveApiBaseUrl()}${AUTH_REFRESH_PATH}`), {
         credentials: "include",
         method: "POST",
       })
@@ -214,10 +183,10 @@ export async function authenticatedFetch(input: string, init: RequestInit = {}) 
     ? authenticatedRequest.clone()
     : null;
 
-  let response = await executeRequest(authenticatedRequest);
+  let response = await globalThis.fetch(authenticatedRequest);
   setResponseAuthTokenSnapshot(response, extractRequestAccessToken(authenticatedRequest));
   if (response.status === 401 && retryRequestSnapshot) {
-    const retryResponse = await retryWithAccessTokenRefresh(retryRequestSnapshot, executeRequest);
+    const retryResponse = await retryWithAccessTokenRefresh(retryRequestSnapshot, globalThis.fetch);
     if (retryResponse) {
       response = retryResponse;
     }

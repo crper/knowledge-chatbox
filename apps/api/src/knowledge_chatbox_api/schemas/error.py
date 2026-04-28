@@ -2,12 +2,11 @@
 
 from typing import Literal
 
-from pydantic import BaseModel
-
+from knowledge_chatbox_api.schemas import ReadOnlySchema
 from knowledge_chatbox_api.schemas.common import ErrorInfo
 
 
-class ErrorEnvelope(BaseModel):
+class ErrorEnvelope(ReadOnlySchema):
     """OpenAPI model for failed API responses."""
 
     success: Literal[False] = False

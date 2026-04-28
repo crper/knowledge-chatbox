@@ -8,9 +8,6 @@ from knowledge_chatbox_api.utils.timing import utc_now
 class AuthSessionRepository(BaseRepository[AuthSession]):
     model_type = AuthSession
 
-    def create(self, auth_session: AuthSession) -> AuthSession:
-        return self.add(auth_session)
-
     def get_active_by_token_hash(self, token_hash: str) -> AuthSession | None:
         statement = select(AuthSession).where(
             AuthSession.session_token_hash == token_hash,

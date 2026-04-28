@@ -1,11 +1,12 @@
 """Knowledge retrieval helpers used by chat prompt assembly."""
 
+from __future__ import annotations
+
 from time import perf_counter
-from typing import Any
+from typing import TYPE_CHECKING
 
 from knowledge_chatbox_api.repositories.retrieval_chunk_repository import RetrievalChunkRepository
 from knowledge_chatbox_api.services.chat.retrieval.context_builder import RetrievedContextBuilder
-from knowledge_chatbox_api.services.chat.retrieval.models import RetrievedContext
 from knowledge_chatbox_api.services.chat.retrieval.policy import (
     build_retrieval_where_filter,
     collect_attachment_revision_ids,
@@ -17,6 +18,16 @@ from knowledge_chatbox_api.utils.text_matching import (
     quoted_phrases,
 )
 
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
+
+    from knowledge_chatbox_api.providers.base import EmbeddingAdapterProtocol
+    from knowledge_chatbox_api.schemas.chat import ChatAttachmentMetadata
+    from knowledge_chatbox_api.schemas.chunk import ChunkStoreRecord
+    from knowledge_chatbox_api.schemas.settings import ProviderRuntimeSettings
+    from knowledge_chatbox_api.services.chat.retrieval.models import RetrievedContext
+    from knowledge_chatbox_api.utils.chroma import ChunkStore
+
 
 class RetrievalService:
     """Encapsulate retrieval eligibility, execution, and source shaping."""
@@ -24,10 +35,10 @@ class RetrievalService:
     def __init__(
         self,
         *,
-        session,
-        chroma_store,
-        embedding_adapter,
-        settings,
+        session: Session,
+        chroma_store: ChunkStore,
+        embedding_adapter: EmbeddingAdapterProtocol,
+        settings: ProviderRuntimeSettings,
     ) -> None:
         self.settings = settings
         self.context_builder = RetrievedContextBuilder(session=session)
@@ -44,7 +55,7 @@ class RetrievalService:
         query_text: str,
         *,
         active_space_id: int | None,
-        attachments: list[dict[str, Any]] | None = None,
+        attachments: list[ChatAttachmentMetadata] | None = None,
     ) -> RetrievedContext:
         started_at = perf_counter()
         normalized_query = query_text.strip()
@@ -124,12 +135,12 @@ class RetrievalService:
 
     def _filter_relevant_chunks(
         self,
-        chunks: list[dict[str, Any]],
+        chunks: list[ChunkStoreRecord],
         normalized_query: str,
         query_normalized: str,
         query_tokens: set[str],
         query_quoted_phrases: list[str],
-    ) -> list[dict[str, Any]]:
+    ) -> list[ChunkStoreRecord]:
         return [
             record
             for record in chunks

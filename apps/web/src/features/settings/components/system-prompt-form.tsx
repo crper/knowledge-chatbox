@@ -1,18 +1,12 @@
-/**
- * @file 系统提示词表单模块。
- */
-
 import { useEffect, useState } from "react";
-import type { FormEvent } from "react";
+import { useForm, revalidateLogic } from "@tanstack/react-form";
 import { useTranslation } from "react-i18next";
 
 import type { AppSettings } from "../api/settings";
 import type { FormNotice } from "./provider-form";
 import { SettingsActionBar, SystemPromptSection } from "./provider-form-sections";
 import { Form } from "@/components/ui/form";
-import { getFormErrorMessage } from "@/lib/form/form-feedback";
-import { useAppForm } from "@/lib/form/use-app-form";
-import { handleFormSubmitEvent } from "@/lib/forms";
+import { getFirstFormError, zodFieldErrors } from "@/lib/forms";
 import { getErrorMessage } from "@/lib/utils";
 import { systemPromptSchema } from "@/lib/validation/schemas";
 
@@ -29,15 +23,17 @@ export function SystemPromptForm({
 }: SystemPromptFormProps) {
   const { t } = useTranslation("settings");
   const [notice, setNotice] = useState<FormNotice | null>(null);
-  const form = useAppForm({
+  const form = useForm({
     defaultValues: {
       system_prompt: initialValues.system_prompt ?? "",
     },
+    validators: {
+      onChange: ({ value }) => zodFieldErrors(systemPromptSchema, value as Record<string, unknown>),
+    },
+    validationLogic: revalidateLogic({ mode: "submit", modeAfterSubmission: "blur" }),
     onSubmit: async ({ value }) => {
       try {
-        await onSave({
-          system_prompt: value.system_prompt,
-        });
+        await onSave({ system_prompt: value.system_prompt });
         setNotice({
           message: t("saveSuccessNotice"),
           title: t("saveNoticeTitle"),
@@ -50,28 +46,29 @@ export function SystemPromptForm({
         });
       }
     },
-    schema: systemPromptSchema,
   });
 
   useEffect(() => {
-    form.reset({
-      system_prompt: initialValues.system_prompt ?? "",
-    });
+    form.reset({ system_prompt: initialValues.system_prompt ?? "" });
     form.setErrorMap({ onSubmit: undefined });
   }, [form, initialValues]);
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    setNotice(null);
-    void handleFormSubmitEvent(event, () => form.handleSubmit());
-  };
-
   return (
-    <Form className="flex flex-col gap-6" noValidate onSubmit={handleSubmit}>
+    <Form
+      className="flex flex-col gap-6"
+      noValidate
+      onSubmit={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setNotice(null);
+        void form.handleSubmit();
+      }}
+    >
       <SystemPromptSection form={form} onValueChange={() => setNotice(null)} t={t} />
       <form.Subscribe selector={(state) => state.errors}>
         {(errors) => (
           <SettingsActionBar
-            errorMessage={getFormErrorMessage(errors, t)}
+            errorMessage={getFirstFormError(errors[0], t)}
             notice={notice}
             onTest={() => {}}
             savePending={savePending}

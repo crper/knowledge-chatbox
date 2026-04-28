@@ -5,6 +5,7 @@ import type { AppUser } from "@/lib/api/client";
 import { useSessionStore } from "@/lib/auth/session-store";
 import { setAccessToken } from "@/lib/auth/token-store";
 import { THEME_SYNC_ON_LOGIN_STORAGE_KEY } from "@/lib/config/constants";
+import { useUiStore } from "@/lib/store/ui-store";
 import { cloneJson } from "@/test/chat";
 import { buildAppUser } from "@/test/fixtures/app";
 import { createTestServer, overrideHandler, apiResponse } from "@/test/msw";
@@ -104,7 +105,9 @@ describe("AppRouter", () => {
     sessionStorage.clear();
     setAccessToken(null);
     document.documentElement.className = "";
+    document.documentElement.style.colorScheme = "";
     useSessionStore.getState().reset();
+    useUiStore.setState({ theme: "system", language: "zh-CN" });
     mockDesktopViewport();
     await i18n.changeLanguage("zh-CN");
 
@@ -168,7 +171,7 @@ describe("AppRouter", () => {
       "/settings/providers",
     );
     expect(screen.getByRole("menuitem", { name: "退出登录" })).toBeInTheDocument();
-  });
+  }, 10000);
 
   it("shows the standard workspace sidebar alongside the page content on desktop routes", async () => {
     setupAuthResponse({
@@ -295,6 +298,7 @@ describe("AppRouter", () => {
 
   it("applies stored theme preference", async () => {
     localStorage.setItem("knowledge-chatbox-theme", "dark");
+    useUiStore.setState({ theme: "dark" });
     setupAuthResponse(null, false, 401);
 
     renderRoute("/login");

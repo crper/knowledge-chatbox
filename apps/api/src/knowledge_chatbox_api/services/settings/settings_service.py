@@ -1,10 +1,11 @@
 """Settings persistence and capability bootstrap logic."""
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from copy import deepcopy
-from typing import Any
+from typing import Any, TypeVar
 
 from sqlalchemy import func, update
+from sqlalchemy.orm import Session
 
 from knowledge_chatbox_api.core.config import Settings
 from knowledge_chatbox_api.models.auth import User
@@ -31,6 +32,7 @@ from knowledge_chatbox_api.schemas.settings import (
     ProviderRuntimeSettings,
     ResponseRouteConfig,
     SettingsRead,
+    SettingsVersionSnapshot,
     UpdateSettingsRequest,
     VisionRouteConfig,
     dump_embedding_route,
@@ -59,6 +61,9 @@ DEFAULT_SYSTEM_PROMPT = (
 )
 
 MASKED_SECRET_VALUE = "********"  # noqa: S105
+
+_RouteT = TypeVar("_RouteT", ResponseRouteConfig, EmbeddingRouteConfig, VisionRouteConfig)
+
 PROFILE_SECRET_FIELDS: dict[ProviderName, tuple[str, ...]] = {
     ProviderName.OPENAI: ("api_key",),
     ProviderName.ANTHROPIC: ("api_key",),
@@ -70,7 +75,7 @@ PROFILE_SECRET_FIELDS: dict[ProviderName, tuple[str, ...]] = {
 class SettingsService:
     """Manage instance settings and compute whether reindexing is required."""
 
-    def __init__(self, session, settings: Settings) -> None:
+    def __init__(self, session: Session, settings: Settings) -> None:
         self.session = session
         self.settings = settings
         self.repository = SettingsRepository(session)
@@ -113,17 +118,10 @@ class SettingsService:
         if self._settings_record_cache is not None:
             return self._settings_record_cache
 
-        cached_id = self.repository.get_cached_id()
-        if cached_id is not None:
-            settings_record = self.session.get(AppSettings, cached_id)
-            if settings_record is not None:
-                self._settings_record_cache = settings_record
-                return settings_record
-
         settings_record = self.repository.get_settings()
         if settings_record is None:
             settings_record = self._build_initial_settings_record()
-            self.repository.save(settings_record)
+            self.repository.add(settings_record)
             self.session.flush()
             self.session.refresh(settings_record)
             self._append_settings_version(
@@ -135,7 +133,6 @@ class SettingsService:
             self.session.commit()
             self.session.refresh(settings_record)
         self._settings_record_cache = settings_record
-        self.repository.set_cached_id(settings_record.id)
         return settings_record
 
     def update_settings(
@@ -211,7 +208,7 @@ class SettingsService:
         self.session.commit()
         self.session.refresh(settings_record)
         self._settings_record_cache = settings_record
-        self.repository.invalidate_id_cache()
+        self.repository.invalidate_cache()
         return self._to_read(
             settings_record,
             rebuild_started=rebuild_started,
@@ -479,42 +476,32 @@ class SettingsService:
 
     def _normalize_route(
         self,
-        route,
-        parse_fn,
-        route_cls,
+        route: object,
+        parse_fn: Callable[[object], _RouteT],
         error_msg: str,
-    ):
+    ) -> _RouteT:
         normalized = parse_fn(route)
         if not normalized.model.strip():
             raise ValidationError(error_msg)
-        return route_cls(
-            provider=normalized.provider,
-            model=normalized.model.strip(),
-        )
+        return normalized.model_copy(update={"model": normalized.model.strip()})
 
     def _normalize_response_route(
         self,
         route: ResponseRouteConfig | Mapping[str, Any],
     ) -> ResponseRouteConfig:
-        return self._normalize_route(
-            route, parse_response_route, ResponseRouteConfig, "Invalid response route model."
-        )
+        return self._normalize_route(route, parse_response_route, "Invalid response route model.")
 
     def _normalize_embedding_route(
         self,
         route: EmbeddingRouteConfig | Mapping[str, Any],
     ) -> EmbeddingRouteConfig:
-        return self._normalize_route(
-            route, parse_embedding_route, EmbeddingRouteConfig, "Invalid embedding route model."
-        )
+        return self._normalize_route(route, parse_embedding_route, "Invalid embedding route model.")
 
     def _normalize_vision_route(
         self,
         route: VisionRouteConfig | Mapping[str, Any],
     ) -> VisionRouteConfig:
-        return self._normalize_route(
-            route, parse_vision_route, VisionRouteConfig, "Invalid vision route model."
-        )
+        return self._normalize_route(route, parse_vision_route, "Invalid vision route model.")
 
     def _effective_embedding_route(
         self,
@@ -525,32 +512,34 @@ class SettingsService:
     def _build_version_snapshot(
         self,
         settings_record: AppSettings,
-    ) -> dict[str, Any]:
+    ) -> SettingsVersionSnapshot:
         read_model = self._to_read(settings_record)
-        return {
-            "provider_profiles": read_model.provider_profiles.model_dump(),
-            "response_route": read_model.response_route.model_dump(),
-            "embedding_route": read_model.embedding_route.model_dump(),
-            "pending_embedding_route": (
+        return SettingsVersionSnapshot(
+            provider_profiles=read_model.provider_profiles.model_dump(),
+            response_route=read_model.response_route.model_dump(),
+            embedding_route=read_model.embedding_route.model_dump(),
+            pending_embedding_route=(
                 read_model.pending_embedding_route.model_dump()
                 if read_model.pending_embedding_route is not None
                 else None
             ),
-            "vision_route": read_model.vision_route.model_dump(),
-            "system_prompt": read_model.system_prompt,
-            "provider_timeout_seconds": read_model.provider_timeout_seconds,
-            "active_index_generation": read_model.active_index_generation,
-            "building_index_generation": read_model.building_index_generation,
-            "index_rebuild_status": read_model.index_rebuild_status.value,
-        }
+            vision_route=read_model.vision_route.model_dump(),
+            system_prompt=read_model.system_prompt,
+            provider_timeout_seconds=read_model.provider_timeout_seconds,
+            active_index_generation=read_model.active_index_generation,
+            building_index_generation=read_model.building_index_generation,
+            index_rebuild_status=read_model.index_rebuild_status.value,
+        )
 
     def _changed_version_fields(
         self,
-        previous_snapshot: Mapping[str, Any],
-        next_snapshot: Mapping[str, Any],
+        previous_snapshot: SettingsVersionSnapshot,
+        next_snapshot: SettingsVersionSnapshot,
     ) -> list[str]:
-        all_keys = sorted(set(previous_snapshot) | set(next_snapshot))
-        return [key for key in all_keys if previous_snapshot.get(key) != next_snapshot.get(key)]
+        previous_dict = previous_snapshot.model_dump()
+        next_dict = next_snapshot.model_dump()
+        all_keys = sorted(set(previous_dict) | set(next_dict))
+        return [key for key in all_keys if previous_dict.get(key) != next_dict.get(key)]
 
     def _append_settings_version(
         self,
@@ -563,12 +552,12 @@ class SettingsService:
         version = SettingsVersion(
             settings_id=settings_record.id,
             version_no=self.version_repository.next_version_no(settings_record.id),
-            snapshot_json=self._build_version_snapshot(settings_record),
+            snapshot_json=self._build_version_snapshot(settings_record).model_dump(),
             changed_fields_json=changed_fields,
             trigger=trigger,
             updated_by_user_id=updated_by_user_id,
         )
-        return self.version_repository.save(version)
+        return self.version_repository.add(version)
 
     def _to_read(
         self,

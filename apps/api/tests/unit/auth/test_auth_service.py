@@ -8,6 +8,9 @@ from tests.fixtures.factories import AuthSessionFactory, ChatSessionFactory, Use
 
 from knowledge_chatbox_api.core.config import get_settings
 from knowledge_chatbox_api.core.security import PasswordManager
+from knowledge_chatbox_api.core.service_builders import (
+    build_auth_service as build_auth_service_for_test,
+)
 from knowledge_chatbox_api.models.auth import AuthSession
 from knowledge_chatbox_api.services.auth.auth_service import (
     AuthService,
@@ -19,12 +22,7 @@ from knowledge_chatbox_api.services.auth.rate_limit_service import RateLimitServ
 
 
 def build_auth_service(migrated_db_session) -> AuthService:
-    return AuthService(
-        session=migrated_db_session,
-        settings=get_settings(),
-        password_manager=PasswordManager(),
-        rate_limit_service=RateLimitService(),
-    )
+    return build_auth_service_for_test(migrated_db_session, get_settings())
 
 
 def test_user_username_must_be_unique(migrated_db_session) -> None:
@@ -136,9 +134,9 @@ def test_login_failure_is_rate_limited(migrated_db_session) -> None:
         password_hash=password_manager.hash_password("secret-123"),
     )
 
-    service = AuthService(
-        session=migrated_db_session,
-        settings=get_settings(),
+    service = build_auth_service_for_test(
+        migrated_db_session,
+        get_settings(),
         password_manager=password_manager,
         rate_limit_service=RateLimitService(max_attempts=2, window_seconds=60),
     )

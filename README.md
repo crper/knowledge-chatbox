@@ -56,7 +56,7 @@ just dev
 - 这条路径是仓库唯一官方开发主线
 - `apps/web/README.md` 和 `apps/api/README.md` 只补充各自包内命令，不再重复定义仓库级启动流程
 - `just` 默认会打印一份精简过的高频入口清单；如果要看完整命令面，执行 `just --list`
-- `just dev` 会先拉起 API，等 `/api/health` ready 后再启动 Web，并在终端统一打印 Web / API 的访问地址，以及 bootstrap 管理员账号提示；若覆盖了 `API_PORT` / `WEB_PORT`，这里显示的链接也会同步变化
+- `just dev` 会先做 `API_PORT / WEB_PORT` 端口预检；端口被占用时直接失败并提示改端口或停掉旧进程。预检通过后，脚本才会拉起 API，等 `/api/health` ready 后再启动 Web，并在终端统一打印 Web / API 的访问地址，以及 bootstrap 管理员账号提示；若覆盖了 `API_PORT` / `WEB_PORT`，这里显示的链接也会同步变化
 - 默认会给 API 约 60 秒完成启动补偿；如果你的机器更慢，可临时调大 `DEV_API_READY_MAX_ATTEMPTS` 后再执行 `just dev`
 - 前端开发态默认建议把 `VITE_API_BASE_URL` 留空，统一走同源 `/api`；`vp dev` 会通过 Vite proxy 转发到当前 `API_PORT` 对应的本机 API（默认 `8000`）
 - 如果你只想先理解接手顺序和提交前要求，再看 [CONTRIBUTING.md](./CONTRIBUTING.md)
@@ -68,7 +68,7 @@ just dev
 - `just`
 - `uv`
 - `vp`
-- Python `3.12`
+- Python `3.13`（`apps/api/.python-version` 当前固定 `3.13.13`）
 - Node.js
 
 说明：
@@ -114,7 +114,7 @@ just setup
 | ------------------ | ------------------ | -------------------------------------------------------------------------------------------------- |
 | 本地开发           | `just dev`         | 启动 API 和 Web 开发服务                                                                           |
 | 检查与测试         | `just test`        | 执行仓库检查、后端静态检查与测试、前端静态检查与测试                                                 |
-| 重置本地数据       | `just reset-dev`   | 清空数据、重装依赖、重启开发环境（用于环境混乱时）                                                   |
+| 重置本地数据       | `just reset-dev`   | 先做端口预检，再清空数据、重装依赖、重启开发环境（用于环境混乱时）                                    |
 | 单机部署           | `just docker-up`   | Docker Compose 运行                                                                                |
 | 查看全部命令       | `just --list`      | 查看完整命令列表                                                                                   |
 
@@ -147,8 +147,11 @@ just setup
 ## 开发入口
 
 - 前端在 `apps/web`，统一使用 `vp`；当前前端 URL 契约已经收敛到 TanStack Router file-based routes，页面组件默认只消费 canonical path。如果改了后端 route / schema，先执行 `vp run api:generate`。详细命令见 [apps/web/README.md](./apps/web/README.md)。
+- 前端聊天运行态当前收口为三层：`useChatRuntime` 负责运行态读写 owner、`useChatCacheWriter` 负责 Query cache 写出口、`useChatComposerStore` 负责草稿/附件/快捷键；具体边界见 [apps/web/README.md](./apps/web/README.md) 和 [docs/arch/frontend-workspace.md](./docs/arch/frontend-workspace.md)。
+- 前端 OpenAPI 产物当前不再入库；`just setup`、`just dev`、`just web-dev` 和 `just web-check` 会在缺失时自动生成本地 `schema.json / schema.d.ts`，存在时再校验漂移。
 - 前端开发态当前会自动挂载 TanStack Devtools 聚合面板，统一查看 Query / Router / Form 状态；它只在 `vp dev` 下生效，不进入生产构建。
 - 后端在 `apps/api`，统一使用 `uv`。详细命令见 [apps/api/README.md](./apps/api/README.md)。
+- 后端静态检查当前分两层：`pyproject.toml` 负责 `src` 的严格 `basedpyright`，`pyproject.test.toml` 负责 `tests` 的宽松测试类型检查；`just api-check` 会把两层都跑一遍。
 - 模型设置里的 `Ollama Base URL` 只填写服务根地址，例如 `http://localhost:11434`；系统内部会自动派生兼容接口路径，不需要手动补 `/v1`。
 
 ## Docker 单机部署

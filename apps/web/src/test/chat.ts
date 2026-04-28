@@ -22,19 +22,19 @@ type ChatAttachmentWithAliases = Partial<ChatAttachmentItem> & {
 };
 
 type ChatSessionContextMessageLike = {
-  attachments_json?: ChatAttachmentWithAliases[] | null;
+  attachments?: ChatAttachmentWithAliases[] | null;
   id: number;
   role: string;
-  sources_json?: ChatSourceItem[] | null | unknown[];
+  sources?: ChatSourceItem[] | null | unknown[];
   [key: string]: unknown;
 };
 
 function getAttachmentDocumentId(attachment: ChatAttachmentWithAliases) {
-  return attachment.resource_document_id ?? attachment.document_id ?? null;
+  return attachment.document_id ?? null;
 }
 
 function getAttachmentDocumentRevisionId(attachment: ChatAttachmentWithAliases) {
-  return attachment.resource_document_version_id ?? attachment.document_revision_id ?? null;
+  return attachment.document_revision_id ?? null;
 }
 
 function getAttachmentContextKey(attachment: ChatAttachmentWithAliases) {
@@ -63,8 +63,6 @@ function toContextAttachment(attachment: ChatAttachmentWithAliases): ChatAttachm
     document_revision_id: documentRevisionId,
     size_bytes: attachment.size_bytes ?? 1,
     type: attachment.type === "image" ? "image" : "document",
-    resource_document_id: documentId,
-    resource_document_version_id: documentRevisionId,
   };
 }
 
@@ -76,7 +74,7 @@ export function buildChatSessionContext(
   sessionId: number,
   messages: ChatSessionContextMessageLike[],
 ): ChatSessionContextItem {
-  const attachments = messages.flatMap((message) => message.attachments_json ?? []);
+  const attachments = messages.flatMap((message) => message.attachments ?? []);
   const deduplicatedAttachments = new Map<string, ChatAttachmentWithAliases>();
 
   for (const attachment of attachments) {
@@ -95,6 +93,6 @@ export function buildChatSessionContext(
     attachment_count: deduplicatedAttachments.size,
     attachments: Array.from(deduplicatedAttachments.values()) as ChatAttachmentItem[],
     latest_assistant_message_id: latestAssistantMessage?.id ?? null,
-    latest_assistant_sources: (latestAssistantMessage?.sources_json ?? []) as ChatSourceItem[],
+    latest_assistant_sources: (latestAssistantMessage?.sources ?? []) as ChatSourceItem[],
   };
 }

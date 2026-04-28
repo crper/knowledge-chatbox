@@ -2,9 +2,8 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel
-
 from knowledge_chatbox_api.models.enums import ThemePreference, UserRole, UserStatus
+from knowledge_chatbox_api.schemas import InputSchema, ReadOnlySchema
 from knowledge_chatbox_api.schemas._validators import (
     CredentialPasswordStr,
     PasswordStr,
@@ -12,7 +11,7 @@ from knowledge_chatbox_api.schemas._validators import (
 )
 
 
-class AuthUserRead(BaseModel):
+class AuthUserRead(ReadOnlySchema):
     """描述认证用户响应体。"""
 
     id: int
@@ -26,14 +25,14 @@ class AuthUserRead(BaseModel):
     updated_at: datetime
 
 
-class LoginRequest(BaseModel):
+class LoginRequest(InputSchema):
     """描述登录请求体。"""
 
     username: UsernameStr
     password: CredentialPasswordStr
 
 
-class AccessTokenRead(BaseModel):
+class AccessTokenRead(ReadOnlySchema):
     """描述 access token 响应体。"""
 
     access_token: str
@@ -41,7 +40,7 @@ class AccessTokenRead(BaseModel):
     token_type: str = "Bearer"  # noqa: S105
 
 
-class LoginResponse(BaseModel):
+class LoginResponse(ReadOnlySchema):
     """描述登录响应体。"""
 
     access_token: str
@@ -50,7 +49,7 @@ class LoginResponse(BaseModel):
     user: AuthUserRead
 
 
-class SessionBootstrapRead(BaseModel):
+class SessionBootstrapRead(ReadOnlySchema):
     """描述启动期认证恢复结果。"""
 
     authenticated: bool
@@ -60,14 +59,14 @@ class SessionBootstrapRead(BaseModel):
     user: AuthUserRead | None = None
 
 
-class ChangePasswordRequest(BaseModel):
+class ChangePasswordRequest(InputSchema):
     """描述Change密码请求体。"""
 
     current_password: CredentialPasswordStr
     new_password: PasswordStr
 
 
-class UpdatePreferencesRequest(BaseModel):
+class UpdatePreferencesRequest(InputSchema):
     """描述Update偏好请求体。"""
 
     theme_preference: ThemePreference

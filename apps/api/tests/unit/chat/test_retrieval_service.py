@@ -136,7 +136,7 @@ class FakeQueryEngine:
 
 def build_service(query_engine: FakeQueryEngine) -> RetrievalService:
     service = RetrievalService.__new__(RetrievalService)
-    service.settings = SimpleNamespace(active_index_generation=1)
+    cast("Any", service).settings = SimpleNamespace(active_index_generation=1)
     cast("Any", service).context_builder = FakeContextBuilder()
     cast("Any", service).query_engine = query_engine
     return service

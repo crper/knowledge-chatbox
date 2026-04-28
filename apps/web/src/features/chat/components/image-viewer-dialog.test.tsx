@@ -1,6 +1,10 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { QueryClientProvider } from "@tanstack/react-query";
 
+import { createTestQueryClient } from "@/test/query-client";
 import { ImageViewerDialog, type ImageViewerItem } from "./image-viewer-dialog";
+
+const queryClient = createTestQueryClient();
 
 describe("ImageViewerDialog", () => {
   beforeEach(() => {
@@ -26,7 +30,11 @@ describe("ImageViewerDialog", () => {
       },
     ];
 
-    render(<ImageViewerDialog items={items} onOpenChange={vi.fn()} open={true} />);
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ImageViewerDialog items={items} onOpenChange={vi.fn()} open={true} />
+      </QueryClientProvider>,
+    );
 
     expect(await screen.findByRole("img", { name: "draft-image.png" })).toHaveAttribute(
       "src",
@@ -54,7 +62,7 @@ describe("ImageViewerDialog", () => {
         name: "history-1.png",
         mimeType: "image/png",
         originalUrl: "http://localhost:8000/api/documents/11/file",
-        resourceDocumentVersionId: 11,
+        documentRevisionId: 11,
       },
       {
         kind: "remote",
@@ -62,11 +70,15 @@ describe("ImageViewerDialog", () => {
         name: "history-2.png",
         mimeType: "image/png",
         originalUrl: "http://localhost:8000/api/documents/12/file",
-        resourceDocumentVersionId: 12,
+        documentRevisionId: 12,
       },
     ];
 
-    render(<ImageViewerDialog items={items} onOpenChange={vi.fn()} open={true} />);
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ImageViewerDialog items={items} onOpenChange={vi.fn()} open={true} />
+      </QueryClientProvider>,
+    );
 
     expect(await screen.findByRole("img", { name: "history-1.png" })).toBeInTheDocument();
     expect(screen.getByText("1 / 2")).toBeInTheDocument();
@@ -85,11 +97,16 @@ describe("ImageViewerDialog", () => {
     );
     const lastFetchCall = vi.mocked(fetch).mock.calls.at(-1);
     expect(lastFetchCall).toBeDefined();
-    const [request, init] = lastFetchCall!;
-    expect(request).toBe("http://localhost:8000/api/documents/12/file");
-    expect(init).toMatchObject({
-      credentials: "include",
-    });
+    const [requestOrUrl, init] = lastFetchCall!;
+    const actualUrl = requestOrUrl instanceof Request ? requestOrUrl.url : requestOrUrl;
+    expect(actualUrl).toBe("http://localhost:8000/api/documents/12/file");
+    if (requestOrUrl instanceof Request) {
+      expect(requestOrUrl.credentials).toBe("include");
+    } else {
+      expect(init).toMatchObject({
+        credentials: "include",
+      });
+    }
   });
 
   it("closes the viewer on Escape", async () => {
@@ -104,7 +121,11 @@ describe("ImageViewerDialog", () => {
       },
     ];
 
-    render(<ImageViewerDialog items={items} onOpenChange={onOpenChange} open={true} />);
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ImageViewerDialog items={items} onOpenChange={onOpenChange} open={true} />
+      </QueryClientProvider>,
+    );
 
     await screen.findByRole("img", { name: "draft-image.png" });
     fireEvent.keyDown(document, { key: "Escape" });

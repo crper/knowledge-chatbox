@@ -1,9 +1,9 @@
 """聊天投影持久化服务。"""
 
-from typing import Any
-
 from knowledge_chatbox_api.core.logging import get_logger
 from knowledge_chatbox_api.models.enums import ChatMessageStatus, ChatRunStatus
+from knowledge_chatbox_api.schemas.chat import UsageData
+from knowledge_chatbox_api.services.chat.workflow.output import WorkflowSource
 from knowledge_chatbox_api.utils.timing import utc_now
 
 TEXT_DELTA_FLUSH_INTERVAL = 32
@@ -68,17 +68,39 @@ class ChatPersistenceService:
         self,
         run,
         assistant_message,
-        sources: list[dict[str, Any]],
-        usage: dict[str, Any] | None,
+        sources: list[WorkflowSource],
+        usage: UsageData | None,
     ) -> None:
         self._safe_flush_text_buffer()
         now = utc_now()
         run.status = ChatRunStatus.SUCCEEDED
         run.finished_at = now
-        run.usage_json = usage
+        run.usage_json = usage.model_dump(exclude_none=True) if usage else None
         assistant_message.status = ChatMessageStatus.SUCCEEDED
         assistant_message.error_message = None
-        assistant_message.sources_json = sources
+        assistant_message.sources_json = [s.model_dump() for s in sources]
+        assistant_message.updated_at = now
+        self.session.commit()
+        self._pending_text_deltas = 0
+
+    def _terminate_run(
+        self,
+        run,
+        assistant_message,
+        error_message: str,
+        run_status: ChatRunStatus,
+        *,
+        sources: list[WorkflowSource] | None = None,
+    ) -> None:
+        self._safe_flush_text_buffer()
+        now = utc_now()
+        run.status = run_status
+        run.error_message = error_message
+        run.finished_at = now
+        assistant_message.status = ChatMessageStatus.FAILED
+        assistant_message.error_message = error_message
+        sources_dump = [s.model_dump() for s in sources] if sources else []
+        assistant_message.sources_json = sources_dump
         assistant_message.updated_at = now
         self.session.commit()
         self._pending_text_deltas = 0
@@ -89,19 +111,15 @@ class ChatPersistenceService:
         assistant_message,
         error_message: str,
         *,
-        sources: list[dict[str, Any]] | None = None,
+        sources: list[WorkflowSource] | None = None,
     ) -> None:
-        self._safe_flush_text_buffer()
-        now = utc_now()
-        run.status = ChatRunStatus.FAILED
-        run.error_message = error_message
-        run.finished_at = now
-        assistant_message.status = ChatMessageStatus.FAILED
-        assistant_message.error_message = error_message
-        assistant_message.sources_json = [] if sources is None else list(sources)
-        assistant_message.updated_at = now
-        self.session.commit()
-        self._pending_text_deltas = 0
+        self._terminate_run(
+            run,
+            assistant_message,
+            error_message,
+            ChatRunStatus.FAILED,
+            sources=sources,
+        )
 
     def cancel_run(
         self,
@@ -109,16 +127,12 @@ class ChatPersistenceService:
         assistant_message,
         error_message: str,
         *,
-        sources: list[dict[str, Any]] | None = None,
+        sources: list[WorkflowSource] | None = None,
     ) -> None:
-        self._safe_flush_text_buffer()
-        now = utc_now()
-        run.status = ChatRunStatus.CANCELLED
-        run.error_message = error_message
-        run.finished_at = now
-        assistant_message.status = ChatMessageStatus.FAILED
-        assistant_message.error_message = error_message
-        assistant_message.sources_json = [] if sources is None else list(sources)
-        assistant_message.updated_at = now
-        self.session.commit()
-        self._pending_text_deltas = 0
+        self._terminate_run(
+            run,
+            assistant_message,
+            error_message,
+            ChatRunStatus.CANCELLED,
+            sources=sources,
+        )

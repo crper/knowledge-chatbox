@@ -1,18 +1,18 @@
 """聊天运行时服务。"""
 
 import asyncio
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from sqlalchemy.orm import Session
 
 from knowledge_chatbox_api.core.logging import get_logger
 from knowledge_chatbox_api.core.observation import OPERATION_KIND_CHAT_STREAM
 from knowledge_chatbox_api.models.enums import ChatMessageRole, ChatMessageStatus, ChatRunStatus
-from knowledge_chatbox_api.providers.base import BaseEmbeddingAdapter
+from knowledge_chatbox_api.providers.base import EmbeddingAdapterProtocol
 from knowledge_chatbox_api.repositories.chat_repository import ChatRepository
 from knowledge_chatbox_api.repositories.chat_run_event_repository import ChatRunEventRepository
 from knowledge_chatbox_api.repositories.chat_run_repository import ChatRunRepository
-from knowledge_chatbox_api.schemas.chat import dump_chat_attachments
+from knowledge_chatbox_api.schemas.chat import ChatAttachmentMetadata, dump_chat_attachments
 from knowledge_chatbox_api.schemas.settings import ProviderRuntimeSettings
 from knowledge_chatbox_api.services.chat.chat_stream_presenter import ChatStreamPresenter
 from knowledge_chatbox_api.services.chat.pending_stream_cancel_registry import (
@@ -22,6 +22,7 @@ from knowledge_chatbox_api.services.chat.retry_service import RetryService
 from knowledge_chatbox_api.services.chat.stream_events import (
     StreamEvent,
     StreamEventBatchItem,
+    StreamEventPayload,
     append_event_batch,
 )
 from knowledge_chatbox_api.services.chat.workflow import ChatWorkflow, build_chat_workflow_deps
@@ -51,7 +52,7 @@ class ChatRunService:
         chat_run_event_repository: ChatRunEventRepository,
         retry_service: RetryService,
         chroma_store: ChunkStore,
-        embedding_adapter: BaseEmbeddingAdapter,
+        embedding_adapter: EmbeddingAdapterProtocol,
         settings: ProviderRuntimeSettings,
         workflow_factory: type[ChatWorkflow] | None = None,
         presenter: ChatStreamPresenter,
@@ -72,7 +73,7 @@ class ChatRunService:
         *,
         session_id: int,
         content: str,
-        attachments: list[dict[str, Any]] | None = None,
+        attachments: list[ChatAttachmentMetadata] | None = None,
         client_request_id: str,
         retry_of_message_id: int | None = None,
     ):
@@ -112,7 +113,7 @@ class ChatRunService:
             status=ChatRunStatus.PENDING,
             response_provider=response_provider,
             response_model=response_model,
-            reasoning_mode=self._reasoning_mode(),
+            reasoning_mode=self.settings.reasoning_mode,
             client_request_id=client_request_id,
         )
         assistant_message = self.retry_service.create_assistant_reply(
@@ -171,8 +172,6 @@ class ChatRunService:
                     session_id=session_id,
                     session=self.session,
                     chat_repository=self.chat_repository,
-                    chat_run_repository=self.chat_run_repository,
-                    chat_run_event_repository=self.chat_run_event_repository,
                     chroma_store=self.chroma_store,
                     embedding_adapter=self.embedding_adapter,
                     runtime_settings=self.settings,
@@ -222,22 +221,22 @@ class ChatRunService:
         assistant_message_id: int,
     ) -> list[StreamEventBatchItem]:
         return [
-            (
-                StreamEvent.RUN_STARTED,
-                {
-                    "run_id": run_id,
-                    "session_id": session_id,
-                    "user_message_id": user_message_id,
-                    "assistant_message_id": assistant_message_id,
-                },
+            StreamEventBatchItem(
+                event_name=StreamEvent.RUN_STARTED,
+                payload=StreamEventPayload(
+                    run_id=run_id,
+                    session_id=session_id,
+                    user_message_id=user_message_id,
+                    assistant_message_id=assistant_message_id,
+                ),
             ),
-            (
-                StreamEvent.MESSAGE_STARTED,
-                {
-                    "run_id": run_id,
-                    "assistant_message_id": assistant_message_id,
-                    "role": ChatMessageRole.ASSISTANT,
-                },
+            StreamEventBatchItem(
+                event_name=StreamEvent.MESSAGE_STARTED,
+                payload=StreamEventPayload(
+                    run_id=run_id,
+                    assistant_message_id=assistant_message_id,
+                    role=ChatMessageRole.ASSISTANT,
+                ),
             ),
         ]
 
@@ -259,12 +258,9 @@ class ChatRunService:
     def _replay_existing_run(self, run: "ChatRun"):
         for event in self.chat_run_event_repository.list_for_run(run.id):
             yield self.presenter.event(
-                event.event_type,  # type: ignore[arg-type]
+                StreamEvent(event.event_type),
                 event.payload_json,
             )
-
-    def _reasoning_mode(self) -> str:
-        return self.settings.reasoning_mode
 
     def _mark_interrupted_run(
         self,

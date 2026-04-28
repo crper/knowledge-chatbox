@@ -4,7 +4,7 @@
 
 import { PDFViewer } from "@embedpdf/react-pdf-viewer";
 
-import { getDocumentFileUrl } from "@/features/chat/utils/document-file-url";
+import { getDocumentFileUrl } from "@/lib/api/document-file-url";
 import { cn } from "@/lib/utils";
 import type { KnowledgeDocument } from "../api/documents";
 

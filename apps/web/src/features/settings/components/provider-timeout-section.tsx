@@ -4,7 +4,7 @@
 
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { NumberField } from "@/components/ui/number-field";
-import { getFieldErrorItems } from "@/lib/form/form-feedback";
+import { fieldError } from "@/lib/forms";
 import type { ProviderSettingsView } from "./provider-form-state";
 import {
   providerFormControlClassName,
@@ -54,9 +54,7 @@ export function ProviderTimeoutSection({
             value={draft.providerTimeoutSeconds}
           />
           <FieldDescription>{t("providerTimeoutHint")}</FieldDescription>
-          <FieldError
-            errors={getFieldErrorItems([], undefined, fieldErrorMessages.providerTimeoutSeconds)}
-          />
+          <FieldError errors={fieldError(fieldErrorMessages.providerTimeoutSeconds)} />
         </Field>
       </FieldGroup>
     </section>

@@ -70,7 +70,6 @@ export function buildAppSettings(overrides: AppSettingsOverrides = {}): AppSetti
         embedding_model: "voyage-3.5",
       },
       ollama: {
-        api_key: null,
         base_url: "http://localhost:11434",
         chat_model: "qwen3.5:4b",
         embedding_model: "nomic-embed-text",

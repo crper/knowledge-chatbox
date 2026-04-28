@@ -1,9 +1,17 @@
 import { z } from "zod";
 
+function addCustomIssue(ctx: z.RefinementCtx, message: string, path: Array<string | number>) {
+  ctx.addIssue({
+    code: z.ZodIssueCode.custom,
+    message,
+    path,
+  });
+}
+
 const trimmedString = () => z.string().trim();
 
 const requiredString = (message?: string) =>
-  trimmedString().min(1, { message: message ?? "此字段不能为空" });
+  trimmedString().min(1, { message: message ?? "common:requiredFieldError" });
 
 type PasswordSchemaOptions = {
   minLength?: number;
@@ -31,53 +39,45 @@ const passwordSchema = (options: PasswordSchemaOptions = {}) => {
     minLength,
   );
 
-  return trimmedString().superRefine((value, ctx) => {
-    if (value.length === 0) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: requiredMessage,
-      });
-      return;
-    }
-
-    if (value.length < minLength) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: tooShortMessage,
-      });
-    }
+  return trimmedString().min(1, { message: requiredMessage }).min(minLength, {
+    message: tooShortMessage,
   });
 };
 
 const httpUrlSchema = (options: { allowEmpty?: boolean; message?: string } = {}) => {
-  const { allowEmpty = true, message = "请输入有效的 HTTP/HTTPS 地址" } = options;
-  return z
-    .string()
-    .transform((val) => val.trim())
-    .refine(
-      (val) => {
-        if (!val) {
-          return allowEmpty;
-        }
+  const { allowEmpty = true, message = "common:httpUrlInvalidError" } = options;
+  const urlValidator = z.url({ protocol: /^https?$/, error: message });
 
-        try {
-          const url = new URL(val);
-          return url.protocol === "http:" || url.protocol === "https:";
-        } catch {
-          return false;
-        }
-      },
-      { message },
-    );
+  if (allowEmpty) {
+    return z
+      .string()
+      .trim()
+      .pipe(z.union([z.literal(""), urlValidator]));
+  }
+
+  return z.string().trim().pipe(urlValidator);
 };
 
 const positiveIntegerInRange = (min: number, max: number, message?: string) =>
-  z
-    .union([z.number(), z.string()])
-    .transform((val) => (typeof val === "number" ? val : Number(val)))
-    .refine((val) => Number.isInteger(val) && val >= min && val <= max, {
-      message: message ?? `请输入 ${min} 到 ${max} 之间的正整数`,
+  z.coerce
+    .number()
+    .int({ message: message ?? `common:positiveIntegerRangeError:${min}:${max}` })
+    .min(min, {
+      message: message ?? `common:positiveIntegerRangeError:${min}:${max}`,
+    })
+    .max(max, {
+      message: message ?? `common:positiveIntegerRangeError:${min}:${max}`,
     });
+
+function createProviderProfileSchema(
+  fields: Array<"api_key" | "base_url" | "chat_model" | "embedding_model" | "vision_model">,
+) {
+  const shape: Record<string, z.ZodOptional<z.ZodNullable<z.ZodString>>> = {};
+  for (const field of fields) {
+    shape[field] = z.string().nullable().optional();
+  }
+  return z.object(shape);
+}
 
 export const loginSchema = z.object({
   username: requiredString("auth:usernameRequiredError"),
@@ -112,34 +112,34 @@ export const systemPromptSchema = z.object({
   system_prompt: z.string(),
 });
 
-const providerProfileOpenaiSchema = z.object({
-  api_key: z.string().nullable().optional(),
-  base_url: z.string().nullable().optional(),
-  chat_model: z.string().nullable().optional(),
-  embedding_model: z.string().nullable().optional(),
-  vision_model: z.string().nullable().optional(),
-});
+const providerProfileOpenaiSchema = createProviderProfileSchema([
+  "api_key",
+  "base_url",
+  "chat_model",
+  "embedding_model",
+  "vision_model",
+]);
 
-const providerProfileAnthropicSchema = z.object({
-  api_key: z.string().nullable().optional(),
-  base_url: z.string().nullable().optional(),
-  chat_model: z.string().nullable().optional(),
-  vision_model: z.string().nullable().optional(),
-});
+const providerProfileAnthropicSchema = createProviderProfileSchema([
+  "api_key",
+  "base_url",
+  "chat_model",
+  "vision_model",
+]);
 
-const providerProfileVoyageSchema = z.object({
-  api_key: z.string().nullable().optional(),
-  base_url: z.string().nullable().optional(),
-  embedding_model: z.string().nullable().optional(),
-});
+const providerProfileVoyageSchema = createProviderProfileSchema([
+  "api_key",
+  "base_url",
+  "embedding_model",
+]);
 
-const providerProfileOllamaSchema = z.object({
-  api_key: z.string().nullable().optional(),
-  base_url: z.string().nullable().optional(),
-  chat_model: z.string().nullable().optional(),
-  embedding_model: z.string().nullable().optional(),
-  vision_model: z.string().nullable().optional(),
-});
+const providerProfileOllamaSchema = createProviderProfileSchema([
+  "api_key",
+  "base_url",
+  "chat_model",
+  "embedding_model",
+  "vision_model",
+]);
 
 const providerProfilesSchema = z.object({
   anthropic: providerProfileAnthropicSchema,
@@ -162,6 +162,93 @@ export const defaultEmbeddingProviderByPrimary = {
   z.infer<typeof embeddingProviderEnum>
 >;
 
+function validatePrimaryProviderProfile(
+  data: z.infer<typeof providerSettingsSchema>,
+  ctx: z.RefinementCtx,
+) {
+  const primaryProfile = data.providerProfiles[data.primaryProvider];
+  const primaryBaseUrl = primaryProfile.base_url?.trim() ?? "";
+  const primaryChatModel = primaryProfile.chat_model?.trim() ?? "";
+  const primaryVisionModel = primaryProfile.vision_model?.trim() ?? "";
+
+  if (!primaryChatModel) {
+    addCustomIssue(ctx, "settings:chatModelRequiredError", [
+      "providerProfiles",
+      data.primaryProvider,
+      "chat_model",
+    ]);
+  }
+
+  if (!primaryVisionModel) {
+    addCustomIssue(ctx, "settings:visionModelRequiredError", [
+      "providerProfiles",
+      data.primaryProvider,
+      "vision_model",
+    ]);
+  }
+
+  if (data.primaryProvider === "ollama" && !primaryBaseUrl) {
+    addCustomIssue(ctx, "settings:providerTestOllamaBaseUrlMissing", [
+      "providerProfiles",
+      "ollama",
+      "base_url",
+    ]);
+  }
+
+  const shouldValidatePrimaryBaseUrl = !(
+    data.primaryProvider === "ollama" && primaryBaseUrl.length === 0
+  );
+  const baseUrlResult = shouldValidatePrimaryBaseUrl
+    ? httpUrlSchema({
+        allowEmpty: data.primaryProvider !== "ollama",
+        message: "settings:baseUrlInvalidError",
+      }).safeParse(primaryBaseUrl)
+    : { success: true as const };
+
+  if (!baseUrlResult.success) {
+    addCustomIssue(ctx, "settings:baseUrlInvalidError", [
+      "providerProfiles",
+      data.primaryProvider,
+      "base_url",
+    ]);
+  }
+}
+
+function validateDefaultEmbeddingModel(
+  data: z.infer<typeof providerSettingsSchema>,
+  ctx: z.RefinementCtx,
+) {
+  const defaultEmbeddingProvider = defaultEmbeddingProviderByPrimary[data.primaryProvider];
+  const defaultEmbeddingModel =
+    data.providerProfiles[defaultEmbeddingProvider].embedding_model?.trim() ?? "";
+
+  if (!defaultEmbeddingModel) {
+    addCustomIssue(ctx, "settings:embeddingModelRequiredError", [
+      "providerProfiles",
+      defaultEmbeddingProvider,
+      "embedding_model",
+    ]);
+  }
+}
+
+function validateRetrievalOverride(
+  data: z.infer<typeof providerSettingsSchema>,
+  ctx: z.RefinementCtx,
+) {
+  if (!data.retrievalOverrideEnabled) return;
+
+  const retrievalEmbeddingModel =
+    data.providerProfiles[data.retrievalProvider].embedding_model?.trim() ?? "";
+
+  if (!retrievalEmbeddingModel) {
+    addCustomIssue(ctx, "settings:retrievalEmbeddingModelRequiredError", [
+      "providerProfiles",
+      data.retrievalProvider,
+      "embedding_model",
+    ]);
+  }
+}
+
 export const providerSettingsSchema = z
   .object({
     primaryProvider: responseProviderEnum,
@@ -172,74 +259,7 @@ export const providerSettingsSchema = z
     providerTimeoutSeconds: positiveIntegerInRange(1, 600, "settings:providerTimeoutInvalidError"),
   })
   .superRefine((data, ctx) => {
-    const primaryProfile = data.providerProfiles[data.primaryProvider];
-    const primaryBaseUrl = primaryProfile.base_url?.trim() ?? "";
-    const primaryChatModel = primaryProfile.chat_model?.trim() ?? "";
-    const primaryVisionModel = primaryProfile.vision_model?.trim() ?? "";
-    const defaultEmbeddingProvider = defaultEmbeddingProviderByPrimary[data.primaryProvider];
-    const defaultEmbeddingModel =
-      data.providerProfiles[defaultEmbeddingProvider].embedding_model?.trim() ?? "";
-
-    if (!primaryChatModel) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "settings:chatModelRequiredError",
-        path: ["providerProfiles", data.primaryProvider, "chat_model"],
-      });
-    }
-
-    if (!defaultEmbeddingModel) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "settings:embeddingModelRequiredError",
-        path: ["providerProfiles", defaultEmbeddingProvider, "embedding_model"],
-      });
-    }
-
-    if (!primaryVisionModel) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "settings:visionModelRequiredError",
-        path: ["providerProfiles", data.primaryProvider, "vision_model"],
-      });
-    }
-
-    if (data.primaryProvider === "ollama" && !primaryBaseUrl) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "settings:providerTestOllamaBaseUrlMissing",
-        path: ["providerProfiles", "ollama", "base_url"],
-      });
-    }
-
-    const shouldValidatePrimaryBaseUrl = !(
-      data.primaryProvider === "ollama" && primaryBaseUrl.length === 0
-    );
-    const baseUrlResult = shouldValidatePrimaryBaseUrl
-      ? httpUrlSchema({
-          allowEmpty: data.primaryProvider !== "ollama",
-          message: "settings:baseUrlInvalidError",
-        }).safeParse(primaryBaseUrl)
-      : { success: true as const };
-
-    if (!baseUrlResult.success) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "settings:baseUrlInvalidError",
-        path: ["providerProfiles", data.primaryProvider, "base_url"],
-      });
-    }
-
-    if (data.retrievalOverrideEnabled) {
-      const retrievalEmbeddingModel =
-        data.providerProfiles[data.retrievalProvider].embedding_model?.trim() ?? "";
-
-      if (!retrievalEmbeddingModel) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "settings:retrievalEmbeddingModelRequiredError",
-          path: ["providerProfiles", data.retrievalProvider, "embedding_model"],
-        });
-      }
-    }
+    validatePrimaryProviderProfile(data, ctx);
+    validateDefaultEmbeddingModel(data, ctx);
+    validateRetrievalOverride(data, ctx);
   });

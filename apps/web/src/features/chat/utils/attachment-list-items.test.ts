@@ -19,7 +19,7 @@ describe("attachment-list-items", () => {
           type: "image",
           name: "e31c779fc7a14e68b23cf94c999b0a61.jpeg~tplv-a9rns2rl98-image_raw_b.png",
           mime_type: "image/png",
-          resource_document_version_id: 11,
+          document_revision_id: 11,
           size_bytes: 1,
         },
       ])[0],
@@ -37,7 +37,7 @@ describe("attachment-list-items", () => {
           type: "image",
           name: "f2280f620f9045129491d54f4de3997d.PNG",
           mime_type: "image/png",
-          resource_document_version_id: 11,
+          document_revision_id: 11,
           size_bytes: 1,
         },
       ])[0],
@@ -58,7 +58,7 @@ describe("attachment-list-items", () => {
             type: "image",
             name: "e31c779fc7a14e68b23cf94c999b0a61.jpeg~tplv-a9rns2rl98-image_raw_b.png",
             mime_type: "image/png",
-            resource_document_version_id: 11,
+            document_revision_id: 11,
             size_bytes: 1,
           },
         ])[0],
@@ -96,7 +96,7 @@ describe("attachment-list-items", () => {
         type: "image",
         name: "e31c779fc7a14e68b23cf94c999b0a61.jpeg~tplv-a9rns2rl98-image_raw_b.png",
         mime_type: "image/png",
-        resource_document_version_id: 11,
+        document_revision_id: 11,
         size_bytes: 1,
       },
       {
@@ -104,7 +104,7 @@ describe("attachment-list-items", () => {
         type: "document",
         name: "夜航记录.pdf",
         mime_type: "application/pdf",
-        resource_document_version_id: 21,
+        document_revision_id: 21,
         size_bytes: 1,
       },
     ];
@@ -158,7 +158,7 @@ describe("attachment-list-items", () => {
         kind: "remote",
         mimeType: "image/png",
         name: "e31c779fc7a14e68b23cf94c999b0a61.jpeg~tplv-a9rns2rl98-image_raw_b.png",
-        resourceDocumentVersionId: 11,
+        documentRevisionId: 11,
       },
     ]);
     expect(chatListItems[0]?.onPreview).toBeTypeOf("function");

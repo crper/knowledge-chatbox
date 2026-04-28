@@ -22,6 +22,7 @@ export function settingsDetailQueryOptions(enabled = true) {
     enabled,
     queryKey: queryKeys.settings.detail,
     queryFn: getSettings,
+    staleTime: 15_000,
     refetchInterval: (query) =>
       shouldPollSettings(enabled, query.state.data as AppSettings | undefined)
         ? SETTINGS_POLL_INTERVAL_MS

@@ -26,9 +26,9 @@ function buildKnowledgeDocument(
     id,
     is_latest: true,
     name,
-    status: "indexed",
+    ingest_status: "indexed",
     updated_at: "2026-03-30T00:00:00Z",
-    version: 1,
+    revision_no: 1,
     ...rest,
   };
 }

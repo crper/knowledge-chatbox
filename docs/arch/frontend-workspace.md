@@ -186,7 +186,7 @@
 - 设置中心里的提供商配置与系统提示词
 - 用户管理列表
 - 会话、消息、运行态查询
-- **流式问答运行时状态**：每个 SSE 流式运行（`streamRun`）的临时状态（content delta、sources、status）直接存储在 TanStack Query Cache 中，而非 Zustand store。运行完成后 5 分钟自动清理。`streamRunQueryOptions` 为每个流式运行注册空 `queryFn`（返回 `null`）并设置 `staleTime: Infinity` + `gcTime: 5min`，确保 QueryClient 生命周期可预测；流式运行类型定义和工具函数集中在 `features/chat/utils/streaming-run.ts`。
+- **流式问答运行时状态**：每个 SSE 流式运行的临时状态（content delta、sources、status）直接存储在 TanStack Query Cache 中，而非 Zustand store。运行完成后 5 分钟自动清理。内部 query key 仍使用 `chat.streamRun`，并通过 `streamRunQueryOptions` 为每个运行注册空 `queryFn`（返回 `null`）以及 `staleTime: Infinity + gcTime: 5min`，确保 QueryClient 生命周期可预测；流式运行类型定义和工具函数集中在 `features/chat/utils/streaming-run.ts`。
 
 不要把这些最终结果再复制一份进本地 store。
 
@@ -222,16 +222,13 @@
 ```text
 [ChatPage]
   -> [useChatWorkspace]
-     -> [useChatRuntimeController]       # 运行时控制器组合层
-        -> [useChatSessionSubmitController]  ← 会话级提交锁 (React local state)
-        -> [useChatStreamRun]                ← 流式运行 action (QueryClient cache)
-     -> [useChatRuntimeState]            # 订阅 StreamingRun 变更
+     -> [useChatRuntime]                 # 运行态 owner（提交锁 + 运行态缓存读写）
      -> [useChatWorkspaceViewModel]      # 视图模型中间层
         -> [useChatComposerStore]           ← 草稿/附件/快捷键（仅草稿/快捷键持久化）
         -> [useChatSessionData]             ← 只读模型
            -> [useQuery(sessions)]          ← 会话列表
            -> [useInfiniteQuery(messages)]  ← 消息窗口
-     -> [useChatSessionCacheActions]     # patch/invalidate QueryCache
+     -> [useChatCacheWriter]             # Query cache 唯一写出口
      -> [useChatStreamLifecycle]         # SSE 流式发送 (useMutation)
      -> [useChatBackgroundRunToasts]     # 后台完成通知
      -> [useChatWorkspaceActions]
@@ -242,12 +239,12 @@
 约束：
 
 - `useChatSessionData` 当前只负责 `sessions / messagesWindow / displayMessages` 这条只读模型，不再对外暴露 cache patch
-- `useChatRuntimeState` 是 query-backed `streamRun` 的统一读取面，不再允许多个 hook 各自订阅 QueryCache 后再做平行筛选
-- `useChatSessionSubmitController` 管理会话级提交锁；提交锁不是 Zustand 真相，也不落持久化
-- `useChatStreamRun` 管理流式运行的 action
-- `useChatSessionCacheActions` 统一承接 `appendStartedUserMessage`、`patchUserMessageAttachments`、`patchAssistantMessage`、`patchRetriedUserMessage`、`patchSessionContext` 与 `invalidateSessionArtifacts`
+- `useChatRuntime` 是 query-backed 运行态缓存与 submit lock 的统一 owner，不再允许页面装配层分别拼接读取面和 action 面
+- `useChatSessionSubmitController` 继续管理会话级提交锁；它是 `useChatRuntime` 的内部依赖，不对页面层直接暴露
+- `useChatStreamRun` 继续管理流式运行 action；它是 `useChatRuntime` 的内部依赖，不对页面层直接暴露
+- `useChatCacheWriter` 统一承接 `appendStartedUserMessage`、`patchUserMessageAttachments`、`patchAssistantMessage`、`patchRetriedUserMessage`、`patchSessionContext` 与 `invalidateSessionArtifacts`
 - `useChatWorkspaceViewModel` 是视图模型中间层，组合 `useChatComposerStore` 和 `useChatSessionData`，向外暴露统一的视图模型（activeSession、attachments、draft、displayMessages、submitPending 等），避免装配层直接拼接多个 store 和 query
-- `useChatWorkspace` 当前退回聊天页面装配层，只负责把 view model、runtime controller、cache actions、submit/stream 生命周期组合成页面可消费接口
+- `useChatWorkspace` 当前退回聊天页面装配层，只负责把 view model、runtime、cache writer、submit/stream 生命周期组合成页面可消费接口
 - `useChatComposerStore` 当前是 composer 唯一 owner；持久化只覆盖 `draftsBySession + sendShortcut`，`attachmentsBySession` 继续保持会话内内存态
 
 认证补充约束：

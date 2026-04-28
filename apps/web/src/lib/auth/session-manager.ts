@@ -9,7 +9,7 @@ import { bootstrapAuthSession } from "@/features/auth/api/auth";
 import { resetChatSessionState } from "@/features/chat/utils/reset-chat-session-state";
 import { ApiRequestError, type AppUser } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/query-keys";
-import { clearAccessToken, getAccessToken, setAccessToken } from "./token-store";
+import { getAccessToken, setAccessToken } from "./token-store";
 import { useSessionStore } from "./session-store";
 
 const SESSION_SCOPED_QUERY_KEYS = [
@@ -29,6 +29,13 @@ type EnsureSessionBootstrapOptions = {
 };
 
 let pendingBootstrapPromise: Promise<AppUser | null> | null = null;
+
+/**
+ * 清理待处理的 bootstrap Promise（测试后使用）。
+ */
+export function clearPendingBootstrapPromise() {
+  pendingBootstrapPromise = null;
+}
 
 export async function resetSessionScopedClientState(
   queryClient: QueryClient,
@@ -95,8 +102,8 @@ export async function bootstrapSession(queryClient: QueryClient) {
         return null;
       }
 
-      applyAuthenticatedAccessToken(restored.accessToken);
-      await applyAuthenticatedSession(queryClient, restored.user, {
+      applyAuthenticatedAccessToken(restored.access_token!);
+      await applyAuthenticatedSession(queryClient, restored.user!, {
         preserveChatRecovery: true,
       });
       return restored.user;
@@ -162,7 +169,7 @@ export function markSessionAuthenticated() {
  * 标记当前会话未登录。
  */
 export function markSessionAnonymous() {
-  clearAccessToken();
+  setAccessToken(null);
   useSessionStore.getState().setStatus("anonymous");
 }
 
@@ -170,7 +177,7 @@ export function markSessionAnonymous() {
  * 标记当前会话已失效。
  */
 export function markSessionExpired() {
-  clearAccessToken();
+  setAccessToken(null);
   useSessionStore.getState().setStatus("expired");
 }
 

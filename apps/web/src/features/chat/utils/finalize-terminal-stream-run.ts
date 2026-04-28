@@ -1,4 +1,5 @@
-import type { ChatMessageItem, ChatSessionContextItem, ChatSourceItem } from "../api/chat";
+import type { ChatMessageItem } from "../api/chat";
+import type { ChatCacheWriter } from "./chat-cache-writer";
 import { joinStreamingRunContent, type StreamingRun } from "./streaming-run";
 import { MessageRole, MessageStatus } from "../constants";
 
@@ -6,28 +7,16 @@ type StreamRunTerminalStatus = "failed" | "succeeded";
 type StreamRunFinalizeReason = "failed" | "stopped" | "succeeded";
 
 type FinalizeTerminalStreamRunInput = {
+  cacheWriter: Pick<
+    ChatCacheWriter,
+    | "invalidateSessionArtifacts"
+    | "patchAssistantMessage"
+    | "patchRetriedUserMessage"
+    | "patchSessionContext"
+  >;
   currentRun: StreamingRun | null;
   currentSessionId: number | null;
   errorMessage: string | null;
-  invalidateMessagesWindow: (sessionId: number) => Promise<void>;
-  patchAssistantMessage: (input: {
-    appendIfMissing?: ChatMessageItem[];
-    assistantMessageId: number;
-    patch: {
-      content?: string;
-      error_message?: string | null;
-      sources_json?: ChatSourceItem[] | null;
-      status?: MessageStatus;
-    };
-    sessionId: number;
-  }) => boolean;
-  patchRetriedUserMessage: (input: { sessionId: number; userMessageId: number }) => void;
-  patchSessionContext: (input: {
-    attachments?: ChatSessionContextItem["attachments"];
-    latestAssistantMessageId?: number;
-    latestAssistantSources?: ChatSessionContextItem["latest_assistant_sources"];
-    sessionId: number;
-  }) => void;
   reason?: StreamRunFinalizeReason;
   sessionId: number;
   status: StreamRunTerminalStatus;
@@ -49,7 +38,7 @@ function buildTerminalMessages({
     id: run.assistantMessageId,
     reply_to_message_id: run.retryOfMessageId ?? run.userMessageId ?? null,
     role: MessageRole.ASSISTANT,
-    sources_json: run.sources,
+    sources: run.sources,
     status,
   };
 
@@ -63,7 +52,7 @@ function buildTerminalMessages({
       ...(errorMessage ? { error_message: errorMessage } : {}),
       id: run.userMessageId,
       role: MessageRole.USER,
-      sources_json: [],
+      sources: [],
       status,
     },
     assistantMessage,
@@ -71,13 +60,10 @@ function buildTerminalMessages({
 }
 
 export async function finalizeTerminalStreamRun({
+  cacheWriter,
   currentRun,
   currentSessionId,
   errorMessage,
-  invalidateMessagesWindow,
-  patchAssistantMessage,
-  patchRetriedUserMessage,
-  patchSessionContext,
   reason,
   sessionId,
   status,
@@ -86,7 +72,7 @@ export async function finalizeTerminalStreamRun({
   const patched =
     currentRun == null
       ? false
-      : patchAssistantMessage({
+      : cacheWriter.patchAssistantMessage({
           appendIfMissing: buildTerminalMessages({
             errorMessage,
             run: currentRun,
@@ -96,7 +82,7 @@ export async function finalizeTerminalStreamRun({
           patch: {
             content: joinStreamingRunContent(currentRun.content),
             error_message: errorMessage,
-            sources_json: currentRun.sources,
+            sources: currentRun.sources,
             status,
           },
           sessionId,
@@ -104,13 +90,13 @@ export async function finalizeTerminalStreamRun({
 
   if (currentRun != null) {
     if (status === MessageStatus.SUCCEEDED && currentRun.retryOfMessageId != null) {
-      patchRetriedUserMessage({
+      cacheWriter.patchRetriedUserMessage({
         sessionId,
         userMessageId: currentRun.retryOfMessageId,
       });
     }
 
-    patchSessionContext({
+    cacheWriter.patchSessionContext({
       latestAssistantMessageId: currentRun.assistantMessageId,
       latestAssistantSources: currentRun.sources,
       sessionId,
@@ -118,7 +104,7 @@ export async function finalizeTerminalStreamRun({
   }
 
   if (!patched && finalizeReason !== "stopped") {
-    await invalidateMessagesWindow(sessionId);
+    await cacheWriter.invalidateSessionArtifacts(sessionId);
   }
 
   return {

@@ -1,4 +1,4 @@
-import { CHAT_INDEX_PATH, LOGIN_PATH } from "@/lib/routes";
+import { LOGIN_PATH } from "@/lib/routes";
 
 export const AUTH_REDIRECT_PARAM = "redirect";
 
@@ -37,52 +37,6 @@ export function buildLoginPath(redirectTo?: string | null) {
   return `${LOGIN_PATH}?${searchParams.toString()}`;
 }
 
-function toSearchParams(search: string | Record<string, unknown> | URLSearchParams | undefined) {
-  if (!search) {
-    return new URLSearchParams();
-  }
-
-  if (search instanceof URLSearchParams) {
-    return search;
-  }
-
-  if (typeof search === "string") {
-    return new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
-  }
-
-  const searchParams = new URLSearchParams();
-  const redirectValue = search[AUTH_REDIRECT_PARAM];
-  if (typeof redirectValue === "string") {
-    searchParams.set(AUTH_REDIRECT_PARAM, redirectValue);
-  }
-  return searchParams;
-}
-
-function stringifySearch(search: string | Record<string, unknown> | URLSearchParams | undefined) {
-  if (!search) {
-    return "";
-  }
-
-  if (typeof search === "string") {
-    return search;
-  }
-
-  const serialized = toSearchParams(search).toString();
-  return serialized ? `?${serialized}` : "";
-}
-
-export function readAuthRedirectFromSearch(
-  search: string | Record<string, unknown> | URLSearchParams | undefined,
-) {
-  return sanitizeAuthRedirectPath(toSearchParams(search).get(AUTH_REDIRECT_PARAM));
-}
-
-export function resolvePostLoginPath(
-  search: string | Record<string, unknown> | URLSearchParams | undefined,
-) {
-  return readAuthRedirectFromSearch(search) ?? CHAT_INDEX_PATH;
-}
-
 export function buildCurrentAuthRedirectTarget(location: {
   hash?: string;
   href?: string;
@@ -91,7 +45,16 @@ export function buildCurrentAuthRedirectTarget(location: {
 }) {
   const pathname = typeof location.pathname === "string" ? location.pathname : "";
   const hash = typeof location.hash === "string" ? location.hash : "";
-  const candidate = `${pathname}${stringifySearch(location.search)}${hash}`;
+
+  let searchStr = "";
+  if (typeof location.search === "string") {
+    searchStr = location.search.startsWith("?") ? location.search : `?${location.search}`;
+  } else if (location.search instanceof URLSearchParams) {
+    const serialized = location.search.toString();
+    searchStr = serialized ? `?${serialized}` : "";
+  }
+
+  const candidate = `${pathname}${searchStr}${hash}`;
 
   return sanitizeAuthRedirectPath(candidate) ?? sanitizeAuthRedirectPath(location.href) ?? null;
 }

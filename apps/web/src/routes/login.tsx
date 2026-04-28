@@ -1,18 +1,29 @@
-/**
- * @file TanStack Router 登录路由。
- */
-
 import { createFileRoute, redirect } from "@tanstack/react-router";
 
-import { resolvePostLoginPath } from "@/lib/auth/auth-redirect";
-import { PublicLoginRoute } from "@/router/route-shells";
+import { CHAT_INDEX_PATH } from "@/lib/routes";
+import { sanitizeAuthRedirectPath } from "@/lib/auth/auth-redirect";
 import { useSessionStore } from "@/lib/auth/session-store";
+import { lazy, Suspense } from "react";
+import { LoadingState } from "@/components/shared/loading-state";
+
+const LoginPage = lazy(async () => ({
+  default: (await import("@/pages/auth/login-page")).LoginPage,
+}));
 
 export const Route = createFileRoute("/login")({
-  beforeLoad: ({ location }) => {
-    if (useSessionStore.getState().status === "authenticated") {
-      throw redirect({ to: resolvePostLoginPath(location.search) });
+  validateSearch: (search: Record<string, unknown>) => ({
+    redirect: typeof search.redirect === "string" ? search.redirect : undefined,
+  }),
+  beforeLoad: ({ search }) => {
+    const { status } = useSessionStore.getState();
+    if (status === "authenticated") {
+      const redirectTo = sanitizeAuthRedirectPath(search.redirect) ?? CHAT_INDEX_PATH;
+      throw redirect({ to: redirectTo });
     }
   },
-  component: PublicLoginRoute,
+  component: () => (
+    <Suspense fallback={<LoadingState />}>
+      <LoginPage />
+    </Suspense>
+  ),
 });

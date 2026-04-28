@@ -35,12 +35,12 @@ function buildDocumentAttachment(name: string): ChatAttachmentItem {
 
 function withDocumentRevision(
   attachment: ChatAttachmentItem,
-  input: { resource_document_id: number; resource_document_version_id: number },
+  input: { document_id: number; document_revision_id: number },
 ) {
   return {
     ...attachment,
-    resource_document_id: input.resource_document_id,
-    resource_document_version_id: input.resource_document_version_id,
+    document_id: input.document_id,
+    document_revision_id: input.document_revision_id,
   } as unknown as ChatAttachmentItem;
 }
 
@@ -174,8 +174,8 @@ describe("ChatResourcePanel", () => {
       buildContext({
         attachments: [
           withDocumentRevision(buildImageAttachment("doc-a-v2.png"), {
-            resource_document_id: 7,
-            resource_document_version_id: 12,
+            document_id: 7,
+            document_revision_id: 12,
           }) as ChatAttachmentItem,
           {
             ...buildDocumentAttachment("rev-only-b.pdf"),
@@ -202,8 +202,8 @@ describe("ChatResourcePanel", () => {
       buildContext({
         attachments: [
           withDocumentRevision(buildImageAttachment("same.png"), {
-            resource_document_id: 7,
-            resource_document_version_id: 12,
+            document_id: 7,
+            document_revision_id: 12,
           }) as ChatAttachmentItem,
         ],
       }),
@@ -317,12 +317,12 @@ describe("ChatResourcePanel", () => {
       buildContext({
         attachments: [
           withDocumentRevision(buildImageAttachment("first.png"), {
-            resource_document_id: 7,
-            resource_document_version_id: 11,
+            document_id: 7,
+            document_revision_id: 11,
           }) as ChatAttachmentItem,
           withDocumentRevision(buildImageAttachment("second.png"), {
-            resource_document_id: 8,
-            resource_document_version_id: 12,
+            document_id: 8,
+            document_revision_id: 12,
           }) as ChatAttachmentItem,
         ],
       }),

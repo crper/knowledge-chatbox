@@ -9,11 +9,13 @@
 
 ## 2. 认证与角色
 
-- `POST /api/auth/login`
-- `POST /api/auth/bootstrap`
-- `POST /api/auth/refresh`
-- `GET /api/auth/me`
-- `POST /api/auth/logout`
+- `POST /api/auth/login` - 登录
+- `POST /api/auth/bootstrap` - 启动期恢复会话
+- `POST /api/auth/refresh` - 刷新访问令牌
+- `GET /api/auth/me` - 获取当前用户信息
+- `POST /api/auth/logout` - 注销
+- `POST /api/auth/change-password` - 修改密码
+- `PATCH /api/auth/preferences` - 更新用户偏好（主题）
 
 当前约束：
 
@@ -22,7 +24,9 @@
 - `POST /api/auth/refresh` 会轮换 refresh session，并返回新的 bearer `access token`
 - `GET /api/auth/me`、`/api/settings` 等受保护读取接口当前优先接受 `Authorization: Bearer <token>`
 - `GET /api/auth/me` 当前是纯读取会话与用户，不在每次请求里同步刷新 `auth_sessions.last_seen_at`
-- session 心跳如果需要演进，应该走低频或异步策略，不要重新把“每个受保护请求都写一次库”塞回鉴权路径
+- `POST /api/auth/change-password` 修改密码后会撤销该用户所有 refresh sessions，前端清空缓存并回到登录页
+- `PATCH /api/auth/preferences` 当前仅用于更新主题偏好，会自动同步到用户账号
+- session 心跳如果需要演进，应该走低频或异步策略，不要重新把"每个受保护请求都写一次库"塞回鉴权路径
 
 角色仍只有：
 
@@ -31,14 +35,15 @@
 
 ## 3. 路由分组
 
-| 路由前缀         | 能力                                           | user   | admin  |
-| ---------------- | ---------------------------------------------- | ------ | ------ |
-| `/api/auth`      | 登录、当前用户、改密、偏好                     | 可用   | 可用   |
-| `/api/chat`      | 会话、消息、同步/流式问答、运行态              | 可用   | 可用   |
-| `/api/documents` | 资源列表、上传、修订历史、下载、删除、重建索引 | 可用   | 可用   |
-| `/api/settings`  | provider 设置、route 健康检查                  | 不可用 | 可用   |
-| `/api/users`     | 用户管理、重置密码                             | 不可用 | 可用   |
-| `/api/health`    | 服务健康                                       | 可匿名 | 可匿名 |
+| 路由前缀                  | 能力                                                     | user   | admin  |
+| ------------------------- | -------------------------------------------------------- | ------ | ------ |
+| `/api/auth`               | 登录、启动恢复、刷新令牌、注销、改密、偏好更新         | 可用   | 可用   |
+| `/api/chat`               | 会话、消息、同步/流式问答、运行态、运行事件          | 可用   | 可用   |
+| `/api/documents`          | 资源列表、上传、修订历史、下载、删除、重建索引       | 可用   | 可用   |
+| `/api/settings`           | provider 配置、route 健康检查、索引重建状态           | 不可用 | 可用   |
+| `/api/users`              | 用户管理（列表/创建/更新/删除/重置密码）             | 不可用 | 可用   |
+| `/api/health`             | 服务健康检查                                             | 可匿名 | 可匿名 |
+| `/api/health/capabilities` | provider 能力健康检查（response/embedding/vision） | 不可用 | 可用   |
 
 ## 4. 资源接口
 
@@ -72,18 +77,21 @@
 
 ## 5. 聊天接口
 
-- `POST /api/chat/sessions`
-- `GET /api/chat/sessions`
-- `PATCH /api/chat/sessions/{session_id}`
-- `DELETE /api/chat/sessions/{session_id}`
-- `GET /api/chat/sessions/{session_id}/messages`
-- `POST /api/chat/sessions/{session_id}/messages`
-- `POST /api/chat/sessions/{session_id}/messages/stream`
-- `POST /api/chat/messages/{message_id}/attachments/{attachment_id}/archive`
-- `DELETE /api/chat/messages/{message_id}`
-- `GET /api/chat/runs/active`
-- `GET /api/chat/runs/{run_id}`
-- `POST /api/chat/runs/{run_id}/cancel`
+- `POST /api/chat/sessions` - 创建会话
+- `GET /api/chat/sessions` - 列出会话
+- `PATCH /api/chat/sessions/{session_id}` - 更新会话
+- `DELETE /api/chat/sessions/{session_id}` - 删除会话
+- `GET /api/chat/sessions/{session_id}/messages` - 列出消息（支持 `before_id` 和 `limit` 分页）
+- `GET /api/chat/sessions/{session_id}/context` - 获取会话上下文（右栏数据）
+- `POST /api/chat/sessions/{session_id}/messages` - 创建消息（同步）
+- `POST /api/chat/sessions/{session_id}/messages/stream` - 创建消息（流式）
+- `POST /api/chat/messages/{message_id}/attachments/{attachment_id}/archive` - 归档消息附件
+- `DELETE /api/chat/messages/{message_id}` - 删除消息
+- `GET /api/chat/runs/active` - 列出活跃运行
+- `GET /api/chat/runs/{run_id}` - 获取运行详情
+- `GET /api/chat/runs/{run_id}/events` - 获取运行事件
+- `POST /api/chat/runs/{run_id}/cancel` - 取消运行
+- `POST /api/chat/sessions/{session_id}/messages/stream/cancel` - 取消待处理流式请求
 
 关键语义：
 
@@ -99,9 +107,9 @@
 
 ## 6. 设置接口
 
-- `GET /api/settings`
-- `PUT /api/settings`
-- `POST /api/settings/test-routes`
+- `GET /api/settings` - 获取设置（admin）
+- `PUT /api/settings` - 更新设置（admin）
+- `POST /api/settings/test-routes` - 测试 provider 连接（admin）
 
 当前请求与响应都围绕：
 
@@ -113,6 +121,36 @@
 - `active_index_generation / building_index_generation / index_rebuild_status`
 
 更细字段说明看 [provider-and-settings.md](./provider-and-settings.md)。
+
+## 7. 用户管理接口
+
+- `GET /api/users` - 列出所有用户（admin）
+- `POST /api/users` - 创建用户（admin）
+- `PATCH /api/users/{user_id}` - 更新用户状态/角色/主题偏好（admin）
+- `POST /api/users/{user_id}/reset-password` - 重置用户密码（admin）
+- `DELETE /api/users/{user_id}` - 删除用户（admin）
+
+关键约束：
+
+- 所有用户管理接口仅 `admin` 角色可用
+- `PATCH` 支持部分更新：`status`、`role`、`theme_preference` 可单独或组合更新
+- 重置密码后，目标用户的所有 refresh sessions 会被撤销，需要重新登录
+- 删除用户前需确认无关联数据依赖（如 personal space）
+
+## 8. 健康管理接口
+
+- `GET /api/health` - 基础健康检查（匿名可访问）
+- `GET /api/health/capabilities` - Provider 能力健康检查（admin）
+
+`/api/health/capabilities` 返回：
+
+- `response`: response provider 健康状态
+- `embedding`: embedding provider 健康状态
+- `vision`: vision provider 健康状态
+
+每个 capability 包含 `provider`、`model`、`healthy`、`message`、`latency_ms` 字段。
+
+## 9. 统一错误响应
 
 ## 7. 统一错误响应
 

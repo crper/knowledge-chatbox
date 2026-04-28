@@ -127,7 +127,7 @@ export const MessageRow = memo(function MessageRow({
 }: MessageRowProps) {
   const { t } = useTranslation("chat");
   const assistantLabel = t("assistantRole");
-  const systemLabel = t("systemRole", { defaultValue: "系统" });
+  const systemLabel = t("systemRole");
   const userLabel = t("userRole");
   const {
     assistantContent,
@@ -144,7 +144,7 @@ export const MessageRow = memo(function MessageRow({
   const triggerRetry = () => {
     void Promise.resolve(onRetry(message)).catch(() => {});
   };
-  const attachments = message.attachments_json ?? [];
+  const attachments = message.attachments ?? [];
   const attachmentDescriptors = useMemo(
     () => buildChatAttachmentDescriptors(attachments),
     [attachments],
@@ -275,9 +275,9 @@ export const MessageRow = memo(function MessageRow({
           ) : null}
         </div>
 
-        {(message.sources_json ?? []).length ? (
+        {(message.sources ?? []).length ? (
           <div className="border-t border-border/52 px-3.5 py-3 md:px-4">
-            <SourceList sources={message.sources_json ?? []} />
+            <SourceList sources={message.sources ?? []} />
           </div>
         ) : null}
 

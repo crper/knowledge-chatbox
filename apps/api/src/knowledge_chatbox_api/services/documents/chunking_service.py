@@ -1,22 +1,34 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 from chonkie import RecursiveChunker
+from pydantic import BaseModel
 
 
-@dataclass
-class Chunk:
+class ChunkMetadata(BaseModel):
+    """文档分块元数据。"""
+
+    document_id: int
+    chunk_id: str
+    chunk_index: int
+    section_title: str | None = None
+    page_number: int | None = None
+
+
+class Chunk(BaseModel):
+    """文档分块结果。"""
+
     chunk_id: str
     chunk_index: int
     text: str
-    metadata: dict[str, int | str | None]
+    metadata: ChunkMetadata
 
 
 _DEFAULT_CHUNK_SIZE = 512
 
 
 class ChunkingService:
+    """基于markdown语法结构的文档分块服务。"""
+
     def __init__(
         self,
         *,
@@ -35,6 +47,23 @@ class ChunkingService:
         section_title: str | None = None,
         page_number: int | None = None,
     ) -> list[Chunk]:
+        """将文档内容分块为语义单元。
+
+        使用 RecursiveChunker 按 markdown 语法结构递归切分文本，
+        确保每个块不超过配置的 chunk_size 个 token。
+
+        Args:
+            document_id: 文档ID，用于生成chunk_id
+            content: 待分块的原始文本
+            section_title: 可选的章节标题，会注入到元数据中
+            page_number: 可选的页码，会注入到元数据中
+
+        Returns:
+            分块后的 Chunk 列表，每个 Chunk 包含 id、索引、文本和元数据
+
+        Raises:
+            无显式异常，空内容返回空列表
+        """
         if not content.strip():
             return []
 
@@ -48,29 +77,17 @@ class ChunkingService:
                     chunk_id=chunk_id,
                     chunk_index=idx,
                     text=chonkie_chunk.text,
-                    metadata=_build_chunk_metadata(
-                        document_id, chunk_id, idx, section_title, page_number
+                    metadata=ChunkMetadata(
+                        document_id=document_id,
+                        chunk_id=chunk_id,
+                        chunk_index=idx,
+                        section_title=section_title,
+                        page_number=page_number,
                     ),
                 )
             )
 
         return chunks
-
-
-def _build_chunk_metadata(
-    document_id: int,
-    chunk_id: str,
-    chunk_index: int,
-    section_title: str | None,
-    page_number: int | None,
-) -> dict[str, int | str | None]:
-    return {
-        "document_id": document_id,
-        "chunk_id": chunk_id,
-        "chunk_index": chunk_index,
-        "section_title": section_title,
-        "page_number": page_number,
-    }
 
 
 _default_chunking_service = ChunkingService()

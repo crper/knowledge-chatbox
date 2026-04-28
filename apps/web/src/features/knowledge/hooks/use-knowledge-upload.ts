@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { invalidateDocuments } from "../api/documents-query";
 import { uploadDocument } from "../api/documents";
 import { getDocumentUploadRejectionMessage, runDocumentUpload } from "@/lib/document-upload";
-import { getErrorMessage } from "@/lib/utils";
+import { getErrorMessage, isAbortError } from "@/lib/utils";
 
 export type KnowledgeUploadItem = {
   errorMessage?: string;
@@ -36,10 +36,6 @@ export function useKnowledgeUpload() {
   const removeUploadItem = useCallback((uploadId: string) => {
     setUploadItems((currentItems) => currentItems.filter((item) => item.id !== uploadId));
     uploadControllersRef.current.delete(uploadId);
-  }, []);
-
-  const isUploadAbortError = useCallback((error: unknown) => {
-    return error instanceof DOMException && error.name === "AbortError";
   }, []);
 
   const uploadOneFile = useCallback(
@@ -76,7 +72,7 @@ export function useKnowledgeUpload() {
           return;
         }
 
-        if (isUploadAbortError(error)) {
+        if (isAbortError(error)) {
           removeUploadItem(uploadId);
           return;
         }
@@ -93,7 +89,7 @@ export function useKnowledgeUpload() {
         queuedRetryUploadIdsRef.current.delete(uploadId);
       }
     },
-    [isUploadAbortError, queryClient, removeUploadItem, t, updateUploadItem],
+    [queryClient, removeUploadItem, t, updateUploadItem],
   );
 
   const enqueueUploads = useCallback(

@@ -3,7 +3,7 @@
  */
 
 import { useTranslation } from "react-i18next";
-import { Outlet, useLocation } from "@/lib/app-router";
+import { Outlet, useLocation } from "@tanstack/react-router";
 import { ChatResourcePanel } from "@/features/workspace/components/chat-resource-panel";
 import { ChatSidebar } from "@/features/workspace/components/chat-sidebar";
 import { StandardSidebar } from "@/features/workspace/components/standard-sidebar";

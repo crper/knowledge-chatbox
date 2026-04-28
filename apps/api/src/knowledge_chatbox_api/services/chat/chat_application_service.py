@@ -9,10 +9,17 @@ from knowledge_chatbox_api.core.errors import AppError
 from knowledge_chatbox_api.core.logging import get_logger
 from knowledge_chatbox_api.core.observation import OPERATION_KIND_CHAT_SYNC
 from knowledge_chatbox_api.models.auth import User
-from knowledge_chatbox_api.models.chat import ChatMessage, ChatSession
+from knowledge_chatbox_api.models.chat import (
+    ChatMessage,
+    ChatMessageAttachment,
+    ChatRun,
+    ChatRunEvent,
+    ChatSession,
+)
 from knowledge_chatbox_api.models.enums import (
     ChatMessageRole,
     ChatMessageStatus,
+    ChatRunStatus,
     ReasoningMode,
 )
 from knowledge_chatbox_api.providers.factory import build_embedding_adapter
@@ -20,7 +27,15 @@ from knowledge_chatbox_api.repositories.chat_repository import UNSET, ChatReposi
 from knowledge_chatbox_api.repositories.chat_run_event_repository import ChatRunEventRepository
 from knowledge_chatbox_api.repositories.chat_run_repository import ChatRunRepository
 from knowledge_chatbox_api.repositories.document_repository import DocumentRepository
-from knowledge_chatbox_api.schemas.chat import CreateChatMessageRequest, dump_chat_attachments
+from knowledge_chatbox_api.schemas.chat import (
+    ChatAttachmentMetadata,
+    ChatSessionContextRead,
+    ChatSourceRead,
+    CreateChatMessageRequest,
+    UpdateChatSessionRequest,
+    dump_chat_attachments,
+    serialize_chat_attachments,
+)
 from knowledge_chatbox_api.services.chat.chat_run_service import ChatRunService
 from knowledge_chatbox_api.services.chat.chat_stream_presenter import ChatStreamPresenter
 from knowledge_chatbox_api.services.chat.pending_stream_cancel_registry import (
@@ -128,13 +143,15 @@ class ChatApplicationService:
         """Return all sessions that belong to the current user."""
         return self._chat_repository.list_sessions(actor.id)
 
-    def update_session(self, actor: User, session_id: int, patch: dict[str, Any]) -> ChatSession:
+    def update_session(
+        self, actor: User, session_id: int, patch: UpdateChatSessionRequest
+    ) -> ChatSession:
         """Update one owned chat session."""
         chat_session = self._require_owned_session(actor, session_id)
         self._chat_repository.update_session(
             session_id,
-            title=patch.get("title", UNSET),
-            reasoning_mode=patch.get("reasoning_mode", UNSET),
+            title=patch.title if patch.title is not None else UNSET,
+            reasoning_mode=patch.reasoning_mode if patch.reasoning_mode is not None else UNSET,
         )
         self.session.commit()
         self.session.refresh(chat_session)
@@ -161,7 +178,7 @@ class ChatApplicationService:
             limit=limit,
         )
 
-    def get_session_context(self, actor: User, session_id: int) -> dict[str, Any]:
+    def get_session_context(self, actor: User, session_id: int) -> ChatSessionContextRead:
         """Return the compact right-panel context for one owned session."""
         self._require_owned_session(actor, session_id)
         attachments = self._chat_repository.list_session_attachments(session_id)
@@ -183,15 +200,20 @@ class ChatApplicationService:
             else []
         )
 
-        return {
-            "session_id": session_id,
-            "attachment_count": len(deduplicated_attachments),
-            "attachments": list(deduplicated_attachments.values()),
-            "latest_assistant_message_id": (
+        return ChatSessionContextRead(
+            session_id=session_id,
+            attachment_count=len(deduplicated_attachments),
+            attachments=[
+                ChatAttachmentMetadata.model_validate(att, from_attributes=True)
+                for att in deduplicated_attachments.values()
+            ],
+            latest_assistant_message_id=(
                 latest_assistant_message.id if latest_assistant_message is not None else None
             ),
-            "latest_assistant_sources": latest_assistant_sources,
-        }
+            latest_assistant_sources=[
+                ChatSourceRead.model_validate(s) for s in latest_assistant_sources
+            ],
+        )
 
     def delete_failed_message(self, actor: User, message_id: int) -> None:
         """Delete one failed user message and any assistant replies tied to it."""
@@ -225,7 +247,7 @@ class ChatApplicationService:
         )
         if document_version is None:
             raise ChatRouteError(404, "document_not_found", "Document not found.")
-        document = self._document_repository.get_document_entity(document_version.document_id)
+        document = self._document_repository.get_one_or_none(id=document_version.document_id)
         if document is None:
             raise ChatRouteError(404, "document_not_found", "Document not found.")
 
@@ -251,6 +273,7 @@ class ChatApplicationService:
         """Execute the sync chat flow for one owned session."""
         chat_session = self._require_owned_session(actor, session_id)
         retry_service = RetryService(self._chat_repository)
+        attachments_models = serialize_chat_attachments(payload.attachments)
         if payload.retry_of_message_id is not None:
             user_message = retry_service.retry_user_message(
                 session_id=session_id,
@@ -259,7 +282,7 @@ class ChatApplicationService:
             )
         else:
             user_message = retry_service.create_or_reuse_user_message(
-                attachments=dump_chat_attachments(payload.attachments),
+                attachments=dump_chat_attachments(attachments_models),
                 session_id=session_id,
                 content=payload.content,
                 client_request_id=payload.client_request_id,
@@ -272,12 +295,7 @@ class ChatApplicationService:
         settings_record = self.settings_service.get_or_create_settings_record()
         runtime_settings = build_runtime_settings(
             settings_record,
-            reasoning_mode=chat_session.reasoning_mode,
-        )
-        attachments_payload = (
-            [attachment.model_dump() for attachment in payload.attachments]
-            if payload.attachments
-            else None
+            reasoning_mode=ReasoningMode(chat_session.reasoning_mode),
         )
         assistant_message = existing_assistant or retry_service.create_assistant_reply(
             session_id=session_id,
@@ -291,8 +309,6 @@ class ChatApplicationService:
                     session_id=session_id,
                     session=self.session,
                     chat_repository=self._chat_repository,
-                    chat_run_repository=self._chat_run_repository,
-                    chat_run_event_repository=self._chat_run_event_repository,
                     chroma_store=get_chroma_store(),
                     embedding_adapter=build_embedding_adapter(settings_record.embedding_route),
                     runtime_settings=runtime_settings,
@@ -300,7 +316,7 @@ class ChatApplicationService:
                 ),
                 session_id=session_id,
                 question=user_message.content,
-                attachments=attachments_payload,
+                attachments=attachments_models,
             )
             answer = result.answer
             sources = [source.model_dump() for source in result.sources]
@@ -336,7 +352,7 @@ class ChatApplicationService:
         settings_record = self.settings_service.get_or_create_settings_record()
         runtime_settings = build_runtime_settings(
             settings_record,
-            reasoning_mode=chat_session.reasoning_mode,
+            reasoning_mode=ReasoningMode(chat_session.reasoning_mode),
         )
         presenter = ChatStreamPresenter()
         chat_run_service = ChatRunService(
@@ -352,11 +368,11 @@ class ChatApplicationService:
         )
         return presenter, chat_run_service
 
-    def list_active_runs(self, actor: User) -> list[Any]:
+    def list_active_runs(self, actor: User) -> list[ChatRun]:
         """Return active runs that belong to the current user."""
         return self._chat_run_repository.list_active_runs(actor.id)
 
-    def get_run(self, actor: User, run_id: int) -> Any:
+    def get_run(self, actor: User, run_id: int) -> ChatRun:
         """Return one owned run or raise a not-found error."""
         run = self._chat_run_repository.get_run(run_id)
         if run is None:
@@ -364,15 +380,17 @@ class ChatApplicationService:
         self._require_owned_session(actor, run.session_id, error_code="chat_run_not_found")
         return run
 
-    def list_attachments_for_message_ids(self, message_ids: list[int]) -> dict[int, list[Any]]:
+    def list_attachments_for_message_ids(
+        self, message_ids: list[int]
+    ) -> dict[int, list[ChatMessageAttachment]]:
         """按消息 ID 批量获取附件。"""
         return self._chat_repository.list_attachments_for_message_ids(message_ids)
 
-    def list_attachments(self, message_id: int) -> list[Any]:
+    def list_attachments(self, message_id: int) -> list[ChatMessageAttachment]:
         """获取单条消息的附件。"""
         return self._chat_repository.list_attachments(message_id)
 
-    def list_run_events(self, run_id: int) -> list[Any]:
+    def list_run_events(self, run_id: int) -> list[ChatRunEvent]:
         """获取一次运行的所有事件。"""
         return self._chat_run_event_repository.list_for_run(run_id)
 
@@ -409,12 +427,12 @@ class ChatApplicationService:
             pending_stream_cancel_registry.clear(session_id, client_request_id)
         return bool(cancelled)
 
-    def _cancel_run_record(self, run) -> bool | None:
-        if run.status == "cancelled":
+    def _cancel_run_record(self, run: ChatRun) -> bool | None:
+        if run.status == ChatRunStatus.CANCELLED:
             return True
-        if run.status not in {"pending", "running"}:
+        if run.status not in {ChatRunStatus.PENDING, ChatRunStatus.RUNNING}:
             return None
-        run.status = "cancelled"
+        run.status = ChatRunStatus.CANCELLED
         run.error_message = STREAM_CANCELLED_ERROR_MESSAGE
         self.session.commit()
         return True
@@ -425,13 +443,13 @@ class ChatApplicationService:
         session_id: int,
         *,
         error_code: str = "chat_session_not_found",
-    ) -> Any:
+    ) -> ChatSession:
         chat_session = self._chat_repository.get_session(session_id)
         if chat_session is None or chat_session.user_id != actor.id:
             raise ChatRouteError(404, error_code, "Chat session not found.")
         return chat_session
 
-    def _require_owned_message(self, actor: User, message_id: int) -> Any:
+    def _require_owned_message(self, actor: User, message_id: int) -> ChatMessage:
         message = self._chat_repository.get_message(message_id)
         if message is None:
             raise ChatRouteError(404, "chat_message_not_found", "Chat message not found.")

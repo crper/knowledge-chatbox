@@ -15,32 +15,17 @@ from pydantic_ai.messages import (
     TextPart,
     TextPartDelta,
 )
-from tests.fixtures.stubs import make_adapter_backed_chat_workflow_class
+from tests.fixtures.helpers import (
+    create_logged_in_chat_session,
+    login_with_credentials,
+    upload_document_file,
+)
+from tests.fixtures.stubs import TextResponseAdapterStub, make_adapter_backed_chat_workflow_class
 
 from knowledge_chatbox_api.repositories.chat_run_repository import ChatRunRepository
 
 if TYPE_CHECKING:
     from fastapi.testclient import TestClient
-
-
-class StreamingResponseAdapterStub:
-    def __init__(self) -> None:
-        self.last_messages = None
-        self.stream_calls = 0
-
-    def stream_response(self, messages: list[dict[str, str]], settings):
-        del settings
-        self.last_messages = messages
-        self.stream_calls += 1
-        yield {"type": "text_delta", "delta": "hello "}
-        yield {"type": "text_delta", "delta": "world"}
-        yield {"type": "completed", "usage": {"output_tokens": 2}}
-
-
-class EmbeddingAdapterStub:
-    def embed(self, texts: list[str], settings) -> list[list[float]]:
-        del texts, settings
-        return [[0.1] * 384]
 
 
 class BlockingStreamingResponseAdapter:
@@ -127,9 +112,7 @@ def test_chat_stream_api_emits_runtime_events_and_persists_messages(
 ) -> None:
     del mock_pydanticai_chat_workflow
 
-    api_client.post("/api/auth/login", json={"username": "admin", "password": "Admin123456"})
-    session_response = api_client.post("/api/chat/sessions", json={"title": "Stream Session"})
-    session_id = session_response.json()["data"]["id"]
+    session_id = create_logged_in_chat_session(api_client, title="Stream Session")
 
     with api_client.stream(
         "POST",
@@ -162,7 +145,7 @@ def test_chat_stream_api_replays_existing_run_for_duplicate_client_request_id(
     api_client: TestClient,
     monkeypatch,
 ) -> None:
-    adapter = StreamingResponseAdapterStub()
+    adapter = TextResponseAdapterStub(stream_chunks=["hello ", "world"])
     workflow_cls = make_adapter_backed_chat_workflow_class(response_adapter=adapter)
     monkeypatch.setattr(
         "knowledge_chatbox_api.services.chat.chat_application_service.ChatWorkflow",
@@ -173,9 +156,7 @@ def test_chat_stream_api_replays_existing_run_for_duplicate_client_request_id(
         workflow_cls,
     )
 
-    api_client.post("/api/auth/login", json={"username": "admin", "password": "Admin123456"})
-    session_response = api_client.post("/api/chat/sessions", json={"title": "Idempotent Session"})
-    session_id = session_response.json()["data"]["id"]
+    session_id = create_logged_in_chat_session(api_client, title="Idempotent Session")
 
     with api_client.stream(
         "POST",
@@ -232,9 +213,7 @@ def test_chat_stream_api_cancels_active_run_when_requested(
         CancellableChatWorkflow,
     )
 
-    api_client.post("/api/auth/login", json={"username": "admin", "password": "Admin123456"})
-    session_response = api_client.post("/api/chat/sessions", json={"title": "Cancelable Session"})
-    session_id = session_response.json()["data"]["id"]
+    session_id = create_logged_in_chat_session(api_client, title="Cancelable Session")
     stream_body: dict[str, str] = {}
 
     def consume_stream() -> None:
@@ -292,9 +271,7 @@ def test_chat_stream_api_cancels_pending_run_by_client_request_id(
         CancellableChatWorkflow,
     )
 
-    api_client.post("/api/auth/login", json={"username": "admin", "password": "Admin123456"})
-    session_response = api_client.post("/api/chat/sessions", json={"title": "Cancelable Session"})
-    session_id = session_response.json()["data"]["id"]
+    session_id = create_logged_in_chat_session(api_client, title="Cancelable Session")
     client_request_id = "req-stream-cancel-before-start-1"
     stream_body: dict[str, str] = {}
 
@@ -358,9 +335,7 @@ def test_chat_stream_api_cancels_pending_run_even_when_run_creation_is_slow(
 
     monkeypatch.setattr(ChatRunRepository, "create_run", delayed_create_run)
 
-    api_client.post("/api/auth/login", json={"username": "admin", "password": "Admin123456"})
-    session_response = api_client.post("/api/chat/sessions", json={"title": "Cancelable Session"})
-    session_id = session_response.json()["data"]["id"]
+    session_id = create_logged_in_chat_session(api_client, title="Cancelable Session")
     client_request_id = "req-stream-cancel-slow-run-1"
     stream_body: dict[str, str] = {}
 
@@ -396,13 +371,13 @@ def test_chat_stream_api_cancels_pending_run_even_when_run_creation_is_slow(
 def test_chat_profile_api_exposes_response_route_to_authenticated_users(
     api_client: TestClient,
 ) -> None:
-    api_client.post("/api/auth/login", json={"username": "admin", "password": "Admin123456"})
+    login_with_credentials(api_client, username="admin", password="Admin123456")
     api_client.post(
         "/api/users",
         json={"username": "alice", "password": "secret-123", "role": "user"},
     )
     api_client.post("/api/auth/logout")
-    api_client.post("/api/auth/login", json={"username": "alice", "password": "secret-123"})
+    login_with_credentials(api_client, username="alice", password="secret-123")
 
     response = api_client.get("/api/chat/profile")
 
@@ -420,7 +395,7 @@ def test_chat_stream_api_passes_unified_image_attachments_to_provider(
     monkeypatch,
 ) -> None:
     del configure_upload_provider
-    adapter = StreamingResponseAdapterStub()
+    adapter = TextResponseAdapterStub(stream_chunks=["hello ", "world"])
     workflow_cls = make_adapter_backed_chat_workflow_class(response_adapter=adapter)
     monkeypatch.setattr(
         "knowledge_chatbox_api.services.chat.chat_application_service.ChatWorkflow",
@@ -431,14 +406,14 @@ def test_chat_stream_api_passes_unified_image_attachments_to_provider(
         workflow_cls,
     )
 
-    api_client.post("/api/auth/login", json={"username": "admin", "password": "Admin123456"})
-    session_response = api_client.post("/api/chat/sessions", json={"title": "Stream Session"})
-    session_id = session_response.json()["data"]["id"]
-    upload_response = api_client.post(
-        "/api/documents/upload",
-        files={"file": ("image.png", create_png_bytes(), "image/png")},
+    session_id = create_logged_in_chat_session(api_client, title="Stream Session")
+    uploaded_attachment = upload_document_file(
+        api_client,
+        filename="image.png",
+        content=create_png_bytes(),
+        content_type="image/png",
+        expected_status=202,
     )
-    uploaded_attachment = upload_response.json()["data"]
 
     with api_client.stream(
         "POST",
@@ -467,9 +442,9 @@ def test_chat_stream_api_passes_unified_image_attachments_to_provider(
     content = cast("list[dict[str, Any]]", user_message["content"])
     assert content[0]["type"] == "text"
     assert content[1]["type"] == "image"
-    assert content[1]["mime_type"] == "image/jpeg"
-    assert isinstance(content[1]["data_base64"], str)
-    assert content[1]["data_base64"].strip() != ""
+    assert content[1].get("mime_type") == "image/jpeg"
+    assert isinstance(content[1].get("data_base64", ""), str)
+    assert content[1].get("data_base64", "").strip() != ""
 
 
 def test_settings_api_stays_available_while_chat_stream_is_open(
@@ -490,9 +465,7 @@ def test_settings_api_stays_available_while_chat_stream_is_open(
         workflow_cls,
     )
 
-    api_client.post("/api/auth/login", json={"username": "admin", "password": "Admin123456"})
-    session_response = api_client.post("/api/chat/sessions", json={"title": "Stream Session"})
-    session_id = session_response.json()["data"]["id"]
+    session_id = create_logged_in_chat_session(api_client, title="Stream Session")
     stream_status_code: dict[str, int] = {}
 
     def consume_stream() -> None:
@@ -535,9 +508,7 @@ def test_chat_session_rename_stays_available_while_chat_stream_is_open(
         workflow_cls,
     )
 
-    api_client.post("/api/auth/login", json={"username": "admin", "password": "Admin123456"})
-    session_response = api_client.post("/api/chat/sessions", json={"title": "Rename Session"})
-    session_id = session_response.json()["data"]["id"]
+    session_id = create_logged_in_chat_session(api_client, title="Rename Session")
     stream_status_code: dict[str, int] = {}
     rename_status_code: dict[str, int] = {}
     rename_finished = Event()
@@ -594,9 +565,7 @@ def test_chat_session_creation_stays_available_while_chat_stream_is_open(
         workflow_cls,
     )
 
-    api_client.post("/api/auth/login", json={"username": "admin", "password": "Admin123456"})
-    session_response = api_client.post("/api/chat/sessions", json={"title": "Origin Session"})
-    session_id = session_response.json()["data"]["id"]
+    session_id = create_logged_in_chat_session(api_client, title="Origin Session")
     stream_status_code: dict[str, int] = {}
     create_status_code: dict[str, int] = {}
     create_finished = Event()

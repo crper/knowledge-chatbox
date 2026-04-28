@@ -73,9 +73,7 @@ const AttachmentListItemRow = memo(function AttachmentListItemRow({
         </p>
         {isCompact ? (
           <p className="mt-0.5 truncate text-[11px] text-muted-foreground/62">
-            {item.kind === "image"
-              ? t("imageTypeLabel", { defaultValue: "图片" })
-              : t("documentTypeLabel", { defaultValue: "文件" })}
+            {item.kind === "image" ? t("imageTypeLabel") : t("documentTypeLabel")}
           </p>
         ) : null}
       </div>
@@ -95,7 +93,6 @@ const AttachmentListItemRow = memo(function AttachmentListItemRow({
         {item.previewable ? (
           <Button
             aria-label={t("previewAttachmentAction", {
-              defaultValue: "预览附件 {{name}}",
               name: item.displayName,
             })}
             className={cn(
@@ -163,10 +160,7 @@ export const AttachmentList = memo(function AttachmentList({
   }, [defaultCollapsed, expandOnItemAdd, items.length]);
 
   const toggleLabel = useMemo(
-    () =>
-      open
-        ? t("collapseAttachmentAction", { defaultValue: "收起附件" })
-        : t("expandAttachmentAction", { defaultValue: "展开附件" }),
+    () => (open ? t("collapseAttachmentAction") : t("expandAttachmentAction")),
     [open, t],
   );
   const isCompact = useMemo(() => variant === "compact", [variant]);
@@ -189,7 +183,6 @@ export const AttachmentList = memo(function AttachmentList({
         <p className="min-w-0 flex-1 truncate font-medium text-[11px] text-foreground/88">
           {t("attachmentPanelLabel", {
             count: items.length,
-            defaultValue: "附件 {{count}}",
           })}
         </p>
         <CollapsibleTrigger

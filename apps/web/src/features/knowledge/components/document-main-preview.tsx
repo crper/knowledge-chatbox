@@ -9,14 +9,16 @@ import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Button } from "@/components/ui/button";
-import { getDocumentFileUrl } from "@/features/chat/utils/document-file-url";
+import { getDocumentFileUrl } from "@/lib/api/document-file-url";
 import type { KnowledgeDocument } from "../api/documents";
 import { DocumentImagePreview } from "./document-image-preview";
 import { DocumentPdfPreview } from "./document-pdf-preview";
 import { DocumentTextPreview } from "./document-text-preview";
-import { getDocumentPreviewKind, loadDocumentTextPreview } from "../api/document-preview";
-import { formatDateTime } from "@/lib/date-utils";
-import { formatFileSize, getDocumentTypeLabel } from "./resource-document-helpers";
+import { getDocumentPreviewKind } from "../api/document-preview";
+import { documentTextPreviewQueryOptions } from "../api/documents-query";
+import { formatFileSize } from "@/lib/utils";
+import { formatDateTime, useDateLocale } from "@/lib/date-utils";
+import { getDocumentTypeLabel } from "./resource-document-helpers";
 import { openProtectedFile } from "./protected-file-actions";
 
 type DocumentMainPreviewProps = {
@@ -28,22 +30,22 @@ export function DocumentMainPreview({
   document,
   emptyState = "no-match",
 }: DocumentMainPreviewProps) {
-  const { i18n, t } = useTranslation("knowledge");
+  const { t } = useTranslation("knowledge");
+  const dateLocale = useDateLocale();
   const previewKind = useMemo(
     () => (document ? getDocumentPreviewKind(document.file_type) : "unsupported"),
     [document],
   );
 
-  const textPreviewQuery = useQuery({
-    queryKey: ["knowledge", "document-main-preview", document?.id, document?.updated_at],
-    queryFn: () => loadDocumentTextPreview(document!),
-    enabled:
-      document !== null &&
-      (previewKind === "markdown" || previewKind === "text") &&
-      document.status !== "processing" &&
-      document.status !== "uploaded" &&
-      document.status !== "failed",
-  });
+  const shouldLoadTextPreview =
+    (previewKind === "markdown" || previewKind === "text") &&
+    document?.ingest_status !== "processing" &&
+    document?.ingest_status !== "uploaded" &&
+    document?.ingest_status !== "failed";
+
+  const textPreviewQuery = useQuery(
+    documentTextPreviewQueryOptions(document, shouldLoadTextPreview),
+  );
 
   if (!document) {
     const emptyTitleKey =
@@ -54,7 +56,7 @@ export function DocumentMainPreview({
         : "selectedResourceEmptyDescription";
 
     return (
-      <section className="surface-panel-subtle flex h-full min-h-[20rem] min-w-0 flex-col justify-center rounded-3xl border border-border/60 p-6">
+      <section className="surface-panel-subtle flex h-full min-h-80 min-w-0 flex-col justify-center rounded-3xl border border-border/60 p-6">
         <Empty className="bg-transparent">
           <EmptyHeader>
             <EmptyTitle>{t(emptyTitleKey)}</EmptyTitle>
@@ -65,11 +67,12 @@ export function DocumentMainPreview({
     );
   }
 
-  const shouldShowProcessing = document.status === "processing" || document.status === "uploaded";
-  const shouldShowFailed = document.status === "failed";
+  const shouldShowProcessing =
+    document.ingest_status === "processing" || document.ingest_status === "uploaded";
+  const shouldShowFailed = document.ingest_status === "failed";
   const metaItems = [
     formatFileSize(document.file_size),
-    formatDateTime(document.updated_at, i18n.resolvedLanguage ?? "zh-CN") || document.updated_at,
+    formatDateTime(document.updated_at, dateLocale) || document.updated_at,
     typeof document.chunk_count === "number" ? `${document.chunk_count} chunks` : null,
   ].filter(Boolean);
 
@@ -79,9 +82,13 @@ export function DocumentMainPreview({
         <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="outline">{getDocumentTypeLabel(previewKind, t)}</Badge>
-            <Badge variant="secondary">{t("versionValue", { version: document.version })}</Badge>
+            <Badge variant="secondary">
+              {t("versionValue", { version: document.revision_no })}
+            </Badge>
             <Badge variant={shouldShowFailed ? "destructive" : "outline"}>
-              {t(`status${document.status.charAt(0).toUpperCase()}${document.status.slice(1)}`)}
+              {t(
+                `status${document.ingest_status.charAt(0).toUpperCase()}${document.ingest_status.slice(1)}`,
+              )}
             </Badge>
           </div>
           <div className="space-y-1">

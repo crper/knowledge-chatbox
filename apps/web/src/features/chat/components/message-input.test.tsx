@@ -1,6 +1,11 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import { MessageInput } from "./message-input";
+
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { retry: false, gcTime: 0 } },
+});
 
 describe("MessageInput", () => {
   beforeEach(() => {
@@ -16,12 +21,14 @@ describe("MessageInput", () => {
 
   it("renders composer controls without send-shortcut picker", () => {
     render(
-      <MessageInput
-        draft="hello"
-        onChange={() => {}}
-        onSubmit={() => {}}
-        sendShortcut="shift-enter"
-      />,
+      <QueryClientProvider client={queryClient}>
+        <MessageInput
+          draft="hello"
+          onChange={() => {}}
+          onSubmit={() => {}}
+          sendShortcut="shift-enter"
+        />
+      </QueryClientProvider>,
     );
 
     const body = screen.getByTestId("message-input-body");
@@ -37,13 +44,15 @@ describe("MessageInput", () => {
 
   it("shows the active provider and model in the action rail", () => {
     render(
-      <MessageInput
-        activeModelLabel="OpenAI / gpt-5.4"
-        draft="hello"
-        onChange={() => {}}
-        onSubmit={() => {}}
-        sendShortcut="shift-enter"
-      />,
+      <QueryClientProvider client={queryClient}>
+        <MessageInput
+          activeModelLabel="OpenAI / gpt-5.4"
+          draft="hello"
+          onChange={() => {}}
+          onSubmit={() => {}}
+          sendShortcut="shift-enter"
+        />
+      </QueryClientProvider>,
     );
 
     expect(screen.getByText("OpenAI / gpt-5.4")).toBeInTheDocument();
@@ -51,7 +60,9 @@ describe("MessageInput", () => {
 
   it("does not show a redundant language hint in the composer", () => {
     render(
-      <MessageInput draft="" onChange={() => {}} onSubmit={() => {}} sendShortcut="shift-enter" />,
+      <QueryClientProvider client={queryClient}>
+        <MessageInput draft="" onChange={() => {}} onSubmit={() => {}} sendShortcut="shift-enter" />
+      </QueryClientProvider>,
     );
 
     expect(
@@ -61,23 +72,25 @@ describe("MessageInput", () => {
 
   it("shows a unified attachment panel in the composer and supports collapsing", () => {
     render(
-      <MessageInput
-        attachments={[
-          {
-            id: "attachment-1",
-            file: new File(["hello"], "image.png", { type: "image/png" }),
-            kind: "image",
-            mimeType: "image/png",
-            name: "image.png",
-            status: "queued",
-          },
-        ]}
-        draft=""
-        onChange={() => {}}
-        onRemoveAttachment={() => {}}
-        onSubmit={() => {}}
-        sendShortcut="shift-enter"
-      />,
+      <QueryClientProvider client={queryClient}>
+        <MessageInput
+          attachments={[
+            {
+              id: "attachment-1",
+              file: new File(["hello"], "image.png", { type: "image/png" }),
+              kind: "image",
+              mimeType: "image/png",
+              name: "image.png",
+              status: "queued",
+            },
+          ]}
+          draft=""
+          onChange={() => {}}
+          onRemoveAttachment={() => {}}
+          onSubmit={() => {}}
+          sendShortcut="shift-enter"
+        />
+      </QueryClientProvider>,
     );
 
     expect(screen.getByText("附件 1")).toBeInTheDocument();
@@ -98,31 +111,33 @@ describe("MessageInput", () => {
 
   it("renders composer attachments as a unified list and only images are previewable", async () => {
     render(
-      <MessageInput
-        attachments={[
-          {
-            id: "attachment-image",
-            file: new File(["hello"], "image.png", { type: "image/png" }),
-            kind: "image",
-            mimeType: "image/png",
-            name: "image.png",
-            status: "queued",
-          },
-          {
-            id: "attachment-document",
-            file: new File(["hello"], "guide.pdf", { type: "application/pdf" }),
-            kind: "document",
-            mimeType: "application/pdf",
-            name: "guide.pdf",
-            status: "queued",
-          },
-        ]}
-        draft=""
-        onChange={() => {}}
-        onRemoveAttachment={() => {}}
-        onSubmit={() => {}}
-        sendShortcut="shift-enter"
-      />,
+      <QueryClientProvider client={queryClient}>
+        <MessageInput
+          attachments={[
+            {
+              id: "attachment-image",
+              file: new File(["hello"], "image.png", { type: "image/png" }),
+              kind: "image",
+              mimeType: "image/png",
+              name: "image.png",
+              status: "queued",
+            },
+            {
+              id: "attachment-document",
+              file: new File(["hello"], "guide.pdf", { type: "application/pdf" }),
+              kind: "document",
+              mimeType: "application/pdf",
+              name: "guide.pdf",
+              status: "queued",
+            },
+          ]}
+          draft=""
+          onChange={() => {}}
+          onRemoveAttachment={() => {}}
+          onSubmit={() => {}}
+          sendShortcut="shift-enter"
+        />
+      </QueryClientProvider>,
     );
 
     expect(screen.getByText("附件 2")).toBeInTheDocument();
@@ -139,13 +154,15 @@ describe("MessageInput", () => {
 
   it("shows an attachment scope hint when the current turn has attachments", () => {
     render(
-      <MessageInput
-        attachmentScopeHint="本次回答只会使用当前附件作为文档范围"
-        draft=""
-        onChange={() => {}}
-        onSubmit={() => {}}
-        sendShortcut="shift-enter"
-      />,
+      <QueryClientProvider client={queryClient}>
+        <MessageInput
+          attachmentScopeHint="本次回答只会使用当前附件作为文档范围"
+          draft=""
+          onChange={() => {}}
+          onSubmit={() => {}}
+          sendShortcut="shift-enter"
+        />
+      </QueryClientProvider>,
     );
 
     expect(screen.getByText("本次回答只会使用当前附件作为文档范围")).toBeInTheDocument();
@@ -153,7 +170,9 @@ describe("MessageInput", () => {
 
   it("does not render an attachment scope hint when none is provided", () => {
     render(
-      <MessageInput draft="" onChange={() => {}} onSubmit={() => {}} sendShortcut="shift-enter" />,
+      <QueryClientProvider client={queryClient}>
+        <MessageInput draft="" onChange={() => {}} onSubmit={() => {}} sendShortcut="shift-enter" />
+      </QueryClientProvider>,
     );
 
     expect(screen.queryByText("本次回答只会使用当前附件作为文档范围")).not.toBeInTheDocument();
@@ -163,21 +182,22 @@ describe("MessageInput", () => {
     const onStopSubmit = vi.fn();
 
     render(
-      <MessageInput
-        draft="hello"
-        onChange={() => {}}
-        onStopSubmit={onStopSubmit}
-        onSubmit={() => {}}
-        sendShortcut="shift-enter"
-        submitPending={true}
-      />,
+      <QueryClientProvider client={queryClient}>
+        <MessageInput
+          draft="hello"
+          onChange={() => {}}
+          onStopSubmit={onStopSubmit}
+          onSubmit={() => {}}
+          sendShortcut="shift-enter"
+          submitPending={true}
+        />
+      </QueryClientProvider>,
     );
 
     const stopButton = screen.getByRole("button", { name: "停止生成" });
 
     expect(stopButton).toBeEnabled();
-    expect(screen.getByText("正在生成，可随时停止")).toBeInTheDocument();
-    expect(screen.getByRole("status", { name: "发送中" })).toBeInTheDocument();
+    expect(screen.queryByText("正在生成，可随时停止")).not.toBeInTheDocument();
 
     fireEvent.click(stopButton);
 
@@ -188,7 +208,9 @@ describe("MessageInput", () => {
     const onSubmit = vi.fn();
 
     render(
-      <MessageInput draft="hello" onChange={() => {}} onSubmit={onSubmit} sendShortcut="enter" />,
+      <QueryClientProvider client={queryClient}>
+        <MessageInput draft="hello" onChange={() => {}} onSubmit={onSubmit} sendShortcut="enter" />
+      </QueryClientProvider>,
     );
 
     fireEvent.keyDown(screen.getByLabelText("消息输入"), {
@@ -200,14 +222,16 @@ describe("MessageInput", () => {
 
   it("blurs the textarea when the action rail is pressed", () => {
     render(
-      <MessageInput
-        activeModelLabel="Ollama / qwen3.5:4b"
-        draft="hello"
-        onChange={() => {}}
-        onSubmit={() => {}}
-        reasoningModeVisible={true}
-        sendShortcut="enter"
-      />,
+      <QueryClientProvider client={queryClient}>
+        <MessageInput
+          activeModelLabel="Ollama / qwen3.5:4b"
+          draft="hello"
+          onChange={() => {}}
+          onSubmit={() => {}}
+          reasoningModeVisible={true}
+          sendShortcut="enter"
+        />
+      </QueryClientProvider>,
     );
 
     const input = screen.getByLabelText("消息输入");
@@ -221,14 +245,16 @@ describe("MessageInput", () => {
 
   it("renders the selected reasoning mode label in the composer rail", () => {
     render(
-      <MessageInput
-        draft="hello"
-        onChange={() => {}}
-        onSubmit={() => {}}
-        reasoningMode="on"
-        reasoningModeVisible={true}
-        sendShortcut="enter"
-      />,
+      <QueryClientProvider client={queryClient}>
+        <MessageInput
+          draft="hello"
+          onChange={() => {}}
+          onSubmit={() => {}}
+          reasoningMode="on"
+          reasoningModeVisible={true}
+          sendShortcut="enter"
+        />
+      </QueryClientProvider>,
     );
 
     expect(screen.getByRole("combobox", { name: "思考模式" })).toHaveTextContent("开启");
@@ -238,12 +264,14 @@ describe("MessageInput", () => {
     const onSubmit = vi.fn();
 
     render(
-      <MessageInput
-        draft="家里的师傅"
-        onChange={() => {}}
-        onSubmit={onSubmit}
-        sendShortcut="enter"
-      />,
+      <QueryClientProvider client={queryClient}>
+        <MessageInput
+          draft="家里的师傅"
+          onChange={() => {}}
+          onSubmit={onSubmit}
+          sendShortcut="enter"
+        />
+      </QueryClientProvider>,
     );
 
     const input = screen.getByLabelText("消息输入");

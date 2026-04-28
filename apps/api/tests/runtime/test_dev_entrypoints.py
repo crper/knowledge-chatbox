@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import re
 import select
+import socket
 import subprocess
 import textwrap
 import time
@@ -20,9 +21,17 @@ WEB_DOCKERIGNORE_PATH = REPO_ROOT / "apps" / "web" / ".dockerignore"
 
 def test_dev_recipes_forward_ports_to_dev_script() -> None:
     content = JUSTFILE_PATH.read_text(encoding="utf-8")
-    expected_line = "API_PORT={{api_port}} WEB_PORT={{web_port}} {{dev_script}}"
+    expected_line = "    API_PORT={{api_port}} WEB_PORT={{web_port}} {{dev_script}}"
+    actual_matches = [line for line in content.splitlines() if line == expected_line]
 
-    assert content.count(expected_line) == 2
+    assert len(actual_matches) == 2
+
+
+def test_reset_dev_recipe_preflights_ports_before_resetting_data() -> None:
+    content = JUSTFILE_PATH.read_text(encoding="utf-8")
+
+    assert "reset-dev: reset-data" not in content
+    assert "API_PORT={{api_port}} WEB_PORT={{web_port}} {{dev_script}} --check-only" in content
 
 
 def test_web_pins_exact_node_version_without_mirror_override() -> None:
@@ -73,6 +82,10 @@ exit 1
         fake_bin / "vp",
         """#!/usr/bin/env bash
 set -Eeuo pipefail
+
+if [[ "${1:-}" == "run" && "${2:-}" == "api:check" ]]; then
+  exit 0
+fi
 
 if [[ "${1:-}" == "dev" ]]; then
   echo "[fake-vp] dev ok"
@@ -186,6 +199,10 @@ exit 0
         f"""#!/usr/bin/env bash
 set -Eeuo pipefail
 
+if [[ "${{1:-}}" == "run" && "${{2:-}}" == "api:check" ]]; then
+  exit 0
+fi
+
 if [[ "${{1:-}}" == "dev" ]]; then
   printf 'started' >"{vp_state}"
   trap 'exit 0' INT TERM
@@ -224,6 +241,60 @@ exit 1
     assert curl_state.read_text(encoding="utf-8") == "3"
     assert vp_state.read_text(encoding="utf-8") == "started"
     assert "API 已就绪" in output
+
+
+def test_dev_run_fails_fast_when_api_port_is_occupied(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    api_dir = tmp_path / "api"
+    web_dir = tmp_path / "web"
+    api_dir.mkdir()
+    web_dir.mkdir()
+
+    write_executable(
+        fake_bin / "uv",
+        """#!/usr/bin/env bash
+set -Eeuo pipefail
+echo "[fake-uv] should not run" >&2
+exit 1
+""",
+    )
+
+    write_executable(
+        fake_bin / "vp",
+        """#!/usr/bin/env bash
+set -Eeuo pipefail
+echo "[fake-vp] should not run" >&2
+exit 1
+""",
+    )
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+        listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        listener.bind(("127.0.0.1", 0))
+        listener.listen()
+        occupied_port = listener.getsockname()[1]
+
+        env = os.environ.copy()
+        env["PATH"] = f"{fake_bin}:{env['PATH']}"
+        env["API_DIR"] = str(api_dir)
+        env["WEB_DIR"] = str(web_dir)
+        env["API_PORT"] = str(occupied_port)
+        env["WEB_PORT"] = str(occupied_port + 1)
+
+        result = subprocess.run(
+            ["bash", str(DEV_RUN_SCRIPT), "--check-only"],
+            cwd=REPO_ROOT,
+            env=env,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+    assert result.returncode != 0
+    combined_output = result.stdout + result.stderr
+    assert f"端口 {occupied_port}" in combined_output
+    assert "请先停止现有进程" in combined_output
 
 
 def test_dev_run_default_ready_budget_tolerates_slow_api_startup(tmp_path: Path) -> None:
@@ -295,6 +366,10 @@ exit 0
         fake_bin / "vp",
         f"""#!/usr/bin/env bash
 set -Eeuo pipefail
+
+if [[ "${{1:-}}" == "run" && "${{2:-}}" == "api:check" ]]; then
+  exit 0
+fi
 
 if [[ "${{1:-}}" == "dev" ]]; then
   printf 'started' >"{vp_state}"

@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Protocol, TypeVar
+from typing import TYPE_CHECKING, Any, Protocol, TypeVar, runtime_checkable
 
 from cachetools import LRUCache
-from pydantic import BaseModel, ConfigDict
-from tenacity import retry, stop_after_attempt, wait_exponential
+from pydantic import BaseModel, ConfigDict, Field
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
+from knowledge_chatbox_api.core.logging import get_logger
 from knowledge_chatbox_api.models.enums import ProviderName, ReasoningMode
+from knowledge_chatbox_api.schemas.chat import UsageData
+
+logger = get_logger(__name__)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator
@@ -23,52 +26,69 @@ if TYPE_CHECKING:
 
 DEFAULT_VISION_PROMPT = "Describe the image content in markdown."
 
+_RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
+
+
+def _is_retryable_error(exc: BaseException) -> bool:
+    """判断异常是否为可重试的临时故障（连接错误或可重试的 HTTP 状态码）。"""
+    if isinstance(exc, (ConnectionError, TimeoutError, OSError)):
+        return True
+    from httpx import HTTPStatusError
+
+    if isinstance(exc, HTTPStatusError):
+        return exc.response.status_code in _RETRYABLE_STATUS_CODES
+    status_code = getattr(exc, "status_code", None)
+    if isinstance(status_code, int):
+        return status_code in _RETRYABLE_STATUS_CODES
+    return False
+
+
 provider_retry = retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=1, max=10),
+    retry=retry_if_exception(_is_retryable_error),
     reraise=True,
 )
 
 
-class ExtractedContentParts:
-    """Pre-extracted text and image parts from a message content block."""
+class ImagePart(BaseModel):
+    """图片附件部分。"""
 
-    __slots__ = ("image_parts", "text_parts")
-
-    def __init__(
-        self,
-        *,
-        text_parts: list[str] | None = None,
-        image_parts: list[dict[str, str]] | None = None,
-    ) -> None:
-        self.text_parts: list[str] = text_parts if text_parts is not None else [""]
-        self.image_parts: list[dict[str, str]] = image_parts if image_parts is not None else []
+    data_base64: str = ""
+    mime_type: str = "image/jpeg"
 
 
-def extract_content_parts(content: Any) -> ExtractedContentParts:
-    """Extract text and image parts from a message content block.
+class ExtractedContentParts(BaseModel):
+    """从消息内容块中预提取的文本和图片部分。"""
 
-    Each image part dict contains ``data_base64`` and ``mime_type`` keys.
-    Returns an ExtractedContentParts with at least one text part (empty string
-    as fallback) and zero or more image parts.
-    """
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    text_parts: list[str] = Field(default_factory=lambda: [""])
+    image_parts: list[ImagePart] = Field(default_factory=list)
+
+
+ContentPart = str | list[dict[str, Any]] | None
+
+
+def extract_content_parts(content: ContentPart) -> ExtractedContentParts:
+    """从消息内容块中提取文本和图片部分。"""
     if isinstance(content, str):
         return ExtractedContentParts(text_parts=[content])
     if not isinstance(content, list):
         return ExtractedContentParts()
 
     text_parts: list[str] = []
-    image_parts: list[dict[str, str]] = []
+    image_parts: list[ImagePart] = []
     item: dict[str, Any]
     for item in content:
         if item.get("type") == "text":
             text_parts.append(item.get("text", ""))
         elif item.get("type") == "image":
             image_parts.append(
-                {
-                    "data_base64": item.get("data_base64", ""),
-                    "mime_type": item.get("mime_type", "image/jpeg"),
-                }
+                ImagePart(
+                    data_base64=item.get("data_base64", ""),
+                    mime_type=item.get("mime_type", "image/jpeg"),
+                )
             )
 
     return ExtractedContentParts(
@@ -78,18 +98,13 @@ def extract_content_parts(content: Any) -> ExtractedContentParts:
 
 
 def transform_content(
-    content: Any,
+    content: ContentPart,
     *,
     text_fn: Callable[[str], dict[str, Any]],
-    image_fn: Callable[[dict[str, str]], dict[str, Any]],
+    image_fn: Callable[[ImagePart], dict[str, Any]],
     empty_text_fn: Callable[[], dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
-    """Transform message content into provider-specific block format.
-
-    Applies ``text_fn`` to each non-empty text part and ``image_fn`` to each
-    image part.  If the result is empty, falls back to ``empty_text_fn`` or
-    ``text_fn("")``.
-    """
+    """将消息内容转换为 provider 特定格式。"""
     parts = extract_content_parts(content)
     blocks: list[dict[str, Any]] = [text_fn(t) for t in parts.text_parts if t]
     blocks.extend(image_fn(img) for img in parts.image_parts)
@@ -116,29 +131,31 @@ class ClientCacheMixin:
             self._client_cache[key] = value
             return value
 
-    def _request_timeout(self, settings: ProviderSettings) -> float:
-        return float(settings.provider_timeout_seconds)
-
     def _run_provider_health_check(
         self,
         check_fn: Callable[[], Any],
     ) -> ProviderHealthResult:
         from time import perf_counter
 
-        from knowledge_chatbox_api.core.logging import get_logger
         from knowledge_chatbox_api.utils.timing import elapsed_ms
 
-        _logger = get_logger(__name__)
         start = perf_counter()
         try:
             check_fn()
         except Exception as exc:
-            _logger.warning("provider_health_check_failed", error=str(exc))
+            logger.warning("provider_health_check_failed", error=str(exc))
             return ProviderHealthResult(healthy=False, message="Provider health check failed.")
         return ProviderHealthResult(healthy=True, message="ok", latency_ms=elapsed_ms(start))
 
 
 def build_reasoning_config(provider: str, reasoning_mode: ReasoningMode) -> dict[str, Any]:
+    """构建 provider 特定的推理配置，直接返回各 provider 可用的扁平参数。
+
+    返回值可直接作为 ModelSettings 的关键字参数展开：
+    - Anthropic: {"anthropic_thinking": {"type": "enabled", "budget_tokens": 10000}}
+    - OpenAI: {"openai_reasoning_effort": "medium"}
+    - Ollama: {"extra_body": {"think": True/False}}
+    """
     match (provider, reasoning_mode):
         case (ProviderName.ANTHROPIC, ReasoningMode.ON):
             return {"anthropic_thinking": {"type": "enabled", "budget_tokens": 10000}}
@@ -146,8 +163,12 @@ def build_reasoning_config(provider: str, reasoning_mode: ReasoningMode) -> dict
             return {"anthropic_thinking": {"type": "disabled"}}
         case (ProviderName.ANTHROPIC, _):
             return {}
+        case (ProviderName.OLLAMA, ReasoningMode.ON):
+            return {"extra_body": {"think": True}}
+        case (ProviderName.OLLAMA, ReasoningMode.OFF):
+            return {"extra_body": {"think": False}}
         case (ProviderName.OLLAMA, _):
-            return {"extra_body": {"think": reasoning_mode == ReasoningMode.ON}}
+            return {}
         case (_, ReasoningMode.ON):
             return {"openai_reasoning_effort": "medium"}
         case (_, ReasoningMode.OFF):
@@ -174,7 +195,7 @@ class ResponseStreamChunk(BaseModel):
     delta: str | None = None
     error_message: str | None = None
     provider_response_id: str | None = None
-    usage: dict[str, Any] | None = None
+    usage: UsageData | None = None
     raw: dict[str, Any] | None = None
 
 
@@ -209,41 +230,36 @@ class VisionSettings(ProviderSettings, Protocol):
     vision_route: VisionRouteConfig
 
 
-class BaseResponseAdapter(ABC):
-    """统一 response capability 接口。"""
+@runtime_checkable
+class ResponseAdapterProtocol(Protocol):
+    """统一 response capability 接口，使用结构化子类型替代 ABC 继承。"""
 
-    @abstractmethod
     def response(
         self, messages: list[dict[str, Any]], settings: ResponseRuntimeSettings
     ) -> str: ...
 
-    @abstractmethod
     def stream_response(
         self,
         messages: list[dict[str, Any]],
         settings: ResponseRuntimeSettings,
-    ) -> Generator[ResponseStreamChunk, None, None]:
-        raise NotImplementedError
+    ) -> Generator[ResponseStreamChunk]: ...
 
-    @abstractmethod
     def health_check(self, settings: ResponseSettings) -> ProviderHealthResult: ...
 
 
-class BaseEmbeddingAdapter(ABC):
-    """统一 embedding capability 接口。"""
+@runtime_checkable
+class EmbeddingAdapterProtocol(Protocol):
+    """统一 embedding capability 接口，使用结构化子类型替代 ABC 继承。"""
 
-    @abstractmethod
     def embed(self, texts: list[str], settings: EmbeddingSettings) -> list[list[float]]: ...
 
-    @abstractmethod
     def health_check(self, settings: EmbeddingSettings) -> ProviderHealthResult: ...
 
 
-class BaseVisionAdapter(ABC):
-    """统一 vision capability 接口。"""
+@runtime_checkable
+class VisionAdapterProtocol(Protocol):
+    """统一 vision capability 接口，使用结构化子类型替代 ABC 继承。"""
 
-    @abstractmethod
     def analyze_image(self, inputs: list[dict[str, Any]], settings: VisionSettings) -> str: ...
 
-    @abstractmethod
     def health_check(self, settings: VisionSettings) -> ProviderHealthResult: ...

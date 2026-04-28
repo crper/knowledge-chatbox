@@ -1,9 +1,5 @@
-/**
- * @file 认证相关界面组件模块。
- */
-
 import { useEffect, useState } from "react";
-import type { FormEvent } from "react";
+import { useForm, revalidateLogic } from "@tanstack/react-form";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
@@ -15,14 +11,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Form } from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
 import { ApiRequestError, getApiErrorMessage } from "@/lib/api/client";
-import { FormErrorAlert, getFieldErrorItems, getFormErrorMessage } from "@/lib/form/form-feedback";
-import { useAppForm } from "@/lib/form/use-app-form";
-import { handleFormSubmitEvent } from "@/lib/forms";
-import { zodToTanStackFormErrors } from "@/lib/validation/form-adapter";
+import { FormTextField } from "@/lib/form/form-fields";
+import { FormErrorAlert } from "@/lib/form/form-feedback";
+import { getFirstFormError, zodFieldErrors } from "@/lib/forms";
 import { changePasswordSchema } from "@/lib/validation/schemas";
 
 type ChangePasswordDialogProps = {
@@ -31,17 +24,21 @@ type ChangePasswordDialogProps = {
   onSubmit: (input: { currentPassword: string; newPassword: string }) => Promise<void>;
 };
 
-/**
- * 渲染修改密码对话框。
- */
 export function ChangePasswordDialog({ open, onClose, onSubmit }: ChangePasswordDialogProps) {
   const { t } = useTranslation(["auth", "common"]);
   const [submitError, setSubmitError] = useState<unknown>(null);
-  const form = useAppForm({
+  const onChangeValidate = ({ value }: { value: Record<string, unknown> }) =>
+    zodFieldErrors(changePasswordSchema, value, "auth:changePasswordValidationError");
+  const form = useForm({
     defaultValues: {
       currentPassword: "",
       newPassword: "",
     },
+    validators: {
+      onBlur: onChangeValidate,
+      onSubmit: onChangeValidate,
+    },
+    validationLogic: revalidateLogic({ mode: "submit", modeAfterSubmission: "blur" }),
     onSubmit: async ({ formApi, value }) => {
       try {
         await onSubmit(value);
@@ -53,33 +50,11 @@ export function ChangePasswordDialog({ open, onClose, onSubmit }: ChangePassword
         throw error;
       }
     },
-    validator: (value) => {
-      const result = changePasswordSchema.safeParse(value);
-      if (result.success) {
-        return undefined;
-      }
-
-      const fieldNames = new Set(
-        result.error.issues
-          .map((issue) => issue.path[0])
-          .filter((fieldName): fieldName is string => typeof fieldName === "string"),
-      );
-
-      return zodToTanStackFormErrors(result.error, {
-        formI18nKey:
-          !fieldNames.has("currentPassword") && fieldNames.has("newPassword")
-            ? "auth:changePasswordValidationError"
-            : undefined,
-      });
-    },
   });
 
   useEffect(() => {
     if (!open) {
-      form.reset({
-        currentPassword: "",
-        newPassword: "",
-      });
+      form.reset({ currentPassword: "", newPassword: "" });
       form.setErrorMap({ onSubmit: undefined });
       setSubmitError(null);
     }
@@ -97,10 +72,6 @@ export function ChangePasswordDialog({ open, onClose, onSubmit }: ChangePassword
     return submitError ? t("changePasswordFailed") : null;
   };
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    void handleFormSubmitEvent(event, () => form.handleSubmit());
-  };
-
   return (
     <Dialog onOpenChange={(nextOpen) => !nextOpen && onClose()} open={open}>
       <DialogContent className="sm:max-w-md" closeLabel={t("closeAction", { ns: "common" })}>
@@ -108,67 +79,49 @@ export function ChangePasswordDialog({ open, onClose, onSubmit }: ChangePassword
           <DialogTitle>{t("changePasswordTitle")}</DialogTitle>
           <DialogDescription>{t("changePasswordDescription")}</DialogDescription>
         </DialogHeader>
-        <Form className="flex flex-col gap-4" onSubmit={handleSubmit}>
-          <FieldGroup>
-            <form.Field name="currentPassword">
-              {(field) => (
-                <Field>
-                  <FieldLabel htmlFor="current-password">{t("currentPasswordLabel")}</FieldLabel>
-                  <Input
-                    aria-label={t("currentPasswordLabel")}
-                    aria-invalid={field.state.meta.errors.length > 0}
-                    autoComplete="current-password"
-                    className="h-10 rounded-xl border-border/80 bg-background/80"
-                    id="current-password"
-                    onChange={(event) => {
-                      setSubmitError(null);
-                      field.handleChange(event.target.value);
-                    }}
-                    onBlur={() => field.handleBlur()}
-                    type="password"
-                    value={field.state.value}
-                  />
-                  <FieldError errors={getFieldErrorItems(field.state.meta.errors, t)} />
-                </Field>
-              )}
-            </form.Field>
-            <form.Field name="newPassword">
-              {(field) => (
-                <Field>
-                  <FieldLabel htmlFor="new-password">{t("newPasswordLabel")}</FieldLabel>
-                  <Input
-                    aria-label={t("newPasswordLabel")}
-                    aria-invalid={field.state.meta.errors.length > 0}
-                    autoComplete="new-password"
-                    className="h-10 rounded-xl border-border/80 bg-background/80"
-                    id="new-password"
-                    onChange={(event) => {
-                      setSubmitError(null);
-                      field.handleChange(event.target.value);
-                    }}
-                    onBlur={() => field.handleBlur()}
-                    type="password"
-                    value={field.state.value}
-                  />
-                  <FieldError errors={getFieldErrorItems(field.state.meta.errors, t)} />
-                </Field>
-              )}
-            </form.Field>
-          </FieldGroup>
-          <form.Subscribe selector={(state) => state.errorMap.onDynamic}>
-            {(dynamicError) => {
-              const errorMessage = getFormErrorMessage([dynamicError], t);
+        <Form
+          className="flex flex-col gap-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void form.handleSubmit().catch(() => {});
+          }}
+        >
+          <FormTextField
+            autoComplete="current-password"
+            className="h-10 rounded-xl border-border/80 bg-background/80"
+            form={form}
+            id="current-password"
+            label={t("currentPasswordLabel")}
+            name="currentPassword"
+            onChange={() => setSubmitError(null)}
+            t={t}
+            type="password"
+          />
+          <FormTextField
+            autoComplete="new-password"
+            className="h-10 rounded-xl border-border/80 bg-background/80"
+            form={form}
+            id="new-password"
+            label={t("newPasswordLabel")}
+            name="newPassword"
+            onChange={() => setSubmitError(null)}
+            t={t}
+            type="password"
+          />
+          <form.Subscribe selector={(state) => state.errorMap.onSubmit}>
+            {(onSubmitError) => {
+              const formErrorMessage = getFirstFormError(onSubmitError, t);
               const submitErrorMessage = getSubmitErrorMessage();
-              const displayError = errorMessage || submitErrorMessage;
+              const displayError = formErrorMessage || submitErrorMessage;
               return <FormErrorAlert message={displayError} />;
             }}
           </form.Subscribe>
           <DialogFooter>
-            <form.Subscribe selector={(state) => state.isSubmitting}>
-              {(isSubmitting) => (
+            <form.Subscribe selector={(state) => [state.canSubmit, state.isSubmitting] as const}>
+              {([canSubmit, isSubmitting]) => (
                 <>
                   <Button
-                    disabled={isSubmitting}
+                    disabled={!canSubmit}
                     onClick={onClose}
                     size="lg"
                     type="button"
@@ -176,7 +129,7 @@ export function ChangePasswordDialog({ open, onClose, onSubmit }: ChangePassword
                   >
                     {t("cancelAction")}
                   </Button>
-                  <Button disabled={isSubmitting} size="lg" type="submit">
+                  <Button disabled={!canSubmit} size="lg" type="submit">
                     {isSubmitting ? t("submitPendingAction") : t("submitAction")}
                   </Button>
                 </>

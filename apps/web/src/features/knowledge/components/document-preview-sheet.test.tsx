@@ -35,9 +35,9 @@ function buildDocument(overrides: Partial<KnowledgeDocument>): KnowledgeDocument
     id: 2,
     document_id: 20,
     name: "spec.md",
-    version: 2,
+    revision_no: 2,
     file_type: "md",
-    status: "indexed",
+    ingest_status: "indexed",
     is_latest: true,
     file_size: 256,
     chunk_count: 12,
@@ -191,7 +191,7 @@ describe("DocumentPreviewSheet", () => {
       buildDocument({
         id: 12,
         name: "queue.md",
-        status: "processing",
+        ingest_status: "processing",
       }),
     );
     expect(await screen.findByText("资源处理中，完成后可预览")).toBeInTheDocument();
@@ -200,7 +200,7 @@ describe("DocumentPreviewSheet", () => {
       buildDocument({
         id: 13,
         name: "broken.md",
-        status: "failed",
+        ingest_status: "failed",
         error_message: "解析失败",
       }),
     );

@@ -4,7 +4,7 @@
 
 import { useTranslation } from "react-i18next";
 import { buttonVariants } from "@/components/ui/button";
-import { Link } from "@/lib/app-router";
+import { Link } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
 
 /**

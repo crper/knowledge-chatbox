@@ -85,7 +85,7 @@ function setupAuthenticatedChatWorkspaceResponse({
 } = {}) {
   const buildSessionContext = (sessionId: number) => {
     const messages = cloneJson(messagesBySession[sessionId] ?? []) as Array<{
-      attachments_json?: Array<{
+      attachments?: Array<{
         attachment_id?: string;
         type: string;
         name: string;
@@ -96,7 +96,7 @@ function setupAuthenticatedChatWorkspaceResponse({
       }> | null;
       id: number;
       role: string;
-      sources_json?: ChatSourceItem[] | null;
+      sources?: ChatSourceItem[] | null;
     }>;
     return buildChatSessionContext(
       sessionId,
@@ -181,12 +181,16 @@ describe("route contract (TanStack runtime)", () => {
   });
 
   it("redirects authenticated users away from /login", async () => {
-    setupAuthResponse(buildAppUser("admin"));
+    setupAuthenticatedChatWorkspaceResponse({
+      sessions: [{ id: 1, title: "Session A", reasoning_mode: "default" }],
+    });
 
     const { history } = renderRoute("/login");
 
     expect(await screen.findByRole("button", { name: "新建会话" })).toBeInTheDocument();
-    expect(history.location.pathname).toBe("/chat/1");
+    await waitFor(() => {
+      expect(history.location.pathname).toBe("/chat/1");
+    });
   });
 
   it("surfaces auth degraded state instead of redirecting to /login", async () => {
@@ -201,12 +205,14 @@ describe("route contract (TanStack runtime)", () => {
   it("redirects to /login when authenticated current-user cache becomes empty", async () => {
     setupAuthResponse(buildAppUser("admin"));
 
-    const { queryClient } = renderRoute("/settings/providers");
+    const { queryClient, router } = renderRoute("/settings/providers");
 
     expect(await screen.findByRole("heading", { name: "提供商配置" })).toBeInTheDocument();
 
     await act(async () => {
       queryClient.setQueryData(queryKeys.auth.me, null);
+      useSessionStore.getState().setStatus("expired");
+      void router.invalidate();
     });
 
     expect(await screen.findByRole("heading", { name: "登录" })).toBeInTheDocument();
@@ -319,7 +325,7 @@ describe("route contract (TanStack runtime)", () => {
             role: "assistant",
             content: "最近会话答案",
             status: "succeeded",
-            sources_json: [],
+            sources: [],
           },
         ],
       },
@@ -345,7 +351,7 @@ describe("route contract (TanStack runtime)", () => {
             role: "assistant",
             content: "最近会话答案",
             status: "succeeded",
-            sources_json: [],
+            sources: [],
           },
         ],
       },
@@ -381,8 +387,8 @@ describe("route contract (TanStack runtime)", () => {
       ],
       messagesBySession: {
         2: [
-          { id: 10, role: "user", content: "问题", status: "succeeded", sources_json: [] },
-          { id: 11, role: "assistant", content: "答案", status: "succeeded", sources_json: [] },
+          { id: 10, role: "user", content: "问题", status: "succeeded", sources: [] },
+          { id: 11, role: "assistant", content: "答案", status: "succeeded", sources: [] },
         ],
       },
     });
@@ -417,10 +423,15 @@ describe("route contract (TanStack runtime)", () => {
 
   it("redirects authenticated users from / to /chat", async () => {
     setupAuthResponse(buildAppUser("admin"));
+    setupAuthenticatedChatWorkspaceResponse({
+      sessions: [{ id: 1, title: "Session A", reasoning_mode: "default" }],
+    });
 
     const { history } = renderRoute("/");
 
     expect(await screen.findByRole("button", { name: "新建会话" })).toBeInTheDocument();
-    expect(history.location.pathname).toBe("/chat/1");
+    await waitFor(() => {
+      expect(history.location.pathname).toBe("/chat/1");
+    });
   });
 });

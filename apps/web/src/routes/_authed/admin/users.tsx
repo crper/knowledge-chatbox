@@ -1,15 +1,15 @@
-/**
- * @file TanStack Router admin users 路由。
- */
-
 import { createFileRoute, redirect } from "@tanstack/react-router";
 
-import { fetchCurrentUserIfAuthenticated } from "@/features/auth/api/auth-query";
-import { UsersPageRoute } from "@/router/route-shells";
+import { lazy, Suspense } from "react";
+import { LoadingState } from "@/components/shared/loading-state";
+
+const UsersPage = lazy(async () => ({
+  default: (await import("@/pages/users/users-page")).UsersPage,
+}));
 
 export const Route = createFileRoute("/_authed/admin/users")({
-  beforeLoad: async ({ context }) => {
-    const user = await fetchCurrentUserIfAuthenticated(context.queryClient);
+  beforeLoad: ({ context }) => {
+    const user = context.user;
     if (!user) {
       return;
     }
@@ -17,5 +17,10 @@ export const Route = createFileRoute("/_authed/admin/users")({
       throw redirect({ to: "/403" });
     }
   },
-  component: UsersPageRoute,
+  component: () => (
+    <Suspense fallback={<LoadingState />}>
+      <UsersPage />
+    </Suspense>
+  ),
+  pendingComponent: LoadingState,
 });

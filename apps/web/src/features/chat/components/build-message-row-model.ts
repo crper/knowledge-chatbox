@@ -13,7 +13,7 @@ function getUserFacingMessageError(message: ChatMessageItem, t: (key: string) =>
     return null;
   }
 
-  const hasImageAttachment = (message.attachments_json ?? []).some(
+  const hasImageAttachment = (message.attachments ?? []).some(
     (attachment) => attachment.type === "image",
   );
   if (

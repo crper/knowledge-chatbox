@@ -1,23 +1,32 @@
-/**
- * @file TanStack Router 根路由 smoke 配置。
- */
-
 import type { QueryClient } from "@tanstack/react-query";
 import { Outlet, createRootRouteWithContext } from "@tanstack/react-router";
 
+import type { AppUser } from "@/lib/api/client";
 import { ensureSessionBootstrap } from "@/lib/auth/session-manager";
-import { AppBootstrapGate } from "@/router/bootstrap-gate";
+import { useSessionStore } from "@/lib/auth/session-store";
+import { AuthDegradedPage } from "@/pages/system/auth-degraded-page";
+import { LoadingState } from "@/components/shared/loading-state";
 
 export type RouterAppContext = {
   queryClient: QueryClient;
+  user?: AppUser;
 };
 
 function RootRouteComponent() {
-  return (
-    <AppBootstrapGate>
-      <Outlet />
-    </AppBootstrapGate>
-  );
+  const status = useSessionStore((state) => state.status);
+  const reset = useSessionStore((state) => state.reset);
+
+  if (status === "degraded") {
+    return (
+      <AuthDegradedPage
+        onRetry={() => {
+          reset();
+        }}
+      />
+    );
+  }
+
+  return <Outlet />;
 }
 
 function NotFoundRouteComponent() {
@@ -32,4 +41,5 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
   },
   component: RootRouteComponent,
   notFoundComponent: NotFoundRouteComponent,
+  pendingComponent: LoadingState,
 });

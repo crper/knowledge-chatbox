@@ -92,17 +92,17 @@ def test_health_capabilities_runs_capability_checks_in_parallel(
 
     monkeypatch.setattr(
         health_route_module,
-        "build_response_adapter_from_settings",
+        "build_response_adapter",
         build_response_adapter,
     )
     monkeypatch.setattr(
         health_route_module,
-        "build_embedding_adapter_from_settings",
+        "build_embedding_adapter",
         build_embedding_adapter,
     )
     monkeypatch.setattr(
         health_route_module,
-        "build_vision_adapter_from_settings",
+        "build_vision_adapter",
         build_vision_adapter,
     )
 

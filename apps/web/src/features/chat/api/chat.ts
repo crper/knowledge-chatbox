@@ -5,63 +5,37 @@
 import { openapiRequestRequired } from "@/lib/api/client";
 import { apiFetchClient } from "@/lib/api/generated/client";
 import type { components } from "@/lib/api/generated/schema";
-import type { ResponseProviderName } from "@/features/settings/api/settings";
 
-export type ChatReasoningMode = "default" | "off" | "on";
+export type ChatReasoningMode = components["schemas"]["ReasoningMode"];
+export type ChatMessageStatus = components["schemas"]["ChatMessageStatus"];
+export type ChatMessageRole = components["schemas"]["ChatMessageRole"];
 
-export type ChatSessionItem = {
-  id: number;
-  user_id?: number;
-  reasoning_mode: ChatReasoningMode;
-  title: string | null;
-  created_at?: string;
-  updated_at?: string;
-};
+export type ChatSessionItem = components["schemas"]["ChatSessionRead"];
 
-export type ChatAttachmentItem = {
-  attachment_id: string;
-  type: "image" | "document";
-  name: string;
-  mime_type: string;
-  size_bytes: number;
-  resource_document_id?: number | null;
-  resource_document_version_id?: number | null;
-  archived_at?: string | null;
-};
+export type ChatAttachmentItem = components["schemas"]["ChatAttachmentMetadata"];
 
 export type ChatSourceItem = components["schemas"]["ChatSourceRead"];
 
-export type ChatProfileItem = {
-  configured: boolean;
-  model: string | null;
-  provider: ResponseProviderName;
-};
+export type ChatProfileItem = components["schemas"]["ChatProfileRead"];
 
-export type ChatSessionContextItem = {
-  session_id: number;
-  attachment_count: number;
-  attachments: ChatAttachmentItem[];
-  latest_assistant_message_id: number | null;
-  latest_assistant_sources: ChatSourceItem[];
-};
+export type ChatSessionContextItem = components["schemas"]["ChatSessionContextRead"];
 
 export type ChatMessageItem = {
-  attachments_json?: ChatAttachmentItem[] | null;
+  attachments?: ChatAttachmentItem[] | null;
   id: number;
   session_id?: number;
-  role: "user" | "assistant" | "system";
+  role: ChatMessageRole;
   content: string;
-  status: string;
+  status: ChatMessageStatus;
   client_request_id?: string | null;
   error_message?: string | null;
   retry_of_message_id?: number | null;
   reply_to_message_id?: number | null;
-  sources_json?: ChatSourceItem[] | null;
+  sources?: ChatSourceItem[] | null;
   created_at?: string;
 };
 
 type ChatMessageRead = components["schemas"]["ChatMessageRead"];
-type ChatAttachmentRead = NonNullable<ChatMessageRead["attachments_json"]>[number];
 
 type CreateChatSessionRequest = {
   reasoning_mode: ChatReasoningMode;
@@ -72,36 +46,6 @@ type UpdateChatSessionRequest = {
   reasoning_mode?: ChatReasoningMode | null;
   title?: string | null;
 };
-
-function toChatAttachmentItem(attachment: ChatAttachmentRead): ChatAttachmentItem {
-  return {
-    attachment_id: attachment.attachment_id,
-    type: attachment.type,
-    name: attachment.name,
-    mime_type: attachment.mime_type,
-    size_bytes: attachment.size_bytes,
-    resource_document_id: attachment.document_id ?? null,
-    resource_document_version_id: attachment.document_revision_id ?? null,
-    archived_at: attachment.archived_at ?? null,
-  };
-}
-
-function toChatMessageItem(message: ChatMessageRead): ChatMessageItem {
-  return {
-    attachments_json: message.attachments_json?.map(toChatAttachmentItem) ?? null,
-    id: message.id,
-    session_id: message.session_id,
-    role: message.role as "user" | "assistant" | "system",
-    content: message.content,
-    status: message.status,
-    client_request_id: message.client_request_id ?? null,
-    error_message: message.error_message ?? null,
-    retry_of_message_id: message.retry_of_message_id ?? null,
-    reply_to_message_id: message.reply_to_message_id ?? null,
-    sources_json: message.sources_json ?? null,
-    created_at: message.created_at,
-  };
-}
 
 export function createChatSession(input: { title?: string; reasoning_mode?: ChatReasoningMode }) {
   const body: CreateChatSessionRequest = {
@@ -136,7 +80,7 @@ export async function getChatMessagesWindow(
       },
     }),
   );
-  return messages.map(toChatMessageItem);
+  return messages as ChatMessageItem[];
 }
 
 type ChatSessionContextRead = components["schemas"]["ChatSessionContextRead"];

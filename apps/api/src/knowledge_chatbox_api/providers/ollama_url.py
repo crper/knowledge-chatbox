@@ -12,9 +12,10 @@ def normalize_provider_base_url(
     ensure_v1_suffix: bool = True,
     preserve_existing_path: bool = False,
 ) -> str | None:
-    normalized = (base_url or default or "").strip().rstrip("/")
-    if not normalized:
+    normalized = strip_or_none(base_url) or strip_or_none(default)
+    if normalized is None:
         return None
+    normalized = normalized.rstrip("/")
 
     parsed = URL(normalized)
     if not parsed.scheme or not parsed.host:
@@ -40,10 +41,7 @@ def normalize_provider_base_url(
 
 
 def _trim_v1_suffix(path: str) -> str:
-    normalized = path.rstrip("/")
-    if normalized.endswith("/v1"):
-        normalized = normalized[:-3]
-    return normalized
+    return path.rstrip("/").removesuffix("/v1")
 
 
 def normalize_ollama_base_url(base_url: str | None) -> str | None:

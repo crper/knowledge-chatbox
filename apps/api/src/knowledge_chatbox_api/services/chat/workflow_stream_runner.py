@@ -1,29 +1,41 @@
 """Workflow-backed chat stream execution."""
 
+from __future__ import annotations
+
 import asyncio
 from contextlib import suppress
-from dataclasses import asdict
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING
 
 from pydantic_ai import AgentRunResultEvent
 
 from knowledge_chatbox_api.core.logging import get_logger
 from knowledge_chatbox_api.core.observation import OPERATION_KIND_CHAT_STREAM
 from knowledge_chatbox_api.models.enums import ChatMessageStatus, ChatRunStatus
+from knowledge_chatbox_api.schemas.chat import ChatAttachmentMetadata, UsageData
 from knowledge_chatbox_api.services.chat.chat_persistence_service import ChatPersistenceService
 from knowledge_chatbox_api.services.chat.stream_events import (
     StreamEvent,
     StreamEventBatchItem,
     StreamEventEnvelope,
-    StreamEventName,
     StreamEventPayload,
     append_event_batch,
 )
 from knowledge_chatbox_api.services.chat.workflow.event_bridge import ChatWorkflowEventBridge
-from knowledge_chatbox_api.services.chat.workflow.output import merge_sources_by_key
+from knowledge_chatbox_api.services.chat.workflow.output import (
+    WorkflowSource,
+    merge_workflow_sources,
+)
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Coroutine
+    from collections.abc import AsyncIterator
+
+    from knowledge_chatbox_api.db.session import Session
+    from knowledge_chatbox_api.models.chat import ChatMessage, ChatRun
+    from knowledge_chatbox_api.repositories.chat_run_event_repository import ChatRunEventRepository
+    from knowledge_chatbox_api.schemas.settings import ProviderRuntimeSettings
+    from knowledge_chatbox_api.services.chat.chat_stream_presenter import ChatStreamPresenter
+    from knowledge_chatbox_api.services.chat.workflow.chat_workflow import ChatWorkflow
+    from knowledge_chatbox_api.services.chat.workflow.deps import ChatWorkflowDeps
 
 STREAM_INTERRUPTED_ERROR_MESSAGE = "本次生成连接中断，请重试。"
 STREAM_CANCELLED_ERROR_MESSAGE = "已停止生成。你可以继续提问，或重新发送。"
@@ -40,15 +52,15 @@ class WorkflowStreamRunner:
     def __init__(
         self,
         *,
-        session,
-        chat_run_event_repository,
-        presenter,
-        workflow,
-        workflow_deps,
-        settings,
-        run,
-        assistant_message,
-        user_message,
+        session: Session,
+        chat_run_event_repository: ChatRunEventRepository,
+        presenter: ChatStreamPresenter,
+        workflow: ChatWorkflow,
+        workflow_deps: ChatWorkflowDeps,
+        settings: ProviderRuntimeSettings,
+        run: ChatRun,
+        assistant_message: ChatMessage,
+        user_message: ChatMessage,
     ) -> None:
         self.session = session
         self.chat_run_event_repository = chat_run_event_repository
@@ -67,21 +79,18 @@ class WorkflowStreamRunner:
         *,
         session_id: int,
         question: str,
-        attachments: list[dict[str, Any]] | None,
+        attachments: list[ChatAttachmentMetadata] | None,
         current_seq: int,
     ):
-        async_events = cast(
-            "AsyncIterator[object]",
-            self.workflow.run_stream_events(
-                deps=self.workflow_deps,
-                session_id=session_id,
-                question=question,
-                attachments=attachments,
-            ),
+        async_events: AsyncIterator[object] = self.workflow.run_stream_events(
+            deps=self.workflow_deps,
+            session_id=session_id,
+            question=question,
+            attachments=attachments,
         )
         event_seq = current_seq
         started_text = False
-        sources: list[dict[str, Any]] = []
+        sources: list[WorkflowSource] = []
         with asyncio.Runner() as runner:
             try:
                 while True:
@@ -107,7 +116,7 @@ class WorkflowStreamRunner:
                             session_id=session_id,
                             sources=sources,
                             started_text=started_text,
-                            usage=asdict(usage),
+                            usage=UsageData.model_validate(usage),
                         )
                         for event in completion_events:
                             yield event
@@ -117,28 +126,36 @@ class WorkflowStreamRunner:
                         getattr(getattr(workflow_event, "result", None), "content", None)
                     )
                     if extracted_sources:
-                        sources = merge_sources_by_key(sources, extracted_sources)
+                        sources = merge_workflow_sources(sources, extracted_sources)
 
-                    for event_name, payload in self.bridge.map_event(
+                    for batch_item in self.bridge.map_event(
                         workflow_event,
                         run_id=self.run.id,
                         assistant_message_id=self.assistant_message.id,
                     ):
-                        if event_name == StreamEvent.PART_TEXT_START:
+                        if batch_item.event_name == StreamEvent.PART_TEXT_START:
                             self.persistence.mark_run_running(self.run, self.assistant_message)
                             started_text = True
-                            event_seq, event = self._append_event(event_seq, event_name, payload)
-                        elif event_name == StreamEvent.PART_TEXT_DELTA:
-                            delta = payload.get("delta", "") or ""
+                            event_seq, event = self._append_event(
+                                event_seq,
+                                batch_item.event_name,
+                                batch_item.payload,
+                            )
+                        elif batch_item.event_name == StreamEvent.PART_TEXT_DELTA:
+                            delta = batch_item.payload.delta or ""
                             self.persistence.append_text_delta(self.assistant_message, delta)
                             event_seq, event = self._append_event(
                                 event_seq,
-                                event_name,
-                                payload,
+                                batch_item.event_name,
+                                batch_item.payload,
                                 commit=False,
                             )
                         else:
-                            event_seq, event = self._append_event(event_seq, event_name, payload)
+                            event_seq, event = self._append_event(
+                                event_seq,
+                                batch_item.event_name,
+                                batch_item.payload,
+                            )
                         yield event
 
                 event_seq, event = self._record_failed_run(
@@ -178,12 +195,13 @@ class WorkflowStreamRunner:
             finally:
                 aclose = getattr(async_events, "aclose", None)
                 if callable(aclose):
-                    runner.run(cast("Coroutine[Any, Any, object]", aclose()))
+                    coro = aclose()
+                    if asyncio.iscoroutine(coro):
+                        with suppress(Exception):
+                            runner.run(coro)
 
-    async def _next_workflow_event(self, async_events: "AsyncIterator[object]") -> object:
-        next_event_task = asyncio.create_task(
-            cast("Coroutine[Any, Any, object]", async_events.__anext__())
-        )
+    async def _next_workflow_event(self, async_events: AsyncIterator[object]) -> object:
+        next_event_task = asyncio.ensure_future(async_events.__anext__())
 
         try:
             while True:
@@ -213,28 +231,28 @@ class WorkflowStreamRunner:
         *,
         current_seq: int,
         session_id: int,
-        sources: list[dict[str, Any]],
+        sources: list[WorkflowSource],
         started_text: bool,
-        usage: dict[str, Any] | None,
+        usage: UsageData | None,
     ) -> tuple[int, list[StreamEventEnvelope]]:
         completion_events: list[StreamEventBatchItem] = []
         if started_text:
             completion_events.append(
-                (
-                    StreamEvent.PART_TEXT_END,
-                    {
-                        "run_id": self.run.id,
-                        "assistant_message_id": self.assistant_message.id,
-                    },
+                StreamEventBatchItem(
+                    event_name=StreamEvent.PART_TEXT_END,
+                    payload=StreamEventPayload(
+                        run_id=self.run.id,
+                        assistant_message_id=self.assistant_message.id,
+                    ),
                 )
             )
         completion_events.append(
-            (
-                StreamEvent.USAGE_FINAL,
-                {
-                    "run_id": self.run.id,
-                    "usage": usage or {},
-                },
+            StreamEventBatchItem(
+                event_name=StreamEvent.USAGE_FINAL,
+                payload=StreamEventPayload(
+                    run_id=self.run.id,
+                    usage=usage or UsageData(),
+                ),
             )
         )
         next_seq, presented_completion_events = self._append_event_batch(
@@ -255,20 +273,20 @@ class WorkflowStreamRunner:
         next_seq, terminal_events = self._append_event_batch(
             next_seq,
             [
-                (
-                    StreamEvent.MESSAGE_COMPLETED,
-                    {
-                        "run_id": self.run.id,
-                        "assistant_message_id": self.assistant_message.id,
-                        "status": ChatMessageStatus.SUCCEEDED,
-                    },
+                StreamEventBatchItem(
+                    event_name=StreamEvent.MESSAGE_COMPLETED,
+                    payload=StreamEventPayload(
+                        run_id=self.run.id,
+                        assistant_message_id=self.assistant_message.id,
+                        status=ChatMessageStatus.SUCCEEDED,
+                    ),
                 ),
-                (
-                    StreamEvent.RUN_COMPLETED,
-                    {
-                        "run_id": self.run.id,
-                        "assistant_message_id": self.assistant_message.id,
-                    },
+                StreamEventBatchItem(
+                    event_name=StreamEvent.RUN_COMPLETED,
+                    payload=StreamEventPayload(
+                        run_id=self.run.id,
+                        assistant_message_id=self.assistant_message.id,
+                    ),
                 ),
             ],
         )
@@ -281,7 +299,7 @@ class WorkflowStreamRunner:
         error_message: str,
         failure_type: str,
         session_id: int,
-        sources: list[dict[str, Any]] | None = None,
+        sources: list[WorkflowSource] | None = None,
     ) -> tuple[int, StreamEventEnvelope]:
         self.user_message.status = ChatMessageStatus.FAILED
         self.user_message.error_message = error_message
@@ -304,11 +322,11 @@ class WorkflowStreamRunner:
         return self._append_event(
             current_seq,
             StreamEvent.RUN_FAILED,
-            {
-                "run_id": self.run.id,
-                "assistant_message_id": self.assistant_message.id,
-                "error_message": error_message,
-            },
+            StreamEventPayload(
+                run_id=self.run.id,
+                assistant_message_id=self.assistant_message.id,
+                error_message=error_message,
+            ),
         )
 
     def _record_cancelled_run(
@@ -316,7 +334,7 @@ class WorkflowStreamRunner:
         *,
         current_seq: int,
         session_id: int,
-        sources: list[dict[str, Any]] | None = None,
+        sources: list[WorkflowSource] | None = None,
     ) -> tuple[int, StreamEventEnvelope]:
         self.persistence.cancel_run(
             self.run,
@@ -335,17 +353,17 @@ class WorkflowStreamRunner:
         return self._append_event(
             current_seq,
             StreamEvent.RUN_FAILED,
-            {
-                "run_id": self.run.id,
-                "assistant_message_id": self.assistant_message.id,
-                "error_message": STREAM_CANCELLED_ERROR_MESSAGE,
-            },
+            StreamEventPayload(
+                run_id=self.run.id,
+                assistant_message_id=self.assistant_message.id,
+                error_message=STREAM_CANCELLED_ERROR_MESSAGE,
+            ),
         )
 
     def _append_event(
         self,
         current_seq: int,
-        event_name: StreamEventName,
+        event_name: StreamEvent,
         data: StreamEventPayload,
         *,
         commit: bool = True,
@@ -355,7 +373,7 @@ class WorkflowStreamRunner:
             run_id=self.run.id,
             seq=next_seq,
             event_type=event_name,
-            payload_json=data,
+            payload_json=data.model_dump(exclude_none=True),
             flush=commit,
         )
         if commit:
@@ -367,7 +385,7 @@ class WorkflowStreamRunner:
         current_seq: int,
         events: list[StreamEventBatchItem],
     ) -> tuple[int, list[StreamEventEnvelope]]:
-        result: tuple[int, list[StreamEventEnvelope]] = append_event_batch(
+        return append_event_batch(
             run_id=self.run.id,
             current_seq=current_seq,
             events=events,
@@ -375,4 +393,3 @@ class WorkflowStreamRunner:
             presenter=self.presenter,
             session=self.session,
         )
-        return result

@@ -29,6 +29,7 @@ export function QueryProvider({ children }: PropsWithChildren) {
               return failureCount < 2;
             },
             refetchOnWindowFocus: false,
+            staleTime: 15_000,
           },
         },
       }),

@@ -3,7 +3,6 @@
  */
 
 import {
-  forwardRef,
   memo,
   useCallback,
   useEffect,
@@ -42,16 +41,19 @@ const BOTTOM_THRESHOLD = 120;
 const INITIAL_MESSAGE_ITEM_COUNT = 12;
 const TOP_THRESHOLD = 80;
 
-const ChatViewportList = forwardRef<
-  HTMLDivElement,
-  { "data-testid"?: string } & Omit<ComponentProps<"div">, "data-testid">
->(function ChatViewportList({ children, "data-testid": testId }, ref) {
+function ChatViewportList({
+  children,
+  "data-testid": testId,
+  ref,
+}: { "data-testid"?: string } & Omit<ComponentProps<"div">, "data-testid"> & {
+    ref?: React.Ref<HTMLDivElement>;
+  }) {
   return (
     <div data-chat-viewport-list="bounded" data-testid={testId} ref={ref}>
       {children}
     </div>
   );
-});
+}
 
 function renderProbeMessageRow() {
   return <div aria-hidden="true" className="h-[220px] opacity-0 pointer-events-none" />;

@@ -6,8 +6,30 @@ import type { UserItem } from "../api/users";
 import { UserTable } from "./user-table";
 
 const users: UserItem[] = [
-  { id: 2, username: "bob", role: "user", status: "active" },
-  { id: 1, username: "admin", role: "admin", status: "active" },
+  {
+    id: 2,
+    username: "bob",
+    role: "user",
+    status: "active",
+    created_at: "2025-01-01T00:00:00Z",
+    theme_preference: "system",
+    created_by_user_id: null,
+    updated_at: "2025-01-01T00:00:00Z",
+    last_login_at: null,
+    password_changed_at: null,
+  },
+  {
+    id: 1,
+    username: "admin",
+    role: "admin",
+    status: "active",
+    created_at: "2025-01-01T00:00:00Z",
+    theme_preference: "system",
+    created_by_user_id: null,
+    updated_at: "2025-01-01T00:00:00Z",
+    last_login_at: null,
+    password_changed_at: null,
+  },
 ];
 
 describe("UserTable", () => {

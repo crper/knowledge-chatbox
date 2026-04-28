@@ -1,0 +1,40 @@
+colors: true
+no_tty: true
+
+pre-commit:
+  parallel: true
+  commands:
+    python-lint:
+      root: apps/api/
+      glob: "*.py"
+      run: uv run ruff check {staged_files}
+
+    python-format:
+      root: apps/api/
+      glob: "*.py"
+      run: uv run ruff format --check {staged_files}
+
+    web-lint:
+      root: apps/web/
+      run: vp staged
+
+pre-push:
+  parallel: true
+  commands:
+    python-typecheck:
+      root: apps/api/
+      glob: "*.py"
+      run: uv run basedpyright
+      pass_filenames: false
+
+    python-test:
+      root: apps/api/
+      glob: "*.py"
+      run: uv run --group dev python -m pytest -q
+      pass_filenames: false
+
+    web-typecheck:
+      root: apps/web/
+      glob: "*.{ts,tsx}"
+      run: vp check --no-lint --no-fmt
+      pass_filenames: false

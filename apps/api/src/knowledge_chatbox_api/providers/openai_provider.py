@@ -6,14 +6,12 @@ import base64
 from time import perf_counter
 from typing import TYPE_CHECKING, Any, cast
 
-from openai import NOT_GIVEN, OpenAI
+from openai import NOT_GIVEN, Omit, OpenAI
+from openai.types.shared_params.reasoning import Reasoning
 
 from knowledge_chatbox_api.core.logging import get_logger
 from knowledge_chatbox_api.providers.base import (
     DEFAULT_VISION_PROMPT,
-    BaseEmbeddingAdapter,
-    BaseResponseAdapter,
-    BaseVisionAdapter,
     ClientCacheMixin,
     EmbeddingSettings,
     ProviderHealthResult,
@@ -29,7 +27,7 @@ from knowledge_chatbox_api.providers.base import (
     transform_content,
 )
 from knowledge_chatbox_api.providers.ollama_url import normalize_provider_base_url
-from knowledge_chatbox_api.utils.helpers import safe_getattr
+from knowledge_chatbox_api.schemas.chat import UsageData
 from knowledge_chatbox_api.utils.timing import elapsed_ms
 
 if TYPE_CHECKING:
@@ -92,7 +90,7 @@ class _OpenAIClientMixin(ClientCacheMixin):
         return settings.provider_profiles.openai.api_key
 
     def _model_exists_in_list(self, models_response: Any, model: str) -> bool:
-        data = safe_getattr(models_response, "data", models_response)
+        data = getattr(models_response, "data", models_response)
         if isinstance(data, dict):
             data = data.get("data", [])
 
@@ -101,33 +99,32 @@ class _OpenAIClientMixin(ClientCacheMixin):
         except TypeError:
             return True
 
-        return any(
-            (safe_getattr(item, "id", None) or (item.get("id") if isinstance(item, dict) else None))
-            == model
-            for item in items
-        )
+        return any(getattr(item, "id", None) == model for item in items)
+
+    def _has_status_code(
+        self,
+        exc: Exception,
+        codes: set[int],
+        *exception_types: type[Exception],
+    ) -> bool:
+        if exception_types and isinstance(exc, exception_types):
+            return True
+        status_code = getattr(exc, "status_code", None)
+        if isinstance(status_code, int) and status_code in codes:
+            return True
+        response = getattr(exc, "response", None)
+        response_code = getattr(response, "status_code", None)
+        return isinstance(response_code, int) and response_code in codes
 
     def _is_not_found_error(self, exc: Exception) -> bool:
         from openai import NotFoundError
 
-        if isinstance(exc, NotFoundError):
-            return True
-        status_code = getattr(exc, "status_code", None)
-        if status_code in {404, 405, 501}:
-            return True
-        response = getattr(exc, "response", None)
-        return getattr(response, "status_code", None) in {404, 405, 501}
+        return self._has_status_code(exc, {404, 405, 501}, NotFoundError)
 
     def _is_auth_error(self, exc: Exception) -> bool:
         from openai import AuthenticationError
 
-        if isinstance(exc, AuthenticationError):
-            return True
-        status_code = getattr(exc, "status_code", None)
-        if status_code in {401, 403}:
-            return True
-        response = getattr(exc, "response", None)
-        return getattr(response, "status_code", None) in {401, 403}
+        return self._has_status_code(exc, {401, 403}, AuthenticationError)
 
     def _quick_model_check(self, settings: ProviderSettings, model: str) -> None:
         client = self._client(settings)
@@ -147,7 +144,7 @@ class _OpenAIClientMixin(ClientCacheMixin):
 
         raise OpenAIModelNotAvailableError(model)
 
-    def _run_health_check(self, settings, model: str) -> ProviderHealthResult:
+    def _check_model_availability(self, settings, model: str) -> ProviderHealthResult:
         start = perf_counter()
         if not self._api_key(settings):
             return ProviderHealthResult(healthy=False, message="OpenAI API key is missing.")
@@ -173,11 +170,11 @@ class _OpenAIClientMixin(ClientCacheMixin):
             latency_ms=elapsed_ms(start),
         )
 
-    def _reasoning_config(self, settings: ResponseRuntimeSettings) -> dict[str, str] | None:
+    def _reasoning_config(self, settings: ResponseRuntimeSettings) -> Reasoning | None:
         config = build_reasoning_config(ProviderName.OPENAI, settings.reasoning_mode)
         effort = config.get("openai_reasoning_effort")
         if effort is not None:
-            return {"effort": effort}
+            return Reasoning(effort=effort)
         return None
 
     def _serialize_response_input(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -196,7 +193,7 @@ class _OpenAIClientMixin(ClientCacheMixin):
                 text_fn=lambda t: {"type": "input_text", "text": t},
                 image_fn=lambda img: {
                     "type": "input_image",
-                    "image_url": f"data:{img['mime_type']};base64,{img['data_base64']}",
+                    "image_url": f"data:{img.mime_type};base64,{img.data_base64}",
                     "detail": "auto",
                 },
             )
@@ -205,60 +202,61 @@ class _OpenAIClientMixin(ClientCacheMixin):
         return serialized_messages
 
 
-class OpenAIResponseAdapter(_OpenAIClientMixin, BaseResponseAdapter):
+class OpenAIResponseAdapter(_OpenAIClientMixin):
     """OpenAI Responses API 适配器。"""
 
     def response(self, messages: list[dict[str, Any]], settings: ResponseRuntimeSettings) -> str:
         client = self._client(settings)
+        reasoning = self._reasoning_config(settings)
         response = client.responses.create(
             model=settings.response_route.model,
             input=cast("ResponseInputParam", self._serialize_response_input(messages)),
             max_output_tokens=DEFAULT_MAX_OUTPUT_TOKENS,
-            reasoning=cast("Any", self._reasoning_config(settings)),
+            reasoning=reasoning if reasoning else Omit(),
         )
-        return safe_getattr(response, "output_text", "") or ""
+        return getattr(response, "output_text", "") or ""
 
     def stream_response(
         self,
         messages: list[dict[str, Any]],
         settings: ResponseRuntimeSettings,
-    ) -> collections.abc.Generator[ResponseStreamChunk, None, None]:
+    ) -> collections.abc.Generator[ResponseStreamChunk]:
         client = self._client(settings)
+        reasoning = self._reasoning_config(settings)
 
         try:
             with client.responses.stream(
                 model=settings.response_route.model,
                 input=cast("ResponseInputParam", self._serialize_response_input(messages)),
                 max_output_tokens=DEFAULT_MAX_OUTPUT_TOKENS,
-                reasoning=cast("Any", self._reasoning_config(settings)),
+                reasoning=reasoning if reasoning else Omit(),
             ) as stream:
                 response_id: str | None = None
                 for event in stream:
-                    response_id = safe_getattr(event, "response_id", response_id)
-                    event_type = safe_getattr(event, "type")
+                    response_id = getattr(event, "response_id", response_id)
+                    event_type = getattr(event, "type", None)
                     if event_type == "response.output_text.delta":
                         yield ResponseStreamChunk(
                             type="text_delta",
-                            delta=safe_getattr(event, "delta", ""),
+                            delta=getattr(event, "delta", ""),
                             provider_response_id=response_id,
                         )
                     elif event_type == "response.completed":
-                        response_obj = safe_getattr(event, "response")
-                        usage_obj = safe_getattr(response_obj, "usage") if response_obj else None
-                        model_dump = safe_getattr(usage_obj, "model_dump") if usage_obj else None
-                        usage_payload: dict[str, Any] | None = None
-                        if callable(model_dump):
-                            result = model_dump()
-                            usage_payload = result if isinstance(result, dict) else None
-                        elif isinstance(usage_obj, dict):
-                            usage_payload = usage_obj
+                        response_obj = getattr(event, "response", None)
+                        usage_obj = getattr(response_obj, "usage", None) if response_obj else None
+                        usage_data: UsageData | None = None
+                        if usage_obj is not None:
+                            try:
+                                usage_data = UsageData.model_validate(usage_obj)
+                            except Exception:
+                                usage_data = None
                         yield ResponseStreamChunk(
                             type="completed",
                             provider_response_id=response_id,
-                            usage=usage_payload,
+                            usage=usage_data,
                         )
         except Exception as exc:
-            logger.warning("openai_stream_error", error_message=str(exc))
+            logger.warning("openai_stream_error", error_message=str(exc), exc_info=True)
             user_message = "Provider stream error."
             if self._is_auth_error(exc):
                 user_message = "Authentication failed. Please check your API key."
@@ -267,10 +265,10 @@ class OpenAIResponseAdapter(_OpenAIClientMixin, BaseResponseAdapter):
             yield ResponseStreamChunk(type="error", error_message=user_message)
 
     def health_check(self, settings: ResponseSettings) -> ProviderHealthResult:
-        return self._run_health_check(settings, settings.response_route.model)
+        return self._check_model_availability(settings, settings.response_route.model)
 
 
-class OpenAIEmbeddingAdapter(_OpenAIClientMixin, BaseEmbeddingAdapter):
+class OpenAIEmbeddingAdapter(_OpenAIClientMixin):
     """OpenAI embedding 适配器。"""
 
     @provider_retry
@@ -280,10 +278,10 @@ class OpenAIEmbeddingAdapter(_OpenAIClientMixin, BaseEmbeddingAdapter):
         return [item.embedding for item in response.data]
 
     def health_check(self, settings: EmbeddingSettings) -> ProviderHealthResult:
-        return self._run_health_check(settings, settings.embedding_route.model)
+        return self._check_model_availability(settings, settings.embedding_route.model)
 
 
-class OpenAIVisionAdapter(_OpenAIClientMixin, BaseVisionAdapter):
+class OpenAIVisionAdapter(_OpenAIClientMixin):
     """OpenAI vision 适配器。"""
 
     supports_vision = True
@@ -314,7 +312,7 @@ class OpenAIVisionAdapter(_OpenAIClientMixin, BaseVisionAdapter):
             ],
             max_output_tokens=DEFAULT_MAX_OUTPUT_TOKENS,
         )
-        return safe_getattr(response, "output_text", "") or ""
+        return getattr(response, "output_text", "") or ""
 
     def health_check(self, settings: VisionSettings) -> ProviderHealthResult:
-        return self._run_health_check(settings, settings.vision_route.model)
+        return self._check_model_availability(settings, settings.vision_route.model)

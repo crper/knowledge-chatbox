@@ -8,9 +8,8 @@ import {
   NavigationMenuList,
 } from "@/components/ui/navigation-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Link, NavLink } from "@/lib/app-router";
+import { Link } from "@tanstack/react-router";
 import type { AppUser } from "@/lib/api/client";
-import { buildSettingsPath } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import { resolveSettingsSection } from "@/features/settings/settings-sections";
 import { WORKSPACE_LINKS } from "../workspace-links";
@@ -70,9 +69,9 @@ function WorkspaceRailLink({
   if (!compact) {
     return (
       <NavigationMenuItem>
-        <NavLink className="w-full" onClick={onNavigate} to={to}>
+        <Link className="w-full" onClick={onNavigate} to={to}>
           {button}
-        </NavLink>
+        </Link>
       </NavigationMenuItem>
     );
   }
@@ -80,9 +79,9 @@ function WorkspaceRailLink({
   if (!showCompactTooltips) {
     return (
       <NavigationMenuItem>
-        <NavLink className="flex w-full justify-center" onClick={onNavigate} to={to}>
+        <Link className="flex w-full justify-center" onClick={onNavigate} to={to}>
           {button}
-        </NavLink>
+        </Link>
       </NavigationMenuItem>
     );
   }
@@ -92,9 +91,9 @@ function WorkspaceRailLink({
       <Tooltip>
         <TooltipTrigger
           render={
-            <NavLink className="flex w-full justify-center" onClick={onNavigate} to={to}>
+            <Link className="flex w-full justify-center" onClick={onNavigate} to={to}>
               {button}
-            </NavLink>
+            </Link>
           }
         />
         <TooltipContent
@@ -120,7 +119,7 @@ export function WorkspaceRail({
   user,
 }: WorkspaceRailProps) {
   const { t } = useTranslation("common");
-  const settingsPath = buildSettingsPath(resolveSettingsSection(null, user));
+  const settingsSection = resolveSettingsSection(null, user);
 
   return (
     <aside
@@ -131,7 +130,8 @@ export function WorkspaceRail({
         aria-label={t("workspaceTitle")}
         className={cn("flex justify-center", compact ? "" : "justify-start")}
         onClick={onNavigate}
-        to={settingsPath}
+        to="/settings/$section"
+        params={{ section: settingsSection }}
       >
         <BrandMark
           alt={t("workspaceLogoAlt")}

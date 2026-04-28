@@ -26,7 +26,7 @@ def test_event_bridge_maps_tool_call_and_result_events() -> None:
         run_id=7,
         assistant_message_id=11,
     )
-    assert tool_call[0][0] == "tool.call"
+    assert tool_call[0].event_name == "tool.call"
 
     tool_result = bridge.map_event(
         FunctionToolResultEvent(
@@ -42,8 +42,8 @@ def test_event_bridge_maps_tool_call_and_result_events() -> None:
         run_id=7,
         assistant_message_id=11,
     )
-    assert tool_result[0][0] == "tool.result"
-    assert tool_result[1][0] == "part.source"
+    assert tool_result[0].event_name == "tool.result"
+    assert tool_result[1].event_name == "part.source"
 
 
 def test_event_bridge_maps_text_events() -> None:
@@ -59,8 +59,8 @@ def test_event_bridge_maps_text_events() -> None:
         run_id=7,
         assistant_message_id=11,
     )
-    assert start[0][0] == "part.text.start"
-    assert delta[0][0] == "part.text.delta"
+    assert start[0].event_name == "part.text.start"
+    assert delta[0].event_name == "part.text.delta"
 
 
 def test_event_bridge_ignores_final_result_event() -> None:

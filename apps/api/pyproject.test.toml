@@ -1,0 +1,23 @@
+[tool.basedpyright]
+pythonVersion = "3.13"
+typeCheckingMode = "basic"
+include = ["tests"]
+extraPaths = ["src", "."]
+reportMissingImports = false
+reportMissingTypeStubs = false
+reportAny = false
+reportExplicitAny = false
+reportUnusedImport = false
+reportUnusedCallResult = false
+reportUnusedParameter = false
+reportUnknownArgumentType = false
+reportUnknownVariableType = false
+reportUnknownMemberType = false
+reportUnknownParameterType = false
+reportUnknownLambdaType = false
+reportMissingParameterType = false
+reportMissingTypeArgument = false
+reportUnannotatedClassAttribute = false
+reportUntypedBaseClass = false
+reportPrivateUsage = false
+reportUnusedFunction = false

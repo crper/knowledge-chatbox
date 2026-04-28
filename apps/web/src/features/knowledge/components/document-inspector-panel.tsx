@@ -11,13 +11,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Tabs, TabsIndicator, TabsList, TabsPanel, TabsTab } from "@/components/ui/tabs";
-import { Link } from "@/lib/app-router";
-import { cn } from "@/lib/utils";
-import { getDocumentFileUrl } from "@/features/chat/utils/document-file-url";
+import { Link } from "@tanstack/react-router";
+import { cn, formatFileSize } from "@/lib/utils";
+import { getDocumentFileUrl } from "@/lib/api/document-file-url";
 import { documentVersionsQueryOptions } from "../api/documents-query";
-import { formatDateTime } from "@/lib/date-utils";
+import { formatDateTime, useDateLocale } from "@/lib/date-utils";
 import {
-  formatFileSize,
   getKnowledgeDocumentCategoryLabel,
   getKnowledgeDocumentStatusMeta,
 } from "./resource-document-helpers";
@@ -25,6 +24,16 @@ import { DocumentVersionList } from "./version-drawer";
 import { openProtectedFile, downloadProtectedFile } from "./protected-file-actions";
 
 export type DocumentInspectorTabValue = "details" | "versions" | "actions";
+
+const DOCUMENT_INSPECTOR_TAB_VALUES: readonly DocumentInspectorTabValue[] = [
+  "details",
+  "versions",
+  "actions",
+];
+
+function isDocumentInspectorTab(value: string): value is DocumentInspectorTabValue {
+  return (DOCUMENT_INSPECTOR_TAB_VALUES as readonly string[]).includes(value);
+}
 
 type DocumentInspectorPanelProps = {
   activeTab?: DocumentInspectorTabValue;
@@ -43,20 +52,20 @@ export function DocumentInspectorPanel({
   onDelete,
   onReindex,
 }: DocumentInspectorPanelProps) {
-  const { i18n, t } = useTranslation("knowledge");
+  const { t } = useTranslation("knowledge");
+  const dateLocale = useDateLocale();
   const [uncontrolledTab, setUncontrolledTab] = useState<DocumentInspectorTabValue>("details");
-  const versionsQuery = useQuery({
-    ...documentVersionsQueryOptions(document?.document_id ?? 0),
-    enabled: document !== null,
-  });
+  const versionsQuery = useQuery(
+    documentVersionsQueryOptions(document?.document_id ?? 0, document !== null),
+  );
   const resolvedTab = activeTab ?? uncontrolledTab;
 
   const handleTabChange = (value: string) => {
-    const nextTab = value as DocumentInspectorTabValue;
+    if (!isDocumentInspectorTab(value)) return;
     if (activeTab === undefined) {
-      setUncontrolledTab(nextTab);
+      setUncontrolledTab(value);
     }
-    onActiveTabChange?.(nextTab);
+    onActiveTabChange?.(value);
   };
 
   if (!document) {
@@ -80,15 +89,12 @@ export function DocumentInspectorPanel({
   }
 
   const fileUrl = getDocumentFileUrl(document.id);
-  const statusMeta = getKnowledgeDocumentStatusMeta(document.status, t);
+  const statusMeta = getKnowledgeDocumentStatusMeta(document.ingest_status, t);
   const metaRows = [
     [t("filterTypeSectionTitle"), getKnowledgeDocumentCategoryLabel(document.file_type, t)],
-    [t("versionHistoryTitle"), t("versionValue", { version: document.version })],
+    [t("versionHistoryTitle"), t("versionValue", { version: document.revision_no })],
     [t("summaryIndexedLabel"), statusMeta.label],
-    [
-      t("rowUpdatedLabel"),
-      formatDateTime(document.updated_at, i18n.resolvedLanguage ?? "zh-CN") || document.updated_at,
-    ],
+    [t("rowUpdatedLabel"), formatDateTime(document.updated_at, dateLocale) || document.updated_at],
     ["Size", formatFileSize(document.file_size) ?? "—"],
     ["Chunks", typeof document.chunk_count === "number" ? `${document.chunk_count}` : "—"],
   ] as const;

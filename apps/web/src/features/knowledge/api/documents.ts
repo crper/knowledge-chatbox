@@ -2,15 +2,26 @@
  * @file 资源相关接口请求模块。
  */
 
-import { ApiRequestError, buildApiUrl, openapiRequestRequired } from "@/lib/api/client";
+import { openapiRequestRequired, parseEnvelopeFromRawBody } from "@/lib/api/client";
 import { authenticatedUpload } from "@/lib/api/authenticated-upload";
 import { apiFetchClient } from "@/lib/api/generated/client";
 import type { components } from "@/lib/api/generated/schema";
-import { extractErrorDetail, getUserFacingErrorMessage } from "@/lib/api/error-response";
+import { buildApiUrl } from "@/lib/config/env";
 
 export const KNOWLEDGE_DOCUMENT_STATUSES = ["uploaded", "processing", "indexed", "failed"] as const;
 
 export type KnowledgeDocumentStatus = (typeof KNOWLEDGE_DOCUMENT_STATUSES)[number];
+
+function toKnowledgeDocumentStatus(status: string | null | undefined): KnowledgeDocumentStatus {
+  if (status && (KNOWLEDGE_DOCUMENT_STATUSES as readonly string[]).includes(status)) {
+    return status as KnowledgeDocumentStatus;
+  }
+  if (import.meta.env.DEV && status) {
+    console.warn(`Unknown document status: "${status}", defaulting to "uploaded"`);
+  }
+  return "uploaded";
+}
+
 export type KnowledgeDocumentListType = "document" | "image" | "markdown" | "pdf" | "text";
 export type KnowledgeDocumentListFilters = {
   query?: string;
@@ -24,13 +35,13 @@ export type KnowledgeDocument = {
   document_id: number;
   name: string;
   logical_name?: string;
-  version: number;
-  hash?: string;
+  revision_no: number;
+  content_hash?: string;
   file_type: string;
   mime_type?: string;
-  status: KnowledgeDocumentStatus;
+  ingest_status: KnowledgeDocumentStatus;
   is_latest: boolean;
-  supersedes_version_id?: number | null;
+  supersedes_revision_id?: number | null;
   file_size?: number | null;
   chunk_count?: number | null;
   error_message?: string | null;
@@ -53,6 +64,27 @@ export type DocumentUploadReadiness = {
   image_fallback: boolean;
 };
 
+const BLOCKING_REASONS = ["embedding_not_configured", "pending_embedding_not_configured"] as const;
+
+function toBlockingReason(
+  reason: string | null | undefined,
+): DocumentUploadReadiness["blocking_reason"] {
+  if (reason && (BLOCKING_REASONS as readonly string[]).includes(reason)) {
+    return reason as DocumentUploadReadiness["blocking_reason"];
+  }
+  return null;
+}
+
+function toDocumentUploadReadiness(
+  readiness: DocumentUploadReadinessRead,
+): DocumentUploadReadiness {
+  return {
+    blocking_reason: toBlockingReason(readiness.blocking_reason),
+    can_upload: readiness.can_upload,
+    image_fallback: readiness.image_fallback,
+  };
+}
+
 export type DocumentListSummary = {
   pending_count: number;
 };
@@ -68,13 +100,13 @@ function toKnowledgeDocument(
     document_id: document.id,
     name: revision?.source_filename ?? document.title,
     logical_name: document.logical_name,
-    version: revision?.revision_no ?? 0,
-    hash: revision?.content_hash,
+    revision_no: revision?.revision_no ?? 0,
+    content_hash: revision?.content_hash,
     file_type: revision?.file_type ?? "txt",
     mime_type: revision?.mime_type,
-    status: (revision?.ingest_status ?? "uploaded") as KnowledgeDocumentStatus,
+    ingest_status: toKnowledgeDocumentStatus(revision?.ingest_status ?? "uploaded"),
     is_latest: true,
-    supersedes_version_id: revision?.supersedes_revision_id ?? null,
+    supersedes_revision_id: revision?.supersedes_revision_id ?? null,
     file_size: revision?.file_size ?? null,
     chunk_count: revision?.chunk_count ?? null,
     error_message: revision?.error_message ?? null,
@@ -103,12 +135,12 @@ function toRevisionBaseFields(revision: DocumentRevisionRead) {
     id: revision.id,
     document_id: revision.document_id,
     name: revision.source_filename,
-    version: revision.revision_no,
-    hash: revision.content_hash,
+    revision_no: revision.revision_no,
+    content_hash: revision.content_hash,
     file_type: revision.file_type,
     mime_type: revision.mime_type,
-    status: revision.ingest_status as KnowledgeDocumentStatus,
-    supersedes_version_id: revision.supersedes_revision_id ?? null,
+    ingest_status: toKnowledgeDocumentStatus(revision.ingest_status),
+    supersedes_revision_id: revision.supersedes_revision_id ?? null,
     file_size: revision.file_size ?? null,
     chunk_count: revision.chunk_count ?? null,
     error_message: revision.error_message ?? null,
@@ -156,11 +188,7 @@ export async function getDocumentUploadReadiness() {
   const readiness = await openapiRequestRequired<DocumentUploadReadinessRead>(
     apiFetchClient.GET("/api/documents/upload-readiness"),
   );
-  return {
-    blocking_reason: readiness.blocking_reason as DocumentUploadReadiness["blocking_reason"],
-    can_upload: readiness.can_upload,
-    image_fallback: readiness.image_fallback,
-  } satisfies DocumentUploadReadiness;
+  return toDocumentUploadReadiness(readiness);
 }
 
 export async function getDocumentListSummary() {
@@ -188,38 +216,12 @@ export function uploadDocument(
     signal: options?.signal,
     url: buildApiUrl("/api/documents/upload"),
   }).then(({ response, responseText: rawBody }) => {
-    let parsedBody: unknown = null;
-
-    if (rawBody.trim()) {
-      try {
-        parsedBody = JSON.parse(rawBody) as unknown;
-      } catch {
-        const detail = extractErrorDetail(rawBody, null, response);
-        throw new ApiRequestError(getUserFacingErrorMessage(detail, response), {
-          code: detail.code,
-          status: response.status,
-        });
-      }
-    }
-
-    const payload = parsedBody as {
-      success?: boolean;
-      data?: DocumentUploadRead | null;
-    } | null;
-
-    if (response.ok && payload?.success && payload.data) {
-      return toKnowledgeDocument(
-        payload.data.document,
-        payload.data.latest_revision,
-        payload.data.deduplicated ?? false,
-      );
-    }
-
-    const detail = extractErrorDetail(rawBody, parsedBody, response);
-    throw new ApiRequestError(getUserFacingErrorMessage(detail, response), {
-      code: detail.code,
-      status: response.status,
-    });
+    const payload = parseEnvelopeFromRawBody<DocumentUploadRead>(rawBody, response);
+    return toKnowledgeDocument(
+      payload.document,
+      payload.latest_revision,
+      payload.deduplicated ?? false,
+    );
   });
 }
 

@@ -32,9 +32,10 @@
 - `just` / `just help` 默认只展示当前建议优先记住的高频入口；如果要看完整命令面，执行 `just --list`
 - 依赖已安装后的推荐入口：仓库根目录 `just dev`
 - `just init-env` 会在复制 `.env.example` 后自动补齐空白的 `JWT_SECRET_KEY` 和 `INITIAL_ADMIN_PASSWORD`，并提示登录密码应回看 `.env`
-- `just dev` / `just reset-dev` 会把当前 `API_PORT / WEB_PORT` 传给共享开发脚本；脚本会先拉起 API、等待 `GET /api/health` ready，再启动 Web，并在终端打印 Web、API health、docs、redoc、OpenAPI 地址，以及 bootstrap 管理员账号提示
+- `just dev` / `just reset-dev` 会把当前 `API_PORT / WEB_PORT` 传给共享开发脚本；脚本会先预检两个端口是否空闲，预检通过后再拉起 API、等待 `GET /api/health` ready，最后启动 Web，并在终端打印 Web、API health、docs、redoc、OpenAPI 地址，以及 bootstrap 管理员账号提示
 - 共享开发脚本默认会给 API 约 60 秒启动补偿时间（默认 300 次尝试，每次间隔 0.2 秒）
 - 如果本机恢复文档 / chat run / 索引状态较慢，可临时调大 `DEV_API_READY_MAX_ATTEMPTS` 再执行 `just dev`
+- 后端解释器基线以 `apps/api/.python-version` 为准，当前固定 `3.13.13`；本地补环境、CI 和容器构建都不应再各自漂移到别的 Python 小版本
 - 前端 `vp` 版本由 `apps/web/.node-version` 固定，避免每次启动都先走远端 `lts` 解析
 - 只需要手动补齐本地数据库 schema 时，优先使用仓库根目录 `just api-migrate`
 - `just setup` 是非破坏性的依赖同步入口；它会执行 `apps/api` 下的 `uv sync --all-groups` 和 `apps/web` 下的 `vp install`
@@ -52,10 +53,9 @@
 **API 契约与校验**
 
 - API 启动后默认暴露 `/docs`、`/redoc`、`/openapi.json`；它们与前端契约生成共用同一份 FastAPI OpenAPI 真相源
-- OpenAPI 契约校验当前是严格门禁：`just web-check` / `vp run api:check` 如果发现 `apps/web/openapi/schema.json` 或 `src/lib/api/generated/schema.d.ts` 漂移会直接失败
-- 这两个前端契约 snapshot 需要提交进仓库，但通过 `apps/web/.prettierignore` 排除在常规格式化之外，避免生成器输出和 formatter 互相覆盖
+- OpenAPI 契约校验当前是严格门禁：`just web-check` / `vp run api:check` 在本地产物已存在时会校验 `apps/web/openapi/schema.json` 与 `src/lib/api/generated/schema.d.ts` 是否漂移；如果 fresh clone 或 CI 工作区里这两个文件还不存在，会先自动生成再继续后续检查
 - 校验失败时标准修复入口是 `cd apps/web && vp run api:generate`
-- 后端本地静态检查入口：仓库根目录 `just api-check`，内部会执行 `ruff check`、`ruff format --check` 和 `basedpyright`
+- 后端本地静态检查入口：仓库根目录 `just api-check`，内部会执行 `ruff check`、`ruff format --check`、`basedpyright`（`src`）和 `basedpyright --project pyproject.test.toml`（`tests`）
 
 ### GitHub 自动化
 
@@ -156,7 +156,7 @@ flowchart LR
 | `scripts/export_openapi.py`                                            | 导出 FastAPI OpenAPI schema 给前端生成契约类型                      | 改 API route / schema 后同步前端契约                                                           |
 | `just setup`                                                           | 同步后端 `uv` 环境和前端依赖，不清空本地数据                        | 首次 clone、依赖变更，或单纯想补装依赖                                                         |
 | `scripts/reset-local-data.sh`                                          | 清空本地 SQLite / Chroma / uploads / normalized，并可重跑 migration | 本地需要回到干净状态                                                                           |
-| `just reset-dev`                                                       | 清空本地数据、同步依赖并拉起前后端开发态                            | 本地开发状态已经混乱，需要一步回到可运行状态                                                   |
+| `just reset-dev`                                                       | 先预检端口，再清空本地数据、同步依赖并拉起前后端开发态              | 本地开发状态已经混乱，需要一步回到可运行状态                                                   |
 | `just docker-check / build / up / down / restart / ps / logs / health` | 仓库根统一入口                                                      | 日常单机部署、排障和验证                                                                       |
 | `scripts/api-entrypoint.sh`                                            | 容器启动入口：准备目录、迁移数据库、启动 API                        | 排查容器启动链路                                                                               |
 | `apps/api/Dockerfile`                                                  | 构建 API 运行镜像                                                   | 排查后端镜像构建、依赖缓存                                                                     |
@@ -244,7 +244,7 @@ COMPOSE_FILE=/abs/path/docker-compose.yml scripts/docker-deploy.sh check
 - 删除 SQLite 文件
 - 默认重新执行 `uv run python -m alembic upgrade head`
 - 如果只需要补装依赖，不需要执行它；直接用 `just setup`
-- `just reset-dev` 还会补做 `uv sync --all-groups`、`vp install`，最后拉起前后端开发态脚本
+- `just reset-dev` 会先执行开发端口预检；预检通过后，才会补做 `uv sync --all-groups`、`vp install`，最后拉起前后端开发态脚本
 
 ### 安全措施
 
@@ -272,11 +272,12 @@ just reset-dev
 
 ### `apps/api/Dockerfile`
 
-- 使用 `uv` 官方 Python 基础镜像做 builder
+- builder 与 runtime 当前都固定到 `python:3.13.13-slim`，避免容器内 Python 小版本漂移
+- `uv` 二进制从官方 `ghcr.io/astral-sh/uv` 镜像复制进 builder，只把它当构建工具，不把它的 Python 解释器当真相源
 - 以仓库根目录作为 build context，再按需复制 `apps/api/*` 和 `scripts/api-entrypoint.sh`
 - 先复制 `pyproject.toml` 和 `uv.lock`，最大化复用依赖缓存
 - builder 阶段通过 BuildKit cache mount 复用 `uv` 下载缓存
-- 运行时镜像只保留虚拟环境、迁移文件、源码和 entrypoint
+- 运行时镜像当前固定在 `python:3.13.13-slim`，只保留虚拟环境、迁移文件、源码和 entrypoint
 
 ### `apps/web/Dockerfile`
 

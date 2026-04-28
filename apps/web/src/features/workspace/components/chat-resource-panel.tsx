@@ -13,7 +13,7 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { CardDescription, CardTitle } from "@/components/ui/card";
-import { NavLink, useParams } from "@/lib/app-router";
+import { Link, useParams } from "@tanstack/react-router";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { chatContextQueryOptions } from "@/features/chat/api/chat-query";
@@ -43,7 +43,7 @@ export function ChatResourcePanel({
 }) {
   const { t } = useTranslation("chat");
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
-  const { sessionId: sessionIdParam } = useParams<{ sessionId?: string }>();
+  const { sessionId: sessionIdParam } = useParams({ strict: false }) as { sessionId?: string };
   const activeSessionId = parseChatSessionId(sessionIdParam);
 
   const contextQuery = useQuery(chatContextQueryOptions(activeSessionId));
@@ -154,7 +154,7 @@ export function ChatResourcePanel({
             <p className="mt-2 text-[11px] leading-5 text-muted-foreground/74">
               {summaryDescription}
             </p>
-            <NavLink
+            <Link
               className={cn(
                 buttonVariants({ size: "sm", variant: "outline" }),
                 "mt-2 h-8 w-full justify-center gap-1.5 overflow-hidden rounded-full px-2.5 text-[11px] font-medium active:scale-[0.98]",
@@ -163,7 +163,7 @@ export function ChatResourcePanel({
             >
               <UploadIcon data-icon="inline-start" className="size-3 shrink-0" />
               <span className="truncate">{t("emptySessionResourceAction")}</span>
-            </NavLink>
+            </Link>
           </section>
 
           {!isOverviewOnly ? (

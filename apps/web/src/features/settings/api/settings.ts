@@ -6,42 +6,39 @@ import { openapiRequestRequired } from "@/lib/api/client";
 import { apiFetchClient } from "@/lib/api/generated/client";
 import type { components } from "@/lib/api/generated/schema";
 
-export type ResponseProviderName = "openai" | "anthropic" | "ollama";
-export type EmbeddingProviderName = "openai" | "voyage" | "ollama";
-export type VisionProviderName = "openai" | "anthropic" | "ollama";
-export type IndexRebuildStatus = "idle" | "running" | "failed";
+export type ResponseProviderName = components["schemas"]["ResponseProvider"];
+export type EmbeddingProviderName = components["schemas"]["EmbeddingProvider"];
+export type VisionProviderName = components["schemas"]["VisionProvider"];
+export type IndexRebuildStatus = components["schemas"]["IndexRebuildStatus"];
 
 type CapabilityRoute<TProvider extends string> = {
   provider: TProvider;
   model: string;
 };
 
-export type ProviderProfiles = {
+type SchemaProviderProfiles = components["schemas"]["ProviderProfiles"];
+
+export type ProviderProfileKeys = keyof SchemaProviderProfiles;
+
+type ProviderProfileDefaults = {
+  [K in ProviderProfileKeys]: NonNullable<SchemaProviderProfiles[K]>;
+};
+
+const PROVIDER_PROFILE_DEFAULTS: ProviderProfileDefaults = {
+  anthropic: { api_key: null, base_url: null, chat_model: null, vision_model: null },
+  ollama: { base_url: null, chat_model: null, embedding_model: null, vision_model: null },
   openai: {
-    api_key?: string | null;
-    base_url?: string | null;
-    chat_model?: string | null;
-    embedding_model?: string | null;
-    vision_model?: string | null;
-  };
-  anthropic: {
-    api_key?: string | null;
-    base_url?: string | null;
-    chat_model?: string | null;
-    vision_model?: string | null;
-  };
-  voyage: {
-    api_key?: string | null;
-    base_url?: string | null;
-    embedding_model?: string | null;
-  };
-  ollama: {
-    api_key?: string | null;
-    base_url?: string | null;
-    chat_model?: string | null;
-    embedding_model?: string | null;
-    vision_model?: string | null;
-  };
+    api_key: null,
+    base_url: null,
+    chat_model: null,
+    embedding_model: null,
+    vision_model: null,
+  },
+  voyage: { api_key: null, base_url: null, embedding_model: null },
+};
+
+export type ProviderProfiles = {
+  [K in ProviderProfileKeys]: NonNullable<SchemaProviderProfiles[K]>;
 };
 
 export type AppSettings = {
@@ -97,10 +94,19 @@ const RESPONSE_PROVIDERS = ["openai", "anthropic", "ollama"] as const;
 const EMBEDDING_PROVIDERS = ["openai", "voyage", "ollama"] as const;
 const VISION_PROVIDERS = ["openai", "anthropic", "ollama"] as const;
 
+function fillProviderProfiles(profiles: SchemaProviderProfiles): ProviderProfiles {
+  return {
+    anthropic: { ...PROVIDER_PROFILE_DEFAULTS.anthropic, ...profiles.anthropic },
+    ollama: { ...PROVIDER_PROFILE_DEFAULTS.ollama, ...profiles.ollama },
+    openai: { ...PROVIDER_PROFILE_DEFAULTS.openai, ...profiles.openai },
+    voyage: { ...PROVIDER_PROFILE_DEFAULTS.voyage, ...profiles.voyage },
+  };
+}
+
 function toAppSettings(settings: SettingsRead): AppSettings {
   return {
     id: settings.id,
-    provider_profiles: settings.provider_profiles as ProviderProfiles,
+    provider_profiles: fillProviderProfiles(settings.provider_profiles),
     response_route: narrowCapabilityRoute(settings.response_route, RESPONSE_PROVIDERS),
     embedding_route: narrowCapabilityRoute(settings.embedding_route, EMBEDDING_PROVIDERS),
     pending_embedding_route: settings.pending_embedding_route
@@ -113,7 +119,7 @@ function toAppSettings(settings: SettingsRead): AppSettings {
     updated_at: settings.updated_at,
     active_index_generation: settings.active_index_generation,
     building_index_generation: settings.building_index_generation ?? null,
-    index_rebuild_status: settings.index_rebuild_status as IndexRebuildStatus,
+    index_rebuild_status: settings.index_rebuild_status,
     rebuild_started: settings.rebuild_started,
     reindex_required: settings.reindex_required,
   };
@@ -121,24 +127,24 @@ function toAppSettings(settings: SettingsRead): AppSettings {
 
 function toSettingsPayload(input: Partial<AppSettings>) {
   const payload: Record<string, unknown> = {};
-  if ("provider_profiles" in input) {
+  if (input.provider_profiles !== undefined) {
     payload.provider_profiles = input.provider_profiles;
   }
 
-  if ("response_route" in input) {
+  if (input.response_route !== undefined) {
     payload.response_route = input.response_route;
   }
-  if ("embedding_route" in input) {
+  if (input.embedding_route !== undefined) {
     payload.embedding_route = input.embedding_route;
   }
-  if ("vision_route" in input) {
+  if (input.vision_route !== undefined) {
     payload.vision_route = input.vision_route;
   }
 
-  if ("system_prompt" in input) {
+  if (input.system_prompt !== undefined) {
     payload.system_prompt = input.system_prompt ?? null;
   }
-  if ("provider_timeout_seconds" in input) {
+  if (input.provider_timeout_seconds !== undefined) {
     payload.provider_timeout_seconds = input.provider_timeout_seconds ?? null;
   }
   return payload;

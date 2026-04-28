@@ -4,6 +4,7 @@ import random
 from collections import defaultdict
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
+from functools import cached_property
 
 from cachetools import TTLCache
 
@@ -38,7 +39,6 @@ class RateLimitService:
         self._memory_cache: TTLCache[str, int] = TTLCache(
             maxsize=_MAX_KEYS_BEFORE_FULL_PRUNE, ttl=_MEMORY_CACHE_TTL
         )
-        self._fallback_attempts_dict: dict[str, list[datetime]] | None = None
 
     def startup_cleanup(self) -> None:
         """启动时清理过期的限流记录，防止低流量场景下表无限增长。"""
@@ -95,8 +95,6 @@ class RateLimitService:
             self.repository.cleanup_stale(self.window_seconds)
             self.repository.session.commit()
 
-    @property
+    @cached_property
     def _fallback_attempts(self) -> dict[str, list[datetime]]:
-        if self._fallback_attempts_dict is None:
-            self._fallback_attempts_dict = defaultdict(list)
-        return self._fallback_attempts_dict
+        return defaultdict(list)

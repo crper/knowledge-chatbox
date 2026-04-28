@@ -2,7 +2,7 @@
  * @file 聊天相关界面组件模块。
  */
 
-import { Component, type ReactNode, useEffect, useMemo, useState } from "react";
+import { Component, memo, type ReactNode, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { StreamdownTranslations } from "streamdown";
 
@@ -260,7 +260,11 @@ export function AssistantWaitingCard({
 /**
  * 渲染聊天 Markdown 消息内容。
  */
-export function MarkdownMessage({ content, isStreaming, testId }: MarkdownMessageProps) {
+export const MarkdownMessage = memo(function MarkdownMessage({
+  content,
+  isStreaming,
+  testId,
+}: MarkdownMessageProps) {
   const { t } = useTranslation("chat");
   const translations = useMarkdownTranslations();
 
@@ -350,4 +354,4 @@ export function MarkdownMessage({ content, isStreaming, testId }: MarkdownMessag
       )}
     </div>
   );
-}
+});

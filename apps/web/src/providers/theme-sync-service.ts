@@ -2,14 +2,14 @@ import { useEffect, useRef } from "react";
 
 import type { AppUser } from "@/lib/api/client";
 import { clearPendingThemeSync, resolvePendingThemeSync } from "@/lib/config/theme-sync-storage";
-import { useTheme } from "@/providers/theme-provider";
+import { useUiStore } from "@/lib/store/ui-store";
 
 type UseThemeSyncServiceParams = {
   user: AppUser;
 };
 
 export function useThemeSyncService({ user }: UseThemeSyncServiceParams) {
-  const { setTheme } = useTheme();
+  const setTheme = useUiStore((state) => state.setTheme);
   const pendingThemeRef = useRef<AppUser["theme_preference"] | null>(null);
   const pendingThemeBaseRef = useRef<AppUser["theme_preference"] | null>(null);
 

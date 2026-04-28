@@ -35,7 +35,7 @@ def list_users(
 ) -> Envelope[list[UserRead]]:
     """列出用户。"""
     users = user_service.list_users(current_user)
-    return Envelope(success=True, data=[to_user_read(user) for user in users], error=None)
+    return Envelope.ok([to_user_read(user) for user in users])
 
 
 @router.post(
@@ -51,7 +51,7 @@ def create_user(
 ) -> Envelope[UserRead]:
     """创建用户。"""
     user = user_service.create_user(current_user, payload.username, payload.password, payload.role)
-    return Envelope(success=True, data=to_user_read(user), error=None)
+    return Envelope.ok(to_user_read(user))
 
 
 @router.patch(
@@ -73,7 +73,7 @@ def update_user(
         role=payload.role,
         theme_preference=payload.theme_preference,
     )
-    return Envelope(success=True, data=to_user_read(user), error=None)
+    return Envelope.ok(to_user_read(user))
 
 
 @router.post(
@@ -89,7 +89,7 @@ def reset_password(
 ) -> Envelope[UserRead]:
     """重置密码。"""
     user = user_service.reset_password(current_user, user_id, payload.new_password)
-    return Envelope(success=True, data=to_user_read(user), error=None)
+    return Envelope.ok(to_user_read(user))
 
 
 @router.delete(
@@ -104,4 +104,4 @@ def delete_user(
 ) -> Envelope[dict[str, str]]:
     """删除用户。"""
     user_service.delete_user(current_user, user_id)
-    return Envelope(success=True, data={"status": "deleted"}, error=None)
+    return Envelope.ok({"status": "deleted"})

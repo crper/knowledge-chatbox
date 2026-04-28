@@ -36,7 +36,7 @@ export function useChatSessionData({ activeSessionId, sessionRunsById }: UseChat
 
   const messages = useMemo(
     () => messagesWindowQuery.data?.pages.flatMap((page) => page) ?? [],
-    [messagesWindowQuery.data],
+    [messagesWindowQuery.data?.pages],
   );
 
   const activeSession = useMemo(
@@ -56,13 +56,14 @@ export function useChatSessionData({ activeSessionId, sessionRunsById }: UseChat
   const isLoadingOlderMessages = messagesWindowQuery.isFetchingNextPage;
   const messagesWindowReady = resolvedActiveSessionId === null || !messagesWindowQuery.isPending;
 
+  const fetchNextPage = messagesWindowQuery.fetchNextPage;
   const loadOlderMessages = useCallback(async () => {
     if (!hasOlderMessages || isLoadingOlderMessages) {
       return;
     }
 
-    await messagesWindowQuery.fetchNextPage();
-  }, [hasOlderMessages, isLoadingOlderMessages, messagesWindowQuery]);
+    await fetchNextPage();
+  }, [hasOlderMessages, isLoadingOlderMessages, fetchNextPage]);
 
   return {
     activeSession,

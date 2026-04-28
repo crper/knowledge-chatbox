@@ -18,7 +18,7 @@ type ChatHandlersOptions = {
     error_message: string | null;
     retry_of_message_id: number | null;
     reply_to_message_id: number | null;
-    sources_json: unknown[] | null;
+    sources: unknown[] | null;
     created_at: string;
   }>;
 };
@@ -98,7 +98,7 @@ export function createChatHandlers(options: ChatHandlersOptions = {}) {
         error_message: null,
         retry_of_message_id: null,
         reply_to_message_id: null,
-        sources_json: null,
+        sources: null,
         created_at: new Date().toISOString(),
       };
 
@@ -112,7 +112,7 @@ export function createChatHandlers(options: ChatHandlersOptions = {}) {
         error_message: null,
         retry_of_message_id: null,
         reply_to_message_id: userMessage.id,
-        sources_json: null,
+        sources: null,
         created_at: new Date().toISOString(),
       };
 
@@ -140,9 +140,9 @@ export function createChatHandlers(options: ChatHandlersOptions = {}) {
           error_message: null,
           retry_of_message_id: null,
           reply_to_message_id: null,
-          sources_json: null,
+          sources: null,
           created_at: new Date().toISOString(),
-          attachments_json: [],
+          attachments: [],
         });
       },
     ),

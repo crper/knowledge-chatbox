@@ -1,17 +1,12 @@
-/**
- * @file 认证相关界面组件模块。
- */
-
-import type { FormEvent } from "react";
+import { useForm, revalidateLogic } from "@tanstack/react-form";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
-import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { FieldGroup } from "@/components/ui/field";
 import { Form } from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
-import { FormErrorAlert, getFieldErrorItems, getFormErrorMessage } from "@/lib/form/form-feedback";
-import { useAppForm } from "@/lib/form/use-app-form";
-import { handleFormSubmitEvent } from "@/lib/forms";
+import { FormTextField } from "@/lib/form/form-fields";
+import { FormErrorAlert } from "@/lib/form/form-feedback";
+import { getFirstFormError, zodFieldErrors } from "@/lib/forms";
 import { loginSchema } from "@/lib/validation/schemas";
 
 type LoginFormProps = {
@@ -20,92 +15,63 @@ type LoginFormProps = {
   onSubmit: (input: { username: string; password: string }) => Promise<void>;
 };
 
-/**
- * 渲染登录表单。
- */
 export function LoginForm({ errorMessage = null, onFieldChange, onSubmit }: LoginFormProps) {
   const { t } = useTranslation("auth");
-  const form = useAppForm({
+  const form = useForm({
     defaultValues: {
       password: "",
       username: "",
     },
-    formI18nKey: "auth:loginValidationError",
+    validators: {
+      onChange: ({ value }) => zodFieldErrors(loginSchema, value, "auth:loginValidationError"),
+    },
+    validationLogic: revalidateLogic({ mode: "submit", modeAfterSubmission: "blur" }),
     onSubmit: async ({ value }) => {
       await onSubmit({
         password: value.password,
         username: value.username.trim(),
       });
     },
-    schema: loginSchema,
   });
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    void handleFormSubmitEvent(event, () => form.handleSubmit());
-  };
-
   return (
-    <Form className="flex flex-col gap-5" onSubmit={handleSubmit}>
+    <Form
+      className="flex flex-col gap-5"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void form.handleSubmit();
+      }}
+    >
       <FieldGroup className="gap-4">
-        <form.Field name="username">
-          {(field) => (
-            <Field className="gap-2">
-              <FieldLabel
-                className="pl-4 text-sm font-medium tracking-[-0.01em]"
-                htmlFor="login-username"
-              >
-                {t("usernameLabel")}
-              </FieldLabel>
-              <Input
-                aria-label={t("usernameLabel")}
-                aria-invalid={field.state.meta.errors.length > 0}
-                autoComplete="username"
-                className="h-11 rounded-xl border-border/80 bg-background/68 px-4 focus-visible:bg-background/82"
-                id="login-username"
-                onChange={(event) => {
-                  onFieldChange?.();
-                  field.handleChange(event.target.value);
-                }}
-                onBlur={() => field.handleBlur()}
-                placeholder={t("usernameLabel")}
-                value={field.state.value}
-              />
-              <FieldError errors={getFieldErrorItems(field.state.meta.errors, t)} />
-            </Field>
-          )}
-        </form.Field>
-        <form.Field name="password">
-          {(field) => (
-            <Field className="gap-2">
-              <FieldLabel
-                className="pl-4 text-sm font-medium tracking-[-0.01em]"
-                htmlFor="login-password"
-              >
-                {t("passwordLabel")}
-              </FieldLabel>
-              <Input
-                aria-label={t("passwordLabel")}
-                aria-invalid={field.state.meta.errors.length > 0}
-                autoComplete="current-password"
-                className="h-11 rounded-xl border-border/80 bg-background/68 px-4 focus-visible:bg-background/82"
-                id="login-password"
-                onChange={(event) => {
-                  onFieldChange?.();
-                  field.handleChange(event.target.value);
-                }}
-                onBlur={() => field.handleBlur()}
-                placeholder={t("passwordLabel")}
-                type="password"
-                value={field.state.value}
-              />
-              <FieldError errors={getFieldErrorItems(field.state.meta.errors, t)} />
-            </Field>
-          )}
-        </form.Field>
+        <FormTextField
+          autoComplete="username"
+          className="h-11 rounded-xl border-border/80 bg-background/68 px-4 focus-visible:bg-background/82"
+          form={form}
+          id="login-username"
+          label={t("usernameLabel")}
+          labelClassName="pl-4 text-sm font-medium tracking-[-0.01em]"
+          name="username"
+          onChange={onFieldChange}
+          placeholder={t("usernameLabel")}
+          t={t}
+        />
+        <FormTextField
+          autoComplete="current-password"
+          className="h-11 rounded-xl border-border/80 bg-background/68 px-4 focus-visible:bg-background/82"
+          form={form}
+          id="login-password"
+          label={t("passwordLabel")}
+          labelClassName="pl-4 text-sm font-medium tracking-[-0.01em]"
+          name="password"
+          onChange={onFieldChange}
+          placeholder={t("passwordLabel")}
+          t={t}
+          type="password"
+        />
       </FieldGroup>
-      <form.Subscribe selector={(state) => state.errorMap.onDynamic}>
-        {(dynamicError) => {
-          const formErrorMessage = getFormErrorMessage([dynamicError], t);
+      <form.Subscribe selector={(state) => state.errorMap.onChange}>
+        {(onChangeError) => {
+          const formErrorMessage = getFirstFormError(onChangeError, t);
           const feedbackMessage = formErrorMessage || errorMessage;
 
           return (
@@ -120,11 +86,11 @@ export function LoginForm({ errorMessage = null, onFieldChange, onSubmit }: Logi
           );
         }}
       </form.Subscribe>
-      <form.Subscribe selector={(state) => state.isSubmitting}>
-        {(isSubmitting) => (
+      <form.Subscribe selector={(state) => [state.canSubmit, state.isSubmitting] as const}>
+        {([canSubmit, isSubmitting]) => (
           <Button
             className="mt-1 h-11 w-full rounded-xl"
-            disabled={isSubmitting}
+            disabled={!canSubmit}
             size="lg"
             type="submit"
           >

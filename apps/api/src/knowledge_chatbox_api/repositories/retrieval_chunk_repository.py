@@ -4,6 +4,7 @@ from sqlalchemy import delete, insert, literal_column, select, text
 from sqlalchemy.orm import Session
 
 from knowledge_chatbox_api.models.retrieval_chunk import retrieval_chunks_fts
+from knowledge_chatbox_api.schemas.chunk import ChunkStoreRecord
 from knowledge_chatbox_api.utils.chroma import text_fallback_where_document_terms
 
 
@@ -30,18 +31,14 @@ class RetrievalChunkRepository:
 
     def upsert_records(
         self,
-        records: list[dict[str, Any]],
+        records: list[ChunkStoreRecord],
         *,
         generation: int,
     ) -> None:
         if not records:
             return
 
-        revision_ids = {
-            int(record["document_revision_id"])
-            for record in records
-            if isinstance(record.get("document_revision_id"), int)
-        }
+        revision_ids = {record.document_revision_id for record in records}
         if revision_ids:
             self.session.execute(
                 delete(retrieval_chunks_fts).where(
@@ -55,23 +52,23 @@ class RetrievalChunkRepository:
             [
                 {
                     "generation": generation,
-                    "chunk_id": record["id"],
-                    "document_revision_id": record["document_revision_id"],
-                    "document_id": record["document_id"],
-                    "space_id": record.get("space_id"),
-                    "page_number": (record.get("metadata") or {}).get("page_number"),
-                    "section_title": (record.get("metadata") or {}).get("section_title"),
-                    "content": record["text"],
+                    "chunk_id": record.id,
+                    "document_revision_id": record.document_revision_id,
+                    "document_id": record.document_id,
+                    "space_id": record.space_id,
+                    "page_number": record.metadata.page_number,
+                    "section_title": record.metadata.section_title,
+                    "content": record.text,
                 }
                 for record in records
             ],
         )
 
-    def delete_by_document_id(self, document_id: int, *, generation: int) -> None:
+    def delete_by_revision_id(self, revision_id: int, *, generation: int) -> None:
         self.session.execute(
             delete(retrieval_chunks_fts).where(
                 retrieval_chunks_fts.c.generation == generation,
-                retrieval_chunks_fts.c.document_revision_id == document_id,
+                retrieval_chunks_fts.c.document_revision_id == revision_id,
             )
         )
 
@@ -90,7 +87,7 @@ class RetrievalChunkRepository:
         top_k: int,
         space_id: int | None = None,
         document_revision_ids: list[int] | None = None,
-    ) -> list[dict[str, Any]]:
+    ) -> list[ChunkStoreRecord]:
         if top_k <= 0:
             return []
 
@@ -128,18 +125,20 @@ class RetrievalChunkRepository:
         statement = statement.order_by(literal_column("rank")).limit(top_k)
 
         rows = self.session.execute(statement, params).mappings().all()
+        from knowledge_chatbox_api.schemas.chunk import ChunkRecordMetadata
+
         return [
-            {
-                "id": row["chunk_id"],
-                "document_id": row["document_id"],
-                "document_revision_id": row["document_revision_id"],
-                "space_id": row["space_id"],
-                "text": row["content"],
-                "metadata": {
-                    "page_number": row["page_number"],
-                    "section_title": row["section_title"],
-                },
-                "score": _score_from_bm25(row["rank"]),
-            }
+            ChunkStoreRecord(
+                id=row["chunk_id"],
+                document_id=row["document_id"],
+                document_revision_id=row["document_revision_id"],
+                space_id=row["space_id"],
+                text=row["content"],
+                metadata=ChunkRecordMetadata(
+                    page_number=row["page_number"],
+                    section_title=row["section_title"],
+                ),
+                score=_score_from_bm25(row["rank"]),
+            )
             for row in rows
         ]

@@ -9,8 +9,6 @@ from knowledge_chatbox_api.api.deps import (
     CurrentUserDep,
     get_session_token,
 )
-from knowledge_chatbox_api.api.routes._common.transforms import model_to_read_simple
-from knowledge_chatbox_api.models.auth import User
 from knowledge_chatbox_api.schemas.auth import (
     AccessTokenRead,
     AuthUserRead,
@@ -25,11 +23,6 @@ from knowledge_chatbox_api.schemas.common import Envelope
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 SessionTokenDep = Annotated[str | None, Depends(get_session_token)]
-
-
-def to_auth_user_read(user: User) -> AuthUserRead:
-    """把用户模型转换为认证响应结构。"""
-    return model_to_read_simple(user, AuthUserRead)
 
 
 def set_session_cookie(
@@ -66,14 +59,12 @@ def login(
         request=request,
         response=response,
     )
-    return Envelope(
-        success=True,
-        data=LoginResponse(
+    return Envelope.ok(
+        LoginResponse(
             access_token=access_token,
             expires_in=auth_service.settings.access_token_ttl_minutes * 60,
-            user=to_auth_user_read(user),
-        ),
-        error=None,
+            user=AuthUserRead.model_validate(user),
+        )
     )
 
 
@@ -92,13 +83,11 @@ def refresh(
         request=request,
         response=response,
     )
-    return Envelope(
-        success=True,
-        data=AccessTokenRead(
+    return Envelope.ok(
+        AccessTokenRead(
             access_token=access_token,
             expires_in=auth_service.settings.access_token_ttl_minutes * 60,
-        ),
-        error=None,
+        )
     )
 
 
@@ -114,22 +103,16 @@ def bootstrap(
 
     if restored is None:
         response.delete_cookie(auth_service.settings.session_cookie_name, path="/")
-        return Envelope(
-            success=True,
-            data=SessionBootstrapRead(authenticated=False),
-            error=None,
-        )
+        return Envelope.ok(SessionBootstrapRead(authenticated=False))
 
     access_token, user = restored
-    return Envelope(
-        success=True,
-        data=SessionBootstrapRead(
+    return Envelope.ok(
+        SessionBootstrapRead(
             authenticated=True,
             access_token=access_token,
             expires_in=auth_service.settings.access_token_ttl_minutes * 60,
-            user=to_auth_user_read(user),
-        ),
-        error=None,
+            user=AuthUserRead.model_validate(user),
+        )
     )
 
 
@@ -142,13 +125,13 @@ def logout(
     """注销当前认证会话。"""
     auth_service.logout(token)
     response.delete_cookie(auth_service.settings.session_cookie_name, path="/")
-    return Envelope(success=True, data={"status": "ok"}, error=None)
+    return Envelope.ok({"status": "ok"})
 
 
 @router.get("/me", response_model=Envelope[AuthUserRead])
 def me(current_user: CurrentUserDep) -> Envelope[AuthUserRead]:
     """返回当前登录用户信息。"""
-    return Envelope(success=True, data=to_auth_user_read(current_user), error=None)
+    return Envelope.ok(AuthUserRead.model_validate(current_user))
 
 
 @router.post("/change-password", response_model=Envelope[AuthUserRead])
@@ -167,7 +150,7 @@ def change_password(
     )
     response.delete_cookie(auth_service.settings.session_cookie_name, path="/")
     request.scope["auth_user"] = user
-    return Envelope(success=True, data=to_auth_user_read(user), error=None)
+    return Envelope.ok(AuthUserRead.model_validate(user))
 
 
 @router.patch("/preferences", response_model=Envelope[AuthUserRead])
@@ -178,4 +161,4 @@ def update_preferences(
 ) -> Envelope[AuthUserRead]:
     """更新偏好。"""
     user = auth_service.update_preferences(current_user, payload.theme_preference)
-    return Envelope(success=True, data=to_auth_user_read(user), error=None)
+    return Envelope.ok(AuthUserRead.model_validate(user))

@@ -1,7 +1,6 @@
 """文档相关服务模块。"""
 
 from collections.abc import Sequence
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 from zipfile import BadZipFile
@@ -11,13 +10,17 @@ from docx import Document as WordDocument
 from docx.opc.exceptions import PackageNotFoundError
 from docx.table import Table
 from docx.text.paragraph import Paragraph
+from pydantic import BaseModel, ConfigDict
 
 from knowledge_chatbox_api.services.documents.errors import InvalidDocumentError
 from knowledge_chatbox_api.utils.image import prepare_image_bytes
 
 
-@dataclass(frozen=True)
-class ParsedDocument:
+class ParsedDocument(BaseModel):
+    """文档解析结果。"""
+
+    model_config = ConfigDict(frozen=True)
+
     content: str
     media_type: str
 
@@ -66,11 +69,10 @@ class DocxDocumentParser:
         blocks: list[str] = []
 
         for block in document.iter_inner_content():
-            block_content: Paragraph | Table = block  # type: ignore[assignment]
-            if isinstance(block_content, Paragraph):
-                normalized = self._normalize_paragraph(block_content)
+            if isinstance(block, Paragraph):
+                normalized = self._normalize_paragraph(block)
             else:
-                normalized = self._normalize_table(block_content)
+                normalized = self._normalize_table(block)
 
             if normalized:
                 blocks.append(normalized)
@@ -117,7 +119,7 @@ class DocxDocumentParser:
         return "\n".join(lines)
 
     def _normalize_row(self, cells: Sequence[Any]) -> list[str]:
-        return [self._escape_table_cell(self._collapse_text(cell.text)) for cell in cells]  # type: ignore[attr-defined]
+        return [self._escape_table_cell(self._collapse_text(cell.text)) for cell in cells]
 
     def _to_markdown_row(self, cells: list[str]) -> str:
         return f"| {' | '.join(cells)} |"
@@ -137,7 +139,7 @@ class ImageDocumentParser:
         self.provider_settings = provider_settings
 
     def parse(self, file_path: Path) -> ParsedDocument:
-        width, height, image_bytes = self._build_image_payload(file_path)
+        width, height, image_bytes = prepare_image_bytes(file_path, max_dimension=1600)
 
         if self.provider is None or not getattr(self.provider, "supports_vision", False):
             content = self._build_image_fallback_content(
@@ -162,9 +164,6 @@ class ImageDocumentParser:
             )
 
         return ParsedDocument(content=content, media_type="text/markdown")
-
-    def _build_image_payload(self, file_path: Path) -> tuple[int, int, bytes]:
-        return prepare_image_bytes(file_path, max_dimension=1600)
 
     def _build_image_fallback_content(
         self,

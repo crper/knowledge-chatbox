@@ -1,26 +1,32 @@
+from __future__ import annotations
+
 import base64
 import binascii
-from typing import Any, cast
+from typing import TYPE_CHECKING
 
 from pydantic_ai.messages import BinaryContent, ModelRequest, ModelResponse, TextPart
 from pydantic_ai.settings import ModelSettings
 
 from knowledge_chatbox_api.models.enums import ChatAttachmentType, ChatMessageRole
 from knowledge_chatbox_api.providers.base import build_reasoning_config
-from knowledge_chatbox_api.schemas.settings import ProviderRuntimeSettings
 from knowledge_chatbox_api.services.chat import PROMPT_HISTORY_MESSAGE_LIMIT
 from knowledge_chatbox_api.services.chat.workflow.agent import (
     build_chat_agent,
     build_chat_stream_agent,
     build_chat_usage_limits,
 )
-from knowledge_chatbox_api.services.chat.workflow.deps import ChatWorkflowDeps
 from knowledge_chatbox_api.services.chat.workflow.model_factory import build_chat_agent_model
 from knowledge_chatbox_api.services.chat.workflow.output import (
     ChatWorkflowResult,
-    WorkflowSource,
     merge_workflow_sources,
 )
+
+if TYPE_CHECKING:
+    from pydantic_ai.models import Model
+
+    from knowledge_chatbox_api.schemas.chat import ChatAttachmentMetadata, PromptAttachmentItem
+    from knowledge_chatbox_api.schemas.settings import ProviderRuntimeSettings
+    from knowledge_chatbox_api.services.chat.workflow.deps import ChatWorkflowDeps
 
 
 class ChatWorkflow:
@@ -37,8 +43,8 @@ class ChatWorkflow:
     def __init__(
         self,
         *,
-        agent_model: Any | None = None,
-        stream_agent_model: Any | None = None,
+        agent_model: str | Model | None = None,
+        stream_agent_model: str | Model | None = None,
     ) -> None:
         self._agent_model = agent_model
         self._stream_agent_model = stream_agent_model
@@ -50,13 +56,11 @@ class ChatWorkflow:
         stream: bool = False,
     ):
         model = (
-            self._stream_agent_model if stream and self._stream_agent_model is not None else None
+            (self._stream_agent_model if stream else None)
+            or self._agent_model
+            or build_chat_agent_model(runtime_settings)
         )
-        if model is None:
-            model = self._agent_model or build_chat_agent_model(runtime_settings)
-        if stream:
-            return build_chat_stream_agent(model=model)
-        return build_chat_agent(model=model)
+        return build_chat_stream_agent(model=model) if stream else build_chat_agent(model=model)
 
     def _build_user_prompt(
         self,
@@ -64,7 +68,7 @@ class ChatWorkflow:
         deps: ChatWorkflowDeps,
         session_id: int,
         question: str,
-        attachments: list[dict[str, Any]] | None,
+        attachments: list[ChatAttachmentMetadata] | None,
     ) -> str | list[str | BinaryContent]:
         chat_session = deps.chat_repository.get_session(session_id)
         active_space_id = chat_session.space_id if chat_session is not None else None
@@ -88,39 +92,31 @@ class ChatWorkflow:
 
     def _map_prompt_attachments(
         self,
-        prompt_attachments: list[dict[str, Any]],
+        prompt_attachments: list[PromptAttachmentItem],
     ) -> list[str | BinaryContent]:
-        user_content: list[str | BinaryContent] = []
-        for item in prompt_attachments:
-            content = self._convert_attachment_item(item)
-            if content is not None:
-                user_content.append(content)
-        return user_content
+        return [
+            c
+            for item in prompt_attachments
+            if (c := self._convert_attachment_item(item)) is not None
+        ]
 
-    def _convert_attachment_item(self, item: dict[str, Any]) -> str | BinaryContent | None:
-        """将单个附件项转换为 Prompt 内容。"""
-        item_type = item.get("type")
+    def _convert_attachment_item(self, item: PromptAttachmentItem) -> str | BinaryContent | None:
+        if item.type == "text":
+            return item.text if item.text else None
 
-        if item_type == "text":
-            text = item.get("text")
-            return text if isinstance(text, str) and text else None
-
-        if item_type == ChatAttachmentType.IMAGE:
+        if item.type == ChatAttachmentType.IMAGE:
             return self._convert_image_attachment(item)
 
         return None
 
-    def _convert_image_attachment(self, item: dict[str, Any]) -> BinaryContent | None:
-        data_base64 = item.get("data_base64")
-        if not isinstance(data_base64, str) or not data_base64:
+    def _convert_image_attachment(self, item: PromptAttachmentItem) -> BinaryContent | None:
+        if not item.data_base64:
             return None
 
-        mime_type = item.get("mime_type")
-        if not isinstance(mime_type, str) or not mime_type:
-            mime_type = "image/jpeg"
+        mime_type = item.mime_type or "image/jpeg"
 
         try:
-            image_bytes = base64.b64decode(data_base64, validate=True)
+            image_bytes = base64.b64decode(item.data_base64, validate=True)
         except (binascii.Error, ValueError):
             return None
 
@@ -145,7 +141,11 @@ class ChatWorkflow:
             and not (history[-1].content or "").strip()
         ):
             history.pop()
-        if history and history[-1].role == ChatMessageRole.USER and history[-1].content == question:
+        if (
+            history
+            and history[-1].role == ChatMessageRole.USER
+            and (history[-1].content or "") == question
+        ):
             history.pop()
 
         message_history: list[ModelRequest | ModelResponse] = []
@@ -159,40 +159,22 @@ class ChatWorkflow:
 
     def _build_model_settings(self, runtime_settings: ProviderRuntimeSettings) -> ModelSettings:
         route = runtime_settings.response_route
-        model_settings: dict[str, object] = {}
 
         timeout = runtime_settings.provider_timeout_seconds
-        if timeout is not None:
-            model_settings["timeout"] = timeout  # type: ignore[reportUnnecessaryComparison]
 
-        model_settings.update(
-            build_reasoning_config(route.provider, runtime_settings.reasoning_mode)
-        )
+        reasoning_config = build_reasoning_config(route.provider, runtime_settings.reasoning_mode)
 
-        return cast("ModelSettings", model_settings)
-
-    def _reset_workflow_state(self, deps) -> None:
-        deps.retrieved_sources.clear()
-
-    def _read_retrieved_sources(self, deps) -> list[WorkflowSource]:
-        return list(deps.retrieved_sources)
-
-    def _merge_sources(
-        self,
-        retrieved_sources: list[WorkflowSource],
-        output_sources: list[WorkflowSource],
-    ) -> list[WorkflowSource]:
-        return merge_workflow_sources(retrieved_sources, output_sources)
+        return ModelSettings(timeout=timeout, **reasoning_config)
 
     def _prepare_workflow(
         self,
-        deps,
+        deps: ChatWorkflowDeps,
         *,
         session_id: int,
         question: str,
-        attachments: list[dict[str, Any]] | None,
+        attachments: list[ChatAttachmentMetadata] | None,
     ):
-        self._reset_workflow_state(deps)
+        deps.retrieved_sources.clear()
         prompt = self._build_user_prompt(
             deps=deps,
             session_id=session_id,
@@ -210,10 +192,10 @@ class ChatWorkflow:
     def run_sync(
         self,
         *,
-        deps,
+        deps: ChatWorkflowDeps,
         session_id: int,
         question: str,
-        attachments: list[dict[str, Any]] | None,
+        attachments: list[ChatAttachmentMetadata] | None,
     ) -> ChatWorkflowResult:
         """Execute synchronous chat workflow.
 
@@ -240,8 +222,8 @@ class ChatWorkflow:
         output = ChatWorkflowResult.model_validate(result.output)
         return output.model_copy(
             update={
-                "sources": self._merge_sources(
-                    self._read_retrieved_sources(deps),
+                "sources": merge_workflow_sources(
+                    list(deps.retrieved_sources),
                     output.sources,
                 )
             }
@@ -250,10 +232,10 @@ class ChatWorkflow:
     def run_stream_events(
         self,
         *,
-        deps,
+        deps: ChatWorkflowDeps,
         session_id: int,
         question: str,
-        attachments: list[dict[str, Any]] | None,
+        attachments: list[ChatAttachmentMetadata] | None,
     ):
         """Execute streaming chat workflow with server-sent events.
 

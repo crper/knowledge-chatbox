@@ -1,8 +1,13 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import { fireEvent } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import { mockDesktopViewport, mockMobileViewport } from "@/test/viewport";
 import { MessageList } from "./message-list";
+
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { retry: false, gcTime: 0 } },
+});
 
 function buildImageAttachment(name: string) {
   return {
@@ -38,25 +43,27 @@ describe("MessageList", () => {
       attachment.type === "image"
         ? {
             ...attachment,
-            resource_document_version_id: index + 11,
+            document_revision_id: index + 11,
           }
         : attachment,
     );
 
     render(
-      <MessageList
-        messages={[
-          {
-            id: 1,
-            role: "user",
-            content: "看看这些图",
-            status: "succeeded",
-            attachments_json: imageAttachments,
-            sources_json: [],
-          },
-        ]}
-        onRetry={vi.fn()}
-      />,
+      <QueryClientProvider client={queryClient}>
+        <MessageList
+          messages={[
+            {
+              id: 1,
+              role: "user",
+              content: "看看这些图",
+              status: "succeeded",
+              attachments: imageAttachments,
+              sources: [],
+            },
+          ]}
+          onRetry={vi.fn()}
+        />
+      </QueryClientProvider>,
     );
 
     expect(screen.getByText("附件 6")).toBeInTheDocument();
@@ -87,25 +94,31 @@ describe("MessageList", () => {
     const imageAttachments = [
       buildImageAttachment("f2280f620f9045129491d54f4de3997d.png"),
       buildImageAttachment("a21109ebeb2d438f90a49af9e56ce922.png"),
-    ].map((attachment, index) => ({
-      ...attachment,
-      resource_document_version_id: index + 11,
-    }));
+    ].map((attachment, index) =>
+      attachment.type === "image"
+        ? {
+            ...attachment,
+            document_revision_id: index + 11,
+          }
+        : attachment,
+    );
 
     render(
-      <MessageList
-        messages={[
-          {
-            id: 1,
-            role: "user",
-            content: "看看这些图",
-            status: "succeeded",
-            attachments_json: imageAttachments,
-            sources_json: [],
-          },
-        ]}
-        onRetry={vi.fn()}
-      />,
+      <QueryClientProvider client={queryClient}>
+        <MessageList
+          messages={[
+            {
+              id: 1,
+              role: "user",
+              content: "看看这些图",
+              status: "succeeded",
+              attachments: imageAttachments,
+              sources: [],
+            },
+          ]}
+          onRetry={vi.fn()}
+        />
+      </QueryClientProvider>,
     );
 
     fireEvent.click(screen.getByRole("button", { name: "预览附件 会话图片附件 1" }));
@@ -115,27 +128,29 @@ describe("MessageList", () => {
 
   it("prefers document_name over section_title and chunk_id in source titles", () => {
     render(
-      <MessageList
-        messages={[
-          {
-            id: 2,
-            role: "assistant",
-            content: "参考如下",
-            status: "succeeded",
-            attachments_json: [],
-            sources_json: [
-              {
-                chunk_id: "chunk-1",
-                document_name: "产品手册.pdf",
-                section_title: "安装指南",
-                page_number: 3,
-                snippet: "示例片段",
-              },
-            ],
-          },
-        ]}
-        onRetry={vi.fn()}
-      />,
+      <QueryClientProvider client={queryClient}>
+        <MessageList
+          messages={[
+            {
+              id: 2,
+              role: "assistant",
+              content: "参考如下",
+              status: "succeeded",
+              attachments: [],
+              sources: [
+                {
+                  chunk_id: "chunk-1",
+                  document_name: "产品手册.pdf",
+                  section_title: "安装指南",
+                  page_number: 3,
+                  snippet: "示例片段",
+                },
+              ],
+            },
+          ]}
+          onRetry={vi.fn()}
+        />
+      </QueryClientProvider>,
     );
 
     expect(screen.getByRole("button", { name: "查看引用 1" })).toBeInTheDocument();
@@ -145,27 +160,29 @@ describe("MessageList", () => {
 
   it("uses staggered desktop message lanes and differentiates role labels", () => {
     render(
-      <MessageList
-        messages={[
-          {
-            id: 1,
-            role: "assistant",
-            content: "先给你结论",
-            status: "succeeded",
-            attachments_json: [],
-            sources_json: [],
-          },
-          {
-            id: 2,
-            role: "user",
-            content: "我想看更清楚一点",
-            status: "succeeded",
-            attachments_json: [],
-            sources_json: [],
-          },
-        ]}
-        onRetry={vi.fn()}
-      />,
+      <QueryClientProvider client={queryClient}>
+        <MessageList
+          messages={[
+            {
+              id: 1,
+              role: "assistant",
+              content: "先给你结论",
+              status: "succeeded",
+              attachments: [],
+              sources: [],
+            },
+            {
+              id: 2,
+              role: "user",
+              content: "我想看更清楚一点",
+              status: "succeeded",
+              attachments: [],
+              sources: [],
+            },
+          ]}
+          onRetry={vi.fn()}
+        />
+      </QueryClientProvider>,
     );
 
     const assistantLane = screen.getByTestId("chat-message-row-1");
@@ -187,27 +204,29 @@ describe("MessageList", () => {
     mockMobileViewport();
 
     render(
-      <MessageList
-        messages={[
-          {
-            id: 3,
-            role: "assistant",
-            content: "移动端先别太花",
-            status: "succeeded",
-            attachments_json: [],
-            sources_json: [],
-          },
-          {
-            id: 4,
-            role: "user",
-            content: "保持清楚就行",
-            status: "succeeded",
-            attachments_json: [],
-            sources_json: [],
-          },
-        ]}
-        onRetry={vi.fn()}
-      />,
+      <QueryClientProvider client={queryClient}>
+        <MessageList
+          messages={[
+            {
+              id: 3,
+              role: "assistant",
+              content: "移动端先别太花",
+              status: "succeeded",
+              attachments: [],
+              sources: [],
+            },
+            {
+              id: 4,
+              role: "user",
+              content: "保持清楚就行",
+              status: "succeeded",
+              attachments: [],
+              sources: [],
+            },
+          ]}
+          onRetry={vi.fn()}
+        />
+      </QueryClientProvider>,
     );
 
     expect(screen.getByTestId("chat-message-row-3")).toHaveAttribute(
@@ -222,19 +241,21 @@ describe("MessageList", () => {
 
   it("marks assistant rich content bubbles as width-managed to prevent horizontal overflow", async () => {
     render(
-      <MessageList
-        messages={[
-          {
-            id: 6,
-            role: "assistant",
-            content: "![流程图](https://example.com/wide-diagram.png)",
-            status: "succeeded",
-            attachments_json: [],
-            sources_json: [],
-          },
-        ]}
-        onRetry={vi.fn()}
-      />,
+      <QueryClientProvider client={queryClient}>
+        <MessageList
+          messages={[
+            {
+              id: 6,
+              role: "assistant",
+              content: "![流程图](https://example.com/wide-diagram.png)",
+              status: "succeeded",
+              attachments: [],
+              sources: [],
+            },
+          ]}
+          onRetry={vi.fn()}
+        />
+      </QueryClientProvider>,
     );
 
     const bubble = screen.getByTestId("chat-message-bubble-6");
@@ -252,22 +273,24 @@ describe("MessageList", () => {
 
   it("renders a dedicated recovery strip for failed user messages and prioritizes retry", () => {
     render(
-      <MessageList
-        messages={[
-          {
-            id: 5,
-            role: "user",
-            content: "这张图怎么解析",
-            status: "failed",
-            error_message: "image: unknown format (500)",
-            attachments_json: [buildImageAttachment("failed.png")],
-            sources_json: [],
-          },
-        ]}
-        onDeleteFailed={vi.fn()}
-        onEditFailed={vi.fn()}
-        onRetry={vi.fn()}
-      />,
+      <QueryClientProvider client={queryClient}>
+        <MessageList
+          messages={[
+            {
+              id: 5,
+              role: "user",
+              content: "这张图怎么解析",
+              status: "failed",
+              error_message: "image: unknown format (500)",
+              attachments: [buildImageAttachment("failed.png")],
+              sources: [],
+            },
+          ]}
+          onDeleteFailed={vi.fn()}
+          onEditFailed={vi.fn()}
+          onRetry={vi.fn()}
+        />
+      </QueryClientProvider>,
     );
 
     const recovery = screen.getByTestId("chat-message-recovery-5");

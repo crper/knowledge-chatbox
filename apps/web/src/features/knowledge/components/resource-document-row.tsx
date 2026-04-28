@@ -1,3 +1,4 @@
+import { memo } from "react";
 import {
   EyeIcon,
   FolderOpenIcon,
@@ -24,7 +25,7 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { cn } from "@/lib/utils";
-import { formatDateTime } from "@/lib/date-utils";
+import { formatDateTime, useDateLocale } from "@/lib/date-utils";
 import {
   getKnowledgeDocumentCategoryLabel,
   getKnowledgeDocumentStatusMeta,
@@ -41,7 +42,7 @@ type ResourceDocumentRowProps = {
   onShowVersions: (documentId: number) => void;
 };
 
-export function ResourceDocumentRow({
+export const ResourceDocumentRow = memo(function ResourceDocumentRow({
   canDelete,
   document,
   isSelected,
@@ -51,8 +52,9 @@ export function ResourceDocumentRow({
   onSelectDocument,
   onShowVersions,
 }: ResourceDocumentRowProps) {
-  const { i18n, t } = useTranslation("knowledge");
-  const statusMeta = getKnowledgeDocumentStatusMeta(document.status, t);
+  const { t } = useTranslation("knowledge");
+  const dateLocale = useDateLocale();
+  const statusMeta = getKnowledgeDocumentStatusMeta(document.ingest_status, t);
   const logicalName = document.logical_name || t("rowLogicalNameFallback");
 
   return (
@@ -95,7 +97,7 @@ export function ResourceDocumentRow({
                 className="font-medium text-[11px] px-2 py-0 h-6 rounded-md"
                 variant="secondary"
               >
-                v{document.version}
+                v{document.revision_no}
               </Badge>
               <Badge
                 className={cn(
@@ -111,8 +113,7 @@ export function ResourceDocumentRow({
                 {statusMeta.label}
               </Badge>
               <span className="text-[11px] text-muted-foreground/60 tabular-nums ml-auto">
-                {formatDateTime(document.updated_at, i18n.resolvedLanguage ?? "zh-CN") ||
-                  document.updated_at}
+                {formatDateTime(document.updated_at, dateLocale) || document.updated_at}
               </span>
             </div>
           </button>
@@ -191,4 +192,4 @@ export function ResourceDocumentRow({
       ) : null}
     </ContextMenu>
   );
-}
+});

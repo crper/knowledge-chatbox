@@ -4,7 +4,7 @@
 
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { getFieldErrorItems } from "@/lib/form/form-feedback";
+import { fieldError } from "@/lib/forms";
 import {
   Select,
   SelectContent,
@@ -24,6 +24,7 @@ import {
   updatePrimaryProvider,
 } from "./provider-form-state";
 import {
+  PROVIDER_DISPLAY_NAMES,
   getProfileFieldValue,
   PROFILE_FIELDS,
   providerFormControlClassName,
@@ -112,7 +113,7 @@ export function PrimaryProviderSection({
             }}
             value={getPrimaryChatModel(draft)}
           />
-          <FieldError errors={getFieldErrorItems([], undefined, fieldErrorMessages.chatModel)} />
+          <FieldError errors={fieldError(fieldErrorMessages.chatModel)} />
         </Field>
         <Field>
           <FieldLabel>{embeddingModelLabel}</FieldLabel>
@@ -136,9 +137,7 @@ export function PrimaryProviderSection({
             }}
             value={getDefaultEmbeddingModel(draft)}
           />
-          <FieldError
-            errors={getFieldErrorItems([], undefined, fieldErrorMessages.embeddingModel)}
-          />
+          <FieldError errors={fieldError(fieldErrorMessages.embeddingModel)} />
         </Field>
         <Field>
           <FieldLabel>{visionModelLabel}</FieldLabel>
@@ -157,36 +156,44 @@ export function PrimaryProviderSection({
             value={getPrimaryVisionModel(draft)}
           />
           <FieldDescription>{t("visionModelHint")}</FieldDescription>
-          <FieldError errors={getFieldErrorItems([], undefined, fieldErrorMessages.visionModel)} />
+          <FieldError errors={fieldError(fieldErrorMessages.visionModel)} />
         </Field>
-        {primaryConnectionFields.map((field) => (
-          <Field key={`primary-${field.key}`}>
-            <FieldLabel>{field.label}</FieldLabel>
-            <Input
-              aria-label={field.label}
-              aria-invalid={field.key === "base_url" && Boolean(fieldErrorMessages.primaryBaseUrl)}
-              className={providerFormControlClassName}
-              onChange={(event) =>
-                handleViewChange((current) =>
-                  updatePrimaryProfileField(current, field.key, event.target.value),
-                )
-              }
-              ref={(node) => {
-                if (field.key === "base_url") {
-                  fieldRefs.current.primaryBaseUrl = node;
+        {primaryConnectionFields.map((field) => {
+          const label = t(field.labelKey, {
+            provider: PROVIDER_DISPLAY_NAMES[draft.primaryProvider],
+          });
+          return (
+            <Field key={`primary-${field.key}`}>
+              <FieldLabel>{label}</FieldLabel>
+              <Input
+                aria-label={label}
+                aria-invalid={
+                  field.key === "base_url" && Boolean(fieldErrorMessages.primaryBaseUrl)
                 }
-              }}
-              type={field.type ?? "text"}
-              value={getProfileFieldValue(draft.providerProfiles[draft.primaryProvider], field.key)}
-            />
-            {field.hint ? <FieldDescription>{t(field.hint)}</FieldDescription> : null}
-            {field.key === "base_url" ? (
-              <FieldError
-                errors={getFieldErrorItems([], undefined, fieldErrorMessages.primaryBaseUrl)}
+                className={providerFormControlClassName}
+                onChange={(event) =>
+                  handleViewChange((current) =>
+                    updatePrimaryProfileField(current, field.key, event.target.value),
+                  )
+                }
+                ref={(node) => {
+                  if (field.key === "base_url") {
+                    fieldRefs.current.primaryBaseUrl = node;
+                  }
+                }}
+                type={field.type ?? "text"}
+                value={getProfileFieldValue(
+                  draft.providerProfiles[draft.primaryProvider],
+                  field.key,
+                )}
               />
-            ) : null}
-          </Field>
-        ))}
+              {field.hint ? <FieldDescription>{t(field.hint)}</FieldDescription> : null}
+              {field.key === "base_url" ? (
+                <FieldError errors={fieldError(fieldErrorMessages.primaryBaseUrl)} />
+              ) : null}
+            </Field>
+          );
+        })}
       </FieldGroup>
     </section>
   );

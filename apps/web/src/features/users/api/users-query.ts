@@ -18,6 +18,7 @@ export function usersListQueryOptions() {
   return queryOptions({
     queryKey: queryKeys.users.list,
     queryFn: getUsers,
+    staleTime: 60_000,
   });
 }
 

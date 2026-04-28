@@ -21,11 +21,8 @@ const CHAT_COMPOSER_STORE_SYNC_KEYS = new Set([
 /**
  * 监听跨标签页 storage 事件并触发本地 store 重载。
  */
-export function StoreSyncProvider() {
+export function useStoreSync() {
   useEffect(() => {
-    void useUiStore.persist.rehydrate();
-    void useChatComposerStore.persist.rehydrate();
-
     const handleStorage = (event: StorageEvent) => {
       if (event.storageArea !== window.localStorage || !event.key) {
         return;
@@ -43,6 +40,14 @@ export function StoreSyncProvider() {
     window.addEventListener("storage", handleStorage);
     return () => window.removeEventListener("storage", handleStorage);
   }, []);
+}
 
+/**
+ * Store 同步 Provider 组件。
+ * 生产代码通过 AppProviders 直接调用 useStoreSync()；
+ * 此组件保留供测试场景作为 wrapper 使用。
+ */
+export function StoreSyncProvider() {
+  useStoreSync();
   return null;
 }

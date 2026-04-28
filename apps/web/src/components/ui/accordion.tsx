@@ -1,5 +1,4 @@
 import * as React from "react";
-import { cva } from "class-variance-authority";
 import { Accordion as AccordionPrimitive } from "@base-ui/react/accordion";
 import { ChevronDownIcon } from "lucide-react";
 
@@ -9,7 +8,7 @@ function Accordion({ ...props }: React.ComponentProps<typeof AccordionPrimitive.
   return <AccordionPrimitive.Root data-slot="accordion" {...props} />;
 }
 
-const accordionItemVariants = cva("border-b border-border/50 last:border-b-0");
+const ACCORDION_ITEM_CLASS = "border-b border-border/50 last:border-b-0";
 
 function AccordionItem({
   className,
@@ -17,16 +16,15 @@ function AccordionItem({
 }: React.ComponentProps<typeof AccordionPrimitive.Item>) {
   return (
     <AccordionPrimitive.Item
-      className={cn(accordionItemVariants(), className)}
+      className={cn(ACCORDION_ITEM_CLASS, className)}
       data-slot="accordion-item"
       {...props}
     />
   );
 }
 
-const accordionTriggerVariants = cva(
-  "flex flex-1 items-center justify-between py-3 text-sm font-medium transition-all hover:underline [&[data-panel-open]>svg]:rotate-180",
-);
+const ACCORDION_TRIGGER_CLASS =
+  "flex flex-1 items-center justify-between py-3 text-sm font-medium transition-all hover:underline [&[data-panel-open]>svg]:rotate-180";
 
 function AccordionTrigger({
   className,
@@ -36,7 +34,7 @@ function AccordionTrigger({
   return (
     <AccordionPrimitive.Header className="flex">
       <AccordionPrimitive.Trigger
-        className={cn(accordionTriggerVariants(), className)}
+        className={cn(ACCORDION_TRIGGER_CLASS, className)}
         data-slot="accordion-trigger"
         {...props}
       >
@@ -47,9 +45,8 @@ function AccordionTrigger({
   );
 }
 
-const accordionContentVariants = cva(
-  "overflow-hidden text-sm data-[ending-style]:h-0 data-[starting-style]:h-0",
-);
+const ACCORDION_CONTENT_CLASS =
+  "overflow-hidden text-sm data-[ending-style]:h-0 data-[starting-style]:h-0";
 
 function AccordionContent({
   className,
@@ -58,7 +55,7 @@ function AccordionContent({
 }: React.ComponentProps<typeof AccordionPrimitive.Panel>) {
   return (
     <AccordionPrimitive.Panel
-      className={cn(accordionContentVariants(), className)}
+      className={cn(ACCORDION_CONTENT_CLASS, className)}
       data-slot="accordion-content"
       {...props}
     >
@@ -72,7 +69,7 @@ export {
   AccordionItem,
   AccordionTrigger,
   AccordionContent,
-  accordionItemVariants,
-  accordionTriggerVariants,
-  accordionContentVariants,
+  ACCORDION_ITEM_CLASS,
+  ACCORDION_TRIGGER_CLASS,
+  ACCORDION_CONTENT_CLASS,
 };

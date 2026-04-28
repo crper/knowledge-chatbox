@@ -29,14 +29,22 @@ vi.mock("../api/chat", async () => {
 
 function ActionsHost() {
   const actions = useChatWorkspaceActions({
-    beginSessionSubmit: vi.fn(() => true),
-    finishSessionSubmit: vi.fn(),
+    cacheWriter: {
+      invalidateSessionArtifacts: invalidateSessionArtifactsSpy,
+      patchSessionContext: vi.fn(),
+      patchUserMessageAttachments: vi.fn(() => false),
+    },
     messages: [],
-    patchSessionContext: vi.fn(),
-    patchUserMessageAttachments: vi.fn(() => false),
     requestScrollToLatest: vi.fn(),
     resolvedActiveSessionId: 7,
-    invalidateSessionArtifacts: invalidateSessionArtifactsSpy,
+    runtime: {
+      beginSubmit: (
+        _sessionId: number,
+        _controller: AbortController,
+        _clientRequestId?: string | null,
+      ): boolean => true,
+      finishSubmit: vi.fn(),
+    },
     findRunByAssistantMessageId: findRunByAssistantMessageIdSpy,
     sendStreamMessage: sendStreamMessageSpy,
   });
@@ -50,7 +58,7 @@ function ActionsHost() {
             role: "user",
             content: "repair me",
             status: "failed",
-            sources_json: [],
+            sources: [],
           })
         }
         type="button"
@@ -64,7 +72,7 @@ function ActionsHost() {
             role: "user",
             content: "repair me",
             status: "failed",
-            sources_json: [],
+            sources: [],
           })
         }
         type="button"
@@ -82,7 +90,7 @@ function ActionsHost() {
             content: "failed reply",
             status: "failed",
             reply_to_message_id: 3,
-            sources_json: [],
+            sources: [],
           })
         }
         type="button"

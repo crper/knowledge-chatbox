@@ -7,7 +7,7 @@ const EMBEDDING_PROVIDER_OPTIONS = ["openai", "voyage", "ollama"] as const;
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import { getFieldErrorItems } from "@/lib/form/form-feedback";
+import { fieldError } from "@/lib/forms";
 import {
   Select,
   SelectContent,
@@ -121,9 +121,7 @@ export function RetrievalOverrideSection({
               }}
               value={getRetrievalEmbeddingModel(draft)}
             />
-            <FieldError
-              errors={getFieldErrorItems([], undefined, fieldErrorMessages.retrievalEmbeddingModel)}
-            />
+            <FieldError errors={fieldError(fieldErrorMessages.retrievalEmbeddingModel)} />
           </Field>
         </FieldGroup>
       ) : null}

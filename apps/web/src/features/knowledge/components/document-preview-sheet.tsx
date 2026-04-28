@@ -5,10 +5,9 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { Link } from "@/lib/app-router";
-import { queryKeys } from "@/lib/api/query-keys";
+import { Link } from "@tanstack/react-router";
 
-import { getDocumentFileUrl } from "@/features/chat/utils/document-file-url";
+import { getDocumentFileUrl } from "@/lib/api/document-file-url";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -20,13 +19,14 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import type { KnowledgeDocument } from "../api/documents";
-import { getDocumentPreviewKind, loadDocumentTextPreview } from "../api/document-preview";
-import { cn } from "@/lib/utils";
-import { formatDateTime } from "@/lib/date-utils";
+import { getDocumentPreviewKind } from "../api/document-preview";
+import { documentTextPreviewQueryOptions } from "../api/documents-query";
+import { cn, formatFileSize } from "@/lib/utils";
+import { formatDateTime, useDateLocale } from "@/lib/date-utils";
 import { DocumentImagePreview } from "./document-image-preview";
 import { DocumentPdfPreview } from "./document-pdf-preview";
 import { DocumentTextPreview } from "./document-text-preview";
-import { formatFileSize, getDocumentTypeLabel } from "./resource-document-helpers";
+import { getDocumentTypeLabel } from "./resource-document-helpers";
 import { openProtectedFile, downloadProtectedFile } from "./protected-file-actions";
 
 type DocumentPreviewSheetProps = {
@@ -49,26 +49,23 @@ export function DocumentPreviewSheet({
   onShowVersions,
   open,
 }: DocumentPreviewSheetProps) {
-  const { i18n, t } = useTranslation("knowledge");
+  const { t } = useTranslation("knowledge");
+  const dateLocale = useDateLocale();
 
   const previewKind = useMemo(
     () => (document ? getDocumentPreviewKind(document.file_type) : "unsupported"),
     [document],
   );
-  const shouldShowProcessing = document?.status === "processing" || document?.status === "uploaded";
-  const shouldShowFailed = document?.status === "failed";
+  const shouldShowProcessing =
+    document?.ingest_status === "processing" || document?.ingest_status === "uploaded";
+  const shouldShowFailed = document?.ingest_status === "failed";
   const shouldLoadTextPreview =
     open &&
-    document !== null &&
     !shouldShowProcessing &&
     !shouldShowFailed &&
     (previewKind === "markdown" || previewKind === "text");
 
-  const previewQuery = useQuery({
-    queryKey: queryKeys.documents.preview(document?.id, document?.updated_at),
-    queryFn: () => loadDocumentTextPreview(document!),
-    enabled: shouldLoadTextPreview,
-  });
+  const previewQuery = useQuery(documentTextPreviewQueryOptions(document, shouldLoadTextPreview));
 
   if (!document) {
     return null;
@@ -77,7 +74,7 @@ export function DocumentPreviewSheet({
   const fileUrl = getDocumentFileUrl(document.id);
   const metaItems = [
     formatFileSize(document.file_size),
-    formatDateTime(document.updated_at, i18n.resolvedLanguage ?? "zh-CN") || document.updated_at,
+    formatDateTime(document.updated_at, dateLocale) || document.updated_at,
     typeof document.chunk_count === "number" ? `${document.chunk_count} chunks` : null,
   ].filter(Boolean);
 
@@ -101,10 +98,12 @@ export function DocumentPreviewSheet({
               <div className="flex flex-wrap gap-2">
                 <Badge variant="outline">{getDocumentTypeLabel(previewKind, t)}</Badge>
                 <Badge variant="secondary">
-                  {t("versionValue", { version: document.version })}
+                  {t("versionValue", { version: document.revision_no })}
                 </Badge>
-                <Badge variant={document.status === "failed" ? "destructive" : "outline"}>
-                  {t(`status${document.status.charAt(0).toUpperCase()}${document.status.slice(1)}`)}
+                <Badge variant={document.ingest_status === "failed" ? "destructive" : "outline"}>
+                  {t(
+                    `status${document.ingest_status.charAt(0).toUpperCase()}${document.ingest_status.slice(1)}`,
+                  )}
                 </Badge>
               </div>
               {metaItems.length > 0 ? (

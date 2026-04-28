@@ -2,6 +2,7 @@
   "components": {
     "schemas": {
       "AccessTokenRead": {
+        "additionalProperties": false,
         "description": "描述 access token 响应体。",
         "properties": {
           "access_token": {
@@ -26,6 +27,8 @@
         "type": "object"
       },
       "ActiveChatRunRead": {
+        "additionalProperties": false,
+        "description": "活跃聊天运行响应体。",
         "properties": {
           "assistant_message_id": {
             "anyOf": [
@@ -43,13 +46,7 @@
             "type": "integer"
           },
           "reasoning_mode": {
-            "enum": [
-              "default",
-              "off",
-              "on"
-            ],
-            "title": "Reasoning Mode",
-            "type": "string"
+            "$ref": "#/components/schemas/ReasoningMode"
           },
           "session_id": {
             "title": "Session Id",
@@ -84,6 +81,7 @@
         "type": "object"
       },
       "AnthropicProfile": {
+        "additionalProperties": false,
         "properties": {
           "api_key": {
             "anyOf": [
@@ -136,6 +134,7 @@
       "ArchiveChatAttachmentRequest": {
         "properties": {
           "document_revision_id": {
+            "minimum": 1.0,
             "title": "Document Revision Id",
             "type": "integer"
           }
@@ -147,6 +146,7 @@
         "type": "object"
       },
       "AuthUserRead": {
+        "additionalProperties": false,
         "description": "描述认证用户响应体。",
         "properties": {
           "created_at": {
@@ -230,6 +230,7 @@
         "type": "object"
       },
       "CancelChatRunResult": {
+        "additionalProperties": false,
         "properties": {
           "cancelled": {
             "title": "Cancelled",
@@ -245,6 +246,8 @@
       "CancelChatStreamRequest": {
         "properties": {
           "client_request_id": {
+            "maxLength": 128,
+            "minLength": 1,
             "title": "Client Request Id",
             "type": "string"
           }
@@ -255,27 +258,8 @@
         "title": "CancelChatStreamRequest",
         "type": "object"
       },
-      "CapabilityHealthData": {
-        "properties": {
-          "embedding": {
-            "$ref": "#/components/schemas/CapabilityHealthRead"
-          },
-          "response": {
-            "$ref": "#/components/schemas/CapabilityHealthRead"
-          },
-          "vision": {
-            "$ref": "#/components/schemas/CapabilityHealthRead"
-          }
-        },
-        "required": [
-          "response",
-          "embedding",
-          "vision"
-        ],
-        "title": "CapabilityHealthData",
-        "type": "object"
-      },
       "CapabilityHealthRead": {
+        "additionalProperties": false,
         "description": "描述单个 capability 健康结果。",
         "properties": {
           "healthy": {
@@ -339,6 +323,7 @@
         "type": "object"
       },
       "ChatAttachmentInput": {
+        "additionalProperties": false,
         "description": "用户提交的聊天附件输入。",
         "properties": {
           "attachment_id": {
@@ -388,6 +373,7 @@
         "type": "object"
       },
       "ChatAttachmentMetadata": {
+        "additionalProperties": false,
         "description": "统一后的聊天附件元数据。",
         "properties": {
           "archived_at": {
@@ -463,6 +449,7 @@
         "type": "string"
       },
       "ChatMessagePairRead": {
+        "additionalProperties": false,
         "properties": {
           "assistant_message": {
             "$ref": "#/components/schemas/ChatMessageRead"
@@ -479,8 +466,10 @@
         "type": "object"
       },
       "ChatMessageRead": {
+        "additionalProperties": false,
+        "description": "聊天消息响应体。",
         "properties": {
-          "attachments_json": {
+          "attachments": {
             "anyOf": [
               {
                 "items": {
@@ -492,7 +481,7 @@
                 "type": "null"
               }
             ],
-            "title": "Attachments Json"
+            "title": "Attachments"
           },
           "client_request_id": {
             "anyOf": [
@@ -558,7 +547,7 @@
             "title": "Session Id",
             "type": "integer"
           },
-          "sources_json": {
+          "sources": {
             "anyOf": [
               {
                 "items": {
@@ -570,7 +559,7 @@
                 "type": "null"
               }
             ],
-            "title": "Sources Json"
+            "title": "Sources"
           },
           "status": {
             "$ref": "#/components/schemas/ChatMessageStatus"
@@ -586,7 +575,6 @@
           "error_message",
           "retry_of_message_id",
           "reply_to_message_id",
-          "sources_json",
           "created_at"
         ],
         "title": "ChatMessageRead",
@@ -613,6 +601,7 @@
         "type": "string"
       },
       "ChatProfileRead": {
+        "additionalProperties": false,
         "properties": {
           "configured": {
             "title": "Configured",
@@ -630,13 +619,7 @@
             "title": "Model"
           },
           "provider": {
-            "enum": [
-              "openai",
-              "anthropic",
-              "ollama"
-            ],
-            "title": "Provider",
-            "type": "string"
+            "$ref": "#/components/schemas/ResponseProvider"
           }
         },
         "required": [
@@ -648,6 +631,8 @@
         "type": "object"
       },
       "ChatRunEventRead": {
+        "additionalProperties": false,
+        "description": "聊天运行事件响应体。",
         "properties": {
           "created_at": {
             "format": "date-time",
@@ -688,6 +673,8 @@
         "type": "object"
       },
       "ChatRunRead": {
+        "additionalProperties": false,
+        "description": "聊天运行响应体。",
         "properties": {
           "assistant_message_id": {
             "anyOf": [
@@ -759,13 +746,7 @@
             "title": "Parent Run Id"
           },
           "reasoning_mode": {
-            "enum": [
-              "default",
-              "off",
-              "on"
-            ],
-            "title": "Reasoning Mode",
-            "type": "string"
+            "$ref": "#/components/schemas/ReasoningMode"
           },
           "response_model": {
             "title": "Response Model",
@@ -847,6 +828,7 @@
         "type": "object"
       },
       "ChatSessionContextRead": {
+        "additionalProperties": false,
         "properties": {
           "attachment_count": {
             "title": "Attachment Count",
@@ -893,6 +875,8 @@
         "type": "object"
       },
       "ChatSessionRead": {
+        "additionalProperties": false,
+        "description": "聊天会话响应体。",
         "properties": {
           "created_at": {
             "format": "date-time",
@@ -904,13 +888,7 @@
             "type": "integer"
           },
           "reasoning_mode": {
-            "enum": [
-              "default",
-              "off",
-              "on"
-            ],
-            "title": "Reasoning Mode",
-            "type": "string"
+            "$ref": "#/components/schemas/ReasoningMode"
           },
           "title": {
             "anyOf": [
@@ -945,6 +923,7 @@
         "type": "object"
       },
       "ChatSourceRead": {
+        "additionalProperties": false,
         "description": "聊天来源引用信息。",
         "properties": {
           "chunk_id": {
@@ -1055,17 +1034,22 @@
           },
           "client_request_id": {
             "description": "Client-generated ID for idempotency and retry tracking",
+            "maxLength": 128,
+            "minLength": 1,
             "title": "Client Request Id",
             "type": "string"
           },
           "content": {
             "description": "Message content / user question",
+            "maxLength": 10000,
+            "minLength": 1,
             "title": "Content",
             "type": "string"
           },
           "retry_of_message_id": {
             "anyOf": [
               {
+                "minimum": 1.0,
                 "type": "integer"
               },
               {
@@ -1094,6 +1078,7 @@
           "title": {
             "anyOf": [
               {
+                "maxLength": 200,
                 "type": "string"
               },
               {
@@ -1135,6 +1120,7 @@
         "type": "object"
       },
       "DeleteChatMessageResult": {
+        "additionalProperties": false,
         "properties": {
           "deleted": {
             "title": "Deleted",
@@ -1148,6 +1134,7 @@
         "type": "object"
       },
       "DeleteChatSessionResult": {
+        "additionalProperties": false,
         "properties": {
           "deleted": {
             "title": "Deleted",
@@ -1161,9 +1148,11 @@
         "type": "object"
       },
       "DocumentListSummaryRead": {
-        "description": "描述资源列表的轻量摘要。",
+        "additionalProperties": false,
+        "description": "描述资源列表的轻量摘要。\n\nAttributes:\n    pending_count: 待处理数量",
         "properties": {
           "pending_count": {
+            "description": "待处理数量",
             "title": "Pending Count",
             "type": "integer"
           }
@@ -1175,7 +1164,8 @@
         "type": "object"
       },
       "DocumentRevisionRead": {
-        "description": "描述文档修订响应体。",
+        "additionalProperties": false,
+        "description": "描述文档修订响应体。\n\nAttributes:\n    id: 修订版本 ID\n    document_id: 所属文档 ID\n    revision_no: 版本号\n    source_filename: 源文件名\n    mime_type: MIME 类型\n    file_type: 文件类型\n    ingest_status: 摄入状态\n    content_hash: 内容哈希\n    file_size: 文件大小（字节）\n    chunk_count: 分块数量\n    error_message: 错误消息\n    supersedes_revision_id: 被替代的修订版本 ID\n    created_by_user_id: 创建者用户 ID\n    updated_by_user_id: 更新者用户 ID\n    created_at: 创建时间\n    updated_at: 更新时间\n    indexed_at: 索引时间",
         "properties": {
           "chunk_count": {
             "anyOf": [
@@ -1186,13 +1176,16 @@
                 "type": "null"
               }
             ],
+            "description": "分块数量",
             "title": "Chunk Count"
           },
           "content_hash": {
+            "description": "内容哈希",
             "title": "Content Hash",
             "type": "string"
           },
           "created_at": {
+            "description": "创建时间",
             "format": "date-time",
             "title": "Created At",
             "type": "string"
@@ -1206,9 +1199,11 @@
                 "type": "null"
               }
             ],
+            "description": "创建者用户 ID",
             "title": "Created By User Id"
           },
           "document_id": {
+            "description": "所属文档 ID",
             "title": "Document Id",
             "type": "integer"
           },
@@ -1221,6 +1216,7 @@
                 "type": "null"
               }
             ],
+            "description": "错误消息",
             "title": "Error Message"
           },
           "file_size": {
@@ -1232,13 +1228,16 @@
                 "type": "null"
               }
             ],
+            "description": "文件大小（字节）",
             "title": "File Size"
           },
           "file_type": {
+            "description": "文件类型",
             "title": "File Type",
             "type": "string"
           },
           "id": {
+            "description": "修订版本 ID",
             "title": "Id",
             "type": "integer"
           },
@@ -1252,21 +1251,26 @@
                 "type": "null"
               }
             ],
+            "description": "索引时间",
             "title": "Indexed At"
           },
           "ingest_status": {
+            "description": "摄入状态",
             "title": "Ingest Status",
             "type": "string"
           },
           "mime_type": {
+            "description": "MIME 类型",
             "title": "Mime Type",
             "type": "string"
           },
           "revision_no": {
+            "description": "版本号",
             "title": "Revision No",
             "type": "integer"
           },
           "source_filename": {
+            "description": "源文件名",
             "title": "Source Filename",
             "type": "string"
           },
@@ -1279,9 +1283,11 @@
                 "type": "null"
               }
             ],
+            "description": "被替代的修订版本 ID",
             "title": "Supersedes Revision Id"
           },
           "updated_at": {
+            "description": "更新时间",
             "format": "date-time",
             "title": "Updated At",
             "type": "string"
@@ -1295,6 +1301,7 @@
                 "type": "null"
               }
             ],
+            "description": "更新者用户 ID",
             "title": "Updated By User Id"
           }
         },
@@ -1307,23 +1314,18 @@
           "file_type",
           "ingest_status",
           "content_hash",
-          "file_size",
-          "chunk_count",
-          "error_message",
-          "supersedes_revision_id",
-          "created_by_user_id",
-          "updated_by_user_id",
           "created_at",
-          "updated_at",
-          "indexed_at"
+          "updated_at"
         ],
         "title": "DocumentRevisionRead",
         "type": "object"
       },
       "DocumentSummaryRead": {
-        "description": "描述逻辑文档响应体。",
+        "additionalProperties": false,
+        "description": "描述逻辑文档响应体。\n\nAttributes:\n    id: 文档 ID\n    space_id: 所属空间 ID\n    title: 文档标题\n    logical_name: 逻辑名称\n    status: 状态\n    latest_revision: 最新修订版本\n    created_by_user_id: 创建者用户 ID\n    updated_by_user_id: 更新者用户 ID\n    created_at: 创建时间\n    updated_at: 更新时间",
         "properties": {
           "created_at": {
+            "description": "创建时间",
             "format": "date-time",
             "title": "Created At",
             "type": "string"
@@ -1337,9 +1339,11 @@
                 "type": "null"
               }
             ],
+            "description": "创建者用户 ID",
             "title": "Created By User Id"
           },
           "id": {
+            "description": "文档 ID",
             "title": "Id",
             "type": "integer"
           },
@@ -1351,25 +1355,31 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "最新修订版本"
           },
           "logical_name": {
+            "description": "逻辑名称",
             "title": "Logical Name",
             "type": "string"
           },
           "space_id": {
+            "description": "所属空间 ID",
             "title": "Space Id",
             "type": "integer"
           },
           "status": {
+            "description": "状态",
             "title": "Status",
             "type": "string"
           },
           "title": {
+            "description": "文档标题",
             "title": "Title",
             "type": "string"
           },
           "updated_at": {
+            "description": "更新时间",
             "format": "date-time",
             "title": "Updated At",
             "type": "string"
@@ -1383,6 +1393,7 @@
                 "type": "null"
               }
             ],
+            "description": "更新者用户 ID",
             "title": "Updated By User Id"
           }
         },
@@ -1392,8 +1403,6 @@
           "title",
           "logical_name",
           "status",
-          "created_by_user_id",
-          "updated_by_user_id",
           "created_at",
           "updated_at"
         ],
@@ -1401,21 +1410,26 @@
         "type": "object"
       },
       "DocumentUploadRead": {
-        "description": "描述上传接口响应体。",
+        "additionalProperties": false,
+        "description": "描述上传接口响应体。\n\nAttributes:\n    deduplicated: 是否已去重\n    document: 文档摘要信息\n    revision: 当前修订版本\n    latest_revision: 最新修订版本",
         "properties": {
           "deduplicated": {
             "default": false,
+            "description": "是否已去重",
             "title": "Deduplicated",
             "type": "boolean"
           },
           "document": {
-            "$ref": "#/components/schemas/DocumentSummaryRead"
+            "$ref": "#/components/schemas/DocumentSummaryRead",
+            "description": "文档摘要信息"
           },
           "latest_revision": {
-            "$ref": "#/components/schemas/DocumentRevisionRead"
+            "$ref": "#/components/schemas/DocumentRevisionRead",
+            "description": "最新修订版本"
           },
           "revision": {
-            "$ref": "#/components/schemas/DocumentRevisionRead"
+            "$ref": "#/components/schemas/DocumentRevisionRead",
+            "description": "当前修订版本"
           }
         },
         "required": [
@@ -1427,7 +1441,8 @@
         "type": "object"
       },
       "DocumentUploadReadinessRead": {
-        "description": "描述资源上传前置条件是否满足。",
+        "additionalProperties": false,
+        "description": "描述资源上传前置条件是否满足。\n\nAttributes:\n    can_upload: 是否可以上传\n    image_fallback: 是否使用图像降级处理\n    blocking_reason: 阻止原因",
         "properties": {
           "blocking_reason": {
             "anyOf": [
@@ -1438,40 +1453,48 @@
                 "type": "null"
               }
             ],
+            "description": "阻止原因",
             "title": "Blocking Reason"
           },
           "can_upload": {
+            "description": "是否可以上传",
             "title": "Can Upload",
             "type": "boolean"
           },
           "image_fallback": {
+            "description": "是否使用图像降级处理",
             "title": "Image Fallback",
             "type": "boolean"
           }
         },
         "required": [
           "can_upload",
-          "image_fallback",
-          "blocking_reason"
+          "image_fallback"
         ],
         "title": "DocumentUploadReadinessRead",
         "type": "object"
       },
+      "EmbeddingProvider": {
+        "enum": [
+          "openai",
+          "voyage",
+          "ollama"
+        ],
+        "title": "EmbeddingProvider",
+        "type": "string"
+      },
       "EmbeddingRouteConfig": {
+        "additionalProperties": false,
         "description": "描述 embedding capability route。",
         "properties": {
           "model": {
+            "maxLength": 256,
+            "minLength": 1,
             "title": "Model",
             "type": "string"
           },
           "provider": {
-            "enum": [
-              "openai",
-              "voyage",
-              "ollama"
-            ],
-            "title": "Provider",
-            "type": "string"
+            "$ref": "#/components/schemas/EmbeddingProvider"
           }
         },
         "required": [
@@ -1482,6 +1505,7 @@
         "type": "object"
       },
       "Envelope_AccessTokenRead_": {
+        "additionalProperties": false,
         "properties": {
           "data": {
             "anyOf": [
@@ -1506,6 +1530,11 @@
           "success": {
             "title": "Success",
             "type": "boolean"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
           }
         },
         "required": [
@@ -1515,6 +1544,7 @@
         "type": "object"
       },
       "Envelope_AuthUserRead_": {
+        "additionalProperties": false,
         "properties": {
           "data": {
             "anyOf": [
@@ -1539,6 +1569,11 @@
           "success": {
             "title": "Success",
             "type": "boolean"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
           }
         },
         "required": [
@@ -1548,6 +1583,7 @@
         "type": "object"
       },
       "Envelope_CancelChatRunResult_": {
+        "additionalProperties": false,
         "properties": {
           "data": {
             "anyOf": [
@@ -1572,6 +1608,11 @@
           "success": {
             "title": "Success",
             "type": "boolean"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
           }
         },
         "required": [
@@ -1580,40 +1621,8 @@
         "title": "Envelope[CancelChatRunResult]",
         "type": "object"
       },
-      "Envelope_CapabilityHealthData_": {
-        "properties": {
-          "data": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/CapabilityHealthData"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "error": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ErrorInfo"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "success": {
-            "title": "Success",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "success"
-        ],
-        "title": "Envelope[CapabilityHealthData]",
-        "type": "object"
-      },
       "Envelope_ChatMessagePairRead_": {
+        "additionalProperties": false,
         "properties": {
           "data": {
             "anyOf": [
@@ -1638,6 +1647,11 @@
           "success": {
             "title": "Success",
             "type": "boolean"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
           }
         },
         "required": [
@@ -1647,6 +1661,7 @@
         "type": "object"
       },
       "Envelope_ChatMessageRead_": {
+        "additionalProperties": false,
         "properties": {
           "data": {
             "anyOf": [
@@ -1671,6 +1686,11 @@
           "success": {
             "title": "Success",
             "type": "boolean"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
           }
         },
         "required": [
@@ -1680,6 +1700,7 @@
         "type": "object"
       },
       "Envelope_ChatProfileRead_": {
+        "additionalProperties": false,
         "properties": {
           "data": {
             "anyOf": [
@@ -1704,6 +1725,11 @@
           "success": {
             "title": "Success",
             "type": "boolean"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
           }
         },
         "required": [
@@ -1713,6 +1739,7 @@
         "type": "object"
       },
       "Envelope_ChatRunRead_": {
+        "additionalProperties": false,
         "properties": {
           "data": {
             "anyOf": [
@@ -1737,6 +1764,11 @@
           "success": {
             "title": "Success",
             "type": "boolean"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
           }
         },
         "required": [
@@ -1746,6 +1778,7 @@
         "type": "object"
       },
       "Envelope_ChatSessionContextRead_": {
+        "additionalProperties": false,
         "properties": {
           "data": {
             "anyOf": [
@@ -1770,6 +1803,11 @@
           "success": {
             "title": "Success",
             "type": "boolean"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
           }
         },
         "required": [
@@ -1779,6 +1817,7 @@
         "type": "object"
       },
       "Envelope_ChatSessionRead_": {
+        "additionalProperties": false,
         "properties": {
           "data": {
             "anyOf": [
@@ -1803,6 +1842,11 @@
           "success": {
             "title": "Success",
             "type": "boolean"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
           }
         },
         "required": [
@@ -1812,6 +1856,7 @@
         "type": "object"
       },
       "Envelope_DeleteChatMessageResult_": {
+        "additionalProperties": false,
         "properties": {
           "data": {
             "anyOf": [
@@ -1836,6 +1881,11 @@
           "success": {
             "title": "Success",
             "type": "boolean"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
           }
         },
         "required": [
@@ -1845,6 +1895,7 @@
         "type": "object"
       },
       "Envelope_DeleteChatSessionResult_": {
+        "additionalProperties": false,
         "properties": {
           "data": {
             "anyOf": [
@@ -1869,6 +1920,11 @@
           "success": {
             "title": "Success",
             "type": "boolean"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
           }
         },
         "required": [
@@ -1878,6 +1934,7 @@
         "type": "object"
       },
       "Envelope_DocumentListSummaryRead_": {
+        "additionalProperties": false,
         "properties": {
           "data": {
             "anyOf": [
@@ -1902,6 +1959,11 @@
           "success": {
             "title": "Success",
             "type": "boolean"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
           }
         },
         "required": [
@@ -1911,6 +1973,7 @@
         "type": "object"
       },
       "Envelope_DocumentRevisionRead_": {
+        "additionalProperties": false,
         "properties": {
           "data": {
             "anyOf": [
@@ -1935,6 +1998,11 @@
           "success": {
             "title": "Success",
             "type": "boolean"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
           }
         },
         "required": [
@@ -1944,6 +2012,7 @@
         "type": "object"
       },
       "Envelope_DocumentSummaryRead_": {
+        "additionalProperties": false,
         "properties": {
           "data": {
             "anyOf": [
@@ -1968,6 +2037,11 @@
           "success": {
             "title": "Success",
             "type": "boolean"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
           }
         },
         "required": [
@@ -1977,6 +2051,7 @@
         "type": "object"
       },
       "Envelope_DocumentUploadRead_": {
+        "additionalProperties": false,
         "properties": {
           "data": {
             "anyOf": [
@@ -2001,6 +2076,11 @@
           "success": {
             "title": "Success",
             "type": "boolean"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
           }
         },
         "required": [
@@ -2010,6 +2090,7 @@
         "type": "object"
       },
       "Envelope_DocumentUploadReadinessRead_": {
+        "additionalProperties": false,
         "properties": {
           "data": {
             "anyOf": [
@@ -2034,6 +2115,11 @@
           "success": {
             "title": "Success",
             "type": "boolean"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
           }
         },
         "required": [
@@ -2043,6 +2129,7 @@
         "type": "object"
       },
       "Envelope_HealthData_": {
+        "additionalProperties": false,
         "properties": {
           "data": {
             "anyOf": [
@@ -2067,6 +2154,11 @@
           "success": {
             "title": "Success",
             "type": "boolean"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
           }
         },
         "required": [
@@ -2076,6 +2168,7 @@
         "type": "object"
       },
       "Envelope_LoginResponse_": {
+        "additionalProperties": false,
         "properties": {
           "data": {
             "anyOf": [
@@ -2100,6 +2193,11 @@
           "success": {
             "title": "Success",
             "type": "boolean"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
           }
         },
         "required": [
@@ -2109,6 +2207,7 @@
         "type": "object"
       },
       "Envelope_ProviderConnectionTestRead_": {
+        "additionalProperties": false,
         "properties": {
           "data": {
             "anyOf": [
@@ -2133,6 +2232,11 @@
           "success": {
             "title": "Success",
             "type": "boolean"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
           }
         },
         "required": [
@@ -2142,6 +2246,7 @@
         "type": "object"
       },
       "Envelope_SessionBootstrapRead_": {
+        "additionalProperties": false,
         "properties": {
           "data": {
             "anyOf": [
@@ -2166,6 +2271,11 @@
           "success": {
             "title": "Success",
             "type": "boolean"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
           }
         },
         "required": [
@@ -2175,6 +2285,7 @@
         "type": "object"
       },
       "Envelope_SettingsRead_": {
+        "additionalProperties": false,
         "properties": {
           "data": {
             "anyOf": [
@@ -2199,6 +2310,11 @@
           "success": {
             "title": "Success",
             "type": "boolean"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
           }
         },
         "required": [
@@ -2208,6 +2324,7 @@
         "type": "object"
       },
       "Envelope_UserRead_": {
+        "additionalProperties": false,
         "properties": {
           "data": {
             "anyOf": [
@@ -2232,6 +2349,11 @@
           "success": {
             "title": "Success",
             "type": "boolean"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
           }
         },
         "required": [
@@ -2241,6 +2363,7 @@
         "type": "object"
       },
       "Envelope_dict_str__str__": {
+        "additionalProperties": false,
         "properties": {
           "data": {
             "anyOf": [
@@ -2269,6 +2392,11 @@
           "success": {
             "title": "Success",
             "type": "boolean"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
           }
         },
         "required": [
@@ -2278,6 +2406,7 @@
         "type": "object"
       },
       "Envelope_list_ActiveChatRunRead__": {
+        "additionalProperties": false,
         "properties": {
           "data": {
             "anyOf": [
@@ -2306,6 +2435,11 @@
           "success": {
             "title": "Success",
             "type": "boolean"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
           }
         },
         "required": [
@@ -2315,6 +2449,7 @@
         "type": "object"
       },
       "Envelope_list_ChatMessageRead__": {
+        "additionalProperties": false,
         "properties": {
           "data": {
             "anyOf": [
@@ -2343,6 +2478,11 @@
           "success": {
             "title": "Success",
             "type": "boolean"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
           }
         },
         "required": [
@@ -2352,6 +2492,7 @@
         "type": "object"
       },
       "Envelope_list_ChatRunEventRead__": {
+        "additionalProperties": false,
         "properties": {
           "data": {
             "anyOf": [
@@ -2380,6 +2521,11 @@
           "success": {
             "title": "Success",
             "type": "boolean"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
           }
         },
         "required": [
@@ -2389,6 +2535,7 @@
         "type": "object"
       },
       "Envelope_list_ChatSessionRead__": {
+        "additionalProperties": false,
         "properties": {
           "data": {
             "anyOf": [
@@ -2417,6 +2564,11 @@
           "success": {
             "title": "Success",
             "type": "boolean"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
           }
         },
         "required": [
@@ -2426,6 +2578,7 @@
         "type": "object"
       },
       "Envelope_list_DocumentRevisionRead__": {
+        "additionalProperties": false,
         "properties": {
           "data": {
             "anyOf": [
@@ -2454,6 +2607,11 @@
           "success": {
             "title": "Success",
             "type": "boolean"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
           }
         },
         "required": [
@@ -2463,6 +2621,7 @@
         "type": "object"
       },
       "Envelope_list_DocumentSummaryRead__": {
+        "additionalProperties": false,
         "properties": {
           "data": {
             "anyOf": [
@@ -2491,6 +2650,11 @@
           "success": {
             "title": "Success",
             "type": "boolean"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
           }
         },
         "required": [
@@ -2500,6 +2664,7 @@
         "type": "object"
       },
       "Envelope_list_UserRead__": {
+        "additionalProperties": false,
         "properties": {
           "data": {
             "anyOf": [
@@ -2528,6 +2693,11 @@
           "success": {
             "title": "Success",
             "type": "boolean"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
           }
         },
         "required": [
@@ -2537,6 +2707,7 @@
         "type": "object"
       },
       "ErrorEnvelope": {
+        "additionalProperties": false,
         "description": "OpenAPI model for failed API responses.",
         "properties": {
           "data": {
@@ -2560,8 +2731,11 @@
         "type": "object"
       },
       "ErrorInfo": {
+        "additionalProperties": false,
+        "description": "错误信息响应体。",
         "properties": {
           "code": {
+            "description": "错误代码",
             "title": "Code",
             "type": "string"
           },
@@ -2572,9 +2746,11 @@
                 "type": "null"
               }
             ],
+            "description": "详细错误信息",
             "title": "Details"
           },
           "message": {
+            "description": "错误消息",
             "title": "Message",
             "type": "string"
           }
@@ -2600,6 +2776,8 @@
         "type": "object"
       },
       "HealthData": {
+        "additionalProperties": false,
+        "description": "健康检查响应体。",
         "properties": {
           "status": {
             "title": "Status",
@@ -2645,6 +2823,7 @@
         "type": "object"
       },
       "LoginResponse": {
+        "additionalProperties": false,
         "description": "描述登录响应体。",
         "properties": {
           "access_token": {
@@ -2673,6 +2852,7 @@
         "type": "object"
       },
       "OllamaProfile": {
+        "additionalProperties": false,
         "properties": {
           "base_url": {
             "anyOf": [
@@ -2723,6 +2903,7 @@
         "type": "object"
       },
       "OpenAIProfile": {
+        "additionalProperties": false,
         "properties": {
           "api_key": {
             "anyOf": [
@@ -2784,6 +2965,7 @@
         "type": "object"
       },
       "ProviderConnectionTestRead": {
+        "additionalProperties": false,
         "description": "描述 capability 健康检查响应。",
         "properties": {
           "embedding": {
@@ -2805,6 +2987,7 @@
         "type": "object"
       },
       "ProviderProfiles": {
+        "additionalProperties": false,
         "description": "描述全部 provider profile。",
         "properties": {
           "anthropic": {
@@ -2848,21 +3031,27 @@
         "title": "ResetPasswordRequest",
         "type": "object"
       },
+      "ResponseProvider": {
+        "enum": [
+          "openai",
+          "anthropic",
+          "ollama"
+        ],
+        "title": "ResponseProvider",
+        "type": "string"
+      },
       "ResponseRouteConfig": {
+        "additionalProperties": false,
         "description": "描述 response capability route。",
         "properties": {
           "model": {
+            "maxLength": 256,
+            "minLength": 1,
             "title": "Model",
             "type": "string"
           },
           "provider": {
-            "enum": [
-              "openai",
-              "anthropic",
-              "ollama"
-            ],
-            "title": "Provider",
-            "type": "string"
+            "$ref": "#/components/schemas/ResponseProvider"
           }
         },
         "required": [
@@ -2873,6 +3062,7 @@
         "type": "object"
       },
       "SessionBootstrapRead": {
+        "additionalProperties": false,
         "description": "描述启动期认证恢复结果。",
         "properties": {
           "access_token": {
@@ -2924,6 +3114,7 @@
         "type": "object"
       },
       "SettingsRead": {
+        "additionalProperties": false,
         "description": "描述设置响应体。",
         "properties": {
           "active_index_generation": {
@@ -3044,22 +3235,17 @@
           "reasoning_mode": {
             "anyOf": [
               {
-                "enum": [
-                  "default",
-                  "off",
-                  "on"
-                ],
-                "type": "string"
+                "$ref": "#/components/schemas/ReasoningMode"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Reasoning Mode"
+            ]
           },
           "title": {
             "anyOf": [
               {
+                "maxLength": 200,
                 "type": "string"
               },
               {
@@ -3193,6 +3379,7 @@
         "type": "object"
       },
       "UserRead": {
+        "additionalProperties": false,
         "description": "描述用户响应体。",
         "properties": {
           "created_at": {
@@ -3329,21 +3516,27 @@
         "title": "ValidationError",
         "type": "object"
       },
+      "VisionProvider": {
+        "enum": [
+          "openai",
+          "anthropic",
+          "ollama"
+        ],
+        "title": "VisionProvider",
+        "type": "string"
+      },
       "VisionRouteConfig": {
+        "additionalProperties": false,
         "description": "描述 vision capability route。",
         "properties": {
           "model": {
+            "maxLength": 256,
+            "minLength": 1,
             "title": "Model",
             "type": "string"
           },
           "provider": {
-            "enum": [
-              "openai",
-              "anthropic",
-              "ollama"
-            ],
-            "title": "Provider",
-            "type": "string"
+            "$ref": "#/components/schemas/VisionProvider"
           }
         },
         "required": [
@@ -3354,6 +3547,7 @@
         "type": "object"
       },
       "VoyageProfile": {
+        "additionalProperties": false,
         "properties": {
           "api_key": {
             "anyOf": [
@@ -5447,7 +5641,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Envelope_CapabilityHealthData_"
+                  "$ref": "#/components/schemas/Envelope_ProviderConnectionTestRead_"
                 }
               }
             },

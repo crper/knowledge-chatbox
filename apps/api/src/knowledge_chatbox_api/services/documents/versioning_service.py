@@ -1,7 +1,8 @@
 """Document version creation and file write coordination."""
 
-from dataclasses import dataclass
 from pathlib import Path
+
+from pydantic import BaseModel, ConfigDict
 
 from knowledge_chatbox_api.core.config import Settings
 from knowledge_chatbox_api.models.auth import User
@@ -14,9 +15,10 @@ from knowledge_chatbox_api.utils.document_types import guess_mime_type
 from knowledge_chatbox_api.utils.files import PersistedUpload
 
 
-@dataclass
-class VersioningResult:
-    """Return value for one upload versioning pass."""
+class VersioningResult(BaseModel):
+    """版本创建结果。"""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     document: Document
     version: DocumentRevision
@@ -76,7 +78,7 @@ class VersioningService:
                 created_by_user_id=actor.id,
                 updated_by_user_id=actor.id,
             )
-            self.repository.add_document(document)
+            self.repository.add(document)
         else:
             document = latest_document
             document.title = filename

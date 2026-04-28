@@ -1,17 +1,18 @@
-/**
- * @file TanStack Router chat session 路由。
- */
-
 import { createFileRoute, redirect } from "@tanstack/react-router";
 
 import { chatSessionsQueryOptions } from "@/features/chat/api/chat-query";
-import { buildChatSessionPath, parseChatSessionId } from "@/lib/routes";
+import { parseChatSessionId } from "@/lib/routes";
 import {
   clearLastVisitedChatSessionId,
   resolveRestorableChatSessionId,
   writeLastVisitedChatSessionId,
 } from "@/features/chat/utils/chat-session-recovery";
-import { ChatPageRoute } from "@/router/route-shells";
+import { lazy, Suspense } from "react";
+import { LoadingState } from "@/components/shared/loading-state";
+
+const ChatPage = lazy(async () => ({
+  default: (await import("@/pages/chat/chat-page")).ChatPage,
+}));
 
 export const Route = createFileRoute("/_authed/chat/$sessionId")({
   beforeLoad: async ({ context, params }) => {
@@ -33,11 +34,17 @@ export const Route = createFileRoute("/_authed/chat/$sessionId")({
       writeLastVisitedChatSessionId(nextSessionId);
       throw redirect({
         replace: true,
-        to: buildChatSessionPath(nextSessionId),
+        to: "/chat/$sessionId",
+        params: { sessionId: String(nextSessionId) },
       });
     }
 
     writeLastVisitedChatSessionId(sessionId);
   },
-  component: ChatPageRoute,
+  component: () => (
+    <Suspense fallback={<LoadingState />}>
+      <ChatPage />
+    </Suspense>
+  ),
+  pendingComponent: LoadingState,
 });

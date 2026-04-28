@@ -1,4 +1,6 @@
-from typing import Any
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 from pydantic_ai import Agent
 from pydantic_ai.usage import UsageLimits
@@ -14,13 +16,16 @@ from knowledge_chatbox_api.services.chat.workflow.tools import (
     load_prompt_attachments_tool,
 )
 
+if TYPE_CHECKING:
+    from pydantic_ai.models import Model
+
 
 def build_chat_usage_limits() -> UsageLimits:
     return UsageLimits(request_limit=6, tool_calls_limit=4)
 
 
 def _build_base_agent[OutputT](
-    model: Any | None,
+    model: str | Model | None,
     *,
     output_type: type[OutputT],
 ) -> Agent[ChatWorkflowDeps, OutputT]:
@@ -38,9 +43,13 @@ def _build_base_agent[OutputT](
     return agent
 
 
-def build_chat_agent(model: Any | None = None) -> Agent[ChatWorkflowDeps, ChatWorkflowResult]:
+def build_chat_agent(
+    model: str | Model | None = None,
+) -> Agent[ChatWorkflowDeps, ChatWorkflowResult]:
     return _build_base_agent(model, output_type=ChatWorkflowResult)
 
 
-def build_chat_stream_agent(model: Any | None = None) -> Agent[ChatWorkflowDeps, str]:
+def build_chat_stream_agent(
+    model: str | Model | None = None,
+) -> Agent[ChatWorkflowDeps, str]:
     return _build_base_agent(model, output_type=str)

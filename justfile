@@ -26,7 +26,7 @@ help:
         'Knowledge Chatbox 常用入口' \
         '' \
         '  just init-env     初始化 .env，并自动补齐本地开发所需密钥' \
-        '  just setup        安装后端和前端依赖' \
+        '  just setup        安装依赖并初始化 Git hooks' \
         '  just dev          启动前后端开发环境' \
         '  just test         跑仓库级检查与测试' \
         '  just reset-data   清空本地数据并重建 schema' \
@@ -47,6 +47,8 @@ init-env:
 setup:
     cd {{api_dir}} && uv sync --all-groups
     cd {{web_dir}} && vp install
+    cd {{web_dir}} && vp run api:check
+    lefthook install
 
 # 本地开发
 api-migrate:
@@ -56,7 +58,7 @@ api-dev:
     cd {{api_dir}} && uv run python -m alembic upgrade head && uv run -m uvicorn knowledge_chatbox_api.main:app --reload --host 0.0.0.0 --port {{api_port}}
 
 web-dev:
-    cd {{web_dir}} && vp dev --host 0.0.0.0 --port {{web_port}}
+    cd {{web_dir}} && vp run api:check && vp dev --host 0.0.0.0 --port {{web_port}}
 
 dev:
     API_PORT={{api_port}} WEB_PORT={{web_port}} {{dev_script}}
@@ -66,9 +68,11 @@ repo-check:
     uv run --project {{api_dir}} python scripts/check_repo_surface.py
 
 api-check:
-    cd {{api_dir}} && uv run ruff check && uv run ruff format --check && uv run basedpyright
+    cd {{api_dir}} && uv run ruff check --fix && uv run ruff format && uv run basedpyright && uv run basedpyright --project pyproject.test.toml
 
 api-test:
+    # 提升文件描述符限制，避免 ChromaDB/SQLite 测试耗尽 FD
+    ulimit -n 4096 2>/dev/null || true
     cd {{api_dir}} && uv run --group dev python -m pytest
 
 web-check:
@@ -87,9 +91,11 @@ reset-data:
     {{reset_script}} --yes
 
 reset-dev:
+    API_PORT={{api_port}} WEB_PORT={{web_port}} {{dev_script}} --check-only
     {{reset_script}} --yes
     cd {{api_dir}} && uv sync --all-groups
     cd {{web_dir}} && vp install
+    cd {{web_dir}} && vp run api:check
     API_PORT={{api_port}} WEB_PORT={{web_port}} {{dev_script}}
 
 # Docker / 单机部署

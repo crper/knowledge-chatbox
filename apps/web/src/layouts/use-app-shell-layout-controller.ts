@@ -2,13 +2,11 @@
  * @file 应用壳层布局控制器 Hook。
  */
 
-import { useEffect, useEffectEvent, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "@/lib/app-router";
-import { useLocation } from "@/lib/app-router";
+import { useLocation, useNavigate } from "@tanstack/react-router";
 import { logout } from "@/features/auth/api/auth";
 import { createChatSession } from "@/features/chat/api/chat";
-import { buildChatSessionPath } from "@/lib/routes";
 import { queryKeys } from "@/lib/api/query-keys";
 import { useIsMobile } from "@/lib/hooks/use-mobile";
 import { logoutSession } from "@/lib/auth/session-manager";
@@ -76,12 +74,6 @@ export function useAppShellLayoutController(): AppShellLayoutController {
     setIsMobileNavigationOpen(false);
   }, [location.pathname]);
 
-  const toggleLeftWorkspacePanel = useEffectEvent(() => {
-    setChatWorkspacePanels((current) => ({
-      leftCollapsed: !current.leftCollapsed,
-    }));
-  });
-
   useEffect(() => {
     if (!isChatRoute || isMobile) {
       return;
@@ -99,12 +91,14 @@ export function useAppShellLayoutController(): AppShellLayoutController {
       }
 
       event.preventDefault();
-      toggleLeftWorkspacePanel();
+      setChatWorkspacePanels((current) => ({
+        leftCollapsed: !current.leftCollapsed,
+      }));
     };
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [isChatRoute, isMobile, toggleLeftWorkspacePanel]);
+  }, [isChatRoute, isMobile]);
 
   const createSessionMutation = useMutation({
     mutationFn: createChatSession,
@@ -118,7 +112,7 @@ export function useAppShellLayoutController(): AppShellLayoutController {
           return [session, ...nextSessions.filter((item) => item.id !== session.id)];
         },
       );
-      void navigate(buildChatSessionPath(session.id));
+      void navigate({ to: "/chat/$sessionId", params: { sessionId: String(session.id) } });
     },
   });
 

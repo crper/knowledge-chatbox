@@ -8,7 +8,6 @@ from fastapi.responses import FileResponse
 
 from knowledge_chatbox_api.api.deps import CurrentUserDep, DbSessionDep, SettingsDep
 from knowledge_chatbox_api.api.error_responses import DOCUMENT_REINDEX_ERROR_RESPONSES
-from knowledge_chatbox_api.api.routes._common.transforms import model_to_read_simple
 from knowledge_chatbox_api.core.logging import get_logger
 from knowledge_chatbox_api.models.enums import IngestStatus
 from knowledge_chatbox_api.repositories.document_repository import DocumentRepository
@@ -51,17 +50,9 @@ def _safe_file_path(file_path: Path, allowed_dirs: list[Path]) -> Path:
     """确保文件路径在允许的存储目录内，防止路径遍历攻击。"""
     resolved = file_path.resolve()
     for allowed_dir in allowed_dirs:
-        try:
-            resolved.relative_to(allowed_dir.resolve())
+        if resolved.is_relative_to(allowed_dir.resolve()):
             return resolved
-        except ValueError:
-            continue
     raise DocumentFileNotFoundError()
-
-
-def to_document_revision_read(document_revision) -> DocumentRevisionRead:
-    """把文档修订模型转换为修订响应结构。"""
-    return model_to_read_simple(document_revision, DocumentRevisionRead)
 
 
 def to_document_upload_read(
@@ -75,8 +66,8 @@ def to_document_upload_read(
     return DocumentUploadRead(
         deduplicated=deduplicated,
         document=to_document_summary_read(document, latest_revision),
-        revision=to_document_revision_read(document_revision),
-        latest_revision=to_document_revision_read(latest_revision),
+        revision=DocumentRevisionRead.model_validate(document_revision),
+        latest_revision=DocumentRevisionRead.model_validate(latest_revision),
     )
 
 
@@ -89,7 +80,9 @@ def to_document_summary_read(document, latest_revision) -> DocumentSummaryRead:
         logical_name=document.logical_name,
         status=document.status,
         latest_revision=(
-            to_document_revision_read(latest_revision) if latest_revision is not None else None
+            DocumentRevisionRead.model_validate(latest_revision)
+            if latest_revision is not None
+            else None
         ),
         created_by_user_id=document.created_by_user_id,
         updated_by_user_id=document.updated_by_user_id,
@@ -106,10 +99,6 @@ def to_document_upload_readiness_read(settings_record) -> DocumentUploadReadines
         image_fallback=readiness.image_fallback,
         blocking_reason=readiness.blocking_reason,
     )
-
-
-def to_document_list_summary_read(*, pending_count: int) -> DocumentListSummaryRead:
-    return DocumentListSummaryRead(pending_count=pending_count)
 
 
 def ensure_document_upload_ready(settings_record) -> None:
@@ -130,11 +119,7 @@ def get_document_upload_readiness_route(
     """返回资源上传所需的最小配置是否就绪。"""
     ingestion_service = IngestionService(session, settings)
     settings_record = ingestion_service.settings_service.get_or_create_settings_record()
-    return Envelope(
-        success=True,
-        data=to_document_upload_readiness_read(settings_record),
-        error=None,
-    )
+    return Envelope.ok(to_document_upload_readiness_read(settings_record))
 
 
 @router.get("/summary", response_model=Envelope[DocumentListSummaryRead])
@@ -145,12 +130,8 @@ def get_document_list_summary(
 ) -> Envelope[DocumentListSummaryRead]:
     """返回资源列表的轻量摘要。"""
     service = DocumentQueryService(session)
-    return Envelope(
-        success=True,
-        data=to_document_list_summary_read(
-            pending_count=service.count_pending_documents(current_user)
-        ),
-        error=None,
+    return Envelope.ok(
+        DocumentListSummaryRead(pending_count=service.count_pending_documents(current_user))
     )
 
 
@@ -171,10 +152,8 @@ def list_documents(
         query=query,
         type_filter=type_filter,
     )
-    return Envelope(
-        success=True,
-        data=[to_document_summary_read(document, revision) for document, revision in documents],
-        error=None,
+    return Envelope.ok(
+        [to_document_summary_read(document, revision) for document, revision in documents]
     )
 
 
@@ -192,11 +171,7 @@ def get_document(
     if document is None:
         raise DocumentNotFoundError()
     latest_revision = repository.get_latest_revision(document)
-    return Envelope(
-        success=True,
-        data=to_document_summary_read(document, latest_revision),
-        error=None,
-    )
+    return Envelope.ok(to_document_summary_read(document, latest_revision))
 
 
 @router.get("/{document_id}/revisions", response_model=Envelope[list[DocumentRevisionRead]])
@@ -209,11 +184,7 @@ def get_document_revisions(
     """获取文档版本列表。"""
     service = DocumentQueryService(session)
     documents = service.list_versions(current_user, document_id)
-    return Envelope(
-        success=True,
-        data=[to_document_revision_read(item) for item in documents],
-        error=None,
-    )
+    return Envelope.ok([DocumentRevisionRead.model_validate(item) for item in documents])
 
 
 @router.post(
@@ -280,15 +251,13 @@ async def upload_document(
     else:
         response.status_code = status.HTTP_201_CREATED
     latest_revision = repository.get_latest_revision(upload_result.document)
-    return Envelope(
-        success=True,
-        data=to_document_upload_read(
+    return Envelope.ok(
+        to_document_upload_read(
             upload_result.document,
             upload_result.revision,
             latest_revision,
             deduplicated=upload_result.deduplicated,
         ),
-        error=None,
     )
 
 
@@ -308,7 +277,7 @@ def reindex_document(
     document = service.reindex_document(current_user, document_id)
     if document.ingest_status == IngestStatus.FAILED:
         raise DocumentReindexFailedError(document.error_message)
-    return Envelope(success=True, data=to_document_revision_read(document), error=None)
+    return Envelope.ok(DocumentRevisionRead.model_validate(document))
 
 
 @router.delete("/{document_id}", response_model=Envelope[dict[str, str]])
@@ -321,7 +290,7 @@ def delete_document(
     """删除文档。"""
     service = IngestionService(session, settings)
     service.delete_document(current_user, document_id)
-    return Envelope(success=True, data={"status": "ok"}, error=None)
+    return Envelope.ok({"status": "ok"})
 
 
 @router.get("/{document_id}/file")

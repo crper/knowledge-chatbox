@@ -1,17 +1,12 @@
 import type { InfiniteData, QueryClient } from "@tanstack/react-query";
 
-import type { ChatMessageItem, ChatSourceItem } from "@/features/chat/api/chat";
+import type { ChatMessageItem } from "@/features/chat/api/chat";
 import { queryKeys } from "@/lib/api/query-keys";
 
 type PatchPagedChatMessagesCacheInput = {
   appendIfMissing?: ChatMessageItem[];
   assistantMessageId: number;
-  patch: {
-    content?: string;
-    error_message?: string | null;
-    sources_json?: ChatSourceItem[] | null;
-    status?: string;
-  };
+  patch: Partial<Pick<ChatMessageItem, "content" | "error_message" | "sources" | "status">>;
   queryClient: QueryClient;
   sessionId: number;
 };

@@ -753,17 +753,16 @@ export interface components {
              */
             token_type: string;
         };
-        /** ActiveChatRunRead */
+        /**
+         * ActiveChatRunRead
+         * @description 活跃聊天运行响应体。
+         */
         ActiveChatRunRead: {
             /** Assistant Message Id */
             assistant_message_id: number | null;
             /** Id */
             id: number;
-            /**
-             * Reasoning Mode
-             * @enum {string}
-             */
-            reasoning_mode: "default" | "off" | "on";
+            reasoning_mode: components["schemas"]["ReasoningMode"];
             /** Session Id */
             session_id: number;
             /** Started At */
@@ -828,12 +827,6 @@ export interface components {
         CancelChatStreamRequest: {
             /** Client Request Id */
             client_request_id: string;
-        };
-        /** CapabilityHealthData */
-        CapabilityHealthData: {
-            embedding: components["schemas"]["CapabilityHealthRead"];
-            response: components["schemas"]["CapabilityHealthRead"];
-            vision: components["schemas"]["CapabilityHealthRead"];
         };
         /**
          * CapabilityHealthRead
@@ -911,10 +904,13 @@ export interface components {
             assistant_message: components["schemas"]["ChatMessageRead"];
             user_message: components["schemas"]["ChatMessageRead"];
         };
-        /** ChatMessageRead */
+        /**
+         * ChatMessageRead
+         * @description 聊天消息响应体。
+         */
         ChatMessageRead: {
-            /** Attachments Json */
-            attachments_json?: components["schemas"]["ChatAttachmentMetadata"][] | null;
+            /** Attachments */
+            attachments?: components["schemas"]["ChatAttachmentMetadata"][] | null;
             /** Client Request Id */
             client_request_id: string | null;
             /** Content */
@@ -935,8 +931,8 @@ export interface components {
             role: components["schemas"]["ChatMessageRole"];
             /** Session Id */
             session_id: number;
-            /** Sources Json */
-            sources_json: components["schemas"]["ChatSourceRead"][] | null;
+            /** Sources */
+            sources?: components["schemas"]["ChatSourceRead"][] | null;
             status: components["schemas"]["ChatMessageStatus"];
         };
         /**
@@ -955,13 +951,12 @@ export interface components {
             configured: boolean;
             /** Model */
             model: string | null;
-            /**
-             * Provider
-             * @enum {string}
-             */
-            provider: "openai" | "anthropic" | "ollama";
+            provider: components["schemas"]["ResponseProvider"];
         };
-        /** ChatRunEventRead */
+        /**
+         * ChatRunEventRead
+         * @description 聊天运行事件响应体。
+         */
         ChatRunEventRead: {
             /**
              * Created At
@@ -981,7 +976,10 @@ export interface components {
             /** Seq */
             seq: number;
         };
-        /** ChatRunRead */
+        /**
+         * ChatRunRead
+         * @description 聊天运行响应体。
+         */
         ChatRunRead: {
             /** Assistant Message Id */
             assistant_message_id: number | null;
@@ -1002,11 +1000,7 @@ export interface components {
             id: number;
             /** Parent Run Id */
             parent_run_id: number | null;
-            /**
-             * Reasoning Mode
-             * @enum {string}
-             */
-            reasoning_mode: "default" | "off" | "on";
+            reasoning_mode: components["schemas"]["ReasoningMode"];
             /** Response Model */
             response_model: string;
             /** Response Provider */
@@ -1042,7 +1036,10 @@ export interface components {
             /** Session Id */
             session_id: number;
         };
-        /** ChatSessionRead */
+        /**
+         * ChatSessionRead
+         * @description 聊天会话响应体。
+         */
         ChatSessionRead: {
             /**
              * Created At
@@ -1051,11 +1048,7 @@ export interface components {
             created_at: string;
             /** Id */
             id: number;
-            /**
-             * Reasoning Mode
-             * @enum {string}
-             */
-            reasoning_mode: "default" | "off" | "on";
+            reasoning_mode: components["schemas"]["ReasoningMode"];
             /** Title */
             title: string | null;
             /**
@@ -1154,114 +1147,251 @@ export interface components {
         /**
          * DocumentListSummaryRead
          * @description 描述资源列表的轻量摘要。
+         *
+         *     Attributes:
+         *         pending_count: 待处理数量
          */
         DocumentListSummaryRead: {
-            /** Pending Count */
+            /**
+             * Pending Count
+             * @description 待处理数量
+             */
             pending_count: number;
         };
         /**
          * DocumentRevisionRead
          * @description 描述文档修订响应体。
+         *
+         *     Attributes:
+         *         id: 修订版本 ID
+         *         document_id: 所属文档 ID
+         *         revision_no: 版本号
+         *         source_filename: 源文件名
+         *         mime_type: MIME 类型
+         *         file_type: 文件类型
+         *         ingest_status: 摄入状态
+         *         content_hash: 内容哈希
+         *         file_size: 文件大小（字节）
+         *         chunk_count: 分块数量
+         *         error_message: 错误消息
+         *         supersedes_revision_id: 被替代的修订版本 ID
+         *         created_by_user_id: 创建者用户 ID
+         *         updated_by_user_id: 更新者用户 ID
+         *         created_at: 创建时间
+         *         updated_at: 更新时间
+         *         indexed_at: 索引时间
          */
         DocumentRevisionRead: {
-            /** Chunk Count */
-            chunk_count: number | null;
-            /** Content Hash */
+            /**
+             * Chunk Count
+             * @description 分块数量
+             */
+            chunk_count?: number | null;
+            /**
+             * Content Hash
+             * @description 内容哈希
+             */
             content_hash: string;
             /**
              * Created At
              * Format: date-time
+             * @description 创建时间
              */
             created_at: string;
-            /** Created By User Id */
-            created_by_user_id: number | null;
-            /** Document Id */
+            /**
+             * Created By User Id
+             * @description 创建者用户 ID
+             */
+            created_by_user_id?: number | null;
+            /**
+             * Document Id
+             * @description 所属文档 ID
+             */
             document_id: number;
-            /** Error Message */
-            error_message: string | null;
-            /** File Size */
-            file_size: number | null;
-            /** File Type */
+            /**
+             * Error Message
+             * @description 错误消息
+             */
+            error_message?: string | null;
+            /**
+             * File Size
+             * @description 文件大小（字节）
+             */
+            file_size?: number | null;
+            /**
+             * File Type
+             * @description 文件类型
+             */
             file_type: string;
-            /** Id */
+            /**
+             * Id
+             * @description 修订版本 ID
+             */
             id: number;
-            /** Indexed At */
-            indexed_at: string | null;
-            /** Ingest Status */
+            /**
+             * Indexed At
+             * @description 索引时间
+             */
+            indexed_at?: string | null;
+            /**
+             * Ingest Status
+             * @description 摄入状态
+             */
             ingest_status: string;
-            /** Mime Type */
+            /**
+             * Mime Type
+             * @description MIME 类型
+             */
             mime_type: string;
-            /** Revision No */
+            /**
+             * Revision No
+             * @description 版本号
+             */
             revision_no: number;
-            /** Source Filename */
+            /**
+             * Source Filename
+             * @description 源文件名
+             */
             source_filename: string;
-            /** Supersedes Revision Id */
-            supersedes_revision_id: number | null;
+            /**
+             * Supersedes Revision Id
+             * @description 被替代的修订版本 ID
+             */
+            supersedes_revision_id?: number | null;
             /**
              * Updated At
              * Format: date-time
+             * @description 更新时间
              */
             updated_at: string;
-            /** Updated By User Id */
-            updated_by_user_id: number | null;
+            /**
+             * Updated By User Id
+             * @description 更新者用户 ID
+             */
+            updated_by_user_id?: number | null;
         };
         /**
          * DocumentSummaryRead
          * @description 描述逻辑文档响应体。
+         *
+         *     Attributes:
+         *         id: 文档 ID
+         *         space_id: 所属空间 ID
+         *         title: 文档标题
+         *         logical_name: 逻辑名称
+         *         status: 状态
+         *         latest_revision: 最新修订版本
+         *         created_by_user_id: 创建者用户 ID
+         *         updated_by_user_id: 更新者用户 ID
+         *         created_at: 创建时间
+         *         updated_at: 更新时间
          */
         DocumentSummaryRead: {
             /**
              * Created At
              * Format: date-time
+             * @description 创建时间
              */
             created_at: string;
-            /** Created By User Id */
-            created_by_user_id: number | null;
-            /** Id */
+            /**
+             * Created By User Id
+             * @description 创建者用户 ID
+             */
+            created_by_user_id?: number | null;
+            /**
+             * Id
+             * @description 文档 ID
+             */
             id: number;
+            /** @description 最新修订版本 */
             latest_revision?: components["schemas"]["DocumentRevisionRead"] | null;
-            /** Logical Name */
+            /**
+             * Logical Name
+             * @description 逻辑名称
+             */
             logical_name: string;
-            /** Space Id */
+            /**
+             * Space Id
+             * @description 所属空间 ID
+             */
             space_id: number;
-            /** Status */
+            /**
+             * Status
+             * @description 状态
+             */
             status: string;
-            /** Title */
+            /**
+             * Title
+             * @description 文档标题
+             */
             title: string;
             /**
              * Updated At
              * Format: date-time
+             * @description 更新时间
              */
             updated_at: string;
-            /** Updated By User Id */
-            updated_by_user_id: number | null;
+            /**
+             * Updated By User Id
+             * @description 更新者用户 ID
+             */
+            updated_by_user_id?: number | null;
         };
         /**
          * DocumentUploadRead
          * @description 描述上传接口响应体。
+         *
+         *     Attributes:
+         *         deduplicated: 是否已去重
+         *         document: 文档摘要信息
+         *         revision: 当前修订版本
+         *         latest_revision: 最新修订版本
          */
         DocumentUploadRead: {
             /**
              * Deduplicated
+             * @description 是否已去重
              * @default false
              */
             deduplicated: boolean;
+            /** @description 文档摘要信息 */
             document: components["schemas"]["DocumentSummaryRead"];
+            /** @description 最新修订版本 */
             latest_revision: components["schemas"]["DocumentRevisionRead"];
+            /** @description 当前修订版本 */
             revision: components["schemas"]["DocumentRevisionRead"];
         };
         /**
          * DocumentUploadReadinessRead
          * @description 描述资源上传前置条件是否满足。
+         *
+         *     Attributes:
+         *         can_upload: 是否可以上传
+         *         image_fallback: 是否使用图像降级处理
+         *         blocking_reason: 阻止原因
          */
         DocumentUploadReadinessRead: {
-            /** Blocking Reason */
-            blocking_reason: string | null;
-            /** Can Upload */
+            /**
+             * Blocking Reason
+             * @description 阻止原因
+             */
+            blocking_reason?: string | null;
+            /**
+             * Can Upload
+             * @description 是否可以上传
+             */
             can_upload: boolean;
-            /** Image Fallback */
+            /**
+             * Image Fallback
+             * @description 是否使用图像降级处理
+             */
             image_fallback: boolean;
         };
+        /**
+         * EmbeddingProvider
+         * @enum {string}
+         */
+        EmbeddingProvider: "openai" | "voyage" | "ollama";
         /**
          * EmbeddingRouteConfig
          * @description 描述 embedding capability route。
@@ -1269,11 +1399,7 @@ export interface components {
         EmbeddingRouteConfig: {
             /** Model */
             model: string;
-            /**
-             * Provider
-             * @enum {string}
-             */
-            provider: "openai" | "voyage" | "ollama";
+            provider: components["schemas"]["EmbeddingProvider"];
         };
         /** Envelope[AccessTokenRead] */
         Envelope_AccessTokenRead_: {
@@ -1281,6 +1407,11 @@ export interface components {
             error?: components["schemas"]["ErrorInfo"] | null;
             /** Success */
             success: boolean;
+            /**
+             * Timestamp
+             * Format: date-time
+             */
+            timestamp?: string;
         };
         /** Envelope[AuthUserRead] */
         Envelope_AuthUserRead_: {
@@ -1288,6 +1419,11 @@ export interface components {
             error?: components["schemas"]["ErrorInfo"] | null;
             /** Success */
             success: boolean;
+            /**
+             * Timestamp
+             * Format: date-time
+             */
+            timestamp?: string;
         };
         /** Envelope[CancelChatRunResult] */
         Envelope_CancelChatRunResult_: {
@@ -1295,13 +1431,11 @@ export interface components {
             error?: components["schemas"]["ErrorInfo"] | null;
             /** Success */
             success: boolean;
-        };
-        /** Envelope[CapabilityHealthData] */
-        Envelope_CapabilityHealthData_: {
-            data?: components["schemas"]["CapabilityHealthData"] | null;
-            error?: components["schemas"]["ErrorInfo"] | null;
-            /** Success */
-            success: boolean;
+            /**
+             * Timestamp
+             * Format: date-time
+             */
+            timestamp?: string;
         };
         /** Envelope[ChatMessagePairRead] */
         Envelope_ChatMessagePairRead_: {
@@ -1309,6 +1443,11 @@ export interface components {
             error?: components["schemas"]["ErrorInfo"] | null;
             /** Success */
             success: boolean;
+            /**
+             * Timestamp
+             * Format: date-time
+             */
+            timestamp?: string;
         };
         /** Envelope[ChatMessageRead] */
         Envelope_ChatMessageRead_: {
@@ -1316,6 +1455,11 @@ export interface components {
             error?: components["schemas"]["ErrorInfo"] | null;
             /** Success */
             success: boolean;
+            /**
+             * Timestamp
+             * Format: date-time
+             */
+            timestamp?: string;
         };
         /** Envelope[ChatProfileRead] */
         Envelope_ChatProfileRead_: {
@@ -1323,6 +1467,11 @@ export interface components {
             error?: components["schemas"]["ErrorInfo"] | null;
             /** Success */
             success: boolean;
+            /**
+             * Timestamp
+             * Format: date-time
+             */
+            timestamp?: string;
         };
         /** Envelope[ChatRunRead] */
         Envelope_ChatRunRead_: {
@@ -1330,6 +1479,11 @@ export interface components {
             error?: components["schemas"]["ErrorInfo"] | null;
             /** Success */
             success: boolean;
+            /**
+             * Timestamp
+             * Format: date-time
+             */
+            timestamp?: string;
         };
         /** Envelope[ChatSessionContextRead] */
         Envelope_ChatSessionContextRead_: {
@@ -1337,6 +1491,11 @@ export interface components {
             error?: components["schemas"]["ErrorInfo"] | null;
             /** Success */
             success: boolean;
+            /**
+             * Timestamp
+             * Format: date-time
+             */
+            timestamp?: string;
         };
         /** Envelope[ChatSessionRead] */
         Envelope_ChatSessionRead_: {
@@ -1344,6 +1503,11 @@ export interface components {
             error?: components["schemas"]["ErrorInfo"] | null;
             /** Success */
             success: boolean;
+            /**
+             * Timestamp
+             * Format: date-time
+             */
+            timestamp?: string;
         };
         /** Envelope[DeleteChatMessageResult] */
         Envelope_DeleteChatMessageResult_: {
@@ -1351,6 +1515,11 @@ export interface components {
             error?: components["schemas"]["ErrorInfo"] | null;
             /** Success */
             success: boolean;
+            /**
+             * Timestamp
+             * Format: date-time
+             */
+            timestamp?: string;
         };
         /** Envelope[DeleteChatSessionResult] */
         Envelope_DeleteChatSessionResult_: {
@@ -1358,6 +1527,11 @@ export interface components {
             error?: components["schemas"]["ErrorInfo"] | null;
             /** Success */
             success: boolean;
+            /**
+             * Timestamp
+             * Format: date-time
+             */
+            timestamp?: string;
         };
         /** Envelope[DocumentListSummaryRead] */
         Envelope_DocumentListSummaryRead_: {
@@ -1365,6 +1539,11 @@ export interface components {
             error?: components["schemas"]["ErrorInfo"] | null;
             /** Success */
             success: boolean;
+            /**
+             * Timestamp
+             * Format: date-time
+             */
+            timestamp?: string;
         };
         /** Envelope[DocumentRevisionRead] */
         Envelope_DocumentRevisionRead_: {
@@ -1372,6 +1551,11 @@ export interface components {
             error?: components["schemas"]["ErrorInfo"] | null;
             /** Success */
             success: boolean;
+            /**
+             * Timestamp
+             * Format: date-time
+             */
+            timestamp?: string;
         };
         /** Envelope[DocumentSummaryRead] */
         Envelope_DocumentSummaryRead_: {
@@ -1379,6 +1563,11 @@ export interface components {
             error?: components["schemas"]["ErrorInfo"] | null;
             /** Success */
             success: boolean;
+            /**
+             * Timestamp
+             * Format: date-time
+             */
+            timestamp?: string;
         };
         /** Envelope[DocumentUploadRead] */
         Envelope_DocumentUploadRead_: {
@@ -1386,6 +1575,11 @@ export interface components {
             error?: components["schemas"]["ErrorInfo"] | null;
             /** Success */
             success: boolean;
+            /**
+             * Timestamp
+             * Format: date-time
+             */
+            timestamp?: string;
         };
         /** Envelope[DocumentUploadReadinessRead] */
         Envelope_DocumentUploadReadinessRead_: {
@@ -1393,6 +1587,11 @@ export interface components {
             error?: components["schemas"]["ErrorInfo"] | null;
             /** Success */
             success: boolean;
+            /**
+             * Timestamp
+             * Format: date-time
+             */
+            timestamp?: string;
         };
         /** Envelope[HealthData] */
         Envelope_HealthData_: {
@@ -1400,6 +1599,11 @@ export interface components {
             error?: components["schemas"]["ErrorInfo"] | null;
             /** Success */
             success: boolean;
+            /**
+             * Timestamp
+             * Format: date-time
+             */
+            timestamp?: string;
         };
         /** Envelope[LoginResponse] */
         Envelope_LoginResponse_: {
@@ -1407,6 +1611,11 @@ export interface components {
             error?: components["schemas"]["ErrorInfo"] | null;
             /** Success */
             success: boolean;
+            /**
+             * Timestamp
+             * Format: date-time
+             */
+            timestamp?: string;
         };
         /** Envelope[ProviderConnectionTestRead] */
         Envelope_ProviderConnectionTestRead_: {
@@ -1414,6 +1623,11 @@ export interface components {
             error?: components["schemas"]["ErrorInfo"] | null;
             /** Success */
             success: boolean;
+            /**
+             * Timestamp
+             * Format: date-time
+             */
+            timestamp?: string;
         };
         /** Envelope[SessionBootstrapRead] */
         Envelope_SessionBootstrapRead_: {
@@ -1421,6 +1635,11 @@ export interface components {
             error?: components["schemas"]["ErrorInfo"] | null;
             /** Success */
             success: boolean;
+            /**
+             * Timestamp
+             * Format: date-time
+             */
+            timestamp?: string;
         };
         /** Envelope[SettingsRead] */
         Envelope_SettingsRead_: {
@@ -1428,6 +1647,11 @@ export interface components {
             error?: components["schemas"]["ErrorInfo"] | null;
             /** Success */
             success: boolean;
+            /**
+             * Timestamp
+             * Format: date-time
+             */
+            timestamp?: string;
         };
         /** Envelope[UserRead] */
         Envelope_UserRead_: {
@@ -1435,6 +1659,11 @@ export interface components {
             error?: components["schemas"]["ErrorInfo"] | null;
             /** Success */
             success: boolean;
+            /**
+             * Timestamp
+             * Format: date-time
+             */
+            timestamp?: string;
         };
         /** Envelope[dict[str, str]] */
         Envelope_dict_str__str__: {
@@ -1445,6 +1674,11 @@ export interface components {
             error?: components["schemas"]["ErrorInfo"] | null;
             /** Success */
             success: boolean;
+            /**
+             * Timestamp
+             * Format: date-time
+             */
+            timestamp?: string;
         };
         /** Envelope[list[ActiveChatRunRead]] */
         Envelope_list_ActiveChatRunRead__: {
@@ -1453,6 +1687,11 @@ export interface components {
             error?: components["schemas"]["ErrorInfo"] | null;
             /** Success */
             success: boolean;
+            /**
+             * Timestamp
+             * Format: date-time
+             */
+            timestamp?: string;
         };
         /** Envelope[list[ChatMessageRead]] */
         Envelope_list_ChatMessageRead__: {
@@ -1461,6 +1700,11 @@ export interface components {
             error?: components["schemas"]["ErrorInfo"] | null;
             /** Success */
             success: boolean;
+            /**
+             * Timestamp
+             * Format: date-time
+             */
+            timestamp?: string;
         };
         /** Envelope[list[ChatRunEventRead]] */
         Envelope_list_ChatRunEventRead__: {
@@ -1469,6 +1713,11 @@ export interface components {
             error?: components["schemas"]["ErrorInfo"] | null;
             /** Success */
             success: boolean;
+            /**
+             * Timestamp
+             * Format: date-time
+             */
+            timestamp?: string;
         };
         /** Envelope[list[ChatSessionRead]] */
         Envelope_list_ChatSessionRead__: {
@@ -1477,6 +1726,11 @@ export interface components {
             error?: components["schemas"]["ErrorInfo"] | null;
             /** Success */
             success: boolean;
+            /**
+             * Timestamp
+             * Format: date-time
+             */
+            timestamp?: string;
         };
         /** Envelope[list[DocumentRevisionRead]] */
         Envelope_list_DocumentRevisionRead__: {
@@ -1485,6 +1739,11 @@ export interface components {
             error?: components["schemas"]["ErrorInfo"] | null;
             /** Success */
             success: boolean;
+            /**
+             * Timestamp
+             * Format: date-time
+             */
+            timestamp?: string;
         };
         /** Envelope[list[DocumentSummaryRead]] */
         Envelope_list_DocumentSummaryRead__: {
@@ -1493,6 +1752,11 @@ export interface components {
             error?: components["schemas"]["ErrorInfo"] | null;
             /** Success */
             success: boolean;
+            /**
+             * Timestamp
+             * Format: date-time
+             */
+            timestamp?: string;
         };
         /** Envelope[list[UserRead]] */
         Envelope_list_UserRead__: {
@@ -1501,6 +1765,11 @@ export interface components {
             error?: components["schemas"]["ErrorInfo"] | null;
             /** Success */
             success: boolean;
+            /**
+             * Timestamp
+             * Format: date-time
+             */
+            timestamp?: string;
         };
         /**
          * ErrorEnvelope
@@ -1517,13 +1786,25 @@ export interface components {
              */
             success: false;
         };
-        /** ErrorInfo */
+        /**
+         * ErrorInfo
+         * @description 错误信息响应体。
+         */
         ErrorInfo: {
-            /** Code */
+            /**
+             * Code
+             * @description 错误代码
+             */
             code: string;
-            /** Details */
+            /**
+             * Details
+             * @description 详细错误信息
+             */
             details?: unknown | null;
-            /** Message */
+            /**
+             * Message
+             * @description 错误消息
+             */
             message: string;
         };
         /** HTTPValidationError */
@@ -1531,7 +1812,10 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
-        /** HealthData */
+        /**
+         * HealthData
+         * @description 健康检查响应体。
+         */
         HealthData: {
             /** Status */
             status: string;
@@ -1624,17 +1908,18 @@ export interface components {
             new_password: string;
         };
         /**
+         * ResponseProvider
+         * @enum {string}
+         */
+        ResponseProvider: "openai" | "anthropic" | "ollama";
+        /**
          * ResponseRouteConfig
          * @description 描述 response capability route。
          */
         ResponseRouteConfig: {
             /** Model */
             model: string;
-            /**
-             * Provider
-             * @enum {string}
-             */
-            provider: "openai" | "anthropic" | "ollama";
+            provider: components["schemas"]["ResponseProvider"];
         };
         /**
          * SessionBootstrapRead
@@ -1700,8 +1985,7 @@ export interface components {
         ThemePreference: "light" | "dark" | "system";
         /** UpdateChatSessionRequest */
         UpdateChatSessionRequest: {
-            /** Reasoning Mode */
-            reasoning_mode?: ("default" | "off" | "on") | null;
+            reasoning_mode?: components["schemas"]["ReasoningMode"] | null;
             /** Title */
             title?: string | null;
         };
@@ -1788,17 +2072,18 @@ export interface components {
             type: string;
         };
         /**
+         * VisionProvider
+         * @enum {string}
+         */
+        VisionProvider: "openai" | "anthropic" | "ollama";
+        /**
          * VisionRouteConfig
          * @description 描述 vision capability route。
          */
         VisionRouteConfig: {
             /** Model */
             model: string;
-            /**
-             * Provider
-             * @enum {string}
-             */
-            provider: "openai" | "anthropic" | "ollama";
+            provider: components["schemas"]["VisionProvider"];
         };
         /** VoyageProfile */
         VoyageProfile: {
@@ -3022,7 +3307,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Envelope_CapabilityHealthData_"];
+                    "application/json": components["schemas"]["Envelope_ProviderConnectionTestRead_"];
                 };
             };
             /** @description Validation Error */

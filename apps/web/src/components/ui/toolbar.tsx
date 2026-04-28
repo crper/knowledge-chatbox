@@ -2,8 +2,6 @@
  * @file Toolbar 基础 UI 组件模块。
  */
 
-"use client";
-
 import * as React from "react";
 import { Toolbar as ToolbarPrimitive } from "@base-ui/react/toolbar";
 

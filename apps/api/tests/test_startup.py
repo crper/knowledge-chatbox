@@ -19,6 +19,8 @@ from knowledge_chatbox_api.models.chat import ChatMessage, ChatRun
 from knowledge_chatbox_api.models.enums import IndexRebuildStatus
 from knowledge_chatbox_api.models.space import Space
 from knowledge_chatbox_api.repositories.space_repository import SpaceRepository
+from knowledge_chatbox_api.services.auth.auth_service import AuthService
+from knowledge_chatbox_api.services.auth.rate_limit_service import RateLimitService
 from knowledge_chatbox_api.services.chat.chat_run_service import STREAM_INTERRUPTED_ERROR_MESSAGE
 from knowledge_chatbox_api.services.settings.settings_service import SettingsService
 from tests.fixtures.factories import (
@@ -122,6 +124,69 @@ def test_startup_warmups_active_chroma_generation(
         pass
 
     assert warmed_generations == [3]
+
+
+def test_startup_reuses_service_builders_for_auth_rate_limit_and_settings(
+    clear_settings_cache,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    del clear_settings_cache
+    sqlite_path = tmp_path / "app.db"
+    monkeypatch.setenv("SQLITE_PATH", str(sqlite_path))
+    monkeypatch.setenv("INITIAL_ADMIN_USERNAME", "admin")
+    monkeypatch.setenv("INITIAL_ADMIN_PASSWORD", "Admin123456")
+    monkeypatch.setenv("JWT_SECRET_KEY", "test-jwt-secret-key-for-unit-tests-32ch")
+    get_settings.cache_clear()
+
+    config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
+    command.upgrade(config, "head")
+
+    auth_builder_calls: list[int] = []
+    rate_limit_builder_calls: list[int] = []
+    settings_builder_calls: list[int] = []
+
+    from knowledge_chatbox_api.core.service_builders import (
+        build_auth_service as original_build_auth_service,
+    )
+    from knowledge_chatbox_api.core.service_builders import (
+        build_rate_limit_service as original_build_rate_limit_service,
+    )
+    from knowledge_chatbox_api.services.settings.settings_service import (
+        SettingsService as OriginalSettingsService,
+    )
+
+    def track_build_auth_service(session, settings) -> AuthService:
+        auth_builder_calls.append(id(session))
+        return original_build_auth_service(session, settings)
+
+    def track_build_rate_limit_service(session, settings) -> RateLimitService:
+        rate_limit_builder_calls.append(id(session))
+        return original_build_rate_limit_service(session, settings)
+
+    def track_build_settings_service(session, settings):
+        settings_builder_calls.append(id(session))
+        return OriginalSettingsService(session, settings)
+
+    monkeypatch.setattr("knowledge_chatbox_api.main.build_auth_service", track_build_auth_service)
+    monkeypatch.setattr(
+        "knowledge_chatbox_api.main.build_rate_limit_service",
+        track_build_rate_limit_service,
+    )
+    monkeypatch.setattr(
+        "knowledge_chatbox_api.main.SettingsService",
+        track_build_settings_service,
+    )
+
+    app = create_app()
+    with TestClient(app):
+        pass
+
+    assert len(auth_builder_calls) == 1
+    assert len(rate_limit_builder_calls) == 1
+    assert len(settings_builder_calls) == 1
+    assert auth_builder_calls[0] == rate_limit_builder_calls[0]
+    assert auth_builder_calls[0] == settings_builder_calls[0]
 
 
 def test_startup_allows_existing_admin_without_bootstrap_password(

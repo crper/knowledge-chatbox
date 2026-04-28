@@ -7,7 +7,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { Select as SelectPrimitive } from "@base-ui/react/select";
 
 import { cn } from "@/lib/utils";
-import { inputBaseVariants } from "@/lib/styles/input-base";
+import { INPUT_BASE_CLASS } from "@/lib/styles/input-base";
 import { ChevronDownIcon, CheckIcon, ChevronUpIcon } from "lucide-react";
 
 function Select<Value = string>({
@@ -32,7 +32,7 @@ function SelectValue({ ...props }: React.ComponentProps<typeof SelectPrimitive.V
 
 const selectTriggerVariants = cva(
   cn(
-    inputBaseVariants(),
+    INPUT_BASE_CLASS,
     "flex w-fit items-center justify-between gap-1.5 py-2 pr-2 pl-2.5 text-ui-body whitespace-nowrap select-none data-[placeholder]:text-muted-foreground/70 *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-1.5 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   ),
   {
@@ -70,22 +70,16 @@ function SelectTrigger({
   );
 }
 
-type SelectContentProps = React.ComponentProps<typeof SelectPrimitive.Positioner> & {
-  children?: React.ReactNode;
-  className?: string;
-  position?: "item-aligned" | "popper";
-};
+type SelectContentProps = React.ComponentProps<typeof SelectPrimitive.Positioner>;
 
 function SelectContent({
   className,
   children,
-  position = "item-aligned",
   align = "center",
+  alignItemWithTrigger = true,
   sideOffset = 4,
   ...props
 }: SelectContentProps) {
-  const alignItemWithTrigger = position === "item-aligned";
-
   return (
     <SelectPrimitive.Portal>
       <SelectPrimitive.Positioner
@@ -101,7 +95,7 @@ function SelectContent({
           data-slot="select-content"
           className={cn(
             "surface-floating relative min-w-36 origin-[var(--transform-origin)] overflow-x-hidden overflow-y-auto rounded-xl text-popover-foreground shadow-lg transition-[opacity,transform] duration-100 data-[align-trigger=true]:animate-none data-[ending-style]:scale-95 data-[ending-style]:opacity-0 data-[starting-style]:scale-95 data-[starting-style]:opacity-0",
-            position !== "item-aligned" &&
+            !alignItemWithTrigger &&
               "data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1",
             className,
           )}

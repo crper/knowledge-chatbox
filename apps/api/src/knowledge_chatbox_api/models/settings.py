@@ -17,7 +17,14 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column
 
 from knowledge_chatbox_api.db.base import Base
-from knowledge_chatbox_api.models.enums import IndexRebuildStatus, ProviderName, SettingsScopeType
+from knowledge_chatbox_api.models.enums import (
+    EmbeddingProvider,
+    IndexRebuildStatus,
+    ProviderName,
+    ResponseProvider,
+    SettingsScopeType,
+    VisionProvider,
+)
 from knowledge_chatbox_api.schemas.settings import (
     EmbeddingRouteConfig,
     ProviderProfiles,
@@ -156,27 +163,27 @@ class AppSettings(Base):
         return parse_embedding_route(self.pending_embedding_route_json)
 
     @property
-    def response_provider(self) -> str | None:
+    def response_provider(self) -> ResponseProvider:
         return self.response_route.provider
 
     @property
-    def response_model(self) -> str | None:
+    def response_model(self) -> str:
         return self.response_route.model
 
     @property
-    def embedding_provider(self) -> str | None:
+    def embedding_provider(self) -> EmbeddingProvider:
         return self.embedding_route.provider
 
     @property
-    def embedding_model(self) -> str | None:
+    def embedding_model(self) -> str:
         return self.embedding_route.model
 
     @property
-    def vision_provider(self) -> str | None:
+    def vision_provider(self) -> VisionProvider:
         return self.vision_route.provider
 
     @property
-    def vision_model(self) -> str | None:
+    def vision_model(self) -> str:
         return self.vision_route.model
 
 

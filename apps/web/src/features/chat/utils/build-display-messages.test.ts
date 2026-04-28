@@ -9,14 +9,14 @@ describe("buildDisplayMessages", () => {
         role: "user",
         content: "hello",
         status: "succeeded",
-        sources_json: null,
+        sources: null,
       },
       {
         id: 2,
         role: "assistant",
         content: "draft",
         status: "pending",
-        sources_json: [],
+        sources: [],
       },
     ];
 
@@ -57,7 +57,7 @@ describe("buildDisplayMessages", () => {
         role: "user",
         content: "hello",
         status: "succeeded",
-        sources_json: null,
+        sources: null,
       },
     ];
 
@@ -88,7 +88,7 @@ describe("buildDisplayMessages", () => {
         content: "answer",
         reply_to_message_id: 1,
         status: "succeeded",
-        sources_json: [],
+        sources: [],
       },
     ]);
   });
@@ -100,7 +100,7 @@ describe("buildDisplayMessages", () => {
         role: "user",
         content: "hello",
         status: "succeeded",
-        sources_json: null,
+        sources: null,
       },
     ];
 
@@ -133,7 +133,7 @@ describe("buildDisplayMessages", () => {
         role: "user",
         content: "hello",
         status: "succeeded",
-        sources_json: null,
+        sources: null,
       },
     ];
 
@@ -165,7 +165,7 @@ describe("buildDisplayMessages", () => {
         reply_to_message_id: 1,
         error_message: "本次生成连接中断，请重试。",
         status: "failed",
-        sources_json: [],
+        sources: [],
       },
     ]);
   });
@@ -177,7 +177,7 @@ describe("buildDisplayMessages", () => {
         role: "user",
         content: "hello",
         status: "succeeded",
-        sources_json: null,
+        sources: null,
       },
       {
         id: 5,
@@ -185,7 +185,7 @@ describe("buildDisplayMessages", () => {
         content: "server answer",
         status: "succeeded",
         reply_to_message_id: 1,
-        sources_json: [],
+        sources: [],
       },
     ];
 
@@ -220,28 +220,28 @@ describe("buildDisplayMessages", () => {
         role: "user",
         content: "第一问",
         status: "succeeded",
-        sources_json: null,
+        sources: null,
       },
       {
         id: 2,
         role: "assistant",
         content: "",
         status: "pending",
-        sources_json: [],
+        sources: [],
       },
       {
         id: 3,
         role: "user",
         content: "第二问",
         status: "succeeded",
-        sources_json: null,
+        sources: null,
       },
       {
         id: 4,
         role: "assistant",
         content: "后续回答",
         status: "succeeded",
-        sources_json: [],
+        sources: [],
       },
     ];
 
@@ -264,7 +264,7 @@ describe("buildDisplayMessages", () => {
         role: "user",
         content: "最后一问",
         status: "succeeded",
-        sources_json: null,
+        sources: null,
       },
       {
         id: 2,
@@ -272,7 +272,7 @@ describe("buildDisplayMessages", () => {
         content: "",
         status: "pending",
         reply_to_message_id: 1,
-        sources_json: [],
+        sources: [],
       },
     ];
 
@@ -295,21 +295,21 @@ describe("buildDisplayMessages", () => {
         role: "user",
         content: "hello",
         status: "succeeded",
-        sources_json: null,
+        sources: null,
       },
       {
         id: 2,
         role: "assistant",
         content: "",
         status: "failed",
-        sources_json: [],
+        sources: [],
       },
       {
         id: 3,
         role: "user",
         content: "newer message",
         status: "succeeded",
-        sources_json: null,
+        sources: null,
       },
     ];
 
@@ -342,7 +342,7 @@ describe("buildDisplayMessages", () => {
         role: "user",
         content: "hello",
         status: "succeeded",
-        sources_json: null,
+        sources: null,
       },
       {
         id: 2,
@@ -350,7 +350,7 @@ describe("buildDisplayMessages", () => {
         content: "final answer",
         status: "succeeded",
         reply_to_message_id: 1,
-        sources_json: [],
+        sources: [],
       },
     ];
 
@@ -384,7 +384,7 @@ describe("buildDisplayMessages", () => {
         content: "hello",
         status: "failed",
         error_message: "provider unavailable",
-        sources_json: null,
+        sources: null,
       },
       {
         id: 2,
@@ -393,7 +393,7 @@ describe("buildDisplayMessages", () => {
         status: "failed",
         error_message: "provider unavailable",
         reply_to_message_id: 1,
-        sources_json: [],
+        sources: [],
       },
     ];
 
@@ -413,7 +413,7 @@ describe("buildDisplayMessages", () => {
         role: "user",
         content: "这个图描述了什么",
         status: "succeeded",
-        sources_json: null,
+        sources: null,
       },
       {
         id: 2,
@@ -422,7 +422,7 @@ describe("buildDisplayMessages", () => {
         status: "failed",
         reply_to_message_id: 1,
         error_message: "本次回复生成失败，请点击重试或重新提问。",
-        sources_json: [],
+        sources: [],
       },
       {
         id: 3,
@@ -430,7 +430,7 @@ describe("buildDisplayMessages", () => {
         content: "这个图描述了什么",
         status: "succeeded",
         retry_of_message_id: 1,
-        sources_json: null,
+        sources: null,
       },
       {
         id: 4,
@@ -438,7 +438,7 @@ describe("buildDisplayMessages", () => {
         content: "这是一张男性肖像。",
         status: "succeeded",
         reply_to_message_id: 3,
-        sources_json: [],
+        sources: [],
       },
     ];
 
@@ -465,7 +465,7 @@ describe("buildDisplayMessages", () => {
         role: "user",
         content: "这个图描述了什么",
         status: "succeeded",
-        sources_json: null,
+        sources: null,
       },
       {
         id: 2,
@@ -474,7 +474,7 @@ describe("buildDisplayMessages", () => {
         status: "failed",
         reply_to_message_id: 1,
         error_message: "本次回复生成失败，请点击重试或重新提问。",
-        sources_json: [],
+        sources: [],
       },
     ];
 
@@ -506,7 +506,7 @@ describe("buildDisplayMessages", () => {
         content: "根据提供的检索资源，",
         reply_to_message_id: 1,
         status: "streaming",
-        sources_json: [],
+        sources: [],
       },
     ]);
   });
@@ -518,7 +518,7 @@ describe("buildDisplayMessages", () => {
         role: "user",
         content: "旧问题",
         status: "succeeded",
-        sources_json: null,
+        sources: null,
       },
       {
         id: 2,
@@ -527,14 +527,14 @@ describe("buildDisplayMessages", () => {
         status: "failed",
         reply_to_message_id: 1,
         error_message: "本次回复生成失败，请点击重试或重新提问。",
-        sources_json: [],
+        sources: [],
       },
       {
         id: 7,
         role: "user",
         content: "后来问题",
         status: "succeeded",
-        sources_json: null,
+        sources: null,
       },
       {
         id: 8,
@@ -542,7 +542,7 @@ describe("buildDisplayMessages", () => {
         content: "后来答案",
         status: "succeeded",
         reply_to_message_id: 7,
-        sources_json: [],
+        sources: [],
       },
       {
         id: 9,
@@ -550,7 +550,7 @@ describe("buildDisplayMessages", () => {
         content: "旧问题",
         status: "succeeded",
         retry_of_message_id: 1,
-        sources_json: null,
+        sources: null,
       },
     ];
 
@@ -584,7 +584,7 @@ describe("buildDisplayMessages", () => {
         content: "重试中的回答",
         reply_to_message_id: 1,
         status: "streaming",
-        sources_json: [],
+        sources: [],
       },
       messages[2],
       messages[3],

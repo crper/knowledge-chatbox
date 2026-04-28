@@ -1,4 +1,3 @@
-import { normalizeText } from "@/lib/forms";
 import type { ProviderProfiles } from "../api/settings";
 
 type ProviderModelFieldMap = {
@@ -16,28 +15,11 @@ export function getProviderProfileModel<P extends ProviderModelProvider>(
   provider: P,
   field: ProviderModelField<P>,
 ): string {
-  switch (provider) {
-    case "anthropic":
-      return field === "chat_model"
-        ? normalizeText(profiles.anthropic.chat_model)
-        : normalizeText(profiles.anthropic.vision_model);
-    case "ollama":
-      if (field === "chat_model") {
-        return normalizeText(profiles.ollama.chat_model);
-      }
-      return field === "embedding_model"
-        ? normalizeText(profiles.ollama.embedding_model)
-        : normalizeText(profiles.ollama.vision_model);
-    case "openai":
-      if (field === "chat_model") {
-        return normalizeText(profiles.openai.chat_model);
-      }
-      return field === "embedding_model"
-        ? normalizeText(profiles.openai.embedding_model)
-        : normalizeText(profiles.openai.vision_model);
-    case "voyage":
-      return normalizeText(profiles.voyage.embedding_model);
-  }
+  return (
+    (profiles[provider] as Record<ProviderModelField<P>, string | null | undefined>)[
+      field
+    ]?.trim() ?? ""
+  );
 }
 
 export function setProviderProfileModel<P extends ProviderModelProvider>(
@@ -46,43 +28,12 @@ export function setProviderProfileModel<P extends ProviderModelProvider>(
   field: ProviderModelField<P>,
   value: string,
 ): ProviderProfiles {
-  const normalizedValue = normalizeText(value);
-  const nextProfiles: ProviderProfiles = {
+  const normalizedValue = value.trim();
+  return {
     ...profiles,
-    anthropic: { ...profiles.anthropic },
-    ollama: { ...profiles.ollama },
-    openai: { ...profiles.openai },
-    voyage: { ...profiles.voyage },
+    [provider]: {
+      ...profiles[provider],
+      [field]: normalizedValue,
+    },
   };
-
-  switch (provider) {
-    case "anthropic":
-      if (field === "chat_model") {
-        nextProfiles.anthropic.chat_model = normalizedValue;
-      } else {
-        nextProfiles.anthropic.vision_model = normalizedValue;
-      }
-      return nextProfiles;
-    case "ollama":
-      if (field === "chat_model") {
-        nextProfiles.ollama.chat_model = normalizedValue;
-      } else if (field === "embedding_model") {
-        nextProfiles.ollama.embedding_model = normalizedValue;
-      } else {
-        nextProfiles.ollama.vision_model = normalizedValue;
-      }
-      return nextProfiles;
-    case "openai":
-      if (field === "chat_model") {
-        nextProfiles.openai.chat_model = normalizedValue;
-      } else if (field === "embedding_model") {
-        nextProfiles.openai.embedding_model = normalizedValue;
-      } else {
-        nextProfiles.openai.vision_model = normalizedValue;
-      }
-      return nextProfiles;
-    case "voyage":
-      nextProfiles.voyage.embedding_model = normalizedValue;
-      return nextProfiles;
-  }
 }

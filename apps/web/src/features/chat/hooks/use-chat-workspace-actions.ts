@@ -1,22 +1,16 @@
 import { useCallback } from "react";
 
-import type {
-  ChatAttachmentItem as PersistedChatAttachmentItem,
-  ChatMessageItem,
-  ChatSessionContextItem,
-} from "../api/chat";
+import type { ChatMessageItem } from "../api/chat";
 import type { ChatStreamAttachmentInput } from "../api/chat-stream";
+import type { ChatRuntime } from "../runtime/chat-runtime";
+import type { ChatCacheWriter } from "../utils/chat-cache-writer";
 import { deleteChatMessage } from "../api/chat";
 import { MessageStatus } from "../constants";
 import { useChatComposerStore } from "../store/chat-composer-store";
 import { useChatComposerSubmit } from "./use-chat-composer-submit";
 
 type UseChatWorkspaceActionsParams = {
-  beginSessionSubmit: (
-    sessionId: number,
-    controller: AbortController,
-    clientRequestId?: string | null,
-  ) => boolean;
+  runtime: Pick<ChatRuntime, "beginSubmit" | "finishSubmit">;
   findRunByAssistantMessageId: (assistantMessageId: number) =>
     | {
         assistantMessageId: number;
@@ -29,20 +23,11 @@ type UseChatWorkspaceActionsParams = {
         userMessageId: number | null;
       }
     | undefined;
-  finishSessionSubmit: (sessionId: number) => void;
-  invalidateSessionArtifacts: (sessionId: number) => Promise<void>;
+  cacheWriter: Pick<
+    ChatCacheWriter,
+    "invalidateSessionArtifacts" | "patchSessionContext" | "patchUserMessageAttachments"
+  >;
   messages: ChatMessageItem[];
-  patchSessionContext: (input: {
-    attachments?: ChatSessionContextItem["attachments"];
-    latestAssistantMessageId?: number;
-    latestAssistantSources?: ChatSessionContextItem["latest_assistant_sources"];
-    sessionId: number;
-  }) => void;
-  patchUserMessageAttachments: (input: {
-    attachments: PersistedChatAttachmentItem[];
-    sessionId: number;
-    userMessageId: number;
-  }) => boolean;
   requestScrollToLatest: () => void;
   resolvedActiveSessionId: number | null;
   sendStreamMessage: (input: {
@@ -56,28 +41,23 @@ type UseChatWorkspaceActionsParams = {
 };
 
 export function useChatWorkspaceActions({
-  beginSessionSubmit,
+  cacheWriter,
   findRunByAssistantMessageId,
-  finishSessionSubmit,
-  invalidateSessionArtifacts,
   messages,
-  patchSessionContext,
-  patchUserMessageAttachments,
   requestScrollToLatest,
   resolvedActiveSessionId,
+  runtime,
   sendStreamMessage,
 }: UseChatWorkspaceActionsParams) {
   const setDraft = useChatComposerStore((state) => state.setDraft);
 
   const { retryMessage, submitMessage } = useChatComposerSubmit({
-    beginSessionSubmit,
-    finishSessionSubmit,
+    cacheWriter,
     findRunByAssistantMessageId,
     messages,
-    patchSessionContext,
-    patchUserMessageAttachments,
     requestScrollToLatest,
     resolvedActiveSessionId,
+    runtime,
     sendStreamMessage,
   });
 
@@ -95,10 +75,10 @@ export function useChatWorkspaceActions({
     async (message: ChatMessageItem) => {
       await deleteChatMessage(message.id);
       if (resolvedActiveSessionId !== null) {
-        await invalidateSessionArtifacts(resolvedActiveSessionId);
+        await cacheWriter.invalidateSessionArtifacts(resolvedActiveSessionId);
       }
     },
-    [invalidateSessionArtifacts, resolvedActiveSessionId],
+    [cacheWriter, resolvedActiveSessionId],
   );
 
   return {

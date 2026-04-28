@@ -1,6 +1,6 @@
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class WorkflowSource(BaseModel):
@@ -19,16 +19,22 @@ class ChatWorkflowResult(BaseModel):
     sources: list[WorkflowSource] = Field(default_factory=list)
 
 
-SourceKey = tuple[
-    str,
-    int | None,
-    int | None,
-    str | None,
-    str | None,
-    int | None,
-    str | None,
-    str,
-]
+class SourceKey(BaseModel):
+    """来源去重键，用于合并时判断重复。"""
+
+    model_config = ConfigDict(frozen=True)
+
+    kind: str
+    document_id: int | None = None
+    document_revision_id: int | None = None
+    document_name: str | None = None
+    chunk_id: str | None = None
+    page_number: int | None = None
+    section_title: str | None = None
+    snippet: str
+
+    def __hash__(self) -> int:
+        return hash(self.model_dump_json())
 
 
 def normalize_chat_workflow_result(
@@ -45,25 +51,21 @@ def _source_key(source: WorkflowSource) -> SourceKey:
     normalized_chunk_id = source.chunk_id or None
     normalized_snippet = source.snippet.strip()
     if source.document_revision_id is not None and normalized_chunk_id is not None:
-        return (
-            "revision_chunk",
-            None,
-            source.document_revision_id,
-            None,
-            normalized_chunk_id,
-            None,
-            None,
-            normalized_snippet,
+        return SourceKey(
+            kind="revision_chunk",
+            document_revision_id=source.document_revision_id,
+            chunk_id=normalized_chunk_id,
+            snippet=normalized_snippet,
         )
-    return (
-        "fallback",
-        source.document_id,
-        source.document_revision_id,
-        source.document_name,
-        normalized_chunk_id,
-        source.page_number,
-        source.section_title,
-        normalized_snippet,
+    return SourceKey(
+        kind="fallback",
+        document_id=source.document_id,
+        document_revision_id=source.document_revision_id,
+        document_name=source.document_name,
+        chunk_id=normalized_chunk_id,
+        page_number=source.page_number,
+        section_title=source.section_title,
+        snippet=normalized_snippet,
     )
 
 
@@ -80,26 +82,3 @@ def merge_workflow_sources(
         seen.add(key)
         merged.append(source)
     return merged
-
-
-def _dict_to_workflow_source(s: dict[str, Any]) -> WorkflowSource:
-    return WorkflowSource(
-        document_id=s.get("document_id"),
-        document_revision_id=s.get("document_revision_id"),
-        document_name=s.get("document_name"),
-        chunk_id=s.get("chunk_id"),
-        page_number=s.get("page_number"),
-        section_title=s.get("section_title"),
-        snippet=str(s.get("snippet") or ""),
-        score=s.get("score"),
-    )
-
-
-def merge_sources_by_key(
-    current_sources: list[dict[str, Any]],
-    new_sources: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
-    current_workflow = [_dict_to_workflow_source(s) for s in current_sources]
-    new_workflow = [_dict_to_workflow_source(s) for s in new_sources]
-    merged = merge_workflow_sources(current_workflow, new_workflow)
-    return [source.model_dump() for source in merged]

@@ -2,13 +2,13 @@
  * @file 受保护文件的打开与下载操作模块。
  */
 
-import { fetchProtectedFileBlob } from "@/lib/api/protected-file";
+import { fetchProtectedFile } from "@/lib/api/protected-file";
 import { triggerDownload } from "@/lib/dom";
 
 const OBJECT_URL_REVOKE_DELAY_MS = 60_000;
 
 async function resolveProtectedObjectUrl(fileUrl: string) {
-  const blob = await fetchProtectedFileBlob(fileUrl);
+  const blob = await (await fetchProtectedFile(fileUrl)).blob();
   return URL.createObjectURL(blob);
 }
 

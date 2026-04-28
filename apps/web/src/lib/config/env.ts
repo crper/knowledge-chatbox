@@ -44,6 +44,33 @@ export function normalizeApiBaseUrl(
 }
 
 /**
+ * 解析 API 请求的完整 base URL。
+ * 优先使用 env.apiBaseUrl，其次使用当前页面 origin，兜底 http://localhost。
+ */
+export function resolveApiBaseUrl(apiBaseUrl: string = env.apiBaseUrl): string {
+  if (apiBaseUrl) {
+    return apiBaseUrl;
+  }
+
+  if (typeof globalThis.location?.origin === "string" && globalThis.location.origin) {
+    return globalThis.location.origin;
+  }
+
+  return "http://localhost";
+}
+
+/**
+ * 拼接 API 路径与 base URL，返回完整的请求 URL。
+ */
+export function buildApiUrl(path: string, apiBaseUrl: string = env.apiBaseUrl) {
+  const base = resolveApiBaseUrl(apiBaseUrl);
+  if (!base) {
+    return path;
+  }
+  return `${base}${path}`;
+}
+
+/**
  * 暴露前端运行时环境变量。
  */
 export const env = {

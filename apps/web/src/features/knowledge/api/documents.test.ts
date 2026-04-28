@@ -10,7 +10,7 @@ import {
   getDocuments,
   uploadDocument,
 } from "./documents";
-import { buildApiUrl } from "@/lib/api/client";
+import { buildApiUrl } from "@/lib/config/env";
 
 type MockUploadTarget = {
   onprogress: ((event: ProgressEvent<EventTarget>) => void) | null;
@@ -95,7 +95,7 @@ describe("documents api", () => {
           {
             id: 1,
             filename: "doc.pdf",
-            status: "indexed",
+            ingest_status: "indexed",
             created_at: "2026-03-19T08:00:00Z",
           },
         ]);
@@ -170,8 +170,7 @@ describe("documents api", () => {
   it("uploads a document using XMLHttpRequest with bearer token", async () => {
     setAccessToken("upload-token");
 
-    const originalXMLHttpRequest = globalThis.XMLHttpRequest;
-    globalThis.XMLHttpRequest = MockXMLHttpRequest as unknown as typeof XMLHttpRequest;
+    vi.stubGlobal("XMLHttpRequest", MockXMLHttpRequest);
 
     const uploadPromise = uploadDocument(
       new File(["content"], "test.pdf", { type: "application/pdf" }),
@@ -225,15 +224,12 @@ describe("documents api", () => {
       id: 1,
       name: "test.pdf",
     });
-
-    globalThis.XMLHttpRequest = originalXMLHttpRequest;
   });
 
   it("rejects when upload fails", async () => {
     setAccessToken("upload-token");
 
-    const originalXMLHttpRequest = globalThis.XMLHttpRequest;
-    globalThis.XMLHttpRequest = MockXMLHttpRequest as unknown as typeof XMLHttpRequest;
+    vi.stubGlobal("XMLHttpRequest", MockXMLHttpRequest);
 
     const uploadPromise = uploadDocument(
       new File(["content"], "test.pdf", { type: "application/pdf" }),
@@ -247,16 +243,13 @@ describe("documents api", () => {
     xhr.simulateError();
 
     await expect(uploadPromise).rejects.toThrow();
-
-    globalThis.XMLHttpRequest = originalXMLHttpRequest;
   });
 
   it("retries the upload once after refreshing the access token", async () => {
     setAccessToken("stale-token");
     useSessionStore.getState().setStatus("authenticated");
 
-    const originalXMLHttpRequest = globalThis.XMLHttpRequest;
-    globalThis.XMLHttpRequest = MockXMLHttpRequest as unknown as typeof XMLHttpRequest;
+    vi.stubGlobal("XMLHttpRequest", MockXMLHttpRequest);
 
     overrideHandler(
       http.post("*/api/auth/refresh", () => {
@@ -334,16 +327,13 @@ describe("documents api", () => {
       name: "test.pdf",
     });
     expect(getAccessToken()).toBe("fresh-token");
-
-    globalThis.XMLHttpRequest = originalXMLHttpRequest;
   });
 
   it("does not clear a newer session when an older upload refresh fails later", async () => {
     setAccessToken("stale-token");
     useSessionStore.getState().setStatus("authenticated");
 
-    const originalXMLHttpRequest = globalThis.XMLHttpRequest;
-    globalThis.XMLHttpRequest = MockXMLHttpRequest as unknown as typeof XMLHttpRequest;
+    vi.stubGlobal("XMLHttpRequest", MockXMLHttpRequest);
 
     let resolveRefresh: ((value: Response | PromiseLike<Response>) => void) | undefined;
 
@@ -394,7 +384,5 @@ describe("documents api", () => {
     await expect(uploadPromise).rejects.toThrow();
     expect(getAccessToken()).toBe("fresh-token");
     expect(useSessionStore.getState().status).toBe("authenticated");
-
-    globalThis.XMLHttpRequest = originalXMLHttpRequest;
   });
 });

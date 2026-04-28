@@ -1,153 +1,73 @@
-/**
- * 表单辅助模块。
- */
-
-import { trim } from "es-toolkit";
-
-export type FormErrorDescriptor = {
-  i18nKey: string;
-  values?: Record<string, unknown>;
-};
+import type { ZodType } from "zod";
 
 export type FormErrorTranslator = (key: string, params?: Record<string, unknown>) => string;
 
-export type FormValidationResult<TField extends string> = {
-  fields?: Partial<Record<TField, FormErrorDescriptor | undefined>>;
-  form?: FormErrorDescriptor;
-};
-
-/**
- * 构造结构化表单错误，交给组件层按当前语言翻译。
- */
-export function formError(i18nKey: string, values?: Record<string, unknown>): FormErrorDescriptor {
-  return { i18nKey, values };
+function translate(t: FormErrorTranslator | undefined, message: string): string {
+  return t ? t(message) : message;
 }
 
-/**
- * 把字段级问题收敛成 TanStack Form 可消费的结果对象。
- */
-export function buildFormValidationResult<TField extends string>(
-  form: FormErrorDescriptor | undefined,
-  fields: Partial<Record<TField, FormErrorDescriptor | undefined>>,
-): FormValidationResult<TField> | undefined {
-  const definedFields = Object.fromEntries(
-    Object.entries(fields).filter(([, issue]) => issue !== undefined),
-  ) as Partial<Record<TField, FormErrorDescriptor | undefined>>;
-
-  return Object.keys(definedFields).length > 0
-    ? {
-        fields: definedFields,
-        ...(form ? { form } : {}),
-      }
-    : undefined;
+function hasMessageProperty(value: object): value is { message: unknown } {
+  return "message" in value;
 }
 
-/**
- * 返回第一条可展示的表单错误消息。
- */
-export function getFirstFormError(errors: unknown[], translate?: FormErrorTranslator) {
-  return getFormErrorMessages(errors, translate)[0] ?? null;
+function hasFormProperty(value: object): value is { form: unknown } {
+  return "form" in value;
 }
 
-/**
- * 统一处理表单提交事件，避免浏览器默认提交并吞掉组件已自行展示的提交错误。
- */
-export async function handleFormSubmitEvent(
-  event: Pick<Event, "preventDefault">,
-  submit: () => Promise<unknown>,
+export function zodFieldErrors<T extends Record<string, unknown>>(
+  schema: ZodType<T>,
+  values: Record<string, unknown>,
+  formMessage?: string,
 ) {
-  event.preventDefault();
-
-  try {
-    await submit();
-  } catch {
-    // 表单组件已通过 error map 或 notice 展示错误，这里避免未处理的 Promise 拒绝。
+  const result = schema.safeParse(values);
+  if (result.success) return undefined;
+  const fields: Record<string, string> = {};
+  for (const issue of result.error.issues) {
+    const key = issue.path.join(".");
+    if (key && !fields[key]) fields[key] = issue.message;
   }
+  if (Object.keys(fields).length === 0) return undefined;
+  return formMessage ? { fields, form: formMessage } : { fields };
 }
 
-/**
- * 提取可展示的错误消息列表。
- */
-export function getFormErrorMessages(errors: unknown[], translate?: FormErrorTranslator) {
-  return errors.flatMap((error) => collectErrorMessages(error, translate));
-}
-
-/**
- * 转为 FieldError 可直接消费的错误项。
- */
-export function toFieldErrorItems(
+export function translateFieldErrors(
   errors: unknown[],
-  translate?: FormErrorTranslator,
-  manualError?: string,
-) {
-  const messages = [...getFormErrorMessages(errors, translate), manualError].filter(
-    (message): message is string => typeof message === "string" && trim(message).length > 0,
-  );
-
-  return messages.map((message) => ({ message }));
+  t?: FormErrorTranslator,
+): Array<{ message: string }> {
+  return errors
+    .map((error) => {
+      if (error && typeof error === "object" && hasMessageProperty(error)) {
+        const message = String(error.message);
+        return { message: translate(t, message) };
+      }
+      if (typeof error === "string") {
+        return { message: translate(t, error) };
+      }
+      return null;
+    })
+    .filter((item): item is { message: string } => item !== null);
 }
 
-function collectErrorMessages(error: unknown, translate?: FormErrorTranslator): string[] {
-  if (typeof error === "string" && trim(error)) {
-    const trimmedError = trim(error);
-    if (translate && trimmedError.includes(":")) {
-      const parts = trimmedError.split(":");
-      if (parts.length >= 2) {
-        const i18nKey = parts.slice(0, 2).join(":");
-        const params = parts.slice(2);
+export function getFirstFormError(error: unknown, t?: FormErrorTranslator): string | null {
+  if (error == null) return null;
 
-        if (params.length > 0) {
-          const paramObj: Record<string, unknown> = {};
-          params.forEach((param, index) => {
-            paramObj[`param${index}`] = param;
-            if (index === 0) {
-              paramObj.min = param;
-              paramObj.max = param;
-            }
-          });
-          return [translate(i18nKey, paramObj)];
-        }
-
-        return [translate(i18nKey)];
-      }
-    }
-    return [trimmedError];
-  }
-
-  if (isFormErrorDescriptor(error)) {
-    return [translate ? translate(error.i18nKey, error.values) : error.i18nKey];
-  }
-
-  if (Array.isArray(error)) {
-    return error.flatMap((item) => collectErrorMessages(item, translate));
+  if (typeof error === "string") {
+    return translate(t, error);
   }
 
   if (error && typeof error === "object") {
-    const candidate = error as { form?: unknown; message?: unknown };
-    const messages: string[] = [];
-
-    if (candidate.message !== undefined) {
-      messages.push(...collectErrorMessages(candidate.message, translate));
-    }
-    if (candidate.form !== undefined) {
-      messages.push(...collectErrorMessages(candidate.form, translate));
+    if (hasMessageProperty(error) && typeof error.message === "string") {
+      return translate(t, error.message);
     }
 
-    return messages;
+    if (hasFormProperty(error)) {
+      return getFirstFormError(error.form, t);
+    }
   }
 
-  return [];
+  return null;
 }
 
-function isFormErrorDescriptor(error: unknown): error is FormErrorDescriptor {
-  return (
-    error !== null &&
-    typeof error === "object" &&
-    "i18nKey" in error &&
-    typeof (error as { i18nKey?: unknown }).i18nKey === "string"
-  );
-}
-
-export function normalizeText(value: string | null | undefined) {
-  return typeof value === "string" ? trim(value) : "";
+export function fieldError(message?: string): Array<{ message: string }> {
+  return message ? [{ message }] : [];
 }

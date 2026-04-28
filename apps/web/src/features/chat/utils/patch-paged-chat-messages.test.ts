@@ -15,7 +15,7 @@ function buildAssistantMessage(
     content: `message ${id}`,
     status: "succeeded",
     error_message: null,
-    sources_json: [],
+    sources: [],
     ...overrides,
   };
 }
@@ -40,7 +40,7 @@ describe("patchPagedChatMessagesCache", () => {
         content: "patched answer",
         status: "failed",
         error_message: "provider unavailable",
-        sources_json: [{ chunk_id: "4:0", snippet: "patched snippet" }],
+        sources: [{ chunk_id: "4:0", snippet: "patched snippet" }],
       },
       queryClient,
       sessionId: 1,
@@ -55,7 +55,7 @@ describe("patchPagedChatMessagesCache", () => {
       content: "patched answer",
       status: "failed",
       error_message: "provider unavailable",
-      sources_json: [{ chunk_id: "4:0", snippet: "patched snippet" }],
+      sources: [{ chunk_id: "4:0", snippet: "patched snippet" }],
     });
   });
 
@@ -96,7 +96,7 @@ describe("patchPagedChatMessagesCache", () => {
           id: 3,
           role: "user",
           status: "succeeded",
-          sources_json: [],
+          sources: [],
         },
         buildAssistantMessage(4, {
           content: "streamed answer",

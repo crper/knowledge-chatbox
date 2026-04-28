@@ -1,9 +1,5 @@
-/**
- * @file 用户密码重置对话框模块。
- */
-
 import { useEffect } from "react";
-import type { FormEvent } from "react";
+import { useForm, revalidateLogic } from "@tanstack/react-form";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
@@ -15,14 +11,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Form } from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
-import { FormErrorAlert, getFieldErrorItems, getFormErrorMessage } from "@/lib/form/form-feedback";
-import { useAppForm } from "@/lib/form/use-app-form";
-import { handleFormSubmitEvent } from "@/lib/forms";
+import { FormTextField } from "@/lib/form/form-fields";
+import { FormErrorAlert } from "@/lib/form/form-feedback";
+import { getFirstFormError, zodFieldErrors } from "@/lib/forms";
 import { getErrorMessage } from "@/lib/utils";
-import { zodToTanStackFormErrors } from "@/lib/validation/form-adapter";
 import { resetPasswordSchema } from "@/lib/validation/schemas";
 
 type ResetPasswordDialogProps = {
@@ -32,9 +25,6 @@ type ResetPasswordDialogProps = {
   onSubmit: (input: { newPassword: string }) => Promise<void>;
 };
 
-/**
- * 渲染重置密码对话框。
- */
 export function ResetPasswordDialog({
   open,
   username,
@@ -42,10 +32,19 @@ export function ResetPasswordDialog({
   onSubmit,
 }: ResetPasswordDialogProps) {
   const { t } = useTranslation(["users", "auth", "common"]);
-  const form = useAppForm({
+  const form = useForm({
     defaultValues: {
       newPassword: "",
     },
+    validators: {
+      onChange: ({ value }) =>
+        zodFieldErrors(
+          resetPasswordSchema,
+          value as Record<string, unknown>,
+          "users:resetPasswordValidationError",
+        ),
+    },
+    validationLogic: revalidateLogic({ mode: "submit", modeAfterSubmission: "blur" }),
     onSubmit: async ({ formApi, value }) => {
       try {
         await onSubmit(value);
@@ -60,30 +59,14 @@ export function ResetPasswordDialog({
         throw error;
       }
     },
-    validator: (value) => {
-      const result = resetPasswordSchema.safeParse(value);
-      if (result.success) {
-        return undefined;
-      }
-
-      return zodToTanStackFormErrors(result.error, {
-        formI18nKey: "users:resetPasswordValidationError",
-      });
-    },
   });
 
   useEffect(() => {
     if (!open) {
-      form.reset({
-        newPassword: "",
-      });
+      form.reset({ newPassword: "" });
       form.setErrorMap({ onSubmit: undefined });
     }
   }, [form, open]);
-
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    void handleFormSubmitEvent(event, () => form.handleSubmit());
-  };
 
   return (
     <Dialog onOpenChange={(nextOpen) => !nextOpen && onClose()} open={open}>
@@ -94,49 +77,38 @@ export function ResetPasswordDialog({
             {t("resetPasswordDialogDescription", { ns: "users", username })}
           </DialogDescription>
         </DialogHeader>
-        <Form className="flex flex-col gap-4" onSubmit={handleSubmit}>
-          <FieldGroup>
-            <form.Field name="newPassword">
-              {(field) => (
-                <Field>
-                  <FieldLabel htmlFor="reset-user-password">
-                    {t("newPasswordLabel", { ns: "auth" })}
-                  </FieldLabel>
-                  <Input
-                    aria-label={t("newPasswordLabel", { ns: "auth" })}
-                    aria-invalid={field.state.meta.errors.length > 0}
-                    autoComplete="new-password"
-                    className="h-10 rounded-xl border-border/80 bg-background/80"
-                    id="reset-user-password"
-                    onChange={(event) => {
-                      form.setErrorMap({ onSubmit: undefined });
-                      field.handleChange(event.target.value);
-                    }}
-                    onBlur={() => field.handleBlur()}
-                    type="password"
-                    value={field.state.value}
-                  />
-                  <FieldError errors={getFieldErrorItems(field.state.meta.errors, t)} />
-                </Field>
-              )}
-            </form.Field>
-          </FieldGroup>
+        <Form
+          className="flex flex-col gap-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            void form.handleSubmit();
+          }}
+        >
+          <FormTextField
+            autoComplete="new-password"
+            className="h-10 rounded-xl border-border/80 bg-background/80"
+            form={form}
+            id="reset-user-password"
+            label={t("newPasswordLabel", { ns: "auth" })}
+            name="newPassword"
+            onChange={() => form.setErrorMap({ onSubmit: undefined })}
+            t={t}
+            type="password"
+          />
           <form.Subscribe selector={(state) => state.errorMap}>
             {(errorMap) => {
-              const errorMessage = getFormErrorMessage(
-                [errorMap.onDynamic?.fields?.newPassword, errorMap.onDynamic, errorMap.onSubmit],
-                t,
-              );
+              const errorMessage = getFirstFormError(errorMap.onSubmit ?? errorMap.onChange, t);
 
               return <FormErrorAlert message={errorMessage} />;
             }}
           </form.Subscribe>
           <DialogFooter>
-            <form.Subscribe selector={(state) => state.isSubmitting}>
-              {(isSubmitting) => (
+            <form.Subscribe selector={(state) => [state.canSubmit, state.isSubmitting] as const}>
+              {([canSubmit, isSubmitting]) => (
                 <>
                   <Button
-                    disabled={isSubmitting}
+                    disabled={!canSubmit}
                     onClick={onClose}
                     size="lg"
                     type="button"
@@ -144,7 +116,7 @@ export function ResetPasswordDialog({
                   >
                     {t("cancelAction", { ns: "users" })}
                   </Button>
-                  <Button disabled={isSubmitting} size="lg" type="submit">
+                  <Button disabled={!canSubmit} size="lg" type="submit">
                     {isSubmitting
                       ? t("resetPasswordPendingAction", { ns: "users" })
                       : t("confirmResetPasswordAction", { ns: "users" })}

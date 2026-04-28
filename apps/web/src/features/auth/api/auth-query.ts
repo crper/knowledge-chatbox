@@ -6,7 +6,7 @@ import { mutationOptions, queryOptions, type QueryClient } from "@tanstack/react
 
 import { queryKeys } from "@/lib/api/query-keys";
 import { useSessionStore } from "@/lib/auth/session-store";
-import { changePassword, getCurrentUser, updatePreferences } from "./auth";
+import { changePassword, getCurrentUser, login, updatePreferences } from "./auth";
 
 /**
  * 获取当前用户查询配置。
@@ -27,6 +27,15 @@ export async function fetchCurrentUserIfAuthenticated(queryClient: QueryClient) 
   return queryClient.fetchQuery({
     ...currentUserQueryOptions(),
     retry: false,
+  });
+}
+
+/**
+ * 获取登录变更配置。
+ */
+export function loginMutationOptions() {
+  return mutationOptions({
+    mutationFn: login,
   });
 }
 

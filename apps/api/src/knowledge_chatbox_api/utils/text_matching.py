@@ -6,30 +6,15 @@ from itertools import pairwise
 
 
 def _is_cjk_character(char: str) -> bool:
-    codepoint = ord(char)
-    return (
-        0x3400 <= codepoint <= 0x4DBF
-        or 0x4E00 <= codepoint <= 0x9FFF
-        or 0xF900 <= codepoint <= 0xFAFF
-        or 0x20000 <= codepoint <= 0x2A6DF
-        or 0x2A700 <= codepoint <= 0x2B73F
-        or 0x2B740 <= codepoint <= 0x2B81F
-        or 0x2B820 <= codepoint <= 0x2CEAF
-        or unicodedata.category(char) == "Lo"
-    )
+    return unicodedata.category(char) == "Lo"
 
 
 _QUOTED_PHRASE_PATTERN = re.compile(r'[\\"""「『](.+?)[\\"""」』]')
 
 
-def normalize_match_text(text: str) -> str:
-    normalized, _ = normalize_and_tokenize(text)
-    return normalized
-
-
 def quoted_phrases(text: str) -> set[str]:
     phrases = {
-        normalize_match_text(match.strip()) for match in _QUOTED_PHRASE_PATTERN.findall(text)
+        normalize_and_tokenize(match.strip())[0] for match in _QUOTED_PHRASE_PATTERN.findall(text)
     }
     return {phrase for phrase in phrases if len(phrase) >= 2}
 
@@ -44,11 +29,6 @@ def _extract_cjk_tokens(cjk_chars: list[str]) -> set[str]:
     if len(cjk_chars) == 1:
         return {cjk_chars[0]}
     return {a + b for a, b in pairwise(cjk_chars)}
-
-
-def tokenize_text(text: str) -> set[str]:
-    _, tokens = normalize_and_tokenize(text)
-    return tokens
 
 
 def normalize_and_tokenize(text: str) -> tuple[str, set[str]]:

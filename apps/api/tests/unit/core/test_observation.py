@@ -87,8 +87,10 @@ class TestObservationFields:
         assert fields.operation_kind is None
 
     def test_immutable(self) -> None:
+        from pydantic import ValidationError
+
         fields = ObservationFields(session_id=1)
-        with pytest.raises(AttributeError):
+        with pytest.raises(ValidationError):
             fields.session_id = 2  # type: ignore[reportAttributeAccessIssue]
 
     def test_operation_kind_constants(self) -> None:

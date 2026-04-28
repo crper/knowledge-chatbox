@@ -1,7 +1,7 @@
 from collections.abc import Sequence
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, TypeAdapter
 from pydantic_ai import AgentRunResultEvent
 from pydantic_ai.messages import (
     FinalResultEvent,
@@ -14,14 +14,21 @@ from pydantic_ai.messages import (
 )
 from pydantic_ai.usage import RunUsage
 
+from knowledge_chatbox_api.core.logging import get_logger
 from knowledge_chatbox_api.services.chat.stream_events import (
     StreamEvent,
     StreamEventBatchItem,
+    StreamEventPayload,
 )
 from knowledge_chatbox_api.services.chat.workflow.output import (
     ChatWorkflowResult,
+    WorkflowSource,
     normalize_chat_workflow_result,
 )
+
+logger = get_logger(__name__)
+
+_WORKFLOW_SOURCE_ADAPTER = TypeAdapter(WorkflowSource)
 
 
 def _to_dict(value: Any) -> Any:
@@ -40,13 +47,13 @@ class ChatWorkflowEventBridge:
     ) -> list[StreamEventBatchItem]:
         if isinstance(event, FunctionToolCallEvent):
             return [
-                (
-                    StreamEvent.TOOL_CALL,
-                    {
-                        "run_id": run_id,
-                        "tool_name": event.part.tool_name,
-                        "input": _to_dict(event.part.args) or {},
-                    },
+                StreamEventBatchItem(
+                    event_name=StreamEvent.TOOL_CALL,
+                    payload=StreamEventPayload(
+                        run_id=run_id,
+                        tool_name=event.part.tool_name,
+                        input=_to_dict(event.part.args) or {},
+                    ),
                 )
             ]
 
@@ -55,23 +62,23 @@ class ChatWorkflowEventBridge:
             content = _to_dict(event.result.content)
             sources = self.extract_sources(content)
             events: list[StreamEventBatchItem] = [
-                (
-                    StreamEvent.TOOL_RESULT,
-                    {
-                        "run_id": run_id,
-                        "tool_name": tool_name,
-                        "sources_count": len(sources),
-                    },
+                StreamEventBatchItem(
+                    event_name=StreamEvent.TOOL_RESULT,
+                    payload=StreamEventPayload(
+                        run_id=run_id,
+                        tool_name=tool_name,
+                        sources_count=len(sources),
+                    ),
                 )
             ]
             events.extend(
-                (
-                    StreamEvent.PART_SOURCE,
-                    {
-                        "run_id": run_id,
-                        "assistant_message_id": assistant_message_id,
-                        "source": source,
-                    },
+                StreamEventBatchItem(
+                    event_name=StreamEvent.PART_SOURCE,
+                    payload=StreamEventPayload(
+                        run_id=run_id,
+                        assistant_message_id=assistant_message_id,
+                        source=source,
+                    ),
                 )
                 for source in sources
             )
@@ -79,21 +86,24 @@ class ChatWorkflowEventBridge:
 
         if isinstance(event, PartStartEvent) and isinstance(event.part, TextPart):
             return [
-                (
-                    StreamEvent.PART_TEXT_START,
-                    {"run_id": run_id, "assistant_message_id": assistant_message_id},
+                StreamEventBatchItem(
+                    event_name=StreamEvent.PART_TEXT_START,
+                    payload=StreamEventPayload(
+                        run_id=run_id,
+                        assistant_message_id=assistant_message_id,
+                    ),
                 )
             ]
 
         if isinstance(event, PartDeltaEvent) and isinstance(event.delta, TextPartDelta):
             return [
-                (
-                    StreamEvent.PART_TEXT_DELTA,
-                    {
-                        "run_id": run_id,
-                        "assistant_message_id": assistant_message_id,
-                        "delta": event.delta.content_delta,
-                    },
+                StreamEventBatchItem(
+                    event_name=StreamEvent.PART_TEXT_DELTA,
+                    payload=StreamEventPayload(
+                        run_id=run_id,
+                        assistant_message_id=assistant_message_id,
+                        delta=event.delta.content_delta,
+                    ),
                 )
             ]
 
@@ -105,7 +115,7 @@ class ChatWorkflowEventBridge:
     def extract_result(self, event: AgentRunResultEvent) -> tuple[ChatWorkflowResult, RunUsage]:
         return normalize_chat_workflow_result(event.result.output), event.result.usage()
 
-    def extract_sources(self, content: Any) -> list[dict[str, Any]]:
+    def extract_sources(self, content: Any) -> list[WorkflowSource]:
         if isinstance(content, dict):
             raw_sources: Any = content.get("sources")
         else:
@@ -114,9 +124,16 @@ class ChatWorkflowEventBridge:
         if not isinstance(raw_sources, Sequence) or isinstance(raw_sources, (str, bytes)):
             return []
 
-        normalized: list[dict[str, Any]] = []
+        normalized: list[WorkflowSource] = []
         for source in raw_sources:
-            dumped = _to_dict(source)
-            if isinstance(dumped, dict):
-                normalized.append(dumped)
+            if isinstance(source, WorkflowSource):
+                normalized.append(source)
+            else:
+                try:
+                    normalized.append(
+                        _WORKFLOW_SOURCE_ADAPTER.validate_python(source, from_attributes=True)
+                    )
+                except Exception as exc:
+                    logger.debug("skip_invalid_workflow_source", exc_info=exc)
+                    continue
         return normalized

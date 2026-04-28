@@ -18,6 +18,48 @@ import enKnowledge from "./locales/en/knowledge.json";
 import enSettings from "./locales/en/settings.json";
 import enUsers from "./locales/en/users.json";
 
+const SUPPORTED_LANGUAGES = ["zh-CN", "en"] as const;
+
+const RTL_LANGUAGES: readonly string[] = [];
+
+export type AppLanguage = (typeof SUPPORTED_LANGUAGES)[number];
+
+export function isRtlLanguage(language: string): boolean {
+  return RTL_LANGUAGES.includes(language);
+}
+
+export function detectBrowserLanguage(): AppLanguage | null {
+  if (typeof window === "undefined" || typeof navigator === "undefined") {
+    return null;
+  }
+
+  const browserLanguages = [...navigator.languages, navigator.language];
+
+  for (const browserLang of browserLanguages) {
+    const normalized = browserLang.toLowerCase();
+
+    const exactMatch = SUPPORTED_LANGUAGES.find(
+      (supported) => supported.toLowerCase() === normalized,
+    );
+    if (exactMatch) return exactMatch;
+
+    const prefixMatch = SUPPORTED_LANGUAGES.find((supported) =>
+      supported.toLowerCase().startsWith(normalized.split("-")[0]!),
+    );
+    if (prefixMatch) return prefixMatch;
+  }
+
+  return null;
+}
+
+export function getSupportedLanguages(): readonly AppLanguage[] {
+  return SUPPORTED_LANGUAGES;
+}
+
+export function isValidLanguage(value: string): value is AppLanguage {
+  return (SUPPORTED_LANGUAGES as readonly string[]).includes(value);
+}
+
 if (!i18n.isInitialized) {
   void i18n.use(initReactI18next).init({
     lng: "zh-CN",
@@ -44,6 +86,11 @@ if (!i18n.isInitialized) {
     },
     interpolation: {
       escapeValue: false,
+    },
+    missingKeyHandler: (_lngs, ns, key) => {
+      if (import.meta.env.DEV) {
+        console.warn(`[i18n] Missing key: ${ns}:${key}`);
+      }
     },
   });
 }

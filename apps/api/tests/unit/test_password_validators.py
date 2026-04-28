@@ -37,8 +37,9 @@ class TestValidatePasswordComplexity:
     def test_accepts_four_categories(self):
         assert validate_password_complexity("Admin123!") == "Admin123!"
 
-    def test_passes_through_short_password(self):
-        assert validate_password_complexity("abc") == "abc"
+    def test_rejects_short_password(self):
+        with pytest.raises(ValueError, match="at least 8"):
+            validate_password_complexity("abc")
 
 
 class TestPasswordStr:

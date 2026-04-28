@@ -1,8 +1,9 @@
 """文档相关服务模块。"""
 
-from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid4
+
+from pydantic import BaseModel
 
 from knowledge_chatbox_api.services.documents.constants import (
     DOCX_DOCUMENT_FILE_TYPES,
@@ -19,11 +20,9 @@ from knowledge_chatbox_api.services.documents.parsers import (
     PdfDocumentParser,
     TextDocumentParser,
 )
-from knowledge_chatbox_api.utils.files import ensure_directory
 
 
-@dataclass
-class NormalizationResult:
+class NormalizationResult(BaseModel):
     """描述标准化结果。"""
 
     content: str
@@ -35,7 +34,8 @@ class NormalizationService:
     """封装文档标准化逻辑。"""
 
     def __init__(self, *, normalized_dir: Path, provider=None, provider_settings=None) -> None:
-        self.normalized_dir = ensure_directory(normalized_dir)
+        normalized_dir.mkdir(parents=True, exist_ok=True)
+        self.normalized_dir = normalized_dir
         self.parsers = self._build_parsers(provider=provider, provider_settings=provider_settings)
 
     def normalize(self, file_path: Path, file_type: str) -> NormalizationResult:

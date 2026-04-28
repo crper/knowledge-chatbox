@@ -11,20 +11,19 @@ _settings_id_cache: TTLCache[str, int] = TTLCache(maxsize=1, ttl=_SETTINGS_CACHE
 class SettingsRepository(BaseRepository[AppSettings]):
     model_type = AppSettings
 
-    def get_cached_id(self) -> int | None:
-        return _settings_id_cache.get("id")
-
-    def set_cached_id(self, record_id: int) -> None:
-        _settings_id_cache["id"] = record_id
-
-    def invalidate_id_cache(self) -> None:
-        _settings_id_cache.clear()
-
     def get_settings(self) -> AppSettings | None:
-        return self.session.scalar(select(AppSettings).order_by(AppSettings.id))
+        cached_id = _settings_id_cache.get("id")
+        if cached_id is not None:
+            record = self.session.get(AppSettings, cached_id)
+            if record is not None:
+                return record
+        record = self.session.scalar(select(AppSettings).order_by(AppSettings.id))
+        if record is not None:
+            _settings_id_cache["id"] = record.id
+        return record
 
-    def save(self, settings: AppSettings) -> AppSettings:
-        return self.add(settings)
+    def invalidate_cache(self) -> None:
+        _settings_id_cache.clear()
 
 
 class SettingsVersionRepository(BaseRepository[SettingsVersion]):
@@ -37,6 +36,3 @@ class SettingsVersionRepository(BaseRepository[SettingsVersion]):
             )
         )
         return int(latest_version or 0) + 1
-
-    def save(self, version: SettingsVersion) -> SettingsVersion:
-        return self.add(version)

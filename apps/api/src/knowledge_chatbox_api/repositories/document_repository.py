@@ -1,5 +1,3 @@
-from typing import TYPE_CHECKING
-
 from sqlalchemy import func, or_, select
 
 from knowledge_chatbox_api.models.document import (
@@ -10,23 +8,10 @@ from knowledge_chatbox_api.models.document import (
 from knowledge_chatbox_api.models.enums import DocumentStatus, IngestStatus
 from knowledge_chatbox_api.repositories.base import BaseRepository
 from knowledge_chatbox_api.services.documents.constants import (
-    DOCX_DOCUMENT_FILE_TYPES,
-    IMAGE_DOCUMENT_FILE_TYPES,
+    DOCUMENT_TYPE_FILTERS,
     LISTABLE_DOCUMENT_STATUSES,
-    MARKDOWN_DOCUMENT_FILE_TYPES,
-    TEXT_DOCUMENT_FILE_TYPES,
 )
 
-if TYPE_CHECKING:
-    from sqlalchemy.engine import Row
-
-DOCUMENT_TYPE_FILTERS = {
-    "document": tuple(DOCX_DOCUMENT_FILE_TYPES),
-    "image": tuple(IMAGE_DOCUMENT_FILE_TYPES),
-    "markdown": tuple(MARKDOWN_DOCUMENT_FILE_TYPES),
-    "pdf": ("pdf",),
-    "text": tuple(TEXT_DOCUMENT_FILE_TYPES),
-}
 PENDING_LATEST_DOCUMENT_STATUSES = (IngestStatus.UPLOADED, IngestStatus.PROCESSING)
 
 
@@ -36,9 +21,6 @@ class DocumentRepository(BaseRepository[Document]):
     @staticmethod
     def _escape_like(value: str) -> str:
         return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-
-    def add_document(self, document: Document) -> Document:
-        return super().add(document)
 
     def add_version(self, document_version: DocumentRevision) -> DocumentRevision:
         self.session.add(document_version)
@@ -58,18 +40,11 @@ class DocumentRepository(BaseRepository[Document]):
         revisions = list(self.session.scalars(statement).all())
         return {revision.id: revision for revision in revisions}
 
-    def get_document_entity(self, document_id: int) -> Document | None:
-        return self.get_one_or_none(id=document_id)
-
-    def list_documents_by_ids(self, document_ids: list[int]) -> dict[int, Document]:
-        """根据文档 ID 列表批量获取文档，返回 ID 到文档的映射。"""
-        return self.get_by_ids(document_ids)
-
     def get_document_for_version(self, version_id: int) -> Document | None:
         version = self.get_by_id(version_id)
         if version is None:
             return None
-        return self.get_document_entity(version.document_id)
+        return self.get_one_or_none(id=version.document_id)
 
     def get_latest_revision(self, document: Document) -> DocumentRevision | None:
         if document.latest_revision_id is None:
@@ -121,10 +96,7 @@ class DocumentRepository(BaseRepository[Document]):
                     DocumentRevision.ingest_status.ilike(like_pattern),
                 )
             )
-        rows: list[Row[tuple[Document, DocumentRevision]]] = list(
-            self.session.execute(statement).all()
-        )
-        return [(document, revision) for document, revision in rows]
+        return list(self.session.execute(statement).all())
 
     def _build_type_filter_clause(self, type_filter: str):
         file_types = DOCUMENT_TYPE_FILTERS.get(type_filter)
@@ -187,6 +159,3 @@ class DocumentRepository(BaseRepository[Document]):
             DocumentRevision.ingest_status == IngestStatus.PROCESSING
         )
         return list(self.session.scalars(statement).all())
-
-    def delete_entity(self, document: Document) -> None:
-        self.session.delete(document)
